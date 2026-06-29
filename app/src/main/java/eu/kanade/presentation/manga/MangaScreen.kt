@@ -208,6 +208,19 @@ fun MangaScreen(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK --> v0.7.0: Phase 3 – favorite other versions
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20: seen manga params
+    isSeen: Boolean = false,
+    onSeenClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8: find best version
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
 ) {
     val context = LocalContext.current
@@ -277,6 +290,19 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onTasteClicked = onTasteClicked,
+            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+            // KMK --> v0.7.0
+            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.6.20
+            isSeen = isSeen,
+            onSeenClicked = onSeenClicked,
+            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.7.8
+            onFindBestVersionClicked = onFindBestVersionClicked,
+            // KMK <--
             // KMK <--
         )
     } else {
@@ -339,6 +365,19 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onTasteClicked = onTasteClicked,
+            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+            // KMK --> v0.7.0
+            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.6.20
+            isSeen = isSeen,
+            onSeenClicked = onSeenClicked,
+            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.7.8
+            onFindBestVersionClicked = onFindBestVersionClicked,
+            // KMK <--
             // KMK <--
         )
     }
@@ -418,6 +457,19 @@ private fun MangaScreenSmallImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK --> v0.7.0
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20
+    isSeen: Boolean = false,
+    onSeenClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
 ) {
     val chapterListState = rememberLazyListState()
@@ -658,6 +710,20 @@ private fun MangaScreenSmallImpl(
                             // KMK -->
                             status = state.manga.status,
                             interval = state.manga.fetchInterval,
+                            mangaTaste = state.mangaTaste,
+                            onTasteClicked = onTasteClicked,
+                            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+                            // KMK --> v0.7.0
+                            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.6.20
+                            isSeen = isSeen,
+                            onSeenClicked = onSeenClicked,
+                            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.7.8
+                            onFindBestVersionClicked = onFindBestVersionClicked,
+                            // KMK <--
                             // KMK <--
                         )
                     }
@@ -882,6 +948,19 @@ private fun MangaScreenLargeImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK --> v0.7.0
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20
+    isSeen: Boolean = false,
+    onSeenClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -1108,6 +1187,20 @@ private fun MangaScreenLargeImpl(
                             // KMK -->
                             status = state.manga.status,
                             interval = state.manga.fetchInterval,
+                            mangaTaste = state.mangaTaste,
+                            onTasteClicked = onTasteClicked,
+                            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+                            // KMK --> v0.7.0
+                            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.6.20
+                            isSeen = isSeen,
+                            onSeenClicked = onSeenClicked,
+                            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.7.8
+                            onFindBestVersionClicked = onFindBestVersionClicked,
+                            // KMK <--
                             // KMK <--
                         )
                         // SY -->

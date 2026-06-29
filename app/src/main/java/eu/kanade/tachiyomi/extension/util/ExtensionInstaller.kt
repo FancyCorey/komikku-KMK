@@ -54,7 +54,13 @@ internal class ExtensionInstaller(
      * @param url The url of the apk.
      * @param extension The extension to install.
      */
-    fun downloadAndInstall(url: String, extension: Extension): Flow<InstallStep> {
+    // KMK -->
+    fun downloadAndInstall(
+        url: String,
+        extension: Extension,
+        installerOverride: BasePreferences.ExtensionInstaller? = null,
+    ): Flow<InstallStep> {
+        // KMK <--
         val pkgName = extension.pkgName +
             // KMK -->
             "_${extension.signatureHash}"
@@ -88,7 +94,9 @@ internal class ExtensionInstaller(
                     }
 
                 step.value = InstallStep.Installing
-                installApk(downloadId, tmpFile)
+                // KMK -->
+                installApk(downloadId, tmpFile, installerOverride)
+                // KMK <--
             } catch (e: Exception) {
                 if (e is InterruptedException) {
                     // Canceled
@@ -117,8 +125,15 @@ internal class ExtensionInstaller(
      *
      * @param tempFile The file of the extension to install. Delete after use.
      */
-    private fun installApk(downloadId: Long, tempFile: File) {
-        when (val installer = extensionInstaller.get()) {
+    // KMK -->
+    private fun installApk(
+        downloadId: Long,
+        tempFile: File,
+        installerOverride: BasePreferences.ExtensionInstaller? = null,
+    ) {
+        val installer = installerOverride ?: extensionInstaller.get()
+        // KMK <--
+        when (installer) {
             BasePreferences.ExtensionInstaller.LEGACY -> {
                 val intent = Intent(context, ExtensionInstallActivity::class.java)
                     .setDataAndType(tempFile.getUriCompat(context), APK_MIME)

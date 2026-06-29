@@ -22,6 +22,7 @@ import exh.source.EIGHTMUSES_SOURCE_ID
 import exh.source.EXHENTAI_EXT_SOURCES
 import exh.source.EnhancedHttpSource
 import exh.source.ExhPreferences
+import exh.source.ExplicitSourceClassifier
 import exh.source.MERGED_SOURCE_ID
 import exh.source.PURURIN_SOURCE_ID
 import exh.source.handleSourceLibrary
@@ -219,17 +220,33 @@ class AndroidSourceManager(
     }
 
     // SY -->
-    override fun getVisibleOnlineSources() = sourcesMapFlow.value.values
-        .filterIsInstance<HttpSource>()
-        .filter {
-            it.id !in BlacklistedSources.HIDDEN_SOURCES
-        }
+    override fun getVisibleOnlineSources(): List<HttpSource> {
+        // KMK -->
+        val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
+        // KMK <--
+        return sourcesMapFlow.value.values
+            .filterIsInstance<HttpSource>()
+            .filter {
+                it.id !in BlacklistedSources.HIDDEN_SOURCES &&
+                    // KMK -->
+                    !(blockExplicit && ExplicitSourceClassifier.isExplicitCatalogueSource(it))
+                // KMK <--
+            }
+    }
 
-    override fun getVisibleCatalogueSources() = sourcesMapFlow.value.values
-        .filterIsInstance<CatalogueSource>()
-        .filter {
-            it.id !in BlacklistedSources.HIDDEN_SOURCES
-        }
+    override fun getVisibleCatalogueSources(): List<CatalogueSource> {
+        // KMK -->
+        val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
+        // KMK <--
+        return sourcesMapFlow.value.values
+            .filterIsInstance<CatalogueSource>()
+            .filter {
+                it.id !in BlacklistedSources.HIDDEN_SOURCES &&
+                    // KMK -->
+                    !(blockExplicit && ExplicitSourceClassifier.isExplicitCatalogueSource(it))
+                // KMK <--
+            }
+    }
 
     fun getDelegatedCatalogueSources() = sourcesMapFlow.value.values
         .filterIsInstance<EnhancedHttpSource>()

@@ -1,31 +1,45 @@
 package exh.recs
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.components.BulkFavoriteDialogs
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.browse.BulkFavoriteScreenModel
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreen
+import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import exh.recs.RecommendsScreen.Args.MergedSourceMangas
 import exh.recs.RecommendsScreen.Args.SingleSourceManga
 import exh.recs.batch.RankedSearchResults
 import exh.recs.components.RecommendsScreen
+import exh.recs.sources.CrossExtensionGenreSearchSource
 import exh.recs.sources.RECOMMENDS_SOURCE
 import exh.recs.sources.StaticResultPagingSource
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.presentation.core.util.collectAsState
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.Serializable
 
 class RecommendsScreen(private val args: Args) : Screen() {
@@ -49,6 +63,9 @@ class RecommendsScreen(private val args: Args) : Screen() {
         val state by screenModel.state.collectAsState()
 
         // KMK -->
+        val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
+        val crossExtensionEnabled by sourcePreferences.recommendationCrossExtensionSearch().collectAsState()
+
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
         val bulkFavoriteState by bulkFavoriteScreenModel.state.collectAsState()
 
@@ -93,27 +110,67 @@ class RecommendsScreen(private val args: Args) : Screen() {
             navigateUp = navigator::pop,
             getManga = @Composable { manga: Manga -> screenModel.getManga(manga) },
             onClickSource = { pagingSource ->
-                // Pass class name of paging source as screens need to be serializable
-                navigator.push(
-                    BrowseRecommendsScreen(
-                        when (args) {
-                            is SingleSourceManga ->
-                                BrowseRecommendsScreen.Args.SingleSourceManga(
-                                    args.mangaId,
-                                    args.sourceId,
-                                    pagingSource::class.qualifiedName!!,
-                                )
-                            is MergedSourceMangas ->
-                                BrowseRecommendsScreen.Args.MergedSourceMangas(
-                                    (pagingSource as StaticResultPagingSource).data,
-                                )
-                        },
-                        pagingSource.associatedSourceId == null,
-                    ),
-                )
+                // KMK -->
+                // CrossExtensionGenreSearchSource instances all share the same class name, so
+                // they cannot be identified via BrowseRecommendsScreenModel's name-lookup.
+                // Navigate directly to BrowseSourceScreen with genre filters pre-applied instead.
+                if (pagingSource is CrossExtensionGenreSearchSource) {
+                    navigator.push(
+                        BrowseSourceScreen(
+                            sourceId = pagingSource.associatedSourceId!!,
+                            listingQuery = pagingSource.cachedTextQuery.ifBlank { null },
+                            filtersJson = pagingSource.cachedFiltersJson,
+                        ),
+                    )
+                } else {
+                    // KMK <--
+                    // Pass class name of paging source as screens need to be serializable
+                    navigator.push(
+                        BrowseRecommendsScreen(
+                            when (args) {
+                                is SingleSourceManga ->
+                                    BrowseRecommendsScreen.Args.SingleSourceManga(
+                                        args.mangaId,
+                                        args.sourceId,
+                                        pagingSource::class.qualifiedName!!,
+                                    )
+                                is MergedSourceMangas ->
+                                    BrowseRecommendsScreen.Args.MergedSourceMangas(
+                                        (pagingSource as StaticResultPagingSource).data,
+                                    )
+                            },
+                            pagingSource.associatedSourceId == null,
+                        ),
+                    )
+                    // KMK -->
+                }
+                // KMK <--
             },
             onClickItem = { onClickItem(it) },
             onLongClickItem = { onLongClickItem(it) },
+            // KMK -->
+            actions = {
+                // Icon button to toggle cross-extension genre search on/off.
+                // Tapping replaces the screen with a fresh instance that reads the updated
+                // preference at init time, enabling or disabling the cross-extension sources.
+                IconButton(
+                    onClick = {
+                        sourcePreferences.recommendationCrossExtensionSearch().set(!crossExtensionEnabled)
+                        navigator.replace(RecommendsScreen(args))
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.TravelExplore,
+                        contentDescription = stringResource(KMR.strings.action_toggle_extension_search),
+                        tint = if (crossExtensionEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            Color.Unspecified
+                        },
+                    )
+                }
+            },
+            // KMK <--
         )
 
         // KMK -->

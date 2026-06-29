@@ -39,6 +39,9 @@ fun extensionsTab(
 
     val state by extensionsScreenModel.state.collectAsState()
     var privateExtensionToUninstall by remember { mutableStateOf<Extension?>(null) }
+    // KMK -->
+    var showBulkUninstallConfirmDialog by remember { mutableStateOf(false) }
+    // KMK <--
 
     return TabContent(
         titleRes = MR.strings.label_extensions,
@@ -56,6 +59,10 @@ fun extensionsTab(
                 title = stringResource(MR.strings.action_webview_refresh),
                 onClick = extensionsScreenModel::findAvailableExtensions,
             ),
+            AppBar.OverflowAction(
+                title = stringResource(KMR.strings.extension_select_extensions),
+                onClick = { if (!state.isExtensionSelectionMode) extensionsScreenModel.enterExtensionSelectionMode() },
+            ),
             // KMK <--
             AppBar.OverflowAction(
                 title = stringResource(MR.strings.action_filter),
@@ -67,9 +74,15 @@ fun extensionsTab(
             ),
         ),
         content = { contentPadding, _ ->
-            BackHandler(enabled = state.searchQuery != null) {
-                extensionsScreenModel.search(null)
+            // KMK -->
+            BackHandler(enabled = state.isExtensionSelectionMode || state.searchQuery != null) {
+                if (state.isExtensionSelectionMode) {
+                    extensionsScreenModel.exitExtensionSelectionMode()
+                } else {
+                    extensionsScreenModel.search(null)
+                }
             }
+            // KMK <--
             ExtensionScreen(
                 state = state,
                 contentPadding = contentPadding,
@@ -105,6 +118,11 @@ fun extensionsTab(
                 onUninstallExtension = { extensionsScreenModel.uninstallExtension(it) },
                 onUpdateExtension = extensionsScreenModel::updateExtension,
                 onRefresh = extensionsScreenModel::findAvailableExtensions,
+                // KMK -->
+                onToggleExtensionSelected = extensionsScreenModel::toggleExtensionSelected,
+                onRequestUninstallSelected = { showBulkUninstallConfirmDialog = true },
+                onExitSelectionMode = extensionsScreenModel::exitExtensionSelectionMode,
+                // KMK <--
             )
 
             privateExtensionToUninstall?.let { extension ->
@@ -118,9 +136,54 @@ fun extensionsTab(
                     },
                 )
             }
+
+            // KMK -->
+            if (showBulkUninstallConfirmDialog) {
+                val selectedCount = state.selectedExtensionKeys.size
+                ExtensionBulkUninstallConfirmation(
+                    count = selectedCount,
+                    onClickConfirm = {
+                        extensionsScreenModel.uninstallSelectedExtensions()
+                        showBulkUninstallConfirmDialog = false
+                    },
+                    onDismissRequest = {
+                        showBulkUninstallConfirmDialog = false
+                    },
+                )
+            }
+            // KMK <--
         },
     )
 }
+
+// KMK -->
+@Composable
+private fun ExtensionBulkUninstallConfirmation(
+    count: Int,
+    onClickConfirm: () -> Unit,
+    onDismissRequest: () -> Unit,
+) {
+    AlertDialog(
+        title = {
+            Text(text = stringResource(KMR.strings.extension_uninstall_selected_title))
+        },
+        text = {
+            Text(text = stringResource(KMR.strings.extension_uninstall_selected_message, count))
+        },
+        confirmButton = {
+            TextButton(onClick = onClickConfirm) {
+                Text(text = stringResource(MR.strings.ext_uninstall))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+        onDismissRequest = onDismissRequest,
+    )
+}
+// KMK <--
 
 @Composable
 private fun ExtensionUninstallConfirmation(

@@ -48,10 +48,16 @@ open class RecommendsScreenModel(
 
     init {
         ioCoroutineScope.launch {
+            // KMK -->
+            var sourceManga: tachiyomi.domain.manga.model.Manga? = null
+            // KMK <--
             val recommendationSources = when (args) {
                 is RecommendsScreen.Args.SingleSourceManga -> {
                     val manga = getManga.await(args.mangaId) ?: return@launch
                     mutableState.update { it.copy(title = manga.title) }
+                    // KMK -->
+                    sourceManga = manga
+                    // KMK <--
 
                     RecommendationPagingSource.createSources(
                         manga,
@@ -92,6 +98,19 @@ open class RecommendsScreenModel(
                             page.mangas.map { it.toDomainManga(RECOMMENDS_SOURCE) }
                         }
                             .distinctBy { it.url }
+                            // KMK -->
+                            // Rank by similarity to the source manga (title + tag overlap).
+                            // Falls back to provider order when sourceManga is unavailable or
+                            // when no similarity evidence distinguishes candidates.
+                            .let { list ->
+                                val ref = sourceManga
+                                if (ref != null) {
+                                    list.sortedByDescending { RecommendationScorer.score(ref, it) }
+                                } else {
+                                    list
+                                }
+                            }
+                        // KMK <--
 
                         if (isActive) {
                             updateItem(recSource, RecommendationItemResult.Success(titles))

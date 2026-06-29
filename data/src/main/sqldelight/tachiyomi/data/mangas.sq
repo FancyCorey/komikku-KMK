@@ -90,6 +90,26 @@ WHERE favorite = 0 AND _id IN (
     WHERE read = 1 OR last_page_read != 0
 );
 
+-- KMK -->
+getKnownRecommendationMangaIds:
+SELECT DISTINCT M._id
+FROM mangas M
+WHERE M._id IN :mangaIds
+AND (
+    M.favorite = 1
+    OR M._id IN (SELECT DISTINCT C.manga_id FROM chapters C WHERE C.read = 1 OR C.last_page_read != 0)
+    OR M._id IN (SELECT DISTINCT C2.manga_id FROM chapters C2 JOIN history H ON H.chapter_id = C2._id WHERE H.last_read > 0)
+    OR M._id IN (SELECT T.manga_id FROM manga_taste T WHERE T.manga_id = M._id)
+);
+-- KMK <--
+
+-- KMK --> v0.7.26: batch chapter count lookup for minimum-chapter filter (local data only, no fetch)
+getChapterCountsByMangaIds:
+SELECT M._id, (SELECT count(*) FROM chapters C WHERE C.manga_id = M._id) AS chapter_count
+FROM mangas M
+WHERE M._id IN :mangaIds;
+-- KMK <--
+
 getAllManga:
 SELECT *
 FROM mangas;

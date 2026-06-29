@@ -9,6 +9,7 @@ import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 import tachiyomi.core.common.preference.getLongArray
 import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.taste.model.RatedMangaVisibility
 
 class SourcePreferences(
     private val preferenceStore: PreferenceStore,
@@ -144,6 +145,97 @@ class SourcePreferences(
 
     // KMK -->
     fun relatedMangas() = preferenceStore.getBoolean("related_mangas", true)
+
+    /**
+     * When enabled, the recommendations screen searches all installed extensions by the source
+     * manga's genres and adds one result row per extension (capped at 20 extensions).
+     * Defaults to false (opt-in) so users with many installed extensions are not surprised by
+     * a large number of network calls on first open.
+     */
+    fun recommendationCrossExtensionSearch() = preferenceStore.getBoolean("rec_cross_extension_search", false)
+
+    fun recommendationRatedMangaVisibility() = preferenceStore.getEnum(
+        "recommendation_rated_manga_visibility",
+        RatedMangaVisibility.HIDE_DISLIKED_ONLY,
+    )
+
+    // KMK -->
+    /** Languages to search for For You recommendations. Defaults to EN-only. */
+    fun recommendationSourceLanguages() = preferenceStore.getStringSet("recommendation_source_languages", setOf("en"))
+
+    /** Comma-separated source ids in user-defined priority order for For You recommendations. */
+    fun recommendationSourceOrder() = preferenceStore.getString("recommendation_source_order", "")
+
+    /** Semicolon-separated "sourceId=strategyName" pairs persisting the last-successful query strategy per source. */
+    fun recommendationSourceStrategies() = preferenceStore.getString("recommendation_source_strategies", "")
+
+    /** When true, hides manga that are already rated, in library, started, or read from For You results. */
+    fun recommendationHideKnownManga() = preferenceStore.getBoolean("recommendation_hide_known_manga", true)
+
+    /** Compact serialized last For You source run statuses for display in Recommendation Settings. */
+    fun recommendationLastSourceRunStatuses() = preferenceStore.getString("recommendation_last_source_run_statuses", "")
+
+    // KMK --> v0.7.19: rolling source fit stats accumulated across For You runs
+    /** Compact serialized rolling source fit stats for the Source Priority section in Recommendation Settings. */
+    fun recommendationSourceFitStats() = preferenceStore.getString("recommendation_source_fit_stats", "")
+    // KMK <--
+
+    // KMK --> v0.7.26: minimum chapter count filter for For You
+    /** Minimum locally-known chapter count for a manga to appear in For You. 0 = no filter. */
+    fun recommendationMinChapterCount() = preferenceStore.getInt("recommendation_min_chapter_count", 0)
+    // KMK <--
+
+    /** Semicolon-separated dismissal keys for non-installed source suggestions. Format: signatureHash|pkgName|sourceId */
+    fun dismissedNonInstalledRecommendationSources() = preferenceStore.getString("dismissed_non_installed_rec_sources", "")
+
+    /** Semicolon-separated liked recommendation source keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
+    fun likedRecommendationSourceKeys() = preferenceStore.getString("liked_recommendation_source_keys", "")
+
+    /** Semicolon-separated disliked recommendation source keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
+    fun dislikedRecommendationSourceKeys() = preferenceStore.getString("disliked_recommendation_source_keys", "")
+
+    /** When true, hides clearly explicit porn/hentai sources from Browse and Sources To Try. Does not affect ecchi-only sources. */
+    fun blockExplicitPornHentaiSources() = preferenceStore.getBoolean("block_explicit_porn_hentai_sources", false)
+
+    // KMK --> v0.6.20: seen manga + reassessment prefs
+    /** Semicolon-separated "sourceId|url" pairs identifying recommendation manga the user has marked as seen/already read. */
+    fun seenRecommendationMangaKeys() = preferenceStore.getString("seen_recommendation_manga_keys", "")
+
+    /** Total rated manga count at the time of the last source-evaluation reassessment baseline. 0 = never set. */
+    fun sourceEvaluationLastReassessmentRatingCount() = preferenceStore.getInt("source_evaluation_last_reassessment_rating_count", 0)
+
+    /** Epoch-ms timestamp of the last source-evaluation reassessment baseline. 0 = never set. */
+    fun sourceEvaluationLastReassessmentAt() = preferenceStore.getLong("source_evaluation_last_reassessment_at", 0L)
+
+    // KMK --> v0.7.6: continuation cursor for source evaluation batches
+    /** Serialized [SourceEvaluationCursor] for continuing a paused evaluation queue. Blank = no cursor. */
+    fun sourceEvaluationContinuationCursor() = preferenceStore.getString("source_evaluation_continuation_cursor", "")
+
+    // KMK --> v0.7.11: source evaluation consent
+    /** When true, the user has acknowledged the Source Evaluation pre-run warning. */
+    fun sourceEvaluationConsentGiven() = preferenceStore.getBoolean("source_evaluation_consent_given", false)
+    // KMK <--
+
+    // KMK --> SEC-01 v0.7.16: leftover extension detection after process death
+    /** Package name of a Shizuku-installed extension that was left behind by a process-death interruption. Blank = none. */
+    fun sourceEvaluationLeftoverPkg() = preferenceStore.getString("source_evaluation_leftover_pkg", "")
+    // KMK <--
+    // KMK <--
+
+    // KMK --> v0.7.8: same-manga matching and best-version comparison settings
+    /** Max results per source for bounded same-manga workflows (Love/Like/Dislike/Seen/Favorite/Best-version). Valid: 1, 2, 5, 10. Default 2. */
+    fun sameMangaMatchResultsPerSource() = preferenceStore.getInt("same_manga_match_results_per_source", 2)
+
+    /** When true, same-manga results start selected. When false, start unselected. Origin is never selected. */
+    fun sameMangaMatchPreselectResults() = preferenceStore.getBoolean("same_manga_match_preselect_results", true)
+
+    /** Number of pages sampled per candidate chapter in Best Version preview. Valid: 2, 5, 10. Default 5. */
+    fun bestVersionPreviewSampleSize() = preferenceStore.getInt("best_version_preview_sample_size", 5)
+
+    /** When true, automatic sample skips first 1–2 pages (avoids credits/covers/ads). */
+    fun bestVersionAvoidFirstPages() = preferenceStore.getBoolean("best_version_avoid_first_pages", true)
+    // KMK <--
+    // KMK <--
 
     companion object {
         const val PINNED_SOURCES_PREF_KEY = "pinned_catalogues"

@@ -28,7 +28,7 @@ android {
     defaultConfig {
         applicationId = "app.komikku"
 
-        versionCode = 79
+        versionCode = 88 // KMK-Recs v0.7.16
         versionName = "1.13.6"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
@@ -102,6 +102,9 @@ android {
     sourceSets {
         getByName("preview").res.srcDirs("src/beta/res")
         getByName("benchmark").res.srcDirs("src/debug/res")
+        // KMK --> R-026: expose migration .sqm files as test classpath resources
+        getByName("test").resources.srcDirs("../data/src/main/sqldelight/tachiyomi/migrations")
+        // KMK <--
     }
 
     splits {
@@ -300,6 +303,9 @@ dependencies {
     implementation(libs.haze)
     implementation(compose.colorpicker)
     implementation(projects.flagkit)
+    // KMK OCR -->
+    implementation(libs.mlkit.text.recognition)
+    // KMK OCR <--
     // KMK <--
 
     // Logging
@@ -315,6 +321,9 @@ dependencies {
     // Tests
     testImplementation(libs.bundles.test)
     testRuntimeOnly(libs.junit.platform.launcher)
+    // KMK --> R-026: in-memory SQLite driver for migration tests
+    testImplementation(libs.sqldelight.sqlite.driver)
+    // KMK <--
 
     // For detecting memory leaks; see https://square.github.io/leakcanary/
     // debugImplementation(libs.leakcanary.android)

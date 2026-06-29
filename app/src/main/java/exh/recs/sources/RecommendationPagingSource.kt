@@ -1,6 +1,7 @@
 package exh.recs.sources
 
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -48,6 +49,10 @@ abstract class RecommendationPagingSource(
     open val associatedSourceId: Long? = null
 
     companion object {
+        // KMK -->
+        private const val MAX_CROSS_EXTENSION_SOURCES = 20
+        // KMK <--
+
         internal fun createSources(
             manga: Manga,
             // KMK -->
@@ -91,6 +96,21 @@ abstract class RecommendationPagingSource(
                         ),
                     )
                 }
+
+                // KMK -->
+                // When cross-extension search is enabled, add one source per installed extension
+                // (capped at MAX_CROSS_EXTENSION_SOURCES). Each source searches by genre and
+                // enriches the top results so RecommendationScorer has real genre data to compare.
+                val sourcePreferences: SourcePreferences = Injekt.get()
+                if (sourcePreferences.recommendationCrossExtensionSearch().get()) {
+                    val sourceManager: SourceManager = Injekt.get()
+                    sourceManager.getVisibleCatalogueSources()
+                        .take(MAX_CROSS_EXTENSION_SOURCES)
+                        .forEach { catalogueSource ->
+                            add(CrossExtensionGenreSearchSource(manga, catalogueSource))
+                        }
+                }
+                // KMK <--
             }.sortedWith(compareBy({ it.name }, { it.category.resourceId }))
         }
     }

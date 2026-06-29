@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.extension
 import android.content.Context
 import android.graphics.drawable.Drawable
 import androidx.core.content.ContextCompat
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.R
@@ -297,9 +298,14 @@ class ExtensionManager(
      *
      * @param extension The extension to be installed.
      */
-    fun installExtension(extension: Extension.Available): Flow<InstallStep> {
-        return installer.downloadAndInstall(api.getApkUrl(extension), extension)
+    // KMK -->
+    fun installExtension(
+        extension: Extension.Available,
+        installerOverride: BasePreferences.ExtensionInstaller? = null,
+    ): Flow<InstallStep> {
+        return installer.downloadAndInstall(api.getApkUrl(extension), extension, installerOverride)
     }
+    // KMK <--
 
     /**
      * Returns a flow of the installation process for the given extension. It will complete

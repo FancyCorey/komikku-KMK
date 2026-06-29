@@ -77,6 +77,7 @@ import exh.log.EHLogLevel
 import exh.log.EnhancedFilePrinter
 import exh.log.XLogLogcatLogger
 import exh.log.xLogD
+import exh.recs.evaluation.SourceEvaluationStartupRecovery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -220,6 +221,11 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
         // KMK -->
         MangaCoverMetadata.load()
+        // KMK <--
+
+        // KMK --> v0.6.17: Source Evaluation startup crash recovery — runs before optional work
+        // so a crashing extension can be quarantined before the user opens Source Evaluation.
+        SourceEvaluationStartupRecovery().runAsync(scope)
         // KMK <--
 
         // Updates widget update

@@ -49,6 +49,11 @@ abstract class SearchScreenModel(
     private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
     private var searchJob: Job? = null
 
+    // KMK -->
+    /** Override in subclasses to cap results per source. Null = uncapped (normal global search). */
+    protected open val perSourceResultLimit: Int? = null
+    // KMK <--
+
     private val enabledLanguages = sourcePreferences.enabledLanguages().get()
     private val disabledSources = sourcePreferences.disabledSources().get()
     protected val pinnedSources = sourcePreferences.pinnedSources().get()
@@ -192,6 +197,9 @@ abstract class SearchScreenModel(
                             .map { it.toDomainManga(source.id) }
                             .distinctBy { it.url }
                             .let { networkToLocalManga(it) }
+                            // KMK -->
+                            .let { list -> perSourceResultLimit?.let(list::take) ?: list }
+                        // KMK <--
 
                         if (isActive) {
                             updateItem(source, SearchItemResult.Success(titles))

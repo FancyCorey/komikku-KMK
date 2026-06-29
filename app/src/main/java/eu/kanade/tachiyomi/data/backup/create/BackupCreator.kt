@@ -12,15 +12,22 @@ import eu.kanade.tachiyomi.data.backup.create.creators.MangaBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.PreferenceBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SavedSearchBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SourcesBackupCreator
+import eu.kanade.tachiyomi.data.backup.create.creators.TasteBackupCreator
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
+import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
+import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
+import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
+import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import okio.buffer
@@ -58,6 +65,7 @@ class BackupCreator(
     private val sourcesBackupCreator: SourcesBackupCreator = SourcesBackupCreator(),
     // KMK -->
     private val feedBackupCreator: FeedBackupCreator = FeedBackupCreator(),
+    private val tasteBackupCreator: TasteBackupCreator = TasteBackupCreator(),
     // KMK <--
     // SY -->
     private val savedSearchBackupCreator: SavedSearchBackupCreator = SavedSearchBackupCreator(),
@@ -110,6 +118,13 @@ class BackupCreator(
 
                 // KMK -->
                 backupFeeds = backupFeeds(options),
+                backupMangaTastes = backupMangaTastes(options),
+                backupTagTastes = backupTagTastes(options),
+                backupTagAliases = backupTagAliases(options),
+                backupDisabledRecommendationSources = backupDisabledRecommendationSources(options),
+                // KMK --> v0.7.0: Phase 4
+                backupCrossSourceMangaLinks = backupCrossSourceMangaLinks(options),
+                // KMK <--
                 // KMK <--
             )
 
@@ -194,6 +209,40 @@ class BackupCreator(
 
         return feedBackupCreator()
     }
+
+    suspend fun backupMangaTastes(options: BackupOptions): List<BackupMangaTaste> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupMangaTastes()
+    }
+
+    suspend fun backupTagTastes(options: BackupOptions): List<BackupTagTaste> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupTagTastes()
+    }
+
+    suspend fun backupTagAliases(options: BackupOptions): List<BackupTagAlias> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupTagAliases()
+    }
+
+    suspend fun backupDisabledRecommendationSources(options: BackupOptions): List<BackupDisabledRecommendationSource> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupDisabledRecommendationSources()
+    }
+
+    // KMK --> v0.7.0: Phase 4
+    suspend fun backupCrossSourceMangaLinks(options: BackupOptions): List<BackupCrossSourceMangaLink> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupCrossSourceMangaLinks()
+    }
+    // KMK <--
+
+    // KMK --> v0.7.16: Best Version quality signals
+    suspend fun backupMangaSourceQualitySignals(options: BackupOptions): List<BackupMangaSourceQualitySignal> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupMangaSourceQualitySignals()
+    }
+    // KMK <--
     // KMK <--
 
     companion object {

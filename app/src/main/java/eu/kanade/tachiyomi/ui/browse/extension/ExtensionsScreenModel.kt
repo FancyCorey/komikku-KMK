@@ -262,6 +262,57 @@ class ExtensionsScreenModel(
             it.copy(nsfwOnly = !it.nsfwOnly)
         }
     }
+
+    private fun Extension.selectionKey(): String = pkgName + "_$signatureHash"
+
+    fun enterExtensionSelectionMode() {
+        mutableState.update { it.copy(isExtensionSelectionMode = true) }
+    }
+
+    fun exitExtensionSelectionMode() {
+        mutableState.update { it.copy(isExtensionSelectionMode = false, selectedExtensionKeys = emptySet()) }
+    }
+
+    fun toggleExtensionSelected(extension: Extension) {
+        if (extension !is Extension.Installed && extension !is Extension.Untrusted) return
+        val key = extension.selectionKey()
+        mutableState.update { s ->
+            val keys = s.selectedExtensionKeys
+            s.copy(selectedExtensionKeys = if (key in keys) keys - key else keys + key)
+        }
+    }
+
+    fun uninstallSelectedExtensions() {
+        if (state.value.isBulkUninstallingExtensions) return
+        val selectedKeys = state.value.selectedExtensionKeys
+        val toUninstall = state.value.items.values.flatten()
+            .filter { item ->
+                (item.extension is Extension.Installed || item.extension is Extension.Untrusted) &&
+                    item.extension.selectionKey() in selectedKeys &&
+                    item.installStep.isCompleted()
+            }
+            .map { it.extension }
+        if (toUninstall.isEmpty()) return
+        mutableState.update { it.copy(isBulkUninstallingExtensions = true) }
+        screenModelScope.launchIO {
+            try {
+                for (extension in toUninstall) {
+                    uninstallExtension(extension)
+                    // Small delay between uninstall intents to avoid rapid-fire Android prompt stacking.
+                    // Android may show one confirmation dialog per extension.
+                    delay(300L)
+                }
+            } finally {
+                mutableState.update {
+                    it.copy(
+                        isBulkUninstallingExtensions = false,
+                        isExtensionSelectionMode = false,
+                        selectedExtensionKeys = emptySet(),
+                    )
+                }
+            }
+        }
+    }
     // KMK <--
 
     @Immutable
@@ -274,6 +325,9 @@ class ExtensionsScreenModel(
         val searchQuery: String? = null,
         // KMK -->
         val nsfwOnly: Boolean = false,
+        val isExtensionSelectionMode: Boolean = false,
+        val selectedExtensionKeys: Set<String> = emptySet(),
+        val isBulkUninstallingExtensions: Boolean = false,
         // KMK <--
     ) {
         val isEmpty = items.isEmpty()

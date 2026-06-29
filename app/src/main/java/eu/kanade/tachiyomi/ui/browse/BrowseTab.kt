@@ -30,7 +30,8 @@ import eu.kanade.tachiyomi.ui.browse.migration.sources.migrateSourceTab
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.browse.source.sourcesTab
 import eu.kanade.tachiyomi.ui.main.MainActivity
-import kotlinx.collections.immutable.persistentListOf
+import exh.recs.personalRecommendationsTab
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
@@ -74,6 +75,11 @@ data object BrowseTab : Tab {
         val hideFeedTab by remember { Injekt.get<UiPreferences>().hideFeedTab().asState(scope) }
         val feedTabInFront by remember { Injekt.get<UiPreferences>().feedTabInFront().asState(scope) }
         // SY <--
+        // KMK -->
+        val uiPreferences = remember { Injekt.get<UiPreferences>() }
+        val hideMigrateTab by remember { uiPreferences.hideMigrateTab().asState(scope) }
+        val hideForYouTab by remember { uiPreferences.hideForYouTab().asState(scope) }
+        // KMK <--
 
         // Hoisted for extensions tab's search bar
         val extensionsScreenModel = rememberScreenModel { ExtensionsScreenModel() }
@@ -85,40 +91,24 @@ data object BrowseTab : Tab {
         // KMK <--
 
         // SY -->
-        val tabs = when {
-            hideFeedTab ->
-                persistentListOf(
-                    sourcesTab(),
-                    extensionsTab(extensionsScreenModel),
-                    migrateSourceTab(),
-                )
-
-            feedTabInFront ->
-                persistentListOf(
-                    feedTab(
-                        // KMK -->
-                        feedScreenModel,
-                        bulkFavoriteScreenModel,
-                        // KMK <--
-                    ),
-                    sourcesTab(),
-                    extensionsTab(extensionsScreenModel),
-                    migrateSourceTab(),
-                )
-
-            else ->
-                persistentListOf(
-                    sourcesTab(),
-                    feedTab(
-                        // KMK -->
-                        feedScreenModel,
-                        bulkFavoriteScreenModel,
-                        // KMK <--
-                    ),
-                    extensionsTab(extensionsScreenModel),
-                    migrateSourceTab(),
-                )
-        }
+        // KMK --> build tab list dynamically so Migrate and For You can be hidden independently
+        val tabs = buildList {
+            if (feedTabInFront && !hideFeedTab) {
+                add(feedTab(feedScreenModel, bulkFavoriteScreenModel))
+            }
+            add(sourcesTab())
+            if (!hideFeedTab && !feedTabInFront) {
+                add(feedTab(feedScreenModel, bulkFavoriteScreenModel))
+            }
+            add(extensionsTab(extensionsScreenModel))
+            if (!hideMigrateTab) {
+                add(migrateSourceTab())
+            }
+            if (!hideForYouTab) {
+                add(personalRecommendationsTab())
+            }
+        }.toImmutableList()
+        // KMK <--
         // SY <--
 
         val state = rememberPagerState { tabs.size }
@@ -136,7 +126,11 @@ data object BrowseTab : Tab {
         )
         LaunchedEffect(Unit) {
             switchToExtensionTabChannel.receiveAsFlow()
-                .collectLatest { state.scrollToPage(/* SY --> */2/* SY <-- */) }
+                // KMK --> extensions index: always after Sources (and Feed if visible and not in front)
+                // hideFeedTab → [Sources, Extensions, ...] → index 1
+                // else        → [Feed?, Sources, Feed?, Extensions, ...] → index 2
+                .collectLatest { state.scrollToPage(if (hideFeedTab) 1 else 2) }
+            // KMK <--
         }
 
         LaunchedEffect(Unit) {

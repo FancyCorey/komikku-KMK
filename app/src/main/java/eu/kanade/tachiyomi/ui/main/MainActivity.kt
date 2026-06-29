@@ -65,6 +65,7 @@ import eu.kanade.presentation.components.SyncingBannerBackgroundColor
 import eu.kanade.presentation.components.UpdatingBannerBackgroundColor
 import eu.kanade.presentation.more.settings.screen.ConfigureExhDialog
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen.Companion.getReleaseNotes
+import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewDialog
 import eu.kanade.presentation.more.settings.screen.about.WhatsNewDialog
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
@@ -91,6 +92,7 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.deeplink.DeepLinkScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
+import eu.kanade.tachiyomi.ui.more.KmkRecsWhatsNewScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.more.WhatsNewScreen
@@ -104,6 +106,8 @@ import eu.kanade.tachiyomi.util.view.setComposeContent
 import exh.debug.DebugToggles
 import exh.eh.EHentaiUpdateWorker
 import exh.log.DebugModeOverlay
+import exh.recs.KmkRecsReleaseNotes
+import exh.recs.evaluation.SourceEvaluationScreen
 import exh.source.ExhPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -419,6 +423,17 @@ class MainActivity : BaseActivity() {
                     // KMK <--
                 )
             }
+
+            // KMK -->
+            val kmkRecsLastSeenVersion = Injekt.get<PreferenceStore>().getInt(
+                Preference.appStateKey("kmk_recs_last_seen_version_code"),
+                0,
+            )
+            var showKmkChangelog by remember {
+                mutableStateOf(KmkRecsReleaseNotes.VERSION_CODE > kmkRecsLastSeenVersion.get())
+            }
+            // KMK <--
+
             if (showChangelog) {
                 // KMK -->
                 WhatsNewDialog(
@@ -449,7 +464,21 @@ class MainActivity : BaseActivity() {
                     },
                 )
                 // KMK <--
+                // KMK -->
+            } else if (showKmkChangelog) {
+                KmkRecsWhatsNewDialog(
+                    onDismissRequest = {
+                        showKmkChangelog = false
+                        kmkRecsLastSeenVersion.set(KmkRecsReleaseNotes.VERSION_CODE)
+                    },
+                    onOpenWhatsNew = {
+                        showKmkChangelog = false
+                        kmkRecsLastSeenVersion.set(KmkRecsReleaseNotes.VERSION_CODE)
+                        navigator?.push(KmkRecsWhatsNewScreen())
+                    },
+                )
             }
+            // KMK <--
             // KMK -->
             previewLastVersion.set(previewCurrentVersion)
             // KMK <--
@@ -665,6 +694,18 @@ class MainActivity : BaseActivity() {
                 navigator.popUntilRoot()
                 HomeScreen.Tab.More(toDownloads = false, toLibraryUpdateErrors = true)
             }
+            Constants.OPEN_SOURCE_EVALUATION -> {
+                navigator.popUntilRoot()
+                navigator.push(SourceEvaluationScreen())
+                null
+            }
+            // KMK OCR -->
+            Constants.OPEN_OCR_SEARCH -> {
+                navigator.popUntilRoot()
+                navigator.push(exh.ocr.OcrSearchScreen())
+                null
+            }
+            // KMK OCR <--
             // KMK <--
             Intent.ACTION_SEARCH, Intent.ACTION_SEND, "com.google.android.gms.actions.SEARCH_ACTION" -> {
                 // If the intent match the "standard" Android search intent

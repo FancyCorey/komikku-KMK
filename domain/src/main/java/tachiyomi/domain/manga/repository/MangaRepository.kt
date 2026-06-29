@@ -43,6 +43,16 @@ interface MangaRepository {
     // SY -->
     suspend fun getMangaBySourceId(sourceId: Long): List<Manga>
 
+    // KMK -->
+    /** Returns the subset of [mangaIds] that are "known" — rated, in library, started, or read. */
+    suspend fun getKnownRecommendationMangaIds(mangaIds: Collection<Long>): Set<Long>
+
+    // KMK --> v0.7.26: batch chapter counts for the minimum-chapter filter (local DB only, never fetches)
+    /** Returns a map of mangaId → locally-stored chapter count for each ID in [mangaIds]. */
+    suspend fun getChapterCountsByMangaIds(mangaIds: Collection<Long>): Map<Long, Long>
+    // KMK <--
+    // KMK <--
+
     suspend fun getAll(): List<Manga>
 
     suspend fun deleteManga(mangaId: Long)

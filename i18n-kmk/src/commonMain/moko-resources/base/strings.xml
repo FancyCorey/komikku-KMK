@@ -165,6 +165,11 @@
     <string name="action_manual_install">Manual install</string>
     <string name="manual_download">Manual download</string>
     <!-- Browse settings -->
+    <!-- Recommendations -->
+    <string name="rec_extension_search">Extension search</string>
+    <string name="pref_rec_cross_extension_search">Search extensions for recommendations</string>
+    <string name="pref_rec_cross_extension_search_summary">Search installed extensions by genre to find similar manga (network calls per extension)</string>
+    <string name="action_toggle_extension_search">Toggle extension search</string>
     <string name="pref_source_related_mangas">Suggestions</string>
     <string name="pref_source_related_mangas_summary">Show source-website's Suggestions while viewing entry</string>
     <string name="related_mangas_website_suggestions">Website Suggestions</string>
@@ -238,4 +243,490 @@
     <string name="pref_discord_show_download_button_summary">Displays a button to download the app</string>
     <string name="pref_discord_show_discord_button">Show Discord Button</string>
     <string name="pref_discord_show_discord_button_summary">Displays a button to join the Discord server</string>
+
+    <!-- Taste / personal recommendations (KMK) -->
+    <string name="taste_rating">Rate</string>
+    <string name="taste_love">Love</string>
+    <string name="taste_like">Like</string>
+    <string name="taste_dislike">Dislike</string>
+    <string name="taste_clear">Clear rating</string>
+    <string name="taste_recommendations_tab">For You</string>
+    <string name="taste_recommendations_empty">Rate some manga to get personalized recommendations</string>
+    <string name="taste_settings_title">Recommendation Settings</string>
+    <string name="taste_settings_tag_prefs">Tag Preferences</string>
+    <string name="taste_settings_tag_prefs_empty">No tag preferences set</string>
+    <string name="taste_settings_add_tag">Add tag</string>
+    <string name="taste_settings_tag_dialog_title">Tag Preference</string>
+    <string name="taste_settings_tag_name">Tag name</string>
+    <string name="taste_settings_sources">Sources for Recommendations</string>
+    <string name="taste_pref_prefer">Prefer</string>
+    <string name="taste_pref_dislike">Avoid</string>
+    <string name="taste_pref_block">Block</string>
+    <string name="taste_backup_option">Taste profile</string>
+    <string name="taste_matched_tags">Matched: %1$s</string>
+    <string name="taste_settings_rated_visibility">Rated Manga in For You</string>
+    <string name="taste_visibility_hide_disliked">Hide disliked only</string>
+    <string name="taste_visibility_hide_all">Hide all rated</string>
+    <string name="taste_visibility_show_all">Show all rated</string>
+    <string name="pref_hide_migrate_tab">Hide Migrate tab</string>
+    <string name="pref_hide_for_you_tab">Hide For You tab</string>
+    <string name="rec_top_picks_title">Top Picks</string>
+    <string name="rec_top_picks_subtitle">Your best matches across sources</string>
+    <string name="rec_top_picks_matched">Matched: %1$s</string>
+    <string name="rec_hide_known_manga">Hide known manga</string>
+    <string name="rec_hide_known_manga_summary">Hide manga already rated, in library, or started locally.</string>
+    <string name="rec_source_languages">Recommendation languages</string>
+    <string name="rec_source_languages_summary">Only sources in selected languages appear in For You. Top 3 sources get more results.</string>
+    <string name="rec_source_priority">Source priority</string>
+    <string name="rec_source_priority_summary">Top 3 sources get more results. Drag to reorder.</string>
+    <string name="rec_source_boosted">Boosted</string>
+    <string name="rec_reset_source_order">Reset priority</string>
+    <string name="kmk_recs_whats_new">KMK-Recs What\'s new</string>
+    <string name="kmk_recs_updated">Updated to %1$s</string>
+    <string name="rec_source_status_shown">Shown: %1$d matches</string>
+    <string name="rec_source_status_no_matches">No matches in last For You run</string>
+    <string name="rec_source_status_filtered">Filtered out by ratings/known/blocked tags</string>
+    <string name="rec_source_status_error">Error in last For You run</string>
+    <string name="rec_source_status_disabled">Disabled</string>
+    <string name="rec_source_status_not_searched_limit">Not searched: attempt limit reached</string>
+    <string name="rec_source_status_not_checked">Not checked yet</string>
+    <string name="rec_source_status_duplicate_hidden">Hidden by duplicate handling</string>
+    <string name="rec_source_status_note">Statuses below are from the last For You refresh.</string>
+    <string name="rec_top_picks_partial">Showing results so far — For You is still loading more sources.</string>
+    <string name="rec_top_picks_empty">No Top Picks available yet. Refresh For You to load recommendations.</string>
+    <string name="rec_match_title_love">Love other versions</string>
+    <string name="rec_match_title_like">Like other versions</string>
+    <string name="rec_match_title_dislike">Dislike other versions</string>
+    <string name="rec_match_apply_love">Apply Love to %1$d versions</string>
+    <string name="rec_match_apply_like">Apply Like to %1$d versions</string>
+    <string name="rec_match_apply_dislike">Apply Dislike to %1$d versions</string>
+    <string name="rec_match_selection_count">Selected %1$d of %2$d</string>
+    <string name="rec_match_applying">Applying…</string>
+    <string name="rec_sources_to_try_header">Sources To Try</string>
+    <string name="rec_sources_to_try_empty">No strong source suggestions yet. Install and use more sources to improve suggestions.</string>
+    <string name="rec_suggestion_install">Install</string>
+    <string name="rec_suggestion_dismiss">Dismiss</string>
+    <!-- KMK --> <string name="rec_suggestion_install_visible">Install visible suggestions (%1$d)</string>
+    <!-- KMK --> <string name="rec_suggestion_installing_visible">Installing suggestions…</string>
+    <!-- KMK --> <string name="rec_suggestion_select">Select</string>
+    <!-- KMK --> <string name="rec_suggestion_cancel_selection">Cancel</string>
+    <!-- KMK --> <string name="rec_suggestion_install_selected">Install selected (%1$d)</string>
+    <string name="rec_suggestion_confidence_low">Potential fit</string>
+    <string name="rec_suggestion_confidence_medium">Worth trying</string>
+    <string name="rec_suggestion_reason_language_match">Matches your recommendation language</string>
+    <string name="rec_suggestion_reason_same_repo">Same repo as your installed sources</string>
+    <string name="rec_suggestion_reason_similar_source">Similar to your installed sources</string>
+    <string name="rec_suggestion_reason_needs_testing">Install to test with For You</string>
+    <string name="rec_suggestion_reason_user_liked">You liked this source</string>
+    <string name="rec_source_preference_like">Like</string>
+    <string name="rec_source_preference_dislike">Dislike</string>
+    <string name="rec_source_status_disliked">Disliked · excluded from For You</string>
+    <!-- KMK --> <string name="rec_source_preference_scope_note">Installed source dislikes affect For You only. Sources To Try dislikes hide future suggestions.</string>
+    <!-- KMK --> <string name="rec_source_preference_like_for_you">Like for For You</string>
+    <!-- KMK --> <string name="rec_source_preference_dislike_for_you">Dislike for For You</string>
+    <!-- KMK --> <string name="rec_source_preference_like_source">Like source suggestion</string>
+    <!-- KMK --> <string name="rec_source_preference_dislike_source">Dislike source suggestion</string>
+    <!-- KMK --> <string name="extension_select_extensions">Select extensions</string>
+    <!-- KMK --> <string name="extension_uninstall_selected">Uninstall selected (%1$d)</string>
+    <!-- KMK --> <string name="extension_cancel_selection">Cancel</string>
+    <!-- KMK --> <string name="extension_uninstall_selected_title">Uninstall selected extensions?</string>
+    <!-- KMK --> <string name="extension_uninstall_selected_message">This will uninstall %1$d extensions. Android may ask you to confirm each uninstall.</string>
+    <!-- KMK --> <string name="pref_block_explicit_porn_hentai_sources">Block explicit porn/hentai sources</string>
+    <!-- KMK --> <string name="pref_block_explicit_porn_hentai_sources_summary">Hides clearly explicit adult and hentai sources. Does not affect ecchi-only sources.</string>
+    <!-- KMK v0.6.8 Source Evaluation -->
+    <!-- KMK --> <string name="source_evaluation_title">Source Evaluation</string>
+    <!-- KMK --> <string name="source_evaluation_settings_header">Source Evaluation</string>
+    <!-- KMK --> <string name="source_evaluation_open_button">Open Source Evaluation</string>
+    <!-- KMK --> <string name="source_evaluation_settings_desc">Temporarily install non-installed extensions to probe their content and learn how well they match your taste profile.</string>
+    <!-- KMK --> <string name="source_evaluation_options">Evaluation Options</string>
+    <!-- KMK --> <string name="source_evaluation_batch_size">Batch size (sources to evaluate)</string>
+    <!-- KMK --> <string name="source_evaluation_large_batch_warning">Large batch: evaluation will take a long time and install/uninstall many extensions.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_mode">Installer mode</string>
+    <!-- KMK --> <string name="source_evaluation_installer_warning">This installer mode requires Android confirmation dialogs for each install and uninstall. Keep batches small.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_unavailable">Selected installer is not available. Switch to Private installer.</string>
+    <!-- KMK --> <string name="source_evaluation_skip_evaluated">Skip already-evaluated sources</string>
+    <!-- KMK --> <string name="source_evaluation_include_explicit">Include explicit/hentai candidates</string>
+    <!-- KMK --> <string name="source_evaluation_start">Start evaluation (%1$d sources)</string>
+    <!-- KMK --> <string name="source_evaluation_starting">Starting evaluation…</string>
+    <!-- KMK --> <string name="source_evaluation_cancel">Cancel</string>
+    <!-- KMK --> <string name="source_evaluation_completed">Evaluation completed</string>
+    <!-- KMK --> <string name="source_evaluation_cancelled">Evaluation cancelled</string>
+    <!-- KMK --> <string name="source_evaluation_failed">Evaluation failed</string>
+    <!-- KMK --> <string name="source_evaluation_reset">Reset</string>
+    <!-- KMK --> <string name="source_evaluation_past_results">Past Evaluations</string>
+    <!-- KMK --> <string name="source_evaluation_clear_all">Clear all</string>
+    <!-- KMK --> <string name="source_evaluation_strong_fit_count">%1$d strong fit source(s) found</string>
+    <!-- KMK --> <string name="source_evaluation_worth_trying_count">%1$d worth-trying source(s) found</string>
+    <!-- KMK --> <string name="source_evaluation_explicit_count">%1$d explicit-heavy source(s) identified</string>
+    <!-- KMK --> <string name="source_evaluation_ecchi_count">%1$d ecchi-heavy source(s) identified</string>
+    <!-- KMK --> <string name="rec_suggestion_reason_evaluated_strong_fit">Evaluated: strong fit for your taste</string>
+    <!-- KMK --> <string name="rec_suggestion_reason_evaluated_worth_trying">Evaluated: worth trying</string>
+    <!-- KMK v0.6.11 Shizuku setup -->
+    <!-- KMK --> <string name="shizuku_setup_title">Shizuku</string>
+    <!-- KMK --> <string name="shizuku_status_not_installed">Not installed</string>
+    <!-- KMK --> <string name="shizuku_status_not_running">Installed but not running — open Shizuku to start it</string>
+    <!-- KMK --> <string name="shizuku_status_needs_permission">Running — grant Komikku permission in the Shizuku app</string>
+    <!-- KMK --> <string name="shizuku_status_ready_not_selected">Ready — tap "Use for this run" to use Shizuku for evaluation</string>
+    <!-- KMK --> <string name="shizuku_status_selected_for_run">Komikku will use Shizuku for this evaluation run</string>
+    <!-- KMK --> <string name="shizuku_action_install">Install Shizuku</string>
+    <!-- KMK --> <string name="shizuku_action_open">Open Shizuku</string>
+    <!-- KMK --> <string name="shizuku_action_use_for_run">Use for this run</string>
+    <!-- KMK --> <string name="shizuku_action_stop_using">Stop using</string>
+    <!-- KMK --> <string name="shizuku_action_uninstall">Uninstall Shizuku</string>
+    <!-- KMK --> <string name="shizuku_safety_note">Komikku can stop using Shizuku, but Android/Shizuku controls whether the Shizuku service keeps running.</string>
+    <!-- KMK v0.6.12 Source Evaluation candidate pool and Shizuku UX -->
+    <!-- KMK --> <string name="shizuku_action_refresh_status">Refresh status</string>
+    <!-- KMK --> <string name="shizuku_status_selected_ready">Shizuku is ready and selected. You can start evaluation now.</string>
+    <!-- KMK --> <string name="shizuku_status_selected_not_ready">Shizuku is selected, but it is not ready yet.</string>
+    <!-- KMK --> <string name="source_evaluation_candidates_loading">Loading candidates…</string>
+    <!-- KMK --> <string name="source_evaluation_candidates_available">%1$d extensions eligible for evaluation</string>
+    <!-- KMK --> <string name="source_evaluation_candidates_evaluated_hidden">%1$d already-evaluated hidden</string>
+    <!-- KMK --> <string name="source_evaluation_candidates_explicit_hidden">%1$d explicit candidates hidden</string>
+    <!-- KMK v0.6.14 Timeout resilience and priority reset safety -->
+    <!-- KMK --> <string name="rec_restore_default_source_order">Restore default source order</string>
+    <!-- KMK --> <string name="rec_reset_source_order_dialog_title">Restore default source order?</string>
+    <!-- KMK --> <string name="rec_reset_source_order_dialog_message">This will replace your custom source priority order with the default order for the selected recommendation languages.</string>
+    <!-- KMK --> <string name="rec_reset_source_order_confirm">Restore</string>
+    <!-- KMK v0.6.13 Source Evaluation private install verification and cleanup -->
+    <!-- KMK --> <string name="source_evaluation_installer_private_label">Private (recommended)</string>
+    <!-- KMK v0.7.17 R-005: typed installer policy messages -->
+    <!-- KMK --> <string name="source_evaluation_installer_private_ready">Best for evaluation. Extensions install inside Komikku and are cleaned up silently.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_private_unavailable">Private installer is not available in this build.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_shizuku_ready">Shizuku installs extensions as system packages. Cleanup will show Android uninstall prompts. Use Private for silent cleanup.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_shizuku_not_installed">Shizuku is not installed. Install and start Shizuku to use it for evaluation.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_shizuku_not_running">Shizuku is installed but not running. Start Shizuku first.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_shizuku_needs_permission">Grant Shizuku permission to Komikku before using it for evaluation.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_current_shizuku_unavailable">Shizuku is not available. Switch to Private installer for reliable evaluation.</string>
+    <!-- KMK --> <string name="source_evaluation_installer_current_prompt_heavy">This installer shows Android confirmation dialogs for each install and uninstall. Limit to small batches or switch to Private installer.</string>
+    <!-- KMK --> <string name="source_evaluation_prompt_warning_title">Installer may show Android prompts</string>
+    <!-- KMK --> <string name="source_evaluation_prompt_warning_message">This installer mode system-installs extensions, so Android may show an uninstall confirmation for each extension during cleanup. Use Private installer for automatic silent cleanup.</string>
+    <!-- KMK --> <string name="source_evaluation_use_private_instead">Use Private</string>
+    <!-- KMK --> <string name="source_evaluation_continue_with_prompts">Continue anyway</string>
+    <!-- KMK --> <string name="source_evaluation_prompt_warning_cancel">Cancel</string>
+    <!-- KMK --> <string name="shizuku_status_selected_ready_private_recommended">Shizuku is ready and selected. Private is recommended for silent cleanup.</string>
+    <!-- KMK v0.6.15 Source Evaluation results stability and sort -->
+    <!-- KMK --> <string name="source_evaluation_sort_label">Sort:</string>
+    <!-- KMK --> <string name="source_evaluation_sort_best_fit">Best fit</string>
+    <!-- KMK --> <string name="source_evaluation_sort_newest">Newest</string>
+    <!-- KMK --> <string name="source_evaluation_sort_source_name">Source name</string>
+    <!-- KMK --> <string name="source_evaluation_sort_extension_name">Extension name</string>
+    <!-- KMK --> <string name="source_evaluation_sort_search_reliability">Search reliability</string>
+    <!-- KMK --> <string name="source_evaluation_sort_explicit_risk">Explicit risk</string>
+    <!-- KMK --> <string name="source_evaluation_clear_confirm_title">Clear all evaluation results?</string>
+    <!-- KMK --> <string name="source_evaluation_clear_confirm_message">This clears cached source evaluation data only. Your library, ratings, preferences, and installed extensions are not affected.</string>
+    <!-- KMK --> <string name="source_evaluation_clear_confirm">Clear</string>
+    <!-- KMK v0.6.16 -->
+    <!-- KMK --> <string name="source_evaluation_screen_error_title">Source Evaluation Error</string>
+    <!-- KMK --> <string name="source_evaluation_screen_error_dismiss">Dismiss</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_sources_title">Quarantined Extensions</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_sources_desc">These extensions were quarantined after a suspected fatal crash during evaluation. They are skipped in future evaluations. If a quarantined extension still crashes Komikku outside Source Evaluation, uninstall or disable it manually from the Extensions screen.</string>
+    <!-- KMK v0.6.17 -->
+    <!-- KMK --> <string name="source_evaluation_unsafe_installed_warning">This extension is installed. Quarantine only prevents it from being evaluated — it does not uninstall it. If it crashes Komikku outside Source Evaluation, remove it from the Extensions screen.</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_sources_count">%1$d quarantined extension(s) hidden</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_sources_view">View</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_sources_clear">Clear quarantine</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_clear_confirm_title">Clear quarantine?</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_clear_confirm_message">Quarantined extensions will be eligible for evaluation again. Only do this if you believe the crash was transient.</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_clear_confirm">Clear</string>
+    <!-- KMK --> <string name="source_evaluation_unsafe_remove_one">Remove</string>
+    <!-- KMK --> <string name="source_evaluation_crash_recovery_marked_unsafe">Quarantined %1$s — suspected fatal crash during %2$s phase</string>
+    <!-- KMK --> <string name="source_evaluation_crash_recovery_stale_cleared">Cleared stale probe marker for %1$s (older than 24 hours)</string>
+    <!-- KMK --> <string name="source_evaluation_diagnostics_copy">Copy Diagnostics</string>
+    <!-- KMK --> <string name="source_evaluation_diagnostics_copied">Diagnostics copied to clipboard</string>
+    <!-- KMK --> <string name="source_evaluation_candidates_unsafe_hidden">%1$d quarantined hidden</string>
+    <!-- KMK v0.6.18 -->
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_title">Blocked Extensions</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_desc">These extension packages are blocked from loading to prevent native app crashes. Quarantine applies at load time — the extension code never runs. If the extension is still installed, uninstall it from Browse &gt; Extensions or Android Settings to fully remove it.</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_count">%1$d extension(s) blocked from loading</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_view">View</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_clear">Allow all</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_package_allow">Allow again</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_clear_confirm_title">Allow all blocked extensions?</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_clear_confirm_message">This removes all package-level load blocks. Extensions that previously caused native crashes (SIGSEGV) may crash Komikku again. Only do this after uninstalling the crashing extension.</string>
+    <!-- KMK --> <string name="source_evaluation_blocked_packages_clear_confirm">Allow all</string>
+    <!-- KMK v0.6.19 -->
+    <!-- Phase 0: taste profile confidence -->
+    <!-- KMK --> <string name="source_evaluation_low_confidence_warning">Not enough rated manga/tags yet for strong personalization. Evaluation can still run, but source-fit scores may be less accurate.</string>
+    <!-- Phase 1: Shizuku UX cleanup -->
+    <!-- KMK --> <string name="source_evaluation_shizuku_setup_toggle">Shizuku setup</string>
+    <!-- Phase 2: safety diagnostics demotion -->
+    <!-- KMK --> <string name="source_evaluation_safety_diagnostics_title">Safety diagnostics</string>
+    <!-- KMK --> <string name="source_evaluation_safety_quarantined_count">Quarantined: %1$d</string>
+    <!-- KMK --> <string name="source_evaluation_safety_blocked_count">Blocked: %1$d</string>
+    <!-- KMK --> <string name="source_evaluation_safety_show_quarantined">Show quarantined</string>
+    <!-- KMK --> <string name="source_evaluation_safety_show_blocked">Show blocked</string>
+    <!-- Phase 3: background execution notification -->
+    <!-- KMK --> <string name="source_evaluation_job_notification_title">Source evaluation running</string>
+    <!-- v0.6.19 follow-up -->
+    <!-- KMK --> <string name="source_evaluation_candidates_unassessed_remaining">%1$d unassessed extensions remaining</string>
+    <!-- v0.6.20: seen manga actions -->
+    <!-- KMK --> <string name="rec_mark_seen">Mark as seen</string>
+    <!-- KMK --> <string name="rec_clear_seen">Clear seen</string>
+    <!-- KMK --> <string name="rec_match_title_seen">Seen other versions</string>
+    <!-- KMK --> <string name="rec_match_apply_seen">Mark %1$d version(s) as seen</string>
+    <!-- KMK --> <string name="rec_match_applying_seen">Marking as seen…</string>
+    <!-- v0.6.20: source reassessment UI -->
+    <!-- KMK --> <string name="source_evaluation_reassessment_recommended">%1$d new ratings since last source evaluation. Reassessment is recommended.</string>
+    <!-- KMK --> <string name="source_evaluation_reassess_button">Reassess sources</string>
+    <!-- KMK --> <string name="source_evaluation_reassess_current_tastes">Reassess using current tastes</string>
+    <!-- KMK --> <string name="source_evaluation_last_evaluated_today">Last evaluated today</string>
+    <!-- KMK --> <string name="source_evaluation_last_evaluated_days">Last evaluated %1$d days ago</string>
+    <!-- v0.6.20: evidence strength labels -->
+    <!-- KMK --> <string name="source_evaluation_evidence_strong">Strong evidence</string>
+    <!-- KMK --> <string name="source_evaluation_evidence_moderate">Moderate evidence</string>
+    <!-- KMK --> <string name="source_evaluation_evidence_weak">Weak evidence</string>
+    <!-- KMK --> <string name="source_evaluation_evidence_low_confidence">Low confidence</string>
+    <!-- KMK v0.7.15: verdict badge labels -->
+    <!-- KMK --> <string name="source_evaluation_verdict_strong_fit">Strong Fit</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_worth_trying">Worth Trying</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_neutral">Neutral</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_weak">Weak</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_poor_search">Poor Search</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_explicit">Explicit</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_ecchi">Ecchi</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_rejected">Rejected</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_error">Error</string>
+    <!-- KMK --> <string name="source_evaluation_verdict_review">Review</string>
+    <!-- v0.6.20: management section -->
+    <!-- KMK --> <string name="source_evaluation_management_title">Source management</string>
+    <!-- KMK --> <string name="source_evaluation_reset_disliked_sources">Reset disliked sources</string>
+    <!-- KMK --> <string name="source_evaluation_reset_reassessment_baseline">Reset reassessment baseline</string>
+    <!-- KMK --> <string name="source_evaluation_clear_seen_manga">Clear seen manga</string>
+    <!-- KMK --> <string name="source_evaluation_management_confirm_title">Confirm reset</string>
+    <!-- KMK --> <string name="source_evaluation_management_confirm_body">This will clear the selected data. This action cannot be undone.</string>
+    <!-- v0.6.20: source status group labels -->
+    <!-- KMK --> <string name="source_status_group_matches">With results</string>
+    <!-- KMK --> <string name="source_status_group_no_matches">No results</string>
+    <!-- KMK --> <string name="source_status_group_disliked">Disliked</string>
+    <!-- v0.7.0: Loved Manga view -->
+    <!-- KMK --> <string name="loved_manga_title">Loved Manga</string>
+    <!-- KMK --> <string name="loved_manga_empty">No loved manga yet. Rate manga you love from the manga detail page.</string>
+    <!-- KMK --> <string name="loved_manga_error">Failed to load loved manga.</string>
+    <!-- KMK --> <string name="loved_manga_group_toggle">Group clear duplicates</string>
+    <!-- KMK v0.7.15: no-duplicates feedback -->
+    <!-- KMK --> <string name="loved_manga_no_clear_duplicates">No clear duplicates found.</string>
+    <!-- KMK --> <string name="loved_manga_versions">%1$d versions</string>
+    <!-- v0.7.0: Phase 1 – manage dismissed source suggestions -->
+    <!-- KMK --> <string name="rec_clear_dismissed_suggestions">Clear dismissed suggestions</string>
+    <!-- v0.7.0: Phase 3 – Favorite other versions -->
+    <!-- KMK --> <string name="rec_match_title_favorite">Favorite other versions</string>
+    <!-- KMK --> <string name="rec_match_apply_favorite">Favorite %1$d manga</string>
+    <!-- KMK --> <string name="rec_match_applying_favorite">Favoriting…</string>
+    <!-- v0.7.1: invalid route mode safe error state -->
+    <!-- KMK --> <string name="rec_match_mode_invalid">Unable to open matching action.</string>
+    <!-- v0.7.4: update reassessment notice and button -->
+    <!-- KMK --> <string name="source_evaluation_updated_extensions_notice">%1$d evaluated extension(s) have updates. You can reassess them to refresh their source quality scores.</string>
+    <!-- KMK --> <string name="source_evaluation_reassess_updated_button">Reassess updated extensions</string>
+    <!-- v0.7.5: Recommendation bundle export/import -->
+    <!-- KMK --> <string name="rec_bundle_import_title">Import Recommendations</string>
+    <!-- KMK --> <string name="rec_bundle_import_loading">Loading recommendation bundle…</string>
+    <!-- KMK --> <string name="rec_bundle_import_bundle_info">%1$s · %2$d items · %3$d source(s)</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_ready">Ready</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_in_library">In library</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_missing_source">Missing source</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_ambiguous_source">Ambiguous source</string>
+    <!-- KMK --> <string name="rec_bundle_ambiguous_source_prompt">%1$s matches this source. Install to resolve ambiguity?</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_resolving">Resolving</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_needs_match">Needs review</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_unsupported">Unsupported</string>
+    <!-- KMK --> <string name="rec_bundle_import_state_error">Error</string>
+    <!-- KMK --> <string name="rec_bundle_import_add_selected">Add selected (%1$d)</string>
+    <!-- KMK --> <string name="rec_bundle_import_complete_title">Import complete</string>
+    <!-- KMK --> <string name="rec_bundle_import_complete_body">Added: %1$d · Already in library: %2$d · Failed: %3$d</string>
+    <!-- KMK --> <string name="rec_bundle_missing_source_prompt">%1$s is not installed. Install it to import manga from this source?</string>
+    <!-- KMK --> <string name="rec_bundle_install_extension">Install</string>
+    <!-- KMK --> <string name="rec_bundle_export_top_picks">Export Top Picks</string>
+    <!-- KMK --> <string name="rec_bundle_export_source_row">Export this source</string>
+    <!-- KMK --> <string name="rec_bundle_export_loved_manga">Export Loved Manga</string>
+    <!-- KMK --> <string name="rec_bundle_export_success">Saved to file</string>
+    <!-- KMK --> <string name="rec_bundle_export_failure">Export failed</string>
+    <!-- KMK --> <string name="rec_bundle_export_empty">Nothing to export</string>
+    <!-- KMK --> <string name="rec_bundle_import_settings_title">Import recommendation bundle</string>
+    <!-- KMK v0.7.17 R-019: typed bundle load error messages -->
+    <!-- KMK --> <string name="rec_bundle_load_error_wrong_schema">Not a recommendation bundle (schema: %1$s)</string>
+    <!-- KMK --> <string name="rec_bundle_load_error_unsupported_version">Bundle format not supported (version %1$d)</string>
+    <!-- KMK --> <string name="rec_bundle_load_error_too_many_items">Bundle has too many items (max %1$d)</string>
+    <!-- KMK --> <string name="rec_bundle_load_error_too_many_sources">Bundle has too many sources (max %1$d)</string>
+    <!-- KMK --> <string name="rec_bundle_load_error_file_too_large">File too large (max 2 MB)</string>
+    <!-- KMK --> <string name="rec_bundle_load_error_malformed_json">Could not read file: %1$s</string>
+    <!-- KMK --> <string name="rec_bundle_load_error_malformed_json_unknown">Could not read file</string>
+    <!-- KMK --> <string name="action_select_all">Select all</string>
+    <!-- KMK --> <string name="action_deselect_all">Deselect all</string>
+    <!-- KMK --> v0.7.6: source evaluation continuation -->
+    <!-- KMK --> <string name="source_evaluation_continue_next_batch">Continue next batch (%1$d remaining)</string>
+    <!-- KMK --> <string name="source_evaluation_start_over">Start over</string>
+    <!-- KMK --> <string name="source_evaluation_show_installed">Show installed</string>
+    <!-- KMK --> <string name="source_evaluation_hidden_installed">Hidden installed: %1$d</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_label">Recommendations: %1$s</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_great">Great</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_good">Good</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_mixed">Mixed</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_weak">Weak</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_no_matches">No matches</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_error">Error</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_too_little_evidence">Too little evidence</string>
+    <!-- KMK v0.7.12: surface error reasons in rec-quality display, settings reorganization -->
+    <!-- KMK --> <string name="source_evaluation_rec_quality_error_hint">%1$s</string>
+    <!-- KMK v0.7.13: rec-quality enrichment + diagnostics summary -->
+    <!-- KMK --> <string name="source_evaluation_rec_quality_diagnostics">Checked: %1$d · Install/load issues: %2$d · Search errors: %3$d · No results: %4$d · Weak: %5$d · Good: %6$d</string>
+    <!-- KMK v0.7.14: source fit badge labels -->
+    <!-- KMK --> <string name="rec_source_fit_great">Great fit</string>
+    <!-- KMK --> <string name="rec_source_fit_good">Good fit</string>
+    <!-- KMK --> <string name="rec_source_fit_low">Low fit</string>
+    <!-- KMK --> <string name="rec_source_fit_no_matches">No matches</string>
+    <!-- KMK --> <string name="rec_source_fit_often_filtered">Often filtered</string>
+    <!-- KMK --> <string name="rec_source_fit_often_errors">Often errors</string>
+    <!-- KMK --> <string name="rec_source_fit_deduplicated">Deduplicated</string>
+    <!-- KMK v0.7.19: rolling fit stats labels + suggest order -->
+    <!-- KMK --> <string name="rec_source_fit_mixed">Mixed</string>
+    <!-- KMK --> <string name="rec_source_fit_too_little_data">Too little data</string>
+    <!-- KMK --> <string name="rec_suggest_source_order_button">Suggest priority order based on fit</string>
+    <!-- KMK --> <string name="rec_suggest_source_order_note">Sources with at least 3 runs are sorted by how well they match your taste. You can reorder further after applying.</string>
+    <!-- KMK v0.7.14: suggestion expand/collapse toggle -->
+    <!-- KMK --> <string name="rec_suggestions_show_fewer">Show fewer</string>
+    <!-- KMK --> <string name="rec_suggestions_show_more">Show %1$d more</string>
+    <!-- KMK v0.7.14: cache refresh hint -->
+    <!-- KMK --> <string name="rec_settings_refresh_hint">Refresh For You after changing ratings, tags, source preferences, or known-manga settings.</string>
+    <!-- KMK v0.7.14: Loved Manga sort modes -->
+    <!-- KMK --> <string name="loved_manga_sort_recent">Most recent</string>
+    <!-- KMK --> <string name="loved_manga_sort_oldest">Oldest first</string>
+    <!-- KMK --> <string name="loved_manga_sort_title">Title A–Z</string>
+    <!-- KMK --> <string name="loved_manga_sort_source">Source</string>
+    <!-- KMK --> <string name="rec_settings_daily_recs_header">Daily recommendations</string>
+    <!-- KMK --> <string name="rec_settings_ratings_known_manga_header">Ratings and known manga</string>
+    <!-- KMK --> <string name="rec_settings_management_header">Management</string>
+    <!-- KMK --> <string name="rec_settings_source_status_section_header">Source status</string>
+    <!-- KMK --> <string name="source_evaluation_settings_experimental_header">Experimental — Source Evaluation</string>
+    <!-- KMK --> <string name="source_evaluation_sort_recommendation_quality">Recommendation quality</string>
+    <!-- KMK v0.7.7: show/hide installed toggle fix -->
+    <!-- KMK --> <string name="source_evaluation_hide_installed">Hide installed</string>
+    <!-- KMK v0.7.7: recommendation quality workflow -->
+    <!-- KMK --> <string name="source_evaluation_rec_quality_section_title">Recommendation Quality</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_missing">%1$d promising source(s) not yet checked</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_evaluate">Evaluate recommendations</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_recheck_all">Re-check all</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_not_checked">Not checked</string>
+    <!-- KMK --> <string name="source_evaluation_rec_quality_running">Checking recommendation quality… (%1$d/%2$d)</string>
+    <!-- KMK v0.7.11: source evaluation hardening -->
+    <!-- KMK --> <string name="source_evaluation_consent_title">Source Evaluation — Advanced Feature</string>
+    <!-- KMK --> <string name="source_evaluation_consent_message">Source Evaluation temporarily installs extension packages, loads source definitions, runs network probes, scores results, and then attempts to uninstall them.\n\nPrivate mode (recommended): installs and removes silently.\nCurrent or Shizuku mode: Android may show install/uninstall prompts per extension.\n\nOnly non-installed extensions are evaluated. Your library, ratings, and already-installed extensions are not changed unless you explicitly install a result.\n\nYou can view this warning again from the Copy Diagnostics area.</string>
+    <!-- KMK --> <string name="source_evaluation_consent_confirm">I understand, continue</string>
+    <!-- KMK --> <string name="source_evaluation_view_warning">View evaluation warning</string>
+    <!-- KMK --> <string name="source_evaluation_offline_error">No internet connection. Please check your connection and try again.</string>
+    <!-- KMK --> <string name="source_evaluation_state_lost_error">Evaluation state was lost (app process restarted). Please start evaluation again.</string>
+    <!-- KMK --> <string name="source_evaluation_cleanup_prompt_required_warning">%1$d extension(s) require a manual uninstall prompt. Open Browse &gt; Extensions to complete cleanup.</string>
+    <!-- KMK --> <string name="source_evaluation_cleanup_failed_warning">%1$d extension(s) cleanup failed. Check Browse &gt; Extensions.</string>
+    <!-- KMK SEC-02 v0.7.16 --> <string name="source_evaluation_complete_cleanup">Uninstall %1$d left-behind extension(s)</string>
+    <!-- KMK SEC-01 v0.7.16 --> <string name="source_evaluation_leftover_warning">A temporary extension (%1$s) was not removed when the app stopped unexpectedly. Tap below to uninstall it.</string>
+    <!-- KMK SEC-01 v0.7.16 --> <string name="source_evaluation_leftover_uninstall">Uninstall leftover extension</string>
+    <!-- KMK v0.7.8: same-manga matching settings -->
+    <!-- KMK --> <string name="same_manga_matching_settings_header">Same manga matching</string>
+    <!-- KMK --> <string name="same_manga_match_results_per_source_title">Results per source</string>
+    <!-- KMK --> <string name="same_manga_match_results_per_source_summary">Max results per source for Love/Like/Dislike/Seen/Favorite/Best-version searches. Does not affect normal global search.</string>
+    <!-- KMK --> <string name="same_manga_match_preselect_title">Select matches by default</string>
+    <!-- KMK --> <string name="same_manga_match_preselect_summary">When enabled, same-manga candidates start selected. Origin manga is never selected. Turn off if a source returns too many wrong matches.</string>
+    <!-- KMK --> <string name="best_version_preview_pages_title">Best version preview pages</string>
+    <!-- KMK --> <string name="best_version_preview_pages_summary">Number of sample pages shown per source in the Best Version comparison.</string>
+    <!-- KMK --> <string name="best_version_avoid_first_pages_title">Avoid first pages in preview</string>
+    <!-- KMK --> <string name="best_version_avoid_first_pages_summary">Skip first 1–2 pages when sampling to avoid credits, covers, or ads.</string>
+    <!-- KMK v0.7.8: best version screen labels -->
+    <!-- KMK --> <string name="best_version_find_action">Find best version</string>
+    <!-- KMK --> <string name="best_version_screen_title">Find Best Version</string>
+    <!-- KMK --> <string name="best_version_searching">Searching for same manga…</string>
+    <!-- KMK --> <string name="best_version_loading_origin">Loading manga…</string>
+    <!-- KMK --> <string name="best_version_confirm_candidates_title">Confirm candidates</string>
+    <!-- KMK --> <string name="best_version_confirm_candidates_summary">Deselect any wrong matches, then confirm.</string>
+    <!-- KMK --> <string name="best_version_confirm_action">Confirm and load chapters</string>
+    <!-- KMK --> <string name="best_version_no_candidates">No candidates found across installed sources.</string>
+    <!-- KMK --> <string name="best_version_loading_chapters">Fetching chapter lists…</string>
+    <!-- KMK --> <string name="best_version_select_chapter_title">Select chapter to compare</string>
+    <!-- KMK --> <string name="best_version_chapter_unavailable">Chapter unavailable</string>
+    <!-- KMK --> <string name="best_version_start_preview_action">Preview pages</string>
+    <!-- KMK --> <string name="best_version_loading_preview">Loading page previews…</string>
+    <!-- KMK --> <string name="best_version_pages_loaded">%1$d/%2$d pages loaded</string>
+    <!-- KMK --> <string name="best_version_candidate_source">Source: %1$s</string>
+    <!-- KMK --> <string name="best_version_candidate_chapter">Chapter: %1$s</string>
+    <!-- KMK --> <string name="best_version_select_as_best">Select as best version</string>
+    <!-- KMK --> <string name="best_version_migrate_title">Migrate to this version?</string>
+    <!-- KMK --> <string name="best_version_migrate_body">Replace your current entry with %1$s from %2$s. Library status, categories, tracking, and history will be migrated.</string>
+    <!-- KMK --> <string name="best_version_migrate_action">Migrate</string>
+    <!-- KMK --> <string name="best_version_copy_action">Copy</string>
+    <!-- KMK --> <string name="best_version_preparing_migration">Preparing migration…</string>
+    <!-- KMK --> <string name="best_version_migration_complete">Migration complete</string>
+    <!-- KMK --> <string name="best_version_error_origin_missing">Could not load origin manga.</string>
+    <!-- KMK --> <string name="best_version_error_no_target_chapters">Selected version has no chapters.</string>
+    <!-- KMK --> <string name="best_version_retry">Retry</string>
+    <!-- KMK --> <string name="best_version_change_chapter">Change chapter</string>
+    <!-- KMK --> <string name="best_version_change_sample">Change sample</string>
+    <!-- KMK --> <string name="best_version_sample_size_label">Sample size: %1$d pages</string>
+    <!-- KMK --> <string name="best_version_preview_page_content_description">Preview page %1$d from %2$s</string>
+    <!-- KMK --> <string name="best_version_close_preview">Close preview</string>
+    <!-- KMK OCR v0.1.0 -->
+    <!-- KMK --> <string name="ocr_notification_channel_name">OCR Indexing</string>
+    <!-- KMK --> <string name="ocr_search_downloads_title">OCR Search Downloads</string>
+    <!-- KMK --> <string name="ocr_search_hint">Search indexed text…</string>
+    <!-- KMK --> <string name="ocr_index_current_manga">Index current manga</string>
+    <!-- KMK --> <string name="ocr_index_all_downloaded">Index all downloaded manga</string>
+    <!-- KMK --> <string name="ocr_index_all_confirm_title">Index all downloaded manga?</string>
+    <!-- KMK --> <string name="ocr_index_all_confirm_message">This will OCR every downloaded chapter page. It may take a long time and use significant CPU/battery. Best on Latin/English text. Recognized text is stored in the local database and is searchable — it is not sent to any server.</string>
+    <!-- KMK --> <string name="ocr_index_all_confirm">Start indexing</string>
+    <!-- KMK --> <string name="ocr_cancel_indexing">Cancel indexing</string>
+    <!-- KMK --> <string name="ocr_clear_index">Clear OCR index</string>
+    <!-- KMK --> <string name="ocr_clear_index_confirm_title">Clear OCR index?</string>
+    <!-- KMK --> <string name="ocr_clear_index_confirm_message">All indexed text will be deleted. Your downloads are not affected.</string>
+    <!-- KMK --> <string name="ocr_clear_index_confirm">Clear</string>
+    <!-- KMK --> <string name="ocr_indexing_progress">Indexing… %1$d/%2$d pages</string>
+    <!-- KMK --> <string name="ocr_indexing_starting">Starting OCR…</string>
+    <!-- KMK --> <string name="ocr_indexing_complete">OCR indexing complete</string>
+    <!-- KMK --> <string name="ocr_indexing_cancelled">OCR indexing cancelled</string>
+    <!-- KMK --> <string name="ocr_indexing_failed">OCR indexing failed</string>
+    <!-- KMK --> <string name="ocr_pages_indexed">%1$d pages indexed</string>
+    <!-- KMK --> <string name="ocr_pages_failed">%1$d page(s) failed</string>
+    <!-- KMK --> <string name="ocr_notification_indexing">OCR indexing running</string>
+    <!-- KMK --> <string name="ocr_notification_complete">OCR indexing complete — %1$d pages indexed</string>
+    <!-- KMK --> <string name="ocr_empty_state_no_index">No OCR index yet. Press \"Index\" to scan downloaded chapters.</string>
+    <!-- KMK --> <string name="ocr_empty_state_no_results">No indexed text matched "%1$s".</string>
+    <!-- KMK --> <string name="ocr_empty_state_no_downloads">No downloaded chapters found.</string>
+    <!-- KMK --> <string name="ocr_result_page">Page %1$d</string>
+    <!-- KMK --> <string name="ocr_result_source">Source: %1$s</string>
+    <!-- KMK --> <string name="ocr_latin_only_disclaimer">OCR v0.1 works best on Latin/English text. Japanese, Korean, Chinese, and stylized text may not be recognized.</string>
+    <!-- KMK --> <string name="ocr_index_status">Index: %1$d pages across %2$d manga</string>
+    <!-- KMK --> <string name="ocr_current_chapter">%1$s / %2$s</string>
+    <!-- KMK --> <string name="ocr_notification_cancel">Cancel</string>
+    <!-- KMK OCR v0.1.1 -->
+    <!-- KMK --> <string name="ocr_indexing_progress_v2">Indexing… %1$d/%2$d pages (%3$d with text)</string>
+    <!-- KMK --> <string name="ocr_notification_complete_v2">OCR done — %1$d with text, %2$d empty, %3$d failed</string>
+    <!-- KMK --> <string name="ocr_index_status_v2">%1$d recognized / %2$d processed · %3$d manga · %4$d chapters · ~%5$s</string>
+    <!-- KMK --> <string name="ocr_index_status_old_rows">%1$d old-version rows (clear to reclaim space)</string>
+    <!-- KMK --> <string name="ocr_empty_state_no_recognized">Pages were processed but no text was found. Long or non-Latin pages may need re-indexing with v0.1.1 OCR.</string>
+    <!-- KMK --> <string name="ocr_empty_state_no_results_partial">No matches for "%1$s". Try fewer words or re-index empty pages.</string>
+    <!-- KMK --> <string name="ocr_force_reindex_all">Force re-index all</string>
+    <!-- KMK --> <string name="ocr_force_reindex_confirm_title">Force re-index all pages?</string>
+    <!-- KMK --> <string name="ocr_force_reindex_confirm_message">Every page will be re-OCRd, even pages already indexed with text. This may take a long time.</string>
+    <!-- KMK --> <string name="ocr_force_reindex_confirm">Re-index all</string>
+    <!-- KMK --> <string name="ocr_clear_old_rows">Clear old OCR rows</string>
+    <!-- KMK --> <string name="ocr_match_exact">Exact match</string>
+    <!-- KMK --> <string name="ocr_match_all_tokens">All words matched</string>
+    <!-- KMK --> <string name="ocr_match_partial">Partial: %1$d of %2$d words</string>
+    <!-- KMK --> <string name="ocr_max_pages_label">Limit this run: %1$s</string>
+    <!-- KMK --> <string name="ocr_max_pages_unlimited">Unlimited</string>
+    <!-- KMK --> <string name="ocr_result_source">%1$s</string>
+    <!-- KMK v0.7.18: ScreenErrorKey typed error messages -->
+    <!-- KMK --> <string name="source_evaluation_error_candidate_load_failed">Failed to load candidates: %1$s</string>
+    <!-- KMK --> <string name="source_evaluation_error_candidate_load_failed_unknown">Failed to load candidates</string>
+    <!-- KMK v0.7.18: connectivity loss mid-run -->
+    <!-- KMK --> <string name="source_evaluation_connectivity_lost">Connection lost mid-run. Completed extensions are saved. Retry when online.</string>
+    <!-- KMK v0.7.18: repo unavailable warning -->
+    <!-- KMK --> <string name="source_evaluation_repo_unavailable_warning">Extension list unavailable. Check your internet connection or verify extension repositories are configured in Browse → Extensions.</string>
+    <!-- KMK v0.7.18: hidden suggestion management -->
+    <!-- KMK --> <string name="source_evaluation_clear_dismissed_suggestions">Clear %1$d dismissed suggestion(s)</string>
+    <!-- KMK --> <string name="source_evaluation_clear_disliked_suggestion_sources">Clear %1$d disliked suggestion source(s)</string>
+    <!-- KMK v0.7.18: version-aware quarantine label -->
+    <!-- KMK --> <string name="source_evaluation_blocked_package_newer_available">Newer version available — remove block to test</string>
+    <!-- KMK v0.7.25: For You offline state -->
+    <!-- KMK --> <string name="rec_for_you_offline">No internet connection — For You needs internet to load recommendations.</string>
+    <!-- KMK v0.7.26: minimum chapter count filter -->
+    <!-- KMK --> <string name="rec_min_chapter_count">Minimum chapter count</string>
+    <!-- KMK --> <string name="rec_min_chapter_count_summary">Hide For You results whose locally-known chapter count is below this. Unknown counts are not filtered.</string>
+    <!-- KMK --> <string name="rec_min_chapter_count_off">Off</string>
 </resources>

@@ -1,0 +1,166 @@
+-- KMK --> OCR v0.1.0
+CREATE TABLE IF NOT EXISTS ocr_indexed_page (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    manga_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    manga_url TEXT NOT NULL,
+    manga_title TEXT NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    chapter_url TEXT NOT NULL,
+    chapter_name TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    page_uri TEXT,
+    page_identity TEXT NOT NULL,
+    page_modified_at INTEGER,
+    page_size INTEGER,
+    engine_key TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+    language_hint TEXT,
+    raw_text TEXT NOT NULL,
+    normalized_text TEXT NOT NULL,
+    indexed_at INTEGER NOT NULL,
+    error_message TEXT,
+    recognized_text_length INTEGER NOT NULL DEFAULT 0,
+    recognized_word_count INTEGER NOT NULL DEFAULT 0,
+    ocr_status TEXT NOT NULL DEFAULT 'success'
+);
+
+CREATE INDEX ocr_indexed_page_manga_chapter_index ON ocr_indexed_page(manga_id, chapter_id, page_index);
+CREATE INDEX ocr_indexed_page_source_manga_index ON ocr_indexed_page(source_id, manga_url);
+CREATE UNIQUE INDEX ocr_indexed_page_identity_index ON ocr_indexed_page(chapter_id, page_index, page_identity, engine_key, engine_version);
+-- KMK <--
+
+upsertPage:
+INSERT INTO ocr_indexed_page(
+    manga_id, source_id, manga_url, manga_title,
+    chapter_id, chapter_url, chapter_name,
+    page_index, page_uri, page_identity, page_modified_at, page_size,
+    engine_key, engine_version, language_hint,
+    raw_text, normalized_text, indexed_at, error_message,
+    recognized_text_length, recognized_word_count, ocr_status
+)
+VALUES (
+    :mangaId, :sourceId, :mangaUrl, :mangaTitle,
+    :chapterId, :chapterUrl, :chapterName,
+    :pageIndex, :pageUri, :pageIdentity, :pageModifiedAt, :pageSize,
+    :engineKey, :engineVersion, :languageHint,
+    :rawText, :normalizedText, :indexedAt, :errorMessage,
+    :recognizedTextLength, :recognizedWordCount, :ocrStatus
+)
+ON CONFLICT(chapter_id, page_index, page_identity, engine_key, engine_version)
+DO UPDATE
+SET
+    manga_title = :mangaTitle,
+    raw_text = :rawText,
+    normalized_text = :normalizedText,
+    indexed_at = :indexedAt,
+    error_message = :errorMessage,
+    recognized_text_length = :recognizedTextLength,
+    recognized_word_count = :recognizedWordCount,
+    ocr_status = :ocrStatus;
+
+searchSuccessful:
+SELECT id, manga_id, source_id, manga_title, chapter_id, chapter_name, page_index, raw_text, normalized_text
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'success'
+  AND recognized_word_count > 0
+  AND error_message IS NULL
+  AND normalized_text LIKE '%' || :query || '%'
+ORDER BY manga_title ASC, chapter_name ASC, page_index ASC;
+
+searchCandidatesForToken:
+SELECT id, manga_id, source_id, manga_title, chapter_id, chapter_name, page_index, raw_text, normalized_text
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'success'
+  AND recognized_word_count > 0
+  AND error_message IS NULL
+  AND normalized_text LIKE '%' || :token || '%'
+ORDER BY manga_title ASC, chapter_name ASC, page_index ASC;
+
+getExistingPageState:
+SELECT page_identity, ocr_status, recognized_word_count, error_message
+FROM ocr_indexed_page
+WHERE chapter_id = :chapterId
+  AND page_index = :pageIndex
+  AND engine_key = :engineKey
+  AND engine_version = :engineVersion
+LIMIT 1;
+
+getAllIndexedMangaIds:
+SELECT DISTINCT manga_id
+FROM ocr_indexed_page
+WHERE error_message IS NULL;
+
+deleteByManga:
+DELETE FROM ocr_indexed_page
+WHERE manga_id = :mangaId;
+
+deleteByChapter:
+DELETE FROM ocr_indexed_page
+WHERE chapter_id = :chapterId;
+
+deleteAll:
+DELETE FROM ocr_indexed_page;
+
+deleteByEngineVersion:
+DELETE FROM ocr_indexed_page
+WHERE engine_version = :engineVersion;
+
+deleteOldEngineRows:
+DELETE FROM ocr_indexed_page
+WHERE engine_version != :currentEngineVersion;
+
+deleteEmptyAndFailed:
+DELETE FROM ocr_indexed_page
+WHERE ocr_status IN ('empty', 'failed');
+
+countProcessed:
+SELECT COUNT(*)
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion;
+
+countRecognized:
+SELECT COUNT(*)
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'success'
+  AND recognized_word_count > 0;
+
+countEmpty:
+SELECT COUNT(*)
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'empty';
+
+countFailed:
+SELECT COUNT(*)
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'failed';
+
+countDistinctManga:
+SELECT COUNT(DISTINCT manga_id)
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'success'
+  AND recognized_word_count > 0;
+
+countDistinctChapters:
+SELECT COUNT(DISTINCT chapter_id)
+FROM ocr_indexed_page
+WHERE engine_version = :engineVersion
+  AND ocr_status = 'success'
+  AND recognized_word_count > 0;
+
+estimatedIndexBytes:
+SELECT COALESCE(SUM(
+    length(raw_text) + length(normalized_text) + length(manga_title) + length(chapter_name) + length(page_identity)
+), 0)
+FROM ocr_indexed_page;
+
+countOldEngineRows:
+SELECT COUNT(*)
+FROM ocr_indexed_page
+WHERE engine_version != :currentEngineVersion;

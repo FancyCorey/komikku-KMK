@@ -208,4 +208,20 @@ class MangaRepositoryImpl(
         return handler.awaitList { libraryViewQueries.readMangaNonLibrary(MangaMapper::mapLibraryManga) }
     }
     // SY <--
+
+    // KMK -->
+    override suspend fun getKnownRecommendationMangaIds(mangaIds: Collection<Long>): Set<Long> {
+        if (mangaIds.isEmpty()) return emptySet()
+        return handler.awaitList { mangasQueries.getKnownRecommendationMangaIds(mangaIds) }.toSet()
+    }
+
+    // KMK --> v0.7.26: batch chapter counts for minimum-chapter filter
+    override suspend fun getChapterCountsByMangaIds(mangaIds: Collection<Long>): Map<Long, Long> {
+        if (mangaIds.isEmpty()) return emptyMap()
+        return handler.awaitList {
+            mangasQueries.getChapterCountsByMangaIds(mangaIds) { id, count -> id to count }
+        }.toMap()
+    }
+    // KMK <--
+    // KMK <--
 }

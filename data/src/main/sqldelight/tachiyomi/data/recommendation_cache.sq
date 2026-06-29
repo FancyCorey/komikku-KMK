@@ -1,0 +1,57 @@
+-- KMK -->
+CREATE TABLE recommendation_cache (
+    cache_key TEXT NOT NULL PRIMARY KEY,
+    source_id INTEGER NOT NULL,
+    profile_fingerprint TEXT NOT NULL,
+    query_key TEXT NOT NULL,
+    result_manga_ids TEXT NOT NULL,
+    result_scores TEXT,
+    result_reasons TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX recommendation_cache_source_index ON recommendation_cache(source_id);
+CREATE INDEX recommendation_cache_expires_index ON recommendation_cache(expires_at);
+
+getByCacheKey:
+SELECT *
+FROM recommendation_cache
+WHERE cache_key = :cacheKey;
+
+getBySourceId:
+SELECT *
+FROM recommendation_cache
+WHERE source_id = :sourceId;
+
+upsert:
+INSERT INTO recommendation_cache(cache_key, source_id, profile_fingerprint, query_key, result_manga_ids, result_scores, result_reasons, created_at, expires_at)
+VALUES (:cacheKey, :sourceId, :profileFingerprint, :queryKey, :resultMangaIds, :resultScores, :resultReasons, :createdAt, :expiresAt)
+ON CONFLICT(cache_key)
+DO UPDATE
+SET
+    source_id = :sourceId,
+    profile_fingerprint = :profileFingerprint,
+    query_key = :queryKey,
+    result_manga_ids = :resultMangaIds,
+    result_scores = :resultScores,
+    result_reasons = :resultReasons,
+    created_at = :createdAt,
+    expires_at = :expiresAt
+WHERE cache_key = :cacheKey;
+
+deleteByCacheKey:
+DELETE FROM recommendation_cache
+WHERE cache_key = :cacheKey;
+
+deleteBySourceId:
+DELETE FROM recommendation_cache
+WHERE source_id = :sourceId;
+
+deleteExpired:
+DELETE FROM recommendation_cache
+WHERE expires_at < :now;
+
+deleteAll:
+DELETE FROM recommendation_cache;
+-- KMK <--

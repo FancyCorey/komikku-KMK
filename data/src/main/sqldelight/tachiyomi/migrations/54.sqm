@@ -1,0 +1,28 @@
+-- KMK --> OCR v0.1.0: text index for downloaded manga pages
+CREATE TABLE IF NOT EXISTS ocr_indexed_page (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    manga_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    manga_url TEXT NOT NULL,
+    manga_title TEXT NOT NULL,
+    chapter_id INTEGER NOT NULL,
+    chapter_url TEXT NOT NULL,
+    chapter_name TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    page_uri TEXT,
+    page_identity TEXT NOT NULL,
+    page_modified_at INTEGER,
+    page_size INTEGER,
+    engine_key TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+    language_hint TEXT,
+    raw_text TEXT NOT NULL,
+    normalized_text TEXT NOT NULL,
+    indexed_at INTEGER NOT NULL,
+    error_message TEXT
+);
+
+CREATE INDEX ocr_indexed_page_manga_chapter_index ON ocr_indexed_page(manga_id, chapter_id, page_index);
+CREATE INDEX ocr_indexed_page_source_manga_index ON ocr_indexed_page(source_id, manga_url);
+CREATE UNIQUE INDEX ocr_indexed_page_identity_index ON ocr_indexed_page(chapter_id, page_index, page_identity, engine_key, engine_version);
+-- KMK <--

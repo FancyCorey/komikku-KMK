@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
@@ -22,11 +23,13 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,6 +92,11 @@ fun ExtensionScreen(
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
+    // KMK -->
+    onToggleExtensionSelected: (Extension) -> Unit = {},
+    onRequestUninstallSelected: () -> Unit = {},
+    onExitSelectionMode: () -> Unit = {},
+    // KMK <--
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -130,6 +138,11 @@ fun ExtensionScreen(
                     onTrustExtension = onTrustExtension,
                     onOpenExtension = onOpenExtension,
                     onClickUpdateAll = onClickUpdateAll,
+                    // KMK -->
+                    onToggleExtensionSelected = onToggleExtensionSelected,
+                    onRequestUninstallSelected = onRequestUninstallSelected,
+                    onExitSelectionMode = onExitSelectionMode,
+                    // KMK <--
                 )
             }
         }
@@ -149,12 +162,23 @@ private fun ExtensionContent(
     onTrustExtension: (Extension.Untrusted) -> Unit,
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
+    // KMK -->
+    onToggleExtensionSelected: (Extension) -> Unit = {},
+    onRequestUninstallSelected: () -> Unit = {},
+    onExitSelectionMode: () -> Unit = {},
+    // KMK <--
 ) {
     val context = LocalContext.current
     var trustState by remember { mutableStateOf<Extension.Untrusted?>(null) }
     val installGranted = rememberRequestPackageInstallsPermissionState(initialValue = true)
     // KMK -->
     val navigator = LocalNavigator.current
+    val selectedCount = remember(state.items, state.selectedExtensionKeys) {
+        state.items.values.flatten().count { item ->
+            (item.extension is Extension.Installed || item.extension is Extension.Untrusted) &&
+                "${item.extension.pkgName}_${item.extension.signatureHash}" in state.selectedExtensionKeys
+        }
+    }
     // KMK <--
 
     FastScrollLazyColumn(
@@ -229,6 +253,41 @@ private fun ExtensionContent(
                 }
             }
 
+            // KMK -->
+            // Selection controls row — appears below the installed header when in selection mode.
+            if (
+                state.isExtensionSelectionMode &&
+                header is ExtensionUiModel.Header.Resource &&
+                header.textRes == MR.strings.ext_installed
+            ) {
+                item(key = "extension-selection-controls") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = MaterialTheme.padding.medium,
+                                vertical = MaterialTheme.padding.extraSmall,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                    ) {
+                        Button(
+                            onClick = onRequestUninstallSelected,
+                            enabled = selectedCount > 0 && !state.isBulkUninstallingExtensions,
+                        ) {
+                            Text(stringResource(KMR.strings.extension_uninstall_selected, selectedCount))
+                        }
+                        OutlinedButton(
+                            onClick = onExitSelectionMode,
+                            enabled = !state.isBulkUninstallingExtensions,
+                        ) {
+                            Text(stringResource(KMR.strings.extension_cancel_selection))
+                        }
+                    }
+                }
+            }
+            // KMK <--
+
             items(
                 items = items,
                 contentType = { "item" },
@@ -240,6 +299,12 @@ private fun ExtensionContent(
                     }
                 },
             ) { item ->
+                // KMK -->
+                val selectable = state.isExtensionSelectionMode &&
+                    (item.extension is Extension.Installed || item.extension is Extension.Untrusted) &&
+                    item.installStep.isCompleted()
+                val selected = "${item.extension.pkgName}_${item.extension.signatureHash}" in state.selectedExtensionKeys
+                // KMK <--
                 ExtensionItem(
                     modifier = Modifier.animateItemFastScroll(),
                     item = item,
@@ -276,6 +341,12 @@ private fun ExtensionContent(
                             }
                         }
                     },
+                    // KMK -->
+                    selectionMode = state.isExtensionSelectionMode,
+                    selectable = selectable,
+                    selected = selected,
+                    onToggleSelected = { onToggleExtensionSelected(item.extension) },
+                    // KMK <--
                 )
             }
         }
@@ -306,47 +377,82 @@ private fun ExtensionItem(
     onClickItemAction: (Extension) -> Unit,
     onClickItemSecondaryAction: (Extension) -> Unit,
     modifier: Modifier = Modifier,
+    // KMK -->
+    selectionMode: Boolean = false,
+    selectable: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelected: () -> Unit = {},
+    // KMK <--
 ) {
     val (extension, installStep) = item
+    // KMK -->
+    val effectiveOnClick: (Extension) -> Unit = if (selectionMode && selectable) {
+        { onToggleSelected() }
+    } else {
+        onClickItem
+    }
+    // KMK <--
     BaseBrowseItem(
         modifier = modifier
             .combinedClickable(
-                onClick = { onClickItem(extension) },
+                onClick = { effectiveOnClick(extension) },
                 onLongClick = { onLongClickItem(extension) },
             ),
-        onClickItem = { onClickItem(extension) },
+        onClickItem = { effectiveOnClick(extension) },
         onLongClickItem = { onLongClickItem(extension) },
         icon = {
-            Box(
-                modifier = Modifier
-                    .size(40.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                val idle = installStep.isCompleted()
-                if (!idle) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(40.dp),
-                        strokeWidth = 2.dp,
+            // KMK -->
+            if (selectionMode && selectable) {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = { onToggleSelected() },
                     )
                 }
-
-                val padding by animateDpAsState(targetValue = if (idle) 0.dp else 8.dp)
-                ExtensionIcon(
-                    extension = extension,
+            } else {
+                // KMK <--
+                Box(
                     modifier = Modifier
-                        .matchParentSize()
-                        .padding(padding),
-                )
+                        .size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val idle = installStep.isCompleted()
+                    if (!idle) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(40.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+
+                    val padding by animateDpAsState(targetValue = if (idle) 0.dp else 8.dp)
+                    ExtensionIcon(
+                        extension = extension,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .padding(padding),
+                    )
+                }
+                // KMK -->
             }
+            // KMK <--
         },
         action = {
-            ExtensionItemActions(
-                extension = extension,
-                installStep = installStep,
-                onClickItemCancel = onClickItemCancel,
-                onClickItemAction = onClickItemAction,
-                onClickItemSecondaryAction = onClickItemSecondaryAction,
-            )
+            // KMK -->
+            if (!selectionMode) {
+                // KMK <--
+                ExtensionItemActions(
+                    extension = extension,
+                    installStep = installStep,
+                    onClickItemCancel = onClickItemCancel,
+                    onClickItemAction = onClickItemAction,
+                    onClickItemSecondaryAction = onClickItemSecondaryAction,
+                )
+                // KMK -->
+            }
+            // KMK <--
         },
     ) {
         ExtensionItemContent(

@@ -1,0 +1,19 @@
+-- KMK --> v0.7.8: user-confirmed source quality signals from Best Version comparisons
+CREATE TABLE IF NOT EXISTS manga_source_quality_signal (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    origin_source_id INTEGER NOT NULL,
+    origin_url TEXT NOT NULL,
+    origin_title TEXT NOT NULL,
+    selected_source_id INTEGER NOT NULL,
+    selected_url TEXT NOT NULL,
+    selected_title TEXT NOT NULL,
+    selected_source_name TEXT NOT NULL,
+    compared_candidates_json TEXT NOT NULL DEFAULT '[]',
+    chapter_number REAL,
+    chapter_name TEXT NOT NULL DEFAULT '',
+    sample_size INTEGER NOT NULL DEFAULT 5,
+    sampled_pages_json TEXT NOT NULL DEFAULT '[]',
+    selected_at INTEGER NOT NULL,
+    quality_signal_version INTEGER NOT NULL DEFAULT 1
+);
+-- KMK <--

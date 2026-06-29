@@ -21,3 +21,9 @@ local.properties
 /app/google-services.json
 *.jks
 app/standard/preview/*
+
+# KMK fork: exclude versioned debug APK handoffs from source control
+*.apk
+
+# KMK fork: exclude AI assistant memory directory from source control
+/memory/

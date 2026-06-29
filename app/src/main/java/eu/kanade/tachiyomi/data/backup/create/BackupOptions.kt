@@ -21,6 +21,9 @@ data class BackupOptions(
     val customInfo: Boolean = true,
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // KMK -->
+    val tasteProfile: Boolean = true,
+    // KMK <--
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -38,6 +41,9 @@ data class BackupOptions(
         customInfo,
         savedSearchesFeeds,
         // SY <--
+        // KMK -->
+        tasteProfile,
+        // KMK <--
     )
 
     fun canCreate() =
@@ -94,6 +100,13 @@ data class BackupOptions(
                 setter = { options, enabled -> options.copy(savedSearchesFeeds = enabled) },
             ),
             // SY <--
+            // KMK -->
+            Entry(
+                label = KMR.strings.taste_backup_option,
+                getter = BackupOptions::tasteProfile,
+                setter = { options, enabled -> options.copy(tasteProfile = enabled) },
+            ),
+            // KMK <--
         )
 
         val settingsOptions = persistentListOf(
@@ -135,6 +148,9 @@ data class BackupOptions(
             customInfo = array[10],
             savedSearchesFeeds = array[11],
             // SY <--
+            // KMK -->
+            tasteProfile = array.getOrElse(12) { true },
+            // KMK <--
         )
     }
 

@@ -5,11 +5,17 @@ import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
+import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
+import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
+import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
+import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
@@ -63,6 +69,35 @@ abstract class SyncService(
         )
         // SY <--
 
+        // KMK -->
+        val mergedFeedsList = mergeFeedsLists(
+            localSyncData.backup?.backupFeeds,
+            remoteSyncData.backup?.backupFeeds,
+        )
+        val mergedMangaTastes = mergeMangaTasteLists(
+            localSyncData.backup?.backupMangaTastes,
+            remoteSyncData.backup?.backupMangaTastes,
+        )
+        val mergedTagTastes = mergeTagTasteLists(
+            localSyncData.backup?.backupTagTastes,
+            remoteSyncData.backup?.backupTagTastes,
+        )
+        val mergedTagAliases = (
+            localSyncData.backup?.backupTagAliases.orEmpty() +
+                remoteSyncData.backup?.backupTagAliases.orEmpty()
+            ).distinctBy { it.alias.lowercase().trim() }
+        val mergedDisabledRecSources = (
+            localSyncData.backup?.backupDisabledRecommendationSources.orEmpty() +
+                remoteSyncData.backup?.backupDisabledRecommendationSources.orEmpty()
+            ).distinctBy { it.sourceId }
+        // KMK --> v0.7.0: Phase 4 – merge cross-source link groups; prefer newer updatedAt per (source, url)
+        val mergedCrossSourceLinks = mergeCrossSourceMangaLinks(
+            localSyncData.backup?.backupCrossSourceMangaLinks,
+            remoteSyncData.backup?.backupCrossSourceMangaLinks,
+        )
+        // KMK <--
+        // KMK <--
+
         // Create the merged Backup object
         val mergedBackup = Backup(
             backupManga = mergedMangaList,
@@ -74,6 +109,17 @@ abstract class SyncService(
             // SY -->
             backupSavedSearches = mergedSavedSearchesList,
             // SY <--
+
+            // KMK -->
+            backupFeeds = mergedFeedsList,
+            backupMangaTastes = mergedMangaTastes,
+            backupTagTastes = mergedTagTastes,
+            backupTagAliases = mergedTagAliases,
+            backupDisabledRecommendationSources = mergedDisabledRecSources,
+            // KMK --> v0.7.0: Phase 4
+            backupCrossSourceMangaLinks = mergedCrossSourceLinks,
+            // KMK <--
+            // KMK <--
         )
 
         // Create the merged SData object
@@ -522,4 +568,95 @@ abstract class SyncService(
         return mergedSearches
     }
     // SY <--
+
+    // KMK -->
+    /**
+     * Merges feed lists using a composite key; local entries take precedence on collision.
+     * BackupFeed has no timestamp so we prefer local over remote for identical keys.
+     */
+    private fun mergeFeedsLists(
+        localFeeds: List<BackupFeed>?,
+        remoteFeeds: List<BackupFeed>?,
+    ): List<BackupFeed> {
+        fun feedKey(feed: BackupFeed): String =
+            "${feed.source}|${feed.global}|${feed.savedSearch?.name ?: ""}|" +
+                "${feed.savedSearch?.query ?: ""}|${feed.savedSearch?.filterList ?: "[]"}"
+
+        val localMap = localFeeds.orEmpty().associateBy { feedKey(it) }
+        val remoteMap = remoteFeeds.orEmpty().associateBy { feedKey(it) }
+        return (localMap.keys + remoteMap.keys).distinct().map { key ->
+            // Prefer local entry; fall back to remote if local is absent
+            localMap[key] ?: remoteMap[key]!!
+        }
+    }
+
+    /**
+     * Merges manga taste ratings, keeping the most recently updated entry per (source, url).
+     * Keyed on source|url because manga row IDs are device-local.
+     */
+    private fun mergeMangaTasteLists(
+        localTastes: List<BackupMangaTaste>?,
+        remoteTastes: List<BackupMangaTaste>?,
+    ): List<BackupMangaTaste> {
+        fun tasteCompositeKey(taste: BackupMangaTaste): String = "${taste.source}|${taste.url}"
+
+        val localMap = localTastes.orEmpty().associateBy { tasteCompositeKey(it) }
+        val remoteMap = remoteTastes.orEmpty().associateBy { tasteCompositeKey(it) }
+
+        return (localMap.keys + remoteMap.keys).map { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local == null -> remote!!
+                remote == null -> local
+                else -> if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+
+    /**
+     * Merges tag preferences, keeping the most recently updated entry per tag name.
+     */
+    private fun mergeTagTasteLists(
+        localTags: List<BackupTagTaste>?,
+        remoteTags: List<BackupTagTaste>?,
+    ): List<BackupTagTaste> {
+        fun tagKey(tag: BackupTagTaste): String = tag.displayName.lowercase().trim()
+
+        val localMap = localTags.orEmpty().associateBy { tagKey(it) }
+        val remoteMap = remoteTags.orEmpty().associateBy { tagKey(it) }
+
+        return (localMap.keys + remoteMap.keys).map { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local == null -> remote!!
+                remote == null -> local
+                else -> if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+
+    // KMK --> v0.7.0: Phase 4 – merge cross-source link groups; prefer newer updatedAt per (source, url)
+    private fun mergeCrossSourceMangaLinks(
+        localLinks: List<BackupCrossSourceMangaLink>?,
+        remoteLinks: List<BackupCrossSourceMangaLink>?,
+    ): List<BackupCrossSourceMangaLink> {
+        fun linkKey(link: BackupCrossSourceMangaLink): String = "${link.source}|${link.url}"
+
+        val localMap = localLinks.orEmpty().associateBy { linkKey(it) }
+        val remoteMap = remoteLinks.orEmpty().associateBy { linkKey(it) }
+
+        return (localMap.keys + remoteMap.keys).distinct().map { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local == null -> remote!!
+                remote == null -> local
+                else -> if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+    // KMK <--
+    // KMK <--
 }

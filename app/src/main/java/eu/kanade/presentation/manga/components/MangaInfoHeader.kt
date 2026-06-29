@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.HourglassDisabled
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
@@ -43,6 +44,8 @@ import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -247,6 +250,20 @@ fun MangaActionRow(
     // KMK -->
     status: Long,
     interval: Int,
+    mangaTaste: tachiyomi.domain.taste.model.MangaTaste? = null,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK --> v0.7.0: Phase 3 – favorite other versions
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20: seen manga marker
+    isSeen: Boolean = false,
+    onSeenClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8: find best version action
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
     modifier: Modifier = Modifier,
 ) {
@@ -346,6 +363,156 @@ fun MangaActionRow(
             )
         }
         // SY <--
+        // KMK -->
+        if (onTasteClicked != null) {
+            var tasteMenuExpanded by remember { mutableStateOf(false) }
+            val currentRating = tachiyomi.domain.taste.model.MangaRating.fromValue(mangaTaste?.rating ?: 0)
+            MangaActionButton(
+                title = when (currentRating) {
+                    tachiyomi.domain.taste.model.MangaRating.LOVE -> stringResource(KMR.strings.taste_love)
+                    tachiyomi.domain.taste.model.MangaRating.LIKE -> stringResource(KMR.strings.taste_like)
+                    tachiyomi.domain.taste.model.MangaRating.DISLIKE -> stringResource(KMR.strings.taste_dislike)
+                    null -> stringResource(KMR.strings.taste_rating)
+                },
+                icon = when (currentRating) {
+                    tachiyomi.domain.taste.model.MangaRating.LOVE -> Icons.Filled.Favorite
+                    tachiyomi.domain.taste.model.MangaRating.LIKE -> Icons.Outlined.Done
+                    tachiyomi.domain.taste.model.MangaRating.DISLIKE -> Icons.Outlined.Block
+                    null -> Icons.Outlined.FavoriteBorder
+                },
+                color = if (mangaTaste != null) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
+                onClick = { tasteMenuExpanded = true },
+            )
+            DropdownMenu(
+                expanded = tasteMenuExpanded,
+                onDismissRequest = { tasteMenuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(KMR.strings.taste_love)) },
+                    onClick = {
+                        onTasteClicked(tachiyomi.domain.taste.model.MangaRating.LOVE)
+                        tasteMenuExpanded = false
+                    },
+                    leadingIcon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(KMR.strings.taste_like)) },
+                    onClick = {
+                        onTasteClicked(tachiyomi.domain.taste.model.MangaRating.LIKE)
+                        tasteMenuExpanded = false
+                    },
+                    leadingIcon = { Icon(Icons.Outlined.Done, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(KMR.strings.taste_dislike)) },
+                    onClick = {
+                        onTasteClicked(tachiyomi.domain.taste.model.MangaRating.DISLIKE)
+                        tasteMenuExpanded = false
+                    },
+                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                )
+                if (mangaTaste != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.taste_clear)) },
+                        onClick = {
+                            onTasteClicked(null)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Close, contentDescription = null) },
+                    )
+                }
+                // KMK -->
+                if (onTasteOtherVersionsClicked != null) {
+                    androidx.compose.material3.HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_love)) },
+                        onClick = {
+                            onTasteOtherVersionsClicked(tachiyomi.domain.taste.model.MangaRating.LOVE)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_like)) },
+                        onClick = {
+                            onTasteOtherVersionsClicked(tachiyomi.domain.taste.model.MangaRating.LIKE)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Done, contentDescription = null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_dislike)) },
+                        onClick = {
+                            onTasteOtherVersionsClicked(tachiyomi.domain.taste.model.MangaRating.DISLIKE)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                    )
+                    // KMK --> v0.7.0: Phase 3 – favorite other versions
+                    if (onFavoriteOtherVersionsClicked != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.rec_match_title_favorite)) },
+                            onClick = {
+                                onFavoriteOtherVersionsClicked()
+                                tasteMenuExpanded = false
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.AddCircleOutline, contentDescription = null) },
+                        )
+                    }
+                    // KMK <--
+                }
+                // KMK --> v0.6.20: seen manga marker
+                if (onSeenClicked != null) {
+                    androidx.compose.material3.HorizontalDivider()
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (isSeen) {
+                                    stringResource(KMR.strings.rec_clear_seen)
+                                } else {
+                                    stringResource(KMR.strings.rec_mark_seen)
+                                },
+                            )
+                        },
+                        onClick = {
+                            onSeenClicked()
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = {
+                            Icon(
+                                if (isSeen) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                    if (onSeenOtherVersionsClicked != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.rec_match_title_seen)) },
+                            onClick = {
+                                onSeenOtherVersionsClicked()
+                                tasteMenuExpanded = false
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
+                        )
+                    }
+                    // KMK --> v0.7.8: find best version
+                    if (onFindBestVersionClicked != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.best_version_find_action)) },
+                            onClick = {
+                                onFindBestVersionClicked()
+                                tasteMenuExpanded = false
+                            },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.CallMerge, contentDescription = null) },
+                        )
+                    }
+                    // KMK <--
+                }
+                // KMK <--
+                // KMK <--
+            }
+        }
+        // KMK <--
     }
 }
 

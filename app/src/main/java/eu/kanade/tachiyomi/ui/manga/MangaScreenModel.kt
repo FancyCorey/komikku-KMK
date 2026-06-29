@@ -159,6 +159,11 @@ import tachiyomi.domain.manga.model.asMangaCover
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.taste.interactor.ClearMangaTaste
+import tachiyomi.domain.taste.interactor.GetMangaTaste
+import tachiyomi.domain.taste.interactor.SetMangaTaste
+import tachiyomi.domain.taste.model.MangaRating
+import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.model.Track
@@ -234,6 +239,9 @@ class MangaScreenModel(
     private val insertLibraryUpdateErrors: InsertLibraryUpdateErrors = Injekt.get(),
     private val insertLibraryUpdateErrorMessages: InsertLibraryUpdateErrorMessages = Injekt.get(),
     private val deleteChaptersFromDb: DeleteChapters = Injekt.get(),
+    private val getMangaTaste: GetMangaTaste = Injekt.get(),
+    private val setMangaTasteInteractor: SetMangaTaste = Injekt.get(),
+    private val clearMangaTasteInteractor: ClearMangaTaste = Injekt.get(),
     // KMK <--
 ) : StateScreenModel<MangaScreenModel.State>(State.Loading) {
 
@@ -459,6 +467,16 @@ class MangaScreenModel(
 
             val needRefreshInfo = !manga.initialized
             val needRefreshChapter = chapters.isEmpty()
+            // KMK -->
+            // Read by stable source+url identity — survives cross-device restore and different navigation paths
+            val initialMangaTaste = getMangaTaste.await(manga.source, manga.url)
+            // KMK --> v0.6.20: load seen state from preferences
+            val seenKeys = exh.recs.SeenRecommendationMangaStore.parse(
+                sourcePreferences.seenRecommendationMangaKeys().get(),
+            )
+            val initialIsSeen = exh.recs.SeenMangaKey(manga.source, manga.url) in seenKeys
+            // KMK <--
+            // KMK <--
 
             // Show what we have earlier
             mutableState.update {
@@ -497,8 +515,23 @@ class MangaScreenModel(
                     readerPreferences.preserveReadingPosition().get() && manga.isEhBasedManga(),
                     previewsRowCount = uiPreferences.previewsRowCount().get(),
                     // SY <--
+                    // KMK -->
+                    mangaTaste = initialMangaTaste,
+                    // KMK --> v0.6.20
+                    isSeen = initialIsSeen,
+                    // KMK <--
+                    // KMK <--
                 )
             }
+
+            // KMK -->
+            // Subscribe by stable source+url so reopening the manga always shows the saved rating
+            screenModelScope.launchIO {
+                getMangaTaste.subscribe(manga.source, manga.url).collect { taste ->
+                    updateSuccessState { it.copy(mangaTaste = taste) }
+                }
+            }
+            // KMK <--
 
             // Start observe tracking since it only needs mangaId
             observeTrackers()
@@ -1622,6 +1655,58 @@ class MangaScreenModel(
             }
         }
     }
+
+    fun setMangaTaste(rating: MangaRating) {
+        val manga = successState?.manga ?: return
+        screenModelScope.launchNonCancellable {
+            setMangaTasteInteractor.await(
+                mangaId = manga.id,
+                source = manga.source,
+                url = manga.url,
+                title = manga.title,
+                rating = rating,
+            )
+        }
+    }
+
+    fun clearMangaTaste() {
+        val manga = successState?.manga ?: return
+        screenModelScope.launchNonCancellable {
+            clearMangaTasteInteractor.await(manga.source, manga.url)
+        }
+    }
+
+    // KMK --> v0.6.20: seen/already-read marker
+    fun markSeen() {
+        val manga = successState?.manga ?: return
+        screenModelScope.launchNonCancellable {
+            val key = exh.recs.SeenMangaKey(manga.source, manga.url)
+            val current = exh.recs.SeenRecommendationMangaStore.parse(
+                sourcePreferences.seenRecommendationMangaKeys().get(),
+            )
+            val updated = exh.recs.SeenRecommendationMangaStore.add(current, key)
+            sourcePreferences.seenRecommendationMangaKeys().set(
+                exh.recs.SeenRecommendationMangaStore.serialize(updated),
+            )
+            updateSuccessState { it.copy(isSeen = true) }
+        }
+    }
+
+    fun clearSeen() {
+        val manga = successState?.manga ?: return
+        screenModelScope.launchNonCancellable {
+            val key = exh.recs.SeenMangaKey(manga.source, manga.url)
+            val current = exh.recs.SeenRecommendationMangaStore.parse(
+                sourcePreferences.seenRecommendationMangaKeys().get(),
+            )
+            val updated = exh.recs.SeenRecommendationMangaStore.remove(current, key)
+            sourcePreferences.seenRecommendationMangaKeys().set(
+                exh.recs.SeenRecommendationMangaStore.serialize(updated),
+            )
+            updateSuccessState { it.copy(isSeen = false) }
+        }
+    }
+    // KMK <--
     // KMK <--
 
     private fun downloadNewChapters(chapters: List<Chapter>) {
@@ -2043,6 +2128,10 @@ class MangaScreenModel(
              */
             val relatedMangaCollection: List<RelatedManga>? = null,
             val seedColor: Color? = manga.asMangaCover().vibrantCoverColor?.let { Color(it) },
+            val mangaTaste: MangaTaste? = null,
+            // KMK --> v0.6.20: seen/already-read marker
+            val isSeen: Boolean = false,
+            // KMK <--
             // KMK <--
         ) : State {
             // KMK -->

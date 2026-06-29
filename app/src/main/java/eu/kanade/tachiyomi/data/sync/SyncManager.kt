@@ -116,6 +116,16 @@ class SyncManager(
 
             // KMK -->
             backupFeeds = backupCreator.backupFeeds(backupOptions),
+            backupMangaTastes = backupCreator.backupMangaTastes(backupOptions),
+            backupTagTastes = backupCreator.backupTagTastes(backupOptions),
+            backupTagAliases = backupCreator.backupTagAliases(backupOptions),
+            backupDisabledRecommendationSources = backupCreator.backupDisabledRecommendationSources(backupOptions),
+            // KMK --> v0.7.0: Phase 4 – was missing from sync payload (DB-02)
+            backupCrossSourceMangaLinks = backupCreator.backupCrossSourceMangaLinks(backupOptions),
+            // KMK <--
+            // KMK --> v0.7.16: Best Version quality signals
+            backupMangaSourceQualitySignals = backupCreator.backupMangaSourceQualitySignals(backupOptions),
+            // KMK <--
             // KMK <--
         )
         logcat(LogPriority.DEBUG) { "End create backup" }

@@ -85,6 +85,9 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import exh.pagepreview.PagePreviewScreen
 import exh.recs.RecommendsScreen
+import exh.recs.bestversion.BestVersionCompareScreen
+import exh.recs.matching.CrossExtensionMatchMode
+import exh.recs.matching.CrossExtensionMatchScreen
 import exh.source.ExhPreferences
 import exh.source.MERGED_SOURCE_ID
 import exh.source.anyIs
@@ -461,6 +464,50 @@ class MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = { navigator.push(PaletteScreen(successState.seedColor?.toArgb())) },
             hazeState = hazeState,
+            onTasteClicked = { rating ->
+                if (rating != null) {
+                    screenModel.setMangaTaste(rating)
+                } else {
+                    screenModel.clearMangaTaste()
+                }
+            },
+            onTasteOtherVersionsClicked = { rating ->
+                navigator.push(
+                    CrossExtensionMatchScreen.fromMode(
+                        originMangaId = successState.manga.id,
+                        mode = CrossExtensionMatchMode.Rating(rating),
+                    ),
+                )
+            },
+            // KMK --> v0.7.0: Phase 3 – favorite other versions
+            onFavoriteOtherVersionsClicked = {
+                navigator.push(
+                    CrossExtensionMatchScreen.fromMode(
+                        originMangaId = successState.manga.id,
+                        mode = CrossExtensionMatchMode.Favorite,
+                    ),
+                )
+            },
+            // KMK <--
+            // KMK --> v0.6.20: seen manga callbacks
+            isSeen = successState.isSeen,
+            onSeenClicked = {
+                if (successState.isSeen) screenModel.clearSeen() else screenModel.markSeen()
+            },
+            onSeenOtherVersionsClicked = {
+                navigator.push(
+                    CrossExtensionMatchScreen.fromMode(
+                        originMangaId = successState.manga.id,
+                        mode = CrossExtensionMatchMode.MarkSeen,
+                    ),
+                )
+            },
+            // KMK <--
+            // KMK --> v0.7.8: find best version
+            onFindBestVersionClicked = {
+                navigator.push(BestVersionCompareScreen(successState.manga.id))
+            },
+            // KMK <--
             // KMK <--
         )
 

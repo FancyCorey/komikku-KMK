@@ -21,5 +21,9 @@ object Constants {
 
     // KMK -->
     const val SHORTCUT_LIBRARY_UPDATE_ERRORS = "eu.kanade.tachiyomi.SHOW_LIBRARY_UPDATE_ERRORS"
+    const val OPEN_SOURCE_EVALUATION = "eu.kanade.tachiyomi.OPEN_SOURCE_EVALUATION"
+    // KMK OCR -->
+    const val OPEN_OCR_SEARCH = "eu.kanade.tachiyomi.OPEN_OCR_SEARCH"
+    // KMK OCR <--
     // KMK <--
 }

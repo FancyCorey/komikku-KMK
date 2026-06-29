@@ -31,6 +31,7 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.ui.more.ComingUpdatesScreen
+import eu.kanade.tachiyomi.ui.more.KmkRecsWhatsNewScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.WhatsNewScreen
 import eu.kanade.tachiyomi.util.CrashLogUtil
@@ -41,6 +42,7 @@ import eu.kanade.tachiyomi.util.system.isPreviewBuildType
 import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.updaterEnabled
+import exh.recs.KmkRecsReleaseNotes
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withIOContext
@@ -183,6 +185,16 @@ class AboutScreen : Screen() {
                         },
                     )
                 }
+
+                // KMK -->
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(KMR.strings.kmk_recs_whats_new),
+                        subtitle = KmkRecsReleaseNotes.VERSION_NAME,
+                        onPreferenceClick = { navigator.push(KmkRecsWhatsNewScreen()) },
+                    )
+                }
+                // KMK <--
 
                 if (isReleaseBuildType || isDebugBuildType) {
                     item {

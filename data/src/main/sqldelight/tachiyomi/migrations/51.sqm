@@ -1,0 +1,5 @@
+-- KMK --> v0.7.4: store extension version at evaluation time for update-reassessment detection
+ALTER TABLE source_evaluation ADD COLUMN extension_version_name TEXT;
+ALTER TABLE source_evaluation ADD COLUMN extension_version_code INTEGER;
+ALTER TABLE source_evaluation ADD COLUMN extension_apk_name TEXT;
+-- KMK <--

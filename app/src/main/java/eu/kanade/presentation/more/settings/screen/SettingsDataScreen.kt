@@ -463,6 +463,17 @@ object SettingsDataScreen : SearchableSettings {
             )
         }
 
+        // KMK --> v0.7.5: import recommendation bundle
+        val navigator = LocalNavigator.currentOrThrow
+        val importBundleLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent(),
+        ) { uri ->
+            if (uri != null) {
+                navigator.push(exh.recs.share.RecommendationBundleImportScreen(uri.toString()))
+            }
+        }
+        // KMK <--
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.export),
             preferenceItems = persistentListOf(
@@ -470,6 +481,12 @@ object SettingsDataScreen : SearchableSettings {
                     title = stringResource(MR.strings.library_list),
                     onClick = { showDialog = true },
                 ),
+                // KMK --> v0.7.5: import recommendation bundle
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(KMR.strings.rec_bundle_import_settings_title),
+                    onClick = { importBundleLauncher.launch("application/json") },
+                ),
+                // KMK <--
             ),
         )
     }

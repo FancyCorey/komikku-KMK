@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.QueryStats
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.HorizontalDivider
@@ -79,6 +80,9 @@ fun MoreScreen(
     onClickHistory: () -> Unit,
     // KMK -->
     onClickLibraryUpdateErrors: () -> Unit,
+    // KMK OCR -->
+    onClickOcrSearch: () -> Unit,
+    // KMK OCR <--
     // KMK <--
 ) {
     val uriHandler = LocalUriHandler.current
@@ -193,6 +197,15 @@ fun MoreScreen(
                     onPreferenceClick = onClickLibraryUpdateErrors,
                 )
             }
+            // KMK OCR -->
+            item {
+                TextPreferenceWidget(
+                    title = stringResource(KMR.strings.ocr_search_downloads_title),
+                    icon = Icons.Outlined.Search,
+                    onPreferenceClick = onClickOcrSearch,
+                )
+            }
+            // KMK OCR <--
             // KMK <--
             item {
                 TextPreferenceWidget(

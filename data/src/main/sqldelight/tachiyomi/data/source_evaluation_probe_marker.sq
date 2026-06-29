@@ -1,0 +1,46 @@
+-- KMK -->
+CREATE TABLE source_evaluation_probe_marker (
+    id INTEGER NOT NULL PRIMARY KEY,
+    evaluation_key TEXT,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_id INTEGER,
+    source_name TEXT,
+    lang TEXT,
+    phase TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    batch_id TEXT
+);
+
+get:
+SELECT *
+FROM source_evaluation_probe_marker
+WHERE id = 1;
+
+upsert:
+INSERT INTO source_evaluation_probe_marker(
+    id, evaluation_key, extension_pkg_name, signature_hash, extension_name,
+    source_id, source_name, lang, phase, started_at, updated_at, batch_id
+)
+VALUES (
+    1, :evaluationKey, :extensionPkgName, :signatureHash, :extensionName,
+    :sourceId, :sourceName, :lang, :phase, :startedAt, :updatedAt, :batchId
+)
+ON CONFLICT(id) DO UPDATE SET
+    evaluation_key = :evaluationKey,
+    extension_pkg_name = :extensionPkgName,
+    signature_hash = :signatureHash,
+    extension_name = :extensionName,
+    source_id = :sourceId,
+    source_name = :sourceName,
+    lang = :lang,
+    phase = :phase,
+    updated_at = :updatedAt,
+    batch_id = :batchId;
+
+clear:
+DELETE FROM source_evaluation_probe_marker
+WHERE id = 1;
+-- KMK <--

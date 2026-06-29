@@ -1,6 +1,7 @@
 package exh.recs.components
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -29,6 +30,9 @@ fun RecommendsScreen(
     onClickSource: (RecommendationPagingSource) -> Unit,
     onClickItem: (Manga) -> Unit,
     onLongClickItem: (Manga) -> Unit,
+    // KMK -->
+    actions: @Composable RowScope.() -> Unit = {},
+    // KMK <--
 ) {
     Scaffold(
         topBar = { scrollBehavior ->
@@ -36,6 +40,9 @@ fun RecommendsScreen(
                 title = title,
                 scrollBehavior = scrollBehavior,
                 navigateUp = navigateUp,
+                // KMK -->
+                actions = actions,
+                // KMK <--
             )
         },
     ) { paddingValues ->

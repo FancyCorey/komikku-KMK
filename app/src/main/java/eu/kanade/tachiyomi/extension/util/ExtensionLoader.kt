@@ -166,12 +166,31 @@ internal object ExtensionLoader {
 
         if (extPkgs.isEmpty()) return emptyList()
 
+        // KMK --> v0.6.18: block known-unsafe packages before class loading or source construction
+        val blockedResults = mutableListOf<LoadResult>()
+        val safeExtPkgs = extPkgs.filter { extInfo ->
+            val pkgName = extInfo.packageInfo.packageName
+            if (ExtensionLoadSafetyPolicy.shouldBlock(pkgName)) {
+                val entry = KnownUnsafeExtensionPackages.ALL.find { it.pkgName == pkgName }
+                val reason = entry?.reason ?: "Package blocked by safety policy"
+                logcat(LogPriority.WARN) {
+                    "KMK extension safety: skipped unsafe extension package $pkgName"
+                }
+                blockedResults.add(LoadResult.Blocked(pkgName = pkgName, reason = reason))
+                false
+            } else {
+                true
+            }
+        }
+        // KMK <--
+
         // Load each extension concurrently and wait for completion
-        return runBlocking {
+        // KMK --> v0.6.18: use safeExtPkgs (unsafe packages already filtered into blockedResults)
+        val loadedResults = runBlocking {
             // KMK -->
             val extRepos = getExtensionRepo.getAll()
             // KMK <--
-            val deferred = extPkgs.map {
+            val deferred = safeExtPkgs.map {
                 async {
                     loadExtension(
                         context,
@@ -184,6 +203,8 @@ internal object ExtensionLoader {
             }
             deferred.awaitAll()
         }
+        return loadedResults + blockedResults
+        // KMK <--
     }
 
     /**
@@ -191,6 +212,16 @@ internal object ExtensionLoader {
      * contains the required feature flag before trying to load it.
      */
     suspend fun loadExtensionFromPkgName(context: Context, pkgName: String): LoadResult {
+        // KMK --> v0.6.18: block unsafe packages on manual reload paths too (trust receiver, etc.)
+        if (ExtensionLoadSafetyPolicy.shouldBlock(pkgName)) {
+            val entry = KnownUnsafeExtensionPackages.ALL.find { it.pkgName == pkgName }
+            val reason = entry?.reason ?: "Package blocked by safety policy"
+            logcat(LogPriority.WARN) {
+                "KMK extension safety: blocked reload of unsafe extension package $pkgName"
+            }
+            return LoadResult.Blocked(pkgName = pkgName, reason = reason)
+        }
+        // KMK <--
         val extensionPackage = getExtensionInfoFromPkgName(context, pkgName)
         if (extensionPackage == null) {
             logcat(LogPriority.ERROR) { "Extension package is not found ($pkgName)" }

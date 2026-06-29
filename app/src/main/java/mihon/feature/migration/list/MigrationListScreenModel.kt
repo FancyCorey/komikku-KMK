@@ -34,6 +34,7 @@ import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.feature.migration.list.models.MigratingManga
 import mihon.feature.migration.list.models.MigratingManga.SearchResult
 import mihon.feature.migration.list.search.SmartSourceSearchEngine
+import mihon.feature.migration.list.search.SourceMatchScorer
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
@@ -165,17 +166,17 @@ class MigrationListScreenModel(
                         sources.map { source ->
                             async innerAsync@{
                                 sourceSemaphore.withPermit {
-                                    val result = searchSource(manga.manga, source, deepSearchMode)
+                                    val result = searchSource(manga, source, deepSearchMode)
                                     if (result == null || result.second.chapterCount == 0) return@innerAsync null
                                     result
                                 }
                             }
                         }
                             .mapNotNull { it.await() }
-                            .maxByOrNull { it.second.latestChapter ?: 0.0 }
+                            .maxByOrNull { it.second.matchScore }
                     } else {
                         sources.forEach { source ->
-                            val result = searchSource(manga.manga, source, deepSearchMode)
+                            val result = searchSource(manga, source, deepSearchMode)
                             if (result != null) return@async result
                         }
                         null
@@ -215,20 +216,29 @@ class MigrationListScreenModel(
     }
 
     private suspend fun searchSource(
-        manga: Manga,
+        manga: MigratingManga,
         source: CatalogueSource,
         deepSearchMode: Boolean,
     ): Pair<Manga, ChapterInfo>? {
         return try {
             val searchResult = if (deepSearchMode) {
-                smartSearchEngine.deepSearch(source, manga.title)
+                smartSearchEngine.deepSearch(source, manga.manga.title)
             } else {
-                smartSearchEngine.regularSearch(source, manga.title)
+                smartSearchEngine.regularSearch(source, manga.manga.title)
             }
 
-            if (searchResult == null || (searchResult.url == manga.url && source.id == manga.source)) return null
+            if (searchResult == null || (searchResult.url == manga.manga.url && source.id == manga.manga.source)) return null
 
-            val localManga = networkToLocalManga(searchResult)
+            var localManga = networkToLocalManga(searchResult)
+            try {
+                val details = source.getMangaDetails(localManga.toSManga())
+                updateManga.awaitUpdateFromSource(localManga, details, true)
+                localManga = getManga.await(localManga.id) ?: localManga
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e)
+            }
             try {
                 // SY -->
                 val chapters = if (source is EHentai) {
@@ -241,7 +251,17 @@ class MigrationListScreenModel(
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
             }
-            localManga to getChapterInfo(localManga.id)
+            val chapterInfo = getChapterInfo(localManga.id)
+            localManga to chapterInfo.withMatchScore(
+                SourceMatchScorer.score(
+                    current = manga.manga,
+                    candidate = localManga,
+                    currentChapterCount = manga.chapterCount,
+                    currentLatestChapter = manga.latestChapter,
+                    candidateChapterCount = chapterInfo.chapterCount,
+                    candidateLatestChapter = chapterInfo.latestChapter,
+                ).total,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -449,7 +469,10 @@ class MigrationListScreenModel(
     data class ChapterInfo(
         val latestChapter: Double?,
         val chapterCount: Int,
-    )
+        val matchScore: Double = 0.0,
+    ) {
+        fun withMatchScore(matchScore: Double) = copy(matchScore = matchScore)
+    }
 
     sealed interface Dialog {
         data class Migrate(val copy: Boolean, val totalCount: Int, val skippedCount: Int) : Dialog

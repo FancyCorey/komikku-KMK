@@ -30,7 +30,9 @@ fun WhatsNewScreen(
     currentVersion: String,
     versionName: String,
     changelogInfo: String,
-    onOpenInBrowser: () -> Unit,
+    // KMK -->
+    onOpenInBrowser: (() -> Unit)? = null,
+    // KMK <--
     onAcceptUpdate: () -> Unit,
 ) {
     InfoScreen(
@@ -51,14 +53,20 @@ fun WhatsNewScreen(
                 flavour = GFMFlavourDescriptor(),
             )
 
-            TextButton(
-                onClick = onOpenInBrowser,
-                modifier = Modifier.padding(top = MaterialTheme.padding.small),
-            ) {
-                Text(text = stringResource(MR.strings.update_check_open))
-                Spacer(modifier = Modifier.width(MaterialTheme.padding.extraSmall))
-                Icon(imageVector = Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
+            // KMK -->
+            if (onOpenInBrowser != null) {
+                // KMK <--
+                TextButton(
+                    onClick = onOpenInBrowser,
+                    modifier = Modifier.padding(top = MaterialTheme.padding.small),
+                ) {
+                    Text(text = stringResource(MR.strings.update_check_open))
+                    Spacer(modifier = Modifier.width(MaterialTheme.padding.extraSmall))
+                    Icon(imageVector = Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
+                }
+                // KMK -->
             }
+            // KMK <--
         }
     }
 }

@@ -1,0 +1,25 @@
+-- KMK -->
+CREATE TABLE recommendation_disabled_source (
+    source_id INTEGER NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL
+);
+
+getAll:
+SELECT source_id
+FROM recommendation_disabled_source;
+
+getAllAsFlow:
+SELECT source_id
+FROM recommendation_disabled_source;
+
+insert:
+INSERT OR IGNORE INTO recommendation_disabled_source(source_id, created_at)
+VALUES (:sourceId, strftime('%s', 'now'));
+
+delete:
+DELETE FROM recommendation_disabled_source
+WHERE source_id = :sourceId;
+
+deleteAll:
+DELETE FROM recommendation_disabled_source;
+-- KMK <--

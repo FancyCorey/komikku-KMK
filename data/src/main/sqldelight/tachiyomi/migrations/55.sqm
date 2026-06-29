@@ -1,0 +1,9 @@
+-- KMK --> OCR v0.1.1: add status tracking columns
+ALTER TABLE ocr_indexed_page ADD COLUMN recognized_text_length INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ocr_indexed_page ADD COLUMN recognized_word_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ocr_indexed_page ADD COLUMN ocr_status TEXT NOT NULL DEFAULT 'success';
+
+-- Backfill status for existing v0.1.0 rows
+UPDATE ocr_indexed_page SET ocr_status = 'failed' WHERE error_message IS NOT NULL;
+UPDATE ocr_indexed_page SET ocr_status = 'empty' WHERE raw_text = '' AND error_message IS NULL;
+-- KMK <--

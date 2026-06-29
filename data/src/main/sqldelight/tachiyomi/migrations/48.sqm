@@ -1,0 +1,41 @@
+-- KMK --> v0.6.16: Source Evaluation crash quarantine tables
+
+CREATE TABLE IF NOT EXISTS source_evaluation_probe_marker (
+    id INTEGER NOT NULL PRIMARY KEY,
+    evaluation_key TEXT,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_id INTEGER,
+    source_name TEXT,
+    lang TEXT,
+    phase TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    batch_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS source_evaluation_unsafe_source (
+    unsafe_key TEXT NOT NULL PRIMARY KEY,
+    evaluation_key TEXT,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_id INTEGER,
+    source_name TEXT,
+    lang TEXT,
+    phase TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    crash_count INTEGER NOT NULL,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    last_batch_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS source_evaluation_unsafe_pkg_index
+ON source_evaluation_unsafe_source(extension_pkg_name);
+
+CREATE INDEX IF NOT EXISTS source_evaluation_unsafe_seen_index
+ON source_evaluation_unsafe_source(last_seen_at);
+
+-- KMK <--
