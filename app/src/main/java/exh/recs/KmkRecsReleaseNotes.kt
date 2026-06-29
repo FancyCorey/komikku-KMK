@@ -2,10 +2,14 @@ package exh.recs
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 727
-    const val VERSION_NAME = "KMK-Recs v0.7.27"
+    const val VERSION_CODE = 728
+    const val VERSION_NAME = "KMK-Recs v0.7.28"
 
     val MARKDOWN = """
+        ## KMK-Recs v0.7.28
+
+        - Backup/restore: For You "Seen" dismissals are now included in Komikku backups (proto field 626). The restore is additive — any dismissals accumulated after the backup was created are preserved, never cleared. Old backups without the new field restore cleanly with no seen keys (proto default = empty list). 6 round-trip tests added in SeenMangaKeyBackupTest covering: single-key round-trip, multi-key round-trip, merge-new-keys, no-duplicate-on-overlap, empty-backup-leaves-existing-unchanged, empty-existing-produces-backup-set.
+
         ## KMK-Recs v0.7.27
 
         - Recommendation Settings: new "Best Version History" browser in the Management section. Shows all past Best Version decisions grouped by the origin manga, with the selected source name, selected title (when different from origin), chapter used, and date confirmed. Each record can be deleted individually (removes only the quality signal — does not affect library entries, ratings, or cross-source links). The action bar has a "Clear all history" button with a confirmation dialog.

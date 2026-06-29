@@ -1,12 +1,15 @@
 package eu.kanade.tachiyomi.data.backup.create.creators
 
 // KMK -->
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
+import exh.recs.SeenRecommendationMangaStore
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetMangaSourceQualitySignals
@@ -26,6 +29,9 @@ class TasteBackupCreator(
     // KMK <--
     // KMK --> v0.7.16: Best Version quality signals
     private val getMangaSourceQualitySignals: GetMangaSourceQualitySignals = Injekt.get(),
+    // KMK <--
+    // KMK --> v0.7.28: seen manga keys
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
     // KMK <--
 ) {
 
@@ -75,6 +81,15 @@ class TasteBackupCreator(
                 updatedAt = link.updatedAt,
             )
         }
+    // KMK <--
+
+    // KMK --> v0.7.28: seen manga keys — raw semicolon-separated "sourceId|url" pairs from preference
+    fun backupSeenMangaKeys(): List<BackupSeenMangaKey> {
+        val raw = sourcePreferences.seenRecommendationMangaKeys().get()
+        if (raw.isBlank()) return emptyList()
+        return SeenRecommendationMangaStore.parse(raw)
+            .map { key -> BackupSeenMangaKey(key = key.serialize()) }
+    }
     // KMK <--
 
     // KMK --> v0.7.16: Best Version quality signals

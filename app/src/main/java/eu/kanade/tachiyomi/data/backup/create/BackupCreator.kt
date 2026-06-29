@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
@@ -124,6 +125,9 @@ class BackupCreator(
                 backupDisabledRecommendationSources = backupDisabledRecommendationSources(options),
                 // KMK --> v0.7.0: Phase 4
                 backupCrossSourceMangaLinks = backupCrossSourceMangaLinks(options),
+                // KMK <--
+                // KMK --> v0.7.28: seen manga keys
+                backupSeenMangaKeys = backupSeenMangaKeys(options),
                 // KMK <--
                 // KMK <--
             )
@@ -241,6 +245,13 @@ class BackupCreator(
     suspend fun backupMangaSourceQualitySignals(options: BackupOptions): List<BackupMangaSourceQualitySignal> {
         if (!options.tasteProfile) return emptyList()
         return tasteBackupCreator.backupMangaSourceQualitySignals()
+    }
+    // KMK <--
+
+    // KMK --> v0.7.28: seen manga keys
+    fun backupSeenMangaKeys(options: BackupOptions): List<BackupSeenMangaKey> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupSeenMangaKeys()
     }
     // KMK <--
     // KMK <--

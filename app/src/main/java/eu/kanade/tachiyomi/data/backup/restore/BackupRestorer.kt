@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
@@ -162,6 +163,9 @@ class BackupRestorer(
                     // KMK <--
                     // KMK --> v0.7.16: Best Version quality signals
                     backup.backupMangaSourceQualitySignals,
+                    // KMK <--
+                    // KMK --> v0.7.28: seen manga keys
+                    backup.backupSeenMangaKeys,
                     // KMK <--
                     mangaJob,
                 )
@@ -326,6 +330,9 @@ class BackupRestorer(
         // KMK --> v0.7.16: Best Version quality signals
         backupMangaSourceQualitySignals: List<BackupMangaSourceQualitySignal>,
         // KMK <--
+        // KMK --> v0.7.28: seen manga keys
+        backupSeenMangaKeys: List<BackupSeenMangaKey>,
+        // KMK <--
         mangaJob: Job?,
     ) = launch {
         // Manga tastes resolve by (url, source) — wait until library entries exist locally
@@ -341,6 +348,9 @@ class BackupRestorer(
             // KMK <--
             // KMK --> v0.7.16: Best Version quality signals
             addAll(tasteRestorer.restoreMangaSourceQualitySignals(backupMangaSourceQualitySignals))
+            // KMK <--
+            // KMK --> v0.7.28: seen manga keys
+            addAll(tasteRestorer.restoreSeenMangaKeys(backupSeenMangaKeys))
             // KMK <--
         }
         tasteErrors.forEach { errors.add(Date() to it) }

@@ -29,5 +29,8 @@ data class Backup(
     // KMK --> v0.7.16: Best Version quality signals (proto 625)
     @ProtoNumber(625) var backupMangaSourceQualitySignals: List<BackupMangaSourceQualitySignal> = emptyList(),
     // KMK <--
+    // KMK --> v0.7.28: seen manga keys for For You dismissals (proto 626)
+    @ProtoNumber(626) var backupSeenMangaKeys: List<BackupSeenMangaKey> = emptyList(),
+    // KMK <--
     // KMK <--
 )

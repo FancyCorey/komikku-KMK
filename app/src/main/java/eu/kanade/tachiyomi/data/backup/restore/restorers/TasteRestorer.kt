@@ -1,12 +1,15 @@
 package eu.kanade.tachiyomi.data.backup.restore.restorers
 
 // KMK -->
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
+import exh.recs.SeenRecommendationMangaStore
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
@@ -46,6 +49,9 @@ class TasteRestorer(
     // KMK --> v0.7.16: Best Version quality signals
     private val getMangaSourceQualitySignals: GetMangaSourceQualitySignals = Injekt.get(),
     private val upsertMangaSourceQualitySignal: UpsertMangaSourceQualitySignal = Injekt.get(),
+    // KMK <--
+    // KMK --> v0.7.28: seen manga keys
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
     // KMK <--
 ) {
 
@@ -209,6 +215,23 @@ class TasteRestorer(
             }
         }
         return errors
+    }
+    // KMK <--
+
+    // KMK --> v0.7.28: seen manga keys — additive union restore (never clears existing dismissals)
+    fun restoreSeenMangaKeys(backupKeys: List<BackupSeenMangaKey>): List<String> {
+        if (backupKeys.isEmpty()) return emptyList()
+        val pref = sourcePreferences.seenRecommendationMangaKeys()
+        val current = SeenRecommendationMangaStore.parse(pref.get()).toMutableSet()
+        val beforeSize = current.size
+        backupKeys.forEach { backup ->
+            val parsed = SeenRecommendationMangaStore.parse(backup.key)
+            current.addAll(parsed)
+        }
+        if (current.size != beforeSize) {
+            pref.set(SeenRecommendationMangaStore.serialize(current))
+        }
+        return emptyList()
     }
     // KMK <--
 
