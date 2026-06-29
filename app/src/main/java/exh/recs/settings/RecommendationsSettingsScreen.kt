@@ -434,6 +434,17 @@ class RecommendationsSettingsScreen : Screen() {
                     }
                 }
                 // KMK <--
+                // KMK --> v0.7.34: enrichment cap setting
+                item(key = "enrichment_cap") {
+                    SameMangaListPrefRow(
+                        title = stringResource(KMR.strings.rec_enrichment_cap_title),
+                        summary = stringResource(KMR.strings.rec_enrichment_cap_summary),
+                        current = state.enrichmentCap,
+                        options = listOf(1, 2, 3, 5, 10, 15, 20),
+                        onSelect = screenModel::setEnrichmentCap,
+                    )
+                }
+                // KMK <--
                 // KMK <--
                 // Sources To Try section
                 item(key = "sources_to_try_header") {
@@ -825,6 +836,23 @@ private fun ReorderableCollectionItemScope.SourcePriorityItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // KMK --> v0.7.29: relative timestamp of last For You run that touched this source
+                if (fitStats != null && fitStats.runCount > 0 && fitStats.updatedAt > 0L) {
+                    Text(
+                        text = stringResource(
+                            KMR.strings.rec_source_last_checked,
+                            android.text.format.DateUtils.getRelativeTimeSpanString(
+                                fitStats.updatedAt,
+                                System.currentTimeMillis(),
+                                android.text.format.DateUtils.MINUTE_IN_MILLIS,
+                                android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
+                            ).toString(),
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // KMK <--
                 // KMK <--
             }
             // KMK -->

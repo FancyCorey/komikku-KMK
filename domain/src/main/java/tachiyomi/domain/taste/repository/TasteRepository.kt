@@ -21,6 +21,10 @@ interface TasteRepository {
 
     suspend fun getAllMangaTastes(): List<MangaTaste>
 
+    // KMK --> v0.7.29: live Flow of all manga tastes for reactive Loved Manga screen
+    fun getAllMangaTastesAsFlow(): Flow<List<MangaTaste>>
+    // KMK <--
+
     suspend fun upsertMangaTaste(taste: MangaTaste)
 
     suspend fun deleteMangaTaste(mangaId: Long)

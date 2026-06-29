@@ -17,5 +17,9 @@ class GetMangaTaste(
     fun subscribe(source: Long, url: String): Flow<MangaTaste?> = repository.getMangaTasteAsFlow(source, url)
 
     suspend fun awaitAll(): List<MangaTaste> = repository.getAllMangaTastes()
+
+    // KMK --> v0.7.29: reactive Flow for live updates
+    fun subscribeAll(): Flow<List<MangaTaste>> = repository.getAllMangaTastesAsFlow()
+    // KMK <--
 }
 // KMK <--

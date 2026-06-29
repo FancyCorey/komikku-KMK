@@ -2,10 +2,42 @@ package exh.recs
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 728
-    const val VERSION_NAME = "KMK-Recs v0.7.28"
+    const val VERSION_CODE = 734
+    const val VERSION_NAME = "KMK-Recs v0.7.34"
 
     val MARKDOWN = """
+        ## KMK-Recs v0.7.34
+
+        - Source Evaluation: per-source error category labels on rec-quality ERROR rows (e.g. "Ext not found", "Install failed", "Search timed out") so the failure type is visible without expanding the error detail (C1).
+        - Source Evaluation: "Retry" button in the post-run summary card when the run ended due to connectivity loss, allowing one-tap restart without resetting results (C2).
+        - Source Evaluation: profile-changed banner shown when the taste profile has grown by 5+ entries since evaluation was last run, prompting a re-run for fresh results (C3).
+
+        ## KMK-Recs v0.7.33
+
+        - Best Version compare: fullscreen page dialog state survives screen rotation and back-stack navigation via three rememberSaveable primitives (I1).
+        - Best Version compare: tap to dismiss fullscreen preview when zoomed at 1× (I2).
+        - Best Version compare: per-thumbnail Fit/Crop toggle button using ContentScale.Fit or ContentScale.Crop so narrow covers display correctly without cropping (I3).
+
+        ## KMK-Recs v0.7.32
+
+        - For You source stats: 30-day rolling window for fit labels — recent run rates are preferred over all-time rates when at least 3 runs have occurred in the last 30 days, giving more accurate Great/Good/Mixed/Error labels as source quality changes over time (D1).
+        - For You source stats: tracks how many times each source contributed manga to the final Top Picks row, surfaced in the SourceFitStats as topPicksContributionCount (D2).
+
+        ## KMK-Recs v0.7.31
+
+        - Recommendation Settings: configurable enrichment cap — the number of candidate manga per source enriched with full metadata can now be set to 1/2/3/5/10/15/20 (default 5). Boosted sources always get 2× the cap. Higher values are more accurate but slower (J).
+
+        ## KMK-Recs v0.7.30
+
+        - Loved Manga: new "Manage Cross-Source Links" screen accessible from the app bar, showing all cross-source link groups with expand/collapse and per-link or whole-group delete (B).
+
+        ## KMK-Recs v0.7.29
+
+        - Recommendation Settings source priority list: each source now shows a "Last checked: X ago" timestamp below the status label when at least one run has been recorded, using the system's relative-time formatter (A1).
+        - For You screen: pull-to-refresh gesture on the recommendations list — pulling down restarts the For You run with the same settings (A2).
+        - Loved Manga screen: live updates when your Loved Manga list changes in the database — ratings applied on other screens are reflected immediately without requiring a manual refresh (A3).
+        - Source Evaluation safety diagnostics: quarantine/blocked-package row can now be collapsed/expanded by the user (A4).
+
         ## KMK-Recs v0.7.28
 
         - Backup/restore: For You "Seen" dismissals are now included in Komikku backups (proto field 626). The restore is additive — any dismissals accumulated after the backup was created are preserved, never cleared. Old backups without the new field restore cleanly with no seen keys (proto default = empty list). 6 round-trip tests added in SeenMangaKeyBackupTest covering: single-key round-trip, multi-key round-trip, merge-new-keys, no-duplicate-on-overlap, empty-backup-leaves-existing-unchanged, empty-existing-produces-backup-set.

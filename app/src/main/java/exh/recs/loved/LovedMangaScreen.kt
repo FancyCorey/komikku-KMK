@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +42,7 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.KmkRecsReleaseNotes
+import exh.recs.links.LinkGroupManagementScreen
 import exh.recs.share.RecommendationBundleExporter
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
@@ -93,6 +95,13 @@ class LovedMangaScreen : Screen() {
                     actions = {
                         AppBarActions(
                             persistentListOf(
+                                // KMK --> v0.7.30: link group management
+                                AppBar.Action(
+                                    title = stringResource(KMR.strings.link_group_management_title),
+                                    icon = Icons.Outlined.Link,
+                                    onClick = { navigator.push(LinkGroupManagementScreen()) },
+                                ),
+                                // KMK <--
                                 AppBar.Action(
                                     title = stringResource(KMR.strings.rec_bundle_export_loved_manga),
                                     icon = Icons.Outlined.Share,

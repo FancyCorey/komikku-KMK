@@ -741,4 +741,26 @@
     <!-- KMK --> <string name="quality_signal_history_delete_all_title">Clear Best Version history?</string>
     <!-- KMK --> <string name="quality_signal_history_delete_all_message">This removes all stored Best Version decisions. It does not affect ratings, library entries, or cross-source links.</string>
     <!-- KMK --> <string name="quality_signal_history_record_count">%1$d decision(s)</string>
+
+    <!-- KMK v0.7.29: A1 — last-checked timestamp in source priority item -->
+    <!-- KMK --> <string name="rec_source_last_checked">Last checked: %1$s</string>
+
+    <!-- KMK v0.7.30: B — cross-source link group management -->
+    <!-- KMK --> <string name="link_group_management_title">Manage Cross-Source Links</string>
+    <!-- KMK --> <string name="link_group_management_empty">No cross-source links yet. Link groups are created when you mark "Same manga" across sources.</string>
+    <!-- KMK --> <string name="link_group_management_error">Failed to load cross-source links.</string>
+    <!-- KMK --> <string name="link_group_management_source_count">%1$d version(s)</string>
+    <!-- KMK --> <string name="link_group_management_delete_group">Remove entire link group</string>
+    <!-- KMK --> <string name="link_group_management_remove_link">Remove</string>
+
+    <!-- KMK v0.7.31: C1 — rec-quality error category badge -->
+    <!-- KMK --> <string name="source_evaluation_rec_error_kind">Error kind: %1$s</string>
+    <!-- KMK v0.7.31: C2 — retry after connectivity loss -->
+    <!-- KMK --> <string name="source_evaluation_retry_connectivity">Retry</string>
+    <!-- KMK v0.7.31: C3 — profile changed since last eval -->
+    <!-- KMK --> <string name="source_evaluation_profile_changed_since_last_run">Your taste profile has changed since the last evaluation. Consider running again for updated results.</string>
+
+    <!-- KMK v0.7.34: J — configurable enrichment cap -->
+    <!-- KMK --> <string name="rec_enrichment_cap_title">Enrichment cap (per source)</string>
+    <!-- KMK --> <string name="rec_enrichment_cap_summary">Number of For You candidates per source to enrich with full metadata. Boosted sources always get 2×. Higher values are more accurate but slower.</string>
 </resources>

@@ -46,6 +46,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -409,6 +410,9 @@ class SourceEvaluationScreen : Screen() {
                             // KMK --> SEC-02 v0.7.16
                             onCompleteCleanup = screenModel::cleanupPromptRequiredExtensions,
                             // KMK <--
+                            // KMK --> v0.7.31: C2 — retry after connectivity loss
+                            onRetry = screenModel::startEvaluation,
+                            // KMK <--
                         )
                     }
                 }
@@ -525,6 +529,18 @@ class SourceEvaluationScreen : Screen() {
                         item(key = "taste_confidence_warning") {
                             InfoCard(
                                 message = stringResource(KMR.strings.source_evaluation_low_confidence_warning),
+                                isError = false,
+                                modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
+                            )
+                        }
+                    }
+                    // KMK <--
+
+                    // KMK --> v0.7.31: C3 — profile changed since last eval run
+                    if (state.profileChangedSinceLastEval && state.evaluations.isNotEmpty()) {
+                        item(key = "profile_changed_prompt") {
+                            InfoCard(
+                                message = stringResource(KMR.strings.source_evaluation_profile_changed_since_last_run),
                                 isError = false,
                                 modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
                             )
@@ -1101,6 +1117,9 @@ private fun EvaluationSummaryCard(
     // KMK --> SEC-02 v0.7.16
     onCompleteCleanup: () -> Unit = {},
     // KMK <--
+    // KMK --> v0.7.31: C2 — one-tap retry after connectivity loss
+    onRetry: (() -> Unit)? = null,
+    // KMK <--
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -1191,9 +1210,26 @@ private fun EvaluationSummaryCard(
             }
             // KMK <--
 
-            TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(KMR.strings.source_evaluation_reset))
+            // KMK --> v0.7.31: C2 — retry button after connectivity loss
+            if (queueState.status == SourceEvaluationQueueState.Status.ConnectivityLost && onRetry != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onReset) {
+                        Text(stringResource(KMR.strings.source_evaluation_reset))
+                    }
+                    TextButton(onClick = onRetry) {
+                        Text(stringResource(KMR.strings.source_evaluation_retry_connectivity))
+                    }
+                }
+            } else {
+                TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
+                    Text(stringResource(KMR.strings.source_evaluation_reset))
+                }
             }
+            // KMK <--
         }
     }
 }
@@ -1461,37 +1497,63 @@ private fun SafetyDiagnosticsRow(
     onViewBlocked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // KMK --> v0.7.29: expand/collapse toggle for quarantine section
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    // KMK <--
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
     ) {
-        Text(
-            text = stringResource(KMR.strings.source_evaluation_safety_diagnostics_title),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         Row(
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (unsafeCount > 0) {
-                TextButton(onClick = onViewUnsafe) {
-                    Text(
-                        stringResource(KMR.strings.source_evaluation_safety_quarantined_count, unsafeCount),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+            Text(
+                text = stringResource(KMR.strings.source_evaluation_safety_diagnostics_title),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // KMK --> v0.7.29: chevron icon to collapse/expand the button list
+            androidx.compose.material3.IconButton(
+                onClick = { expanded = !expanded },
+            ) {
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            if (blockedCount > 0) {
-                TextButton(onClick = onViewBlocked) {
-                    Text(
-                        stringResource(KMR.strings.source_evaluation_safety_blocked_count, blockedCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
+            // KMK <--
         }
+        // KMK --> v0.7.29
+        if (expanded) {
+        // KMK <--
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (unsafeCount > 0) {
+                    TextButton(onClick = onViewUnsafe) {
+                        Text(
+                            stringResource(KMR.strings.source_evaluation_safety_quarantined_count, unsafeCount),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                if (blockedCount > 0) {
+                    TextButton(onClick = onViewBlocked) {
+                        Text(
+                            stringResource(KMR.strings.source_evaluation_safety_blocked_count, blockedCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        // KMK --> v0.7.29
+        }
+        // KMK <--
     }
 }
 // KMK <--
@@ -1716,6 +1778,40 @@ private fun EvaluationResultRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // KMK --> v0.7.31: C1 — error category badge for rec-quality ERROR verdict
+            if (recFit != null && recFit.verdict == tachiyomi.domain.taste.model.RecommendationQualityVerdict.ERROR) {
+                val failureKind = SourceRecommendationFitFailureClassifier.classify(recFit.errorMessage)
+                if (failureKind != SourceRecommendationProbeFailureKind.NONE &&
+                    failureKind != SourceRecommendationProbeFailureKind.UNKNOWN
+                ) {
+                    val kindLabel = when (failureKind) {
+                        SourceRecommendationProbeFailureKind.NO_TASTE_EVIDENCE -> "No taste evidence"
+                        SourceRecommendationProbeFailureKind.AVAILABLE_EXTENSION_LIST_EMPTY -> "Ext list unavailable"
+                        SourceRecommendationProbeFailureKind.EXTENSION_NOT_FOUND -> "Ext not found"
+                        SourceRecommendationProbeFailureKind.EXTENSION_MATCH_AMBIGUOUS -> "Ext ambiguous"
+                        SourceRecommendationProbeFailureKind.INSTALL_FAILED_OR_TIMED_OUT -> "Install failed/timed out"
+                        SourceRecommendationProbeFailureKind.INSTALLED_EXTENSION_DID_NOT_LOAD -> "Ext did not load"
+                        SourceRecommendationProbeFailureKind.SOURCE_NOT_FOUND -> "Source not found"
+                        SourceRecommendationProbeFailureKind.SOURCE_MATCH_AMBIGUOUS -> "Source ambiguous"
+                        SourceRecommendationProbeFailureKind.SEARCH_ERROR -> "Search error"
+                        SourceRecommendationProbeFailureKind.SEARCH_TIMED_OUT -> "Search timed out"
+                        SourceRecommendationProbeFailureKind.RAW_RESULTS_EMPTY -> "No results"
+                        SourceRecommendationProbeFailureKind.RESULTS_NO_METADATA -> "No genre metadata"
+                        SourceRecommendationProbeFailureKind.ALL_RESULTS_BLOCKED -> "All results blocked"
+                        else -> null
+                    }
+                    if (kindLabel != null) {
+                        Text(
+                            text = stringResource(KMR.strings.source_evaluation_rec_error_kind, kindLabel),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            // KMK <--
             // KMK --> v0.7.12: show error/reason detail below the quality label
             // KMK --> v0.7.13: also show subdued reason text for NO_MATCHES and WEAK verdicts
             val recFitErrorMessage = recFit?.errorMessage

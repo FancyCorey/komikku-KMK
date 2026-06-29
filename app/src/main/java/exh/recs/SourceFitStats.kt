@@ -18,12 +18,26 @@ data class SourceFitStats(
     val lastSuccessAt: Long,
     val lastErrorAt: Long,
     val updatedAt: Long,
+    // KMK --> v0.7.32: D1 — rolling 30-day recent window for more accurate fit labels
+    val recentRunCount: Int = 0,
+    val recentShownCount: Int = 0,
+    val recentErrorCount: Int = 0,
+    val windowStartAt: Long = 0L,
+    // KMK --> v0.7.32: D2 — number of times this source contributed to the Top Picks row
+    val topPicksContributionCount: Int = 0,
+    // KMK <--
 ) {
     val fitLabel: SourceFitLabel
         get() {
             if (runCount < MIN_RUNS_FOR_LABEL) return SourceFitLabel.TooLittleData
-            val errorRate = errorCount.toDouble() / runCount
-            val shownRate = shownCount.toDouble() / runCount
+            // KMK --> v0.7.32: D1 — prefer recent window rates when sufficient recent data exists
+            val useRecent = recentRunCount >= MIN_RUNS_FOR_LABEL
+            val effectiveRunCount = if (useRecent) recentRunCount else runCount
+            val effectiveShownCount = if (useRecent) recentShownCount else shownCount
+            val effectiveErrorCount = if (useRecent) recentErrorCount else errorCount
+            // KMK <--
+            val errorRate = effectiveErrorCount.toDouble() / effectiveRunCount
+            val shownRate = effectiveShownCount.toDouble() / effectiveRunCount
             val noMatchRate = noMatchCount.toDouble() / runCount
             val filteredRate = filteredOutCount.toDouble() / runCount
             val avgVisible = totalVisibleCandidates.toDouble() / maxOf(1, shownCount)
@@ -37,21 +51,53 @@ data class SourceFitStats(
             }
         }
 
-    internal fun merge(status: RecommendationSourceRunStatus, now: Long): SourceFitStats = copy(
-        runCount = runCount + 1,
-        shownCount = shownCount + if (status.status == RecommendationSourceStatus.Shown) 1 else 0,
-        noMatchCount = noMatchCount + if (status.status == RecommendationSourceStatus.NoMatches) 1 else 0,
-        filteredOutCount = filteredOutCount + if (status.status == RecommendationSourceStatus.FilteredOut) 1 else 0,
-        errorCount = errorCount + if (status.status == RecommendationSourceStatus.Error) 1 else 0,
-        hiddenByDuplicateCount = hiddenByDuplicateCount + if (status.status == RecommendationSourceStatus.HiddenByDuplicateHandling) 1 else 0,
-        totalVisibleCandidates = totalVisibleCandidates + status.visibleCount,
-        lastSuccessAt = if (status.status == RecommendationSourceStatus.Shown) now else lastSuccessAt,
-        lastErrorAt = if (status.status == RecommendationSourceStatus.Error) now else lastErrorAt,
-        updatedAt = now,
-    )
+    // KMK --> v0.7.32: D1/D2 — accepts optional top-picks contributor flag
+    internal fun merge(
+        status: RecommendationSourceRunStatus,
+        now: Long,
+        isTopPicksContributor: Boolean = false,
+    ): SourceFitStats {
+        // D1: reset recent window counts when the 30-day window has expired
+        val windowExpired = windowStartAt > 0L && (now - windowStartAt) > RECENT_WINDOW_MS
+        val newWindowStart = if (windowStartAt == 0L || windowExpired) now else windowStartAt
+        val wasShown = status.status == RecommendationSourceStatus.Shown
+        val wasError = status.status == RecommendationSourceStatus.Error
+        val newRecentRunCount = if (windowExpired) 1 else recentRunCount + 1
+        val newRecentShownCount = if (windowExpired) {
+            if (wasShown) 1 else 0
+        } else {
+            recentShownCount + if (wasShown) 1 else 0
+        }
+        val newRecentErrorCount = if (windowExpired) {
+            if (wasError) 1 else 0
+        } else {
+            recentErrorCount + if (wasError) 1 else 0
+        }
+        return copy(
+            runCount = runCount + 1,
+            shownCount = shownCount + if (wasShown) 1 else 0,
+            noMatchCount = noMatchCount + if (status.status == RecommendationSourceStatus.NoMatches) 1 else 0,
+            filteredOutCount = filteredOutCount + if (status.status == RecommendationSourceStatus.FilteredOut) 1 else 0,
+            errorCount = errorCount + if (wasError) 1 else 0,
+            hiddenByDuplicateCount = hiddenByDuplicateCount + if (status.status == RecommendationSourceStatus.HiddenByDuplicateHandling) 1 else 0,
+            totalVisibleCandidates = totalVisibleCandidates + status.visibleCount,
+            lastSuccessAt = if (wasShown) now else lastSuccessAt,
+            lastErrorAt = if (wasError) now else lastErrorAt,
+            updatedAt = now,
+            recentRunCount = newRecentRunCount,
+            recentShownCount = newRecentShownCount,
+            recentErrorCount = newRecentErrorCount,
+            windowStartAt = newWindowStart,
+            topPicksContributionCount = topPicksContributionCount + if (isTopPicksContributor) 1 else 0,
+        )
+    }
+    // KMK <--
 
     companion object {
         const val MIN_RUNS_FOR_LABEL = 3
+        // KMK --> v0.7.32: D1 — 30-day sliding window
+        private const val RECENT_WINDOW_MS = 30L * 24 * 60 * 60 * 1000
+        // KMK <--
     }
 }
 
@@ -87,7 +133,13 @@ object SourceFitStatsStore {
             "${s.sourceId}$FIELD_SEP${s.runCount}$FIELD_SEP${s.shownCount}$FIELD_SEP" +
                 "${s.noMatchCount}$FIELD_SEP${s.filteredOutCount}$FIELD_SEP${s.errorCount}$FIELD_SEP" +
                 "${s.hiddenByDuplicateCount}$FIELD_SEP${s.totalVisibleCandidates}$FIELD_SEP" +
-                "${s.lastSuccessAt}$FIELD_SEP${s.lastErrorAt}$FIELD_SEP${s.updatedAt}"
+                "${s.lastSuccessAt}$FIELD_SEP${s.lastErrorAt}$FIELD_SEP${s.updatedAt}$FIELD_SEP" +
+                // KMK --> v0.7.32: D1 recent window fields (positions 11-14)
+                "${s.recentRunCount}$FIELD_SEP${s.recentShownCount}$FIELD_SEP" +
+                "${s.recentErrorCount}$FIELD_SEP${s.windowStartAt}$FIELD_SEP" +
+                // KMK --> v0.7.32: D2 top picks contribution count (position 15)
+                "${s.topPicksContributionCount}"
+                // KMK <--
         }
 
     fun parse(value: String): Map<Long, SourceFitStats> {
@@ -110,6 +162,14 @@ object SourceFitStatsStore {
                     lastSuccessAt = parts[8].toLong(),
                     lastErrorAt = parts[9].toLong(),
                     updatedAt = parts[10].toLong(),
+                    // KMK --> v0.7.32: D1 recent window (default 0 for old data without these fields)
+                    recentRunCount = if (parts.size > 11) parts[11].toInt() else 0,
+                    recentShownCount = if (parts.size > 12) parts[12].toInt() else 0,
+                    recentErrorCount = if (parts.size > 13) parts[13].toInt() else 0,
+                    windowStartAt = if (parts.size > 14) parts[14].toLong() else 0L,
+                    // KMK --> v0.7.32: D2 top picks contribution (default 0 for old data)
+                    topPicksContributionCount = if (parts.size > 15) parts[15].toInt() else 0,
+                    // KMK <--
                 )
             }
         }
@@ -121,10 +181,15 @@ object SourceFitStatsStore {
      * Only terminal statuses (Shown, NoMatches, FilteredOut, Error, HiddenByDuplicateHandling)
      * are recorded; Disabled/OutsideAttemptLimit are skipped as they indicate the source was
      * not actually searched this run.
+     * KMK --> v0.7.32: D2 — [topPicksContributors] is the set of source IDs that contributed
+     * to the final Top Picks row; those sources get their [SourceFitStats.topPicksContributionCount] incremented.
      */
     fun mergeRun(
         existing: Map<Long, SourceFitStats>,
         runStatuses: Collection<RecommendationSourceRunStatus>,
+        // KMK --> v0.7.32: D2
+        topPicksContributors: Set<Long> = emptySet(),
+        // KMK <--
     ): Map<Long, SourceFitStats> {
         val result = existing.toMutableMap()
         val now = System.currentTimeMillis()
@@ -145,7 +210,13 @@ object SourceFitStatsStore {
                 lastErrorAt = 0L,
                 updatedAt = now,
             )
-            result[status.sourceId] = current.merge(status, now)
+            result[status.sourceId] = current.merge(
+                status,
+                now,
+                // KMK --> v0.7.32: D2
+                isTopPicksContributor = status.sourceId in topPicksContributors,
+                // KMK <--
+            )
         }
         return result
     }

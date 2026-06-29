@@ -15,7 +15,9 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -242,6 +244,20 @@ private fun PersonalRecommendationsContent(
                     Text(stringResource(KMR.strings.taste_recommendations_empty))
                 }
             } else {
+                // KMK --> v0.7.29: pull-to-refresh support
+                var isRefreshing by remember { mutableStateOf(false) }
+                LaunchedEffect(state.isLoading) {
+                    if (!state.isLoading) isRefreshing = false
+                }
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = {
+                        isRefreshing = true
+                        onRetry()
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                // KMK <--
                 LazyColumn(contentPadding = contentPadding) {
                     // Top Picks row — appears first, derived from all source results
                     if (hasCombined) {
@@ -303,6 +319,9 @@ private fun PersonalRecommendationsContent(
                         }
                     }
                 }
+                // KMK --> v0.7.29
+                }
+                // KMK <--
             }
         }
     }

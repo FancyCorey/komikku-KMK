@@ -69,6 +69,9 @@ class RecommendationsSettingsScreenModel(
     // KMK --> v0.7.26
     private val minChapterCountPref = sourcePreferences.recommendationMinChapterCount()
     // KMK <--
+    // KMK --> v0.7.34: enrichment cap preference
+    private val enrichmentCapPref = sourcePreferences.recommendationEnrichmentCap()
+    // KMK <--
     private val lastSourceStatusesPref = sourcePreferences.recommendationLastSourceRunStatuses()
     // KMK --> v0.7.19
     private val sourceFitStatsPref = sourcePreferences.recommendationSourceFitStats()
@@ -98,6 +101,9 @@ class RecommendationsSettingsScreenModel(
                 hideKnownManga = hideKnownMangaPref.get(),
                 // KMK --> v0.7.26
                 minChapterCount = minChapterCountPref.get(),
+                // KMK <--
+                // KMK --> v0.7.34
+                enrichmentCap = enrichmentCapPref.get(),
                 // KMK <--
                 recommendationLanguages = languages.toImmutableSet(),
                 availableLanguages = availableLangs.toImmutableList(),
@@ -204,6 +210,13 @@ class RecommendationsSettingsScreenModel(
     fun setMinChapterCount(value: Int) {
         minChapterCountPref.set(value)
         mutableState.update { it.copy(minChapterCount = value) }
+    }
+    // KMK <--
+
+    // KMK --> v0.7.34: enrichment cap setter
+    fun setEnrichmentCap(value: Int) {
+        enrichmentCapPref.set(value)
+        mutableState.update { it.copy(enrichmentCap = value) }
     }
     // KMK <--
 
@@ -526,6 +539,9 @@ class RecommendationsSettingsScreenModel(
         val hideKnownManga: Boolean = true,
         // KMK --> v0.7.26
         val minChapterCount: Int = 0,
+        // KMK <--
+        // KMK --> v0.7.34: enrichment cap — number of candidates to enrich per source
+        val enrichmentCap: Int = 5,
         // KMK <--
         val recommendationLanguages: ImmutableSet<String> = persistentSetOf("en"),
         val availableLanguages: ImmutableList<String> = persistentListOf(),

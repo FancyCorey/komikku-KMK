@@ -33,6 +33,14 @@ class TasteRepositoryImpl(
         }
     }
 
+    // KMK --> v0.7.29: reactive Flow for live Loved Manga updates
+    override fun getAllMangaTastesAsFlow(): Flow<List<MangaTaste>> {
+        return handler.subscribeToList {
+            manga_tasteQueries.getAll(mangaTasteMapper)
+        }
+    }
+    // KMK <--
+
     override suspend fun getMangaTaste(source: Long, url: String): MangaTaste? {
         return handler.awaitOneOrNull {
             manga_tasteQueries.getBySourceUrl(source, url, mangaTasteMapper)

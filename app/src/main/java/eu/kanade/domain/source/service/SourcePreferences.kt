@@ -185,6 +185,11 @@ class SourcePreferences(
     fun recommendationMinChapterCount() = preferenceStore.getInt("recommendation_min_chapter_count", 0)
     // KMK <--
 
+    // KMK --> v0.7.34: configurable enrichment cap for For You sources
+    /** Number of candidate manga per source to enrich with full metadata. Default 5; boosted sources get 2×. Max 20. */
+    fun recommendationEnrichmentCap() = preferenceStore.getInt("recommendation_enrichment_cap", 5)
+    // KMK <--
+
     /** Semicolon-separated dismissal keys for non-installed source suggestions. Format: signatureHash|pkgName|sourceId */
     fun dismissedNonInstalledRecommendationSources() = preferenceStore.getString("dismissed_non_installed_rec_sources", "")
 
@@ -214,6 +219,11 @@ class SourcePreferences(
     // KMK --> v0.7.11: source evaluation consent
     /** When true, the user has acknowledged the Source Evaluation pre-run warning. */
     fun sourceEvaluationConsentGiven() = preferenceStore.getBoolean("source_evaluation_consent_given", false)
+    // KMK <--
+
+    // KMK --> v0.7.31: C3 — rated count at the time evaluation was last launched (for profile-changed prompt)
+    /** Total rated manga count when source evaluation was last started. -1 = never run. */
+    fun sourceEvaluationLastRunRatingCount() = preferenceStore.getInt("source_evaluation_last_run_rating_count", -1)
     // KMK <--
 
     // KMK --> SEC-01 v0.7.16: leftover extension detection after process death

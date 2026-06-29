@@ -191,6 +191,9 @@ class SourceEvaluationScreenModel(
         // KMK --> SEC-01 v0.7.16: leftover extension pkg name (process-death survivor, needs manual uninstall)
         val leftoverPkgName: String? = null,
         // KMK <--
+        // KMK --> v0.7.31: C3 — true when profile changed notably since last eval run
+        val profileChangedSinceLastEval: Boolean = false,
+        // KMK <--
     )
 
     // KMK --> v0.6.20: typed management action for confirmation dialogs
@@ -375,10 +378,15 @@ class SourceEvaluationScreenModel(
             try {
                 val allTastes = getMangaTaste.awaitAll()
                 val baseline = sourcePreferences.sourceEvaluationLastReassessmentRatingCount().get()
+                // KMK --> v0.7.31: C3 — detect profile change since last eval run
+                val lastRunCount = sourcePreferences.sourceEvaluationLastRunRatingCount().get()
+                val profileChanged = lastRunCount >= 0 && kotlin.math.abs(allTastes.size - lastRunCount) >= 5
+                // KMK <--
                 mutableState.update {
                     it.copy(
                         currentRatedCount = allTastes.size,
                         reassessmentBaselineCount = baseline,
+                        profileChangedSinceLastEval = profileChanged,
                     )
                 }
             } catch (e: Exception) {
@@ -646,6 +654,10 @@ class SourceEvaluationScreenModel(
             cursor = cursor,
             currentFingerprint = fingerprint,
         )
+        // KMK <--
+        // KMK --> v0.7.31: C3 — persist rated count so we can detect profile changes after this run
+        sourcePreferences.sourceEvaluationLastRunRatingCount().set(s.currentRatedCount)
+        mutableState.update { it.copy(profileChangedSinceLastEval = false) }
         // KMK <--
         // KMK --> v0.6.19: launch as WorkManager foreground job so evaluation continues after leaving screen
         SourceEvaluationJobState.pendingCandidates = slice

@@ -3,6 +3,7 @@ package exh.recs.bestversion
 // KMK --> v0.7.8
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,8 +40,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +89,14 @@ class BestVersionCompareScreen(
         val screenModel = rememberScreenModel { BestVersionCompareScreenModel(originMangaId) }
         val state by screenModel.state.collectAsState()
         // KMK --> v0.7.9: local UI state for fullscreen page preview — does not affect model state
-        var fullscreenPage by remember { mutableStateOf<FullscreenPreviewPage?>(null) }
+        // KMK --> v0.7.33: stored as 3 primitives so rememberSaveable survives rotation
+        var fullscreenPageUrl by rememberSaveable { mutableStateOf<String?>(null) }
+        var fullscreenPageIndex by rememberSaveable { mutableStateOf(-1) }
+        var fullscreenPageTitle by rememberSaveable { mutableStateOf("") }
+        val fullscreenPage: FullscreenPreviewPage? = fullscreenPageUrl?.let {
+            FullscreenPreviewPage(it, fullscreenPageIndex, fullscreenPageTitle)
+        }
+        // KMK <--
         // KMK <--
 
         Scaffold(
@@ -171,7 +182,11 @@ class BestVersionCompareScreen(
                             state = state,
                             onSelectBest = screenModel::selectBestVersion,
                             // KMK --> v0.7.9
-                            onOpenPagePreview = { fullscreenPage = it },
+                            onOpenPagePreview = { p ->
+                                fullscreenPageUrl = p.imageUrl
+                                fullscreenPageIndex = p.pageIndex
+                                fullscreenPageTitle = p.mangaTitle
+                            },
                             // KMK <--
                         )
                     }
@@ -245,7 +260,7 @@ class BestVersionCompareScreen(
         fullscreenPage?.let { page ->
             FullscreenPagePreviewDialog(
                 page = page,
-                onDismiss = { fullscreenPage = null },
+                onDismiss = { fullscreenPageUrl = null },
             )
         }
         // KMK <--
@@ -437,6 +452,9 @@ private fun ComparePreviewContent(
         items(state.selectedCandidates, key = { "${it.source}|${it.url}" }) { manga ->
             val key = MangaIdentityKey(manga.source, manga.url)
             val previewState = state.candidatePreviews[key]
+            // KMK --> v0.7.33: per-thumbnail ContentScale.Fit toggle state (keyed per candidate)
+            val fitModes = remember { mutableStateMapOf<Int, Boolean>() }
+            // KMK <--
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -463,30 +481,57 @@ private fun ComparePreviewContent(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 items(previewState.pages, key = { it.index }) { page ->
-                                    AsyncImage(
-                                        model = page.imageUrl,
-                                        contentDescription = stringResource(
-                                            KMR.strings.best_version_preview_page_content_description,
-                                            page.index + 1,
-                                            manga.title,
-                                        ),
+                                    // KMK --> v0.7.33: per-thumbnail Fit/Crop toggle
+                                    val fitMode = fitModes.getOrDefault(page.index, false)
+                                    Box(
                                         modifier = Modifier
                                             .height(180.dp)
-                                            .aspectRatio(0.7f)
-                                            .clip(MaterialTheme.shapes.small)
-                                            // KMK --> v0.7.9: tap to open fullscreen preview
-                                            .clickable {
-                                                onOpenPagePreview(
-                                                    FullscreenPreviewPage(
-                                                        imageUrl = page.imageUrl,
-                                                        pageIndex = page.index,
-                                                        mangaTitle = manga.title,
-                                                    ),
-                                                )
-                                            },
+                                            .aspectRatio(0.7f),
+                                    ) {
+                                    // KMK <--
+                                        AsyncImage(
+                                            model = page.imageUrl,
+                                            contentDescription = stringResource(
+                                                KMR.strings.best_version_preview_page_content_description,
+                                                page.index + 1,
+                                                manga.title,
+                                            ),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(MaterialTheme.shapes.small)
+                                                // KMK --> v0.7.9: tap to open fullscreen preview
+                                                .clickable {
+                                                    onOpenPagePreview(
+                                                        FullscreenPreviewPage(
+                                                            imageUrl = page.imageUrl,
+                                                            pageIndex = page.index,
+                                                            mangaTitle = manga.title,
+                                                        ),
+                                                    )
+                                                },
+                                            // KMK <--
+                                            // KMK --> v0.7.33: toggle between Crop and Fit
+                                            contentScale = if (fitMode) ContentScale.Fit else ContentScale.Crop,
+                                            // KMK <--
+                                        )
+                                        // KMK --> v0.7.33: Fit/Crop icon toggle overlay
+                                        IconButton(
+                                            onClick = { fitModes[page.index] = !fitMode },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .size(28.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.AspectRatio,
+                                                contentDescription = null,
+                                                tint = Color.White.copy(alpha = 0.85f),
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
                                         // KMK <--
-                                        contentScale = ContentScale.Crop,
-                                    )
+                                    // KMK --> v0.7.33
+                                    }
+                                    // KMK <--
                                 }
                             }
                         }
@@ -578,6 +623,13 @@ private fun FullscreenPagePreviewDialog(
                             offset = if (scale > 1f) offset + pan else Offset.Zero
                         }
                     }
+                    // KMK --> v0.7.33: tap to close when not zoomed in
+                    .pointerInput("tap") {
+                        detectTapGestures {
+                            if (scale <= 1f) onDismiss()
+                        }
+                    }
+                    // KMK <--
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale

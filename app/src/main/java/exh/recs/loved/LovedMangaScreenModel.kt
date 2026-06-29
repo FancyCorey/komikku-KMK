@@ -4,6 +4,7 @@ package exh.recs.loved
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
@@ -42,12 +43,15 @@ class LovedMangaScreenModel(
 ) : StateScreenModel<LovedMangaScreenModel.State>(State.Loading) {
 
     init {
-        screenModelScope.launch { load() }
+        // KMK --> v0.7.29: subscribe to live updates so the screen reacts to taste changes without manual refresh
+        screenModelScope.launch {
+            getMangaTaste.subscribeAll().collectLatest { allTastes -> load(allTastes) }
+        }
+        // KMK <--
     }
 
-    private suspend fun load() {
+    private suspend fun load(allTastes: List<MangaTaste>) {
         runCatching {
-            val allTastes = getMangaTaste.awaitAll()
             // KMK --> v0.7.3: fail-safe source id lookup; empty set → hides all rather than showing uninstalled entries
             val installedSourceIds: Set<Long> = runCatching {
                 sourceManager.getVisibleCatalogueSources().map { it.id }.toSet()

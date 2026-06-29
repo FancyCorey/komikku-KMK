@@ -319,7 +319,17 @@ class BrowsePersonalRecommendationsScreenModel(
             )
             // KMK --> v0.7.19: merge this run into rolling source fit stats
             val currentFitStats = SourceFitStatsStore.parse(sourcePreferences.recommendationSourceFitStats().get())
-            val updatedFitStats = SourceFitStatsStore.mergeRun(currentFitStats, allStatuses.values)
+            // KMK --> v0.7.32: D2 — collect source IDs that ended up in the final Top Picks row
+            val topPicksContributors = (mutableState.value.combinedResult as? PersonalRecommendationResult.Success)
+                ?.result?.map { it.manga.source }?.toSet() ?: emptySet()
+            // KMK <--
+            val updatedFitStats = SourceFitStatsStore.mergeRun(
+                currentFitStats,
+                allStatuses.values,
+                // KMK --> v0.7.32: D2
+                topPicksContributors,
+                // KMK <--
+            )
             sourcePreferences.recommendationSourceFitStats().set(SourceFitStatsStore.serialize(updatedFitStats.values))
             // KMK <--
         }
@@ -369,7 +379,10 @@ class BrowsePersonalRecommendationsScreenModel(
         }
 
         val displayLimit = if (isBoosted) BOOSTED_RESULTS_PER_SOURCE else NORMAL_RESULTS_PER_SOURCE
-        val enrichLimit = if (isBoosted) BOOSTED_ENRICHMENT_LIMIT else NORMAL_ENRICHMENT_LIMIT
+        // KMK --> v0.7.34: enrichment cap is user-configurable; boosted sources always get 2×
+        val normalEnrichCap = sourcePreferences.recommendationEnrichmentCap().get().coerceIn(1, 20)
+        val enrichLimit = if (isBoosted) normalEnrichCap * 2 else normalEnrichCap
+        // KMK <--
         val rawCap = displayLimit * RAW_CANDIDATE_MULTIPLIER
         val minUseful = if (isBoosted) {
             RecommendationQueryPlanner.MIN_USEFUL_RESULTS_BOOSTED

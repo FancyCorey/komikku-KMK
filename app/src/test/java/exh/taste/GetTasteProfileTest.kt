@@ -162,6 +162,9 @@ class GetTasteProfileTest {
         override suspend fun getMangaTaste(mangaId: Long) = mangaTastes.find { it.mangaId == mangaId }
         override fun getMangaTasteAsFlow(mangaId: Long): Flow<MangaTaste?> = flowOf(mangaTastes.find { it.mangaId == mangaId })
         override suspend fun getAllMangaTastes() = mangaTastes
+        // KMK --> v0.7.29
+        override fun getAllMangaTastesAsFlow(): Flow<List<MangaTaste>> = flowOf(mangaTastes)
+        // KMK <--
         override suspend fun upsertMangaTaste(taste: MangaTaste) {}
         override suspend fun deleteMangaTaste(mangaId: Long) {}
         override suspend fun deleteAllMangaTastes() {}
