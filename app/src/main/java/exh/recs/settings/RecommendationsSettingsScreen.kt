@@ -422,6 +422,18 @@ class RecommendationsSettingsScreen : Screen() {
                 item(key = "management_header") {
                     SectionHeader(stringResource(KMR.strings.rec_settings_management_header))
                 }
+                // KMK --> v0.7.27: Best Version history entry point
+                item(key = "quality_signal_history_entry") {
+                    TextButton(
+                        onClick = { navigator.push(QualitySignalHistoryScreen()) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = MaterialTheme.padding.medium),
+                    ) {
+                        Text(stringResource(KMR.strings.quality_signal_history_open_button))
+                    }
+                }
+                // KMK <--
                 // KMK <--
                 // Sources To Try section
                 item(key = "sources_to_try_header") {

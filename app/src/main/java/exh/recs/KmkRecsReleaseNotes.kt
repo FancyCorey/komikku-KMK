@@ -2,10 +2,14 @@ package exh.recs
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 726
-    const val VERSION_NAME = "KMK-Recs v0.7.26"
+    const val VERSION_CODE = 727
+    const val VERSION_NAME = "KMK-Recs v0.7.27"
 
     val MARKDOWN = """
+        ## KMK-Recs v0.7.27
+
+        - Recommendation Settings: new "Best Version History" browser in the Management section. Shows all past Best Version decisions grouped by the origin manga, with the selected source name, selected title (when different from origin), chapter used, and date confirmed. Each record can be deleted individually (removes only the quality signal — does not affect library entries, ratings, or cross-source links). The action bar has a "Clear all history" button with a confirmation dialog.
+
         ## KMK-Recs v0.7.26
 
         - Recommendation Settings: new "Minimum chapter count" filter in the Ratings & Known Manga section. When set above 0, For You hides results whose locally-known chapter count is below the threshold (options: Off, 5, 10, 20, 50). Manga with no locally-known chapters (untracked) are never filtered so you don't miss newly-released series. Changing the setting invalidates the For You cache so results refresh on the next load.

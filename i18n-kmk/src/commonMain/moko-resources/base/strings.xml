@@ -729,4 +729,16 @@
     <!-- KMK --> <string name="rec_min_chapter_count">Minimum chapter count</string>
     <!-- KMK --> <string name="rec_min_chapter_count_summary">Hide For You results whose locally-known chapter count is below this. Unknown counts are not filtered.</string>
     <!-- KMK --> <string name="rec_min_chapter_count_off">Off</string>
+    <!-- KMK v0.7.27: Best Version quality signal history -->
+    <!-- KMK --> <string name="quality_signal_history_title">Best Version History</string>
+    <!-- KMK --> <string name="quality_signal_history_open_button">View Best Version history</string>
+    <!-- KMK --> <string name="quality_signal_history_empty">No Best Version decisions recorded yet. Use "Find best version" from a manga\'s rating menu to start comparing sources.</string>
+    <!-- KMK --> <string name="quality_signal_history_selected_source">Best source: %1$s</string>
+    <!-- KMK --> <string name="quality_signal_history_selected_title">Selected: %1$s</string>
+    <!-- KMK --> <string name="quality_signal_history_chapter">Chapter: %1$s</string>
+    <!-- KMK --> <string name="quality_signal_history_delete_record">Remove this decision</string>
+    <!-- KMK --> <string name="quality_signal_history_delete_all_button">Clear all history</string>
+    <!-- KMK --> <string name="quality_signal_history_delete_all_title">Clear Best Version history?</string>
+    <!-- KMK --> <string name="quality_signal_history_delete_all_message">This removes all stored Best Version decisions. It does not affect ratings, library entries, or cross-source links.</string>
+    <!-- KMK --> <string name="quality_signal_history_record_count">%1$d decision(s)</string>
 </resources>

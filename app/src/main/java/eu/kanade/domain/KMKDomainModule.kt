@@ -38,6 +38,7 @@ import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetChapterCountsByMangaIds
 import tachiyomi.domain.taste.interactor.GetKnownRecommendationMangaIds
+import tachiyomi.domain.taste.interactor.DeleteMangaSourceQualitySignal
 import tachiyomi.domain.taste.interactor.GetMangaSourceQualitySignals
 import tachiyomi.domain.taste.interactor.GetMangaTaste
 import tachiyomi.domain.taste.interactor.GetRecommendationCache
@@ -121,6 +122,9 @@ class KMKDomainModule : InjektModule {
         addSingletonFactory<MangaSourceQualitySignalRepository> { MangaSourceQualitySignalRepositoryImpl(get()) }
         addFactory { GetMangaSourceQualitySignals(get()) }
         addFactory { UpsertMangaSourceQualitySignal(get()) }
+        // KMK --> v0.7.27
+        addFactory { DeleteMangaSourceQualitySignal(get()) }
+        // KMK <--
         // KMK <--
 
         addSingletonFactory<RecommendationCacheRepository> { RecommendationCacheRepositoryImpl(get()) }
