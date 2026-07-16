@@ -1,4 +1,10 @@
-# KMK-Recs Deferred Feature Master Implementation Plan
+﻿# KMK-Recs Deferred Feature Master Implementation Plan
+
+**Historical note (added v0.7.46):** this was a deferred feature master plan from an earlier phase. All
+7 phases it describes are complete (see line 9 below). Current open work lives in `NEXT_WORK.md` and
+the focused plans created after v0.7.45 (`docs/community/KMK_V0_7_FINAL_PUBLIC_RELEASE_READINESS_PLAN.md`,
+`docs/community/KMK_V0_7_46_PUBLIC_POLISH_CLOSEOUT_PLAN.md`). Do not treat this file as an active
+roadmap or revive its old v0.6.20-baseline phase instructions.
 
 Date: 2026-06-20
 
@@ -6,7 +12,7 @@ Status: master planning document. Do not implement until the user approves a spe
 
 Current documented baseline: `KMK-Recs v0.6.20`
 
-Last updated: 2026-06-28 — Phase 1 → v0.7.18; Phase 6 → v0.7.19; Phase 7 → v0.7.20. All 7 phases complete.
+Last updated: 2026-06-28 â€” Phase 1 â†’ v0.7.18; Phase 6 â†’ v0.7.19; Phase 7 â†’ v0.7.20. All 7 phases complete.
 
 ## Purpose
 
@@ -229,7 +235,7 @@ Manual verification:
 
 ## Phase 2: Alternate-Title Cross-Extension Matching
 
-**STATUS: COMPLETE (shipped in a prior version before this plan was written). `CrossExtensionMatchQueryPlanner` produces up to 3 deduplicated queries — title, ogTitle, bracket-stripped variant.**
+**STATUS: COMPLETE (shipped in a prior version before this plan was written). `CrossExtensionMatchQueryPlanner` produces up to 3 deduplicated queries â€” title, ogTitle, bracket-stripped variant.**
 
 Recommended version: `KMK-Recs v0.5.2`
 
@@ -661,7 +667,7 @@ In Recommendation Settings or Source Evaluation:
 
 **STATUS: COMPLETE as KMK-Recs v0.7.20 (2026-06-28). See `KMK_RECS_V0_7_20_PHASE7_BLOCKED_TAGS_TESTS_IMPLEMENTATION.md`.**
 
-Query-time blocked tag exclusion: code was already in place from v0.7.0 (`GenreFilterMapper.buildSearch()` `blockedGenres` parameter + `STATE_EXCLUDE` for TriState). 7 unit tests added in v0.7.20. Local Source: keep-excluded decision documented — no coding required.
+Query-time blocked tag exclusion: code was already in place from v0.7.0 (`GenreFilterMapper.buildSearch()` `blockedGenres` parameter + `STATE_EXCLUDE` for TriState). 7 unit tests added in v0.7.20. Local Source: keep-excluded decision documented â€” no coding required.
 
 Recommended version: `KMK-Recs v0.6.23`
 
@@ -865,4 +871,5 @@ Each report must include:
 ## Summary Recommendation
 
 This work can be planned as one roadmap, but implementation should happen in large coherent phases, not as one uncontrolled patch. The next best phase is Phase 1 because it improves reliability and management around Source Evaluation before adding more identity/linking features.
+
 

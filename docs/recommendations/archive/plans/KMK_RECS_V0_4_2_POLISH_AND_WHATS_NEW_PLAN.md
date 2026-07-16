@@ -1,4 +1,4 @@
-# KMK-Recs v0.4.2 Polish And What's New Implementation Plan
+﻿# KMK-Recs v0.4.2 Polish And What's New Implementation Plan
 
 Date: 2026-06-14
 
@@ -534,3 +534,4 @@ Implement KMK-Recs v0.4.2 as a focused correctness/polish pass:
 - update recommendation docs and versioning after implementation.
 
 Keep everything local, bounded, fail-open, and aligned with existing Komikku/KMK patterns.
+

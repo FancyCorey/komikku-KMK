@@ -18,6 +18,8 @@ fun KmkRecsWhatsNewDialog(
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = { Text(text = stringResource(KMR.strings.kmk_recs_updated, KmkRecsReleaseNotes.VERSION_NAME)) },
+        // KMK v0.8.1-fix2: short body so the dialog isn't just a bare title + two buttons
+        text = { Text(text = stringResource(KMR.strings.kmk_recs_updated_body)) },
         confirmButton = {
             TextButton(onClick = onDismissRequest) {
                 Text(text = stringResource(MR.strings.action_ok))

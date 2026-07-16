@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.13: Source Evaluation Private Install Verification And Cleanup Plan
+﻿# KMK-Recs v0.6.13: Source Evaluation Private Install Verification And Cleanup Plan
 
 Date: 2026-06-19
 
@@ -571,3 +571,4 @@ Proceed with verification-first implementation.
 Based on the current code, Private appears architecturally designed for this exact temporary extension workflow: download extension APK, copy it into Komikku private extension storage, load its sources, and delete the private file afterward. But because the user is seeing uninstall prompts, the implementation must prove whether Source Evaluation is actually using Private and whether cleanup is hitting the private-only path.
 
 If verification confirms Private works, make Private the clear recommended Source Evaluation mode and demote Shizuku to fallback/advanced use. If verification disproves it, document the actual limitation and adjust the future design accordingly.
+

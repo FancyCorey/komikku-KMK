@@ -1,4 +1,4 @@
-# Komikku KMK Experimental Fork
+﻿# Komikku KMK Experimental Fork
 
 Status: public README draft. This is not the final release README.
 
@@ -10,8 +10,29 @@ This fork is not an official Komikku release. It is not currently upstream-ready
 
 - Upstream/current baseline used for consolidation: Komikku `v1.13.6`
 - Official repository: `https://github.com/komikku-app/komikku`
-- Local KMK-Recs documented version: `KMK-Recs v0.7.15`
-- OCR documented line: `KMK-OCR v0.1.x`
+- Local KMK-Recs documented version: `KMK-Recs v0.7.46`
+- OCR: included in the main KMK-Recs build line as of this version (see "KMK-OCR" below) -- not a separate APK
+
+## Build Lines And Package IDs
+
+Two distinct APK lines exist:
+
+| APK line | Package ID | Purpose |
+|---|---|---|
+| Personal / update-style | `app.komikku` (release) / `app.komikku.dev` (debug) | User's personal install -- replaces/updates over existing Komikku |
+| Public test | `app.komikku.kmk` | Community/Reddit sharing -- installs **beside** official Komikku and beside the personal build |
+
+**Important:** The public test APK (`app.komikku.kmk`) is a **separate app** from official Komikku. It does not share app data. You must export a backup from your existing Komikku installation and restore it into Komikku KMK if you want to transfer your library or settings.
+
+Build command for the public test APK:
+```
+.\gradlew.bat :app:assembleKmkPublicTest
+```
+Output: `app/build/outputs/apk/kmkPublicTest/app-universal-kmkPublicTest.apk`
+
+Recommended public filename: `Komikku-KMK-PublicTest-v1.13.6-kmk.7.46-debug.apk`
+
+This is a **debug-signed public test build**, not a release-signed official build -- see "Development Status" below.
 
 ## Release Lines
 
@@ -23,23 +44,27 @@ The KMK-Recs line contains the recommendation-related features:
 - manga Love / Like / Dislike ratings,
 - tag preferences,
 - Top Picks,
-- source priority,
-- source status diagnostics,
+- source priority with rolling fit stats and "suggest order" button,
+- source status diagnostics with last-checked timestamps,
 - Sources To Try,
 - source like/dislike,
-- cross-extension matching,
-- Loved Manga,
-- Best Version comparison,
+- cross-extension matching with link group management,
+- Loved Manga with live updates and duplicate grouping,
+- Best Version comparison with fullscreen preview,
+- Best Version History browser,
+- backup and restore for Seen manga dismissals,
 - recommendation bundle import/export,
+- minimum chapter count filter,
+- configurable enrichment cap,
 - Source Evaluation experiments.
 
 ### KMK-OCR
 
-The KMK-OCR line is separate and experimental.
+As of `KMK-Recs v0.7.45`+, OCR is **built into the same APK line as KMK-Recs** -- it is not a separate download. Every `KMK-Recs` build (personal and public test) includes OCR. There is no separate `KMK-OCR`-only APK.
 
 OCR reads downloaded manga pages, extracts recognized text, stores that text locally, and lets the user search downloaded pages by text. OCR can increase APK size and may use significant CPU, memory, battery, and storage.
 
-OCR should not be treated as part of the normal KMK-Recs line unless explicitly stated in a specific APK release.
+OCR text never leaves the device: it is not included in backups, sync, recommendation bundle export, or diagnostics. See "OCR Downloaded Text Search" below for details and deletion controls.
 
 ## Main Features
 
@@ -149,6 +174,8 @@ Privacy note:
 ## Known Limitations
 
 - This fork is not upstream-ready.
+- The **personal/update-style** build (`app.komikku` release / `app.komikku.dev` debug) intentionally shares its package ID with upstream Komikku -- that is what lets it update/replace an existing Komikku install, the same way any other Komikku fork/build would. This is by design, not a bug.
+- This is **not** a blocker for community distribution: the separate **public test** build (`app.komikku.kmk`, built via `:app:assembleKmkPublicTest`) exists specifically so the fork can be shared and installed side-by-side with official Komikku without overwriting it. Use the public test build, not the personal build, for community/Reddit sharing.
 - Source Evaluation is experimental and can be source/device dependent.
 - OCR can be slow and resource-intensive.
 - Cross-extension identity matching is uncertain and requires user confirmation.
@@ -160,7 +187,8 @@ Privacy note:
 
 Before installing or testing:
 
-- back up your Komikku data,
+- back up your Komikku data before installing any KMK build,
+- if testing the public test APK (`app.komikku.kmk`): it installs as a separate app and does not share data with official Komikku -- restore your backup inside Komikku KMK to transfer your library,
 - understand whether you are installing the KMK-Recs or KMK-OCR line,
 - avoid running Source Evaluation unless you understand temporary extension installation,
 - do not import recommendation bundles from untrusted people without previewing them,
@@ -216,3 +244,4 @@ The active goal is to:
 - prepare honest public docs.
 
 Until that is complete, this should be treated as an experimental fork.
+

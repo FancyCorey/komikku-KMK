@@ -38,9 +38,22 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderSchedule
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleEntitlement
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleResolver
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleResult
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleStore
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerClock
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerCoordinator
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerGracePolicy
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerSession
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerStateCodec
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerWarningPolicy
+import eu.kanade.tachiyomi.ui.reader.timer.SystemReaderTimerClock
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
@@ -61,6 +74,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -101,6 +115,7 @@ import tachiyomi.domain.manga.interactor.GetMergedMangaById
 import tachiyomi.domain.manga.interactor.GetMergedReferencesById
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -138,6 +153,13 @@ class ReaderViewModel @JvmOverloads constructor(
     private val getMergedReferencesById: GetMergedReferencesById = Injekt.get(),
     private val getMergedChaptersByMangaId: GetMergedChaptersByMangaId = Injekt.get(),
     // SY <--
+    // KMK v0.8.4: test-only clock override for the reading timer; production always uses SystemReaderTimerClock
+    private val readerTimerClockOverride: ReaderTimerClock? = null,
+    // KMK v0.8.8: chapter-completion rating prompt — reuses the exact same exclusive-rating mutation
+    // and confirmed-group lookup MangaScreenModel/LovedMangaScreenModel already use; no parallel path.
+    private val setMangaTasteInteractor: tachiyomi.domain.taste.interactor.SetMangaTaste = Injekt.get(),
+    private val getCrossSourceMangaLinks: tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks = Injekt.get(),
+    private val sourcePreferencesForRatingPrompt: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -172,6 +194,264 @@ class ReaderViewModel @JvmOverloads constructor(
             savedState["page_index"] = value
             field = value
         }
+
+    // KMK v0.8.4 -->
+    /**
+     * Active-reading timer. Lifecycle-bound to this ViewModel (survives rotation the same way
+     * [chapterId]/[chapterPageIndex] do) and persisted as individual primitive [SavedStateHandle]
+     * entries via [ReaderTimerStateCodec] — never as a single Parcelable/Serializable object.
+     * Counts only while [ReaderTimerSession.isActivelyCounting] AND the reader is foregrounded; see
+     * `onReaderForeground`/`onReaderBackground`, called from ReaderActivity's lifecycle callbacks.
+     */
+    private val timerCoordinator = ReaderTimerCoordinator(
+        scope = viewModelScope,
+        clock = readerTimerClockOverride ?: SystemReaderTimerClock,
+        initialSession = ReaderTimerStateCodec.decode(
+            phase = savedState.get<String>(ReaderTimerStateCodec.KEY_PHASE),
+            totalMs = savedState.get<Long>(ReaderTimerStateCodec.KEY_TOTAL_MS),
+            elapsedMs = savedState.get<Long>(ReaderTimerStateCodec.KEY_ELAPSED_MS),
+            warningMinutesCsv = savedState.get<String>(ReaderTimerStateCodec.KEY_WARNING_MINUTES),
+            finishChapter = savedState.get<Boolean>(ReaderTimerStateCodec.KEY_FINISH_CHAPTER),
+            allowExtra = savedState.get<Boolean>(ReaderTimerStateCodec.KEY_ALLOW_EXTRA),
+            firedWarningsCsv = savedState.get<String>(ReaderTimerStateCodec.KEY_FIRED_WARNINGS),
+            extraUsed = savedState.get<Boolean>(ReaderTimerStateCodec.KEY_EXTRA_USED),
+            pausedFrom = savedState.get<String>(ReaderTimerStateCodec.KEY_PAUSED_FROM),
+            pauseReason = savedState.get<String>(ReaderTimerStateCodec.KEY_PAUSE_REASON),
+        ),
+        onPersist = { session ->
+            val encoded = ReaderTimerStateCodec.encode(session)
+            savedState[ReaderTimerStateCodec.KEY_PHASE] = encoded.phase
+            savedState[ReaderTimerStateCodec.KEY_TOTAL_MS] = encoded.totalMs
+            savedState[ReaderTimerStateCodec.KEY_ELAPSED_MS] = encoded.elapsedMs
+            savedState[ReaderTimerStateCodec.KEY_WARNING_MINUTES] = encoded.warningMinutesCsv
+            savedState[ReaderTimerStateCodec.KEY_FINISH_CHAPTER] = encoded.finishChapter
+            savedState[ReaderTimerStateCodec.KEY_ALLOW_EXTRA] = encoded.allowExtra
+            savedState[ReaderTimerStateCodec.KEY_FIRED_WARNINGS] = encoded.firedWarningsCsv
+            savedState[ReaderTimerStateCodec.KEY_EXTRA_USED] = encoded.extraUsed
+            savedState[ReaderTimerStateCodec.KEY_PAUSED_FROM] = encoded.pausedFrom
+            savedState[ReaderTimerStateCodec.KEY_PAUSE_REASON] = encoded.pauseReason
+        },
+    )
+    val timerState: StateFlow<ReaderTimerSession> = timerCoordinator.state
+
+    // KMK v0.8.4: set false immediately before a previous-chapter or manual dialog chapter change,
+    // read (and reset to the natural-progression default) by the chapter-identity subscription
+    // above. loadNextChapter() never sets this — an automatic forward transition is always natural.
+    @Volatile
+    private var pendingChapterChangeIsNatural = true
+
+    fun startTimer(durationMs: Long, warningPolicy: ReaderTimerWarningPolicy, gracePolicy: ReaderTimerGracePolicy) {
+        timerCoordinator.start(durationMs, warningPolicy, gracePolicy)
+    }
+    fun pauseTimer() = timerCoordinator.pause()
+    fun resumeTimer() = timerCoordinator.resume()
+    fun resetTimer() = timerCoordinator.reset()
+    fun stopTimer() = timerCoordinator.stop()
+
+    /** Called from ReaderActivity.onResume. Idempotent. */
+    fun onReaderForeground() {
+        timerCoordinator.onReaderForeground()
+        scheduleGraceCoordinator.onReaderForeground() // KMK v0.8.5
+    }
+
+    /** Called from ReaderActivity.onPause/onStop. Idempotent. */
+    fun onReaderBackground() {
+        timerCoordinator.onReaderBackground()
+        scheduleGraceCoordinator.onReaderBackground() // KMK v0.8.5
+    }
+    // KMK <--
+
+    // KMK v0.8.5 -->
+    /**
+     * Optional reading schedule enforcement. Deliberately a *second, independent* instance of the
+     * same [ReaderTimerCoordinator]/[ReaderTimerReducer] used by the manual timer above — not a
+     * schedule branch added to the reducer itself. When the schedule becomes RESTRICTED, this
+     * coordinator is started with a zero-length duration and `finishCurrentChapter = true`; its
+     * very first tick immediately (sub-second) drives it into CHAPTER_GRACE using the reducer's
+     * already-tested, unmodified grace logic — the current chapter is never interrupted, and the
+     * session ends non-destructively at the next chapter boundary. Kept fully separate from the
+     * manual timer's session/state so a schedule restriction can never stomp a user-started timer,
+     * and vice versa. Not persisted across process death (see the implementation report's "Known
+     * limitations" — an interrupted grace period is safely re-derived by re-evaluating the schedule
+     * on the next `evaluateSchedule()` call rather than restored verbatim).
+     */
+    private val scheduleGraceCoordinator = ReaderTimerCoordinator(
+        scope = viewModelScope,
+        clock = readerTimerClockOverride ?: SystemReaderTimerClock,
+    )
+    val scheduleGraceState: StateFlow<ReaderTimerSession> = scheduleGraceCoordinator.state
+
+    // KMK v0.8.7-fix1 -->
+    /**
+     * This reader session's [ReaderScheduleEntitlement]. Owned directly by this ViewModel instance
+     * (not the coordinator, not any persisted store) so it survives rotation/recreation exactly the
+     * way this ViewModel itself does, but is never reused across a genuinely new reader session (a
+     * new manga, or the same manga reopened after fully leaving the reader, always gets a fresh
+     * `ReaderViewModel` and therefore starts back at [ReaderScheduleEntitlement.NotStarted]).
+     *
+     * Replaces the old, buggy `restricted && coordinator.state.value.phase == IDLE` check — see
+     * [ReaderScheduleEntitlement]'s class doc for the confirmed defect this fixes.
+     */
+    @Volatile
+    private var scheduleEntitlement: ReaderScheduleEntitlement = ReaderScheduleEntitlement.NotStarted
+
+    private val mutableIsReadingBlockedBySchedule = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** True when this reader session must not display readable chapter content — see [ReaderScheduleEntitlement.blocksReading]. */
+    val isReadingBlockedBySchedule: StateFlow<Boolean> = mutableIsReadingBlockedBySchedule.asStateFlow()
+
+    /**
+     * Re-evaluates the reading schedule against the current local time. Call from
+     * ReaderActivity.onCreate/onResume and whenever the schedule settings change.
+     *
+     * Idempotent: calling this repeatedly (rotation, background/foreground, resume) with an
+     * unchanged schedule result is a no-op on [scheduleEntitlement] beyond the pure transition table
+     * in [ReaderScheduleEntitlement.next] already being stable for a repeated identical input, and
+     * never starts a second grace timer (the underlying [scheduleGraceCoordinator] only ever starts
+     * once per grace period — see its own idempotency guarantees).
+     */
+    fun evaluateSchedule() {
+        val schedule = ReaderSchedule(
+            enabled = readerPreferences.readingScheduleEnabled().get(),
+            mode = ReaderScheduleStore.parseMode(readerPreferences.readingScheduleMode().get()),
+            windows = ReaderScheduleStore.parseWindows(readerPreferences.readingScheduleWindows().get()),
+        )
+        val result = ReaderScheduleResolver.resolve(schedule, java.time.LocalDateTime.now())
+        val graceConsumed = scheduleGraceCoordinator.state.value.phase == ReaderTimerPhase.EXPIRED
+        val previousEntitlement = scheduleEntitlement
+        val nextEntitlement = ReaderScheduleEntitlement.next(previousEntitlement, result, graceConsumed)
+        scheduleEntitlement = nextEntitlement
+
+        // KMK v0.8.7-fix1: only OpenedWhileAllowed -> RESTRICTED (a session that was already active
+        // and allowed) may start the chapter-grace coordinator. A session that starts at
+        // OpenedWhileRestricted never starts it — it is blocked immediately with no grace at all.
+        if (previousEntitlement == ReaderScheduleEntitlement.OpenedWhileAllowed && nextEntitlement == ReaderScheduleEntitlement.CurrentChapterGrace) {
+            if (scheduleGraceCoordinator.state.value.phase == ReaderTimerPhase.IDLE) {
+                scheduleGraceCoordinator.start(0L, ReaderTimerWarningPolicy.NONE, ReaderTimerGracePolicy(finishCurrentChapter = true, allowExtraChapter = false))
+            }
+        } else if (nextEntitlement == ReaderScheduleEntitlement.OpenedWhileAllowed && scheduleGraceCoordinator.state.value.phase != ReaderTimerPhase.IDLE) {
+            // Schedule reverted to ALLOWED/DISABLED before grace ever started for this session (only
+            // reachable from OpenedWhileAllowed -> OpenedWhileAllowed, i.e. never actually entered
+            // grace) — reset defensively in case a prior evaluation left a stale coordinator state.
+            scheduleGraceCoordinator.reset()
+        }
+
+        mutableIsReadingBlockedBySchedule.value = nextEntitlement.blocksReading
+    }
+
+    /**
+     * The real enforcement gate — checked directly by every chapter-loading entry point
+     * ([init], [loadAdjacent]), not just the visual overlay in `ReaderActivity`. The overlay alone
+     * only *covers* already-loaded content; without this check a manual chapter-dialog selection or
+     * a deep-link-triggered initial load could still load a new chapter underneath it.
+     *
+     * `ReaderActivity.onCreate` calls [evaluateSchedule] before [init], so [scheduleEntitlement] is
+     * always resolved before this is ever consulted — never defaults to "not blocked" by omission.
+     */
+    private fun isChapterNavigationBlockedBySchedule(): Boolean = scheduleEntitlement.blocksReading
+    // KMK <--
+
+    // KMK v0.8.8 -->
+    /**
+     * Dedup guard: the chapter id the completion prompt has already been shown (or evaluated and
+     * intentionally not shown) for. `updateChapterProgress` can run more than once for the same
+     * chapter/page (e.g. page-status recomposition), and process-restore/rotation replays the same
+     * chapter identity — this ensures the prompt is offered at most once per genuine completion,
+     * never twice for the same one.
+     */
+    @Volatile
+    private var ratingPromptEvaluatedForChapterId: Long? = null
+
+    private suspend fun maybeShowChapterCompletionRatingPrompt(
+        readerChapter: ReaderChapter,
+        pageIndex: Int,
+        hasExtraPage: Boolean,
+        isErrorPage: Boolean,
+    ) {
+        val chapterId = readerChapter.chapter.id ?: return
+        if (ratingPromptEvaluatedForChapterId == chapterId) return
+        ratingPromptEvaluatedForChapterId = chapterId
+
+        // KMK v0.8.7-fix1: the prompt must never itself become a schedule-bypass vector — if this
+        // session is currently blocked from reading, do not offer a rating prompt either. Reuses the
+        // exact same gate every chapter-navigation entry point already checks, rather than adding a
+        // second, possibly-divergent check.
+        if (isChapterNavigationBlockedBySchedule()) return
+
+        val isGenuine = LatestChapterCompletionPolicy.isGenuineLatestChapterCompletion(
+            pageIndex = pageIndex,
+            lastPageIndex = readerChapter.pages?.lastIndex,
+            hasExtraPage = hasExtraPage,
+            hasNextChapter = state.value.viewerChapters?.nextChapter != null,
+            isErrorPage = isErrorPage,
+        )
+        if (!isGenuine) return
+
+        val mangaId = manga?.id ?: return
+        withUIContext {
+            mutableState.update { it.copy(dialog = Dialog.ChapterCompletionRating(mangaId)) }
+        }
+    }
+
+    /** Commits [rating] via the same exclusive-rating mutation MangaScreenModel/LovedMangaScreenModel already use — no parallel rating path. */
+    fun rateFromChapterCompletionPrompt(mangaId: Long, rating: MangaRating) {
+        val currentManga = manga
+        viewModelScope.launchNonCancellable {
+            if (currentManga != null && currentManga.id == mangaId) {
+                setMangaTasteInteractor.await(
+                    mangaId = currentManga.id,
+                    source = currentManga.source,
+                    url = currentManga.url,
+                    title = currentManga.title,
+                    rating = rating,
+                )
+                // KMK v0.8.8: offer step 2 (rate confirmed other versions) only when a confirmed
+                // cross-source group actually exists for this manga — reusing the same
+                // GetCrossSourceMangaLinks lookup LovedMangaScreenModel already relies on for
+                // hasConfirmedGroup, not a new duplicate check.
+                val hasConfirmedGroup = getCrossSourceMangaLinks.awaitBySourceUrl(currentManga.source, currentManga.url) != null
+                withUIContext {
+                    mutableState.update {
+                        it.copy(
+                            dialog = if (hasConfirmedGroup) {
+                                Dialog.ChapterCompletionRatingGroupOffer(mangaId, rating.value)
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+            } else {
+                withUIContext { mutableState.update { it.copy(dialog = null) } }
+            }
+        }
+    }
+
+    /** Reuses the same "not interested" store the rated-manga item menu already writes to (SeenRecommendationMangaStore), not a new mechanism. */
+    fun markNotInterestedFromChapterCompletionPrompt(mangaId: Long) {
+        val currentManga = manga
+        viewModelScope.launchNonCancellable {
+            if (currentManga != null && currentManga.id == mangaId) {
+                runCatching {
+                    val key = exh.recs.SeenMangaKey(currentManga.source, currentManga.url)
+                    val current = exh.recs.SeenRecommendationMangaStore.parse(
+                        sourcePreferencesForRatingPrompt.seenRecommendationMangaKeys().get(),
+                    )
+                    val updated = exh.recs.SeenRecommendationMangaStore.add(current, key)
+                    sourcePreferencesForRatingPrompt.seenRecommendationMangaKeys().set(
+                        exh.recs.SeenRecommendationMangaStore.serialize(updated),
+                    )
+                }
+            }
+            withUIContext { mutableState.update { it.copy(dialog = null) } }
+        }
+    }
+
+    /** Dismisses the prompt (either step) without rating. Retains any rating already committed in step 1 — this only ever clears the dialog, never undoes a prior successful setMangaTasteInteractor.await(...) call. */
+    fun dismissChapterCompletionPrompt() {
+        mutableState.update { it.copy(dialog = null) }
+    }
+    // KMK <--
 
     // KMK -->
     fun handleDownloadAction(chapter: Chapter, action: ChapterDownloadAction) {
@@ -364,6 +644,18 @@ class ReaderViewModel @JvmOverloads constructor(
                     currentChapter.requestedPage = currentChapter.chapter.last_page_read
                 }
                 chapterId = currentChapter.chapter.id!!
+                // KMK v0.8.4: every real chapter-identity change feeds the reading timer's
+                // chapter-grace boundary detection. Only an automatic forward "next chapter"
+                // transition (pendingChapterChangeIsNatural) may consume the one-extra-chapter
+                // allowance — previous-chapter navigation and manual ChapterListDialog selection
+                // still end/reset grace but must never grant the extra (see loadNextChapter/
+                // loadPreviousChapter/loadNewChapterFromDialog, which set this flag before calling
+                // loadAdjacent()).
+                val isNatural = pendingChapterChangeIsNatural
+                pendingChapterChangeIsNatural = true // reset to the safe default for the next change
+                timerCoordinator.onChapterChanged(chapterId.toString(), isNatural)
+                // KMK v0.8.5: the schedule's independent grace coordinator gets the same signal.
+                scheduleGraceCoordinator.onChapterChanged(chapterId.toString(), isNatural)
             }
             .launchIn(viewModelScope)
 
@@ -394,6 +686,12 @@ class ReaderViewModel @JvmOverloads constructor(
                 downloadManager.addDownloadsToStartOfQueue(listOf(it))
             }
         }
+        // KMK v0.8.7-fix1: reader close/destroy clears this session's schedule entitlement. Since a
+        // new reader always gets a brand-new ReaderViewModel instance (starting at NotStarted), this
+        // is mostly documentation of intent rather than something a later call can observe — but it
+        // guarantees this instance can never be reused to grant a second allowance if some future
+        // caller path were to hold a reference to it past onCleared.
+        scheduleEntitlement = ReaderScheduleEntitlement.Closed
     }
 
     /**
@@ -481,13 +779,21 @@ class ReaderViewModel @JvmOverloads constructor(
                         // SY <--
                     )
 
-                    loadChapter(
-                        loader!!,
-                        chapterList.first { chapterId == it.chapter.id },
-                        // SY -->
-                        page,
-                        // SY <--
-                    )
+                    // KMK v0.8.7-fix1: real enforcement, not just the overlay — a reader session
+                    // whose very first schedule evaluation was RESTRICTED (or whose grace has
+                    // already been consumed, e.g. a saved/restored session) must never load actual
+                    // chapter content, including via a deep link straight into a specific chapter.
+                    // The full-screen overlay in ReaderActivity still renders on top for the visible
+                    // "blocked" UX; this is what makes that block real underneath it.
+                    if (!isChapterNavigationBlockedBySchedule()) {
+                        loadChapter(
+                            loader!!,
+                            chapterList.first { chapterId == it.chapter.id },
+                            // SY -->
+                            page,
+                            // SY <--
+                        )
+                    }
                     Result.success(true)
                 } else {
                     // Unlikely but okay
@@ -567,6 +873,19 @@ class ReaderViewModel @JvmOverloads constructor(
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
 
+        // KMK v0.8.7-fix1: this is the *natural* forward-paging transition (the viewer auto-advancing
+        // past the last page into the next chapter) — it calls loadChapter directly, bypassing
+        // loadAdjacent's gate, so it needs its own check. This is exactly the "no extra chapter"
+        // case the plan calls out: the schedule-grace coordinator is started with
+        // allowExtraChapter = false, so once the current chapter (the one grace was granted for)
+        // finishes, natural forward progression into a *new* chapter must be blocked exactly like a
+        // manual selection would be — blocksReading only becomes true once grace is actually
+        // consumed, so this does not interrupt the in-progress chapter grace was granted for.
+        if (isChapterNavigationBlockedBySchedule()) {
+            logcat { "Blocked natural chapter transition by reading schedule: ${chapter.chapter.url}" }
+            return
+        }
+
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
 
@@ -587,6 +906,8 @@ class ReaderViewModel @JvmOverloads constructor(
     fun loadNewChapterFromDialog(chapter: Chapter) {
         viewModelScope.launchIO {
             val newChapter = chapterList.firstOrNull { it.chapter.id == chapter.id } ?: return@launchIO
+            // KMK v0.8.4: manual selection must never consume the reading timer's one-extra-chapter allowance.
+            pendingChapterChangeIsNatural = false
             loadAdjacent(newChapter)
         }
     }
@@ -596,6 +917,18 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private suspend fun loadAdjacent(chapter: ReaderChapter) {
         val loader = loader ?: return
+
+        // KMK v0.8.7-fix1: real enforcement gate, checked directly here rather than only relying on
+        // the visual overlay — this is the single call site both natural forward/backward viewer
+        // navigation (loadNewChapter) and manual chapter-dialog selection (loadNewChapterFromDialog)
+        // funnel through, so gating it here covers both without duplicating the check. A blocked
+        // session (opened while restricted, or its chapter-grace allowance already consumed) can
+        // never load a *different* chapter — this does not affect an in-progress CurrentChapterGrace
+        // session finishing the chapter it is already on, since blocksReading is false during grace.
+        if (isChapterNavigationBlockedBySchedule()) {
+            logcat { "Blocked adjacent chapter load by reading schedule: ${chapter.chapter.url}" }
+            return
+        }
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
@@ -837,6 +1170,11 @@ class ReaderViewModel @JvmOverloads constructor(
                     SyncDataJob.startNow(Injekt.get<Application>())
                 }
                 // SY <--
+
+                // KMK v0.8.8: chapter-completion rating prompt — only on genuine completion of the
+                // LATEST available chapter, using the exact same last-page check above, never a
+                // string comparison of chapter names/numbers. See maybeShowChapterCompletionRatingPrompt.
+                maybeShowChapterCompletionRatingPrompt(readerChapter, pageIndex, hasExtraPage, page.status is Page.State.Error)
             }
 
             updateChapter.await(
@@ -929,6 +1267,8 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     suspend fun loadPreviousChapter() {
         val prevChapter = state.value.viewerChapters?.prevChapter ?: return
+        // KMK v0.8.4: going backward must never consume the reading timer's one-extra-chapter allowance.
+        pendingChapterChangeIsNatural = false
         loadAdjacent(prevChapter)
     }
 
@@ -1172,6 +1512,11 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun openSettingsDialog() {
         mutableState.update { it.copy(dialog = Dialog.Settings) }
+    }
+
+    // KMK v0.8.4
+    fun openReadingTimerDialog() {
+        mutableState.update { it.copy(dialog = Dialog.ReadingTimer) }
     }
 
     fun closeDialog() {
@@ -1527,6 +1872,19 @@ class ReaderViewModel @JvmOverloads constructor(
         data object RetryAllHelp : Dialog
         data object BoostPageHelp : Dialog
         // SY <--
+
+        // KMK v0.8.4
+        data object ReadingTimer : Dialog
+
+        // KMK v0.8.8: chapter-completion rating prompt. mangaId only — never a screen or
+        // match-mode object — matching this class's existing precedent (every other Dialog case is
+        // either a primitive-only data class or a data object; none hold Parcelable-unsafe types
+        // either, since Dialog is never routed through SavedStateHandle in this codebase).
+        data class ChapterCompletionRating(val mangaId: Long) : Dialog
+
+        // KMK v0.8.8: step 2 — offered only after a rating was just committed AND a confirmed
+        // cross-source group exists for this manga.
+        data class ChapterCompletionRatingGroupOffer(val mangaId: Long, val ratingValue: Int) : Dialog
     }
 
     sealed interface Event {

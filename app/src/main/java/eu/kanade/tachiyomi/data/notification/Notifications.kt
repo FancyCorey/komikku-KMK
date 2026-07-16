@@ -108,6 +108,12 @@ object Notifications {
     const val ID_SOURCE_EVALUATION_COMPLETE = -802
     // KMK <--
 
+    // KMK --> v0.7.43: For You search compatibility background job — separate from Source Evaluation
+    const val CHANNEL_SOURCE_RECOMMENDATION_QUALITY = "source_recommendation_quality_channel"
+    const val ID_SOURCE_RECOMMENDATION_QUALITY_PROGRESS = -803
+    const val ID_SOURCE_RECOMMENDATION_QUALITY_COMPLETE = -804
+    // KMK <--
+
     // KMK --> OCR v0.1.0: OCR indexing background job
     const val CHANNEL_OCR_INDEXING = "ocr_indexing_channel"
     const val ID_OCR_INDEX_PROGRESS = -901
@@ -225,6 +231,12 @@ object Notifications {
                 // KMK --> v0.6.19
                 buildNotificationChannel(CHANNEL_SOURCE_EVALUATION, IMPORTANCE_LOW) {
                     setName(context.stringResource(KMR.strings.source_evaluation_job_notification_title))
+                    setShowBadge(false)
+                },
+                // KMK <--
+                // KMK --> v0.7.43
+                buildNotificationChannel(CHANNEL_SOURCE_RECOMMENDATION_QUALITY, IMPORTANCE_LOW) {
+                    setName(context.stringResource(KMR.strings.source_recommendation_quality_job_notification_title))
                     setShowBadge(false)
                 },
                 // KMK <--

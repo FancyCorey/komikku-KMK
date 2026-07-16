@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.backup.restore.restorers
 
 // KMK -->
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
@@ -11,6 +12,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import exh.recs.SeenRecommendationMangaStore
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetMangaSourceQualitySignals
@@ -21,6 +23,7 @@ import tachiyomi.domain.taste.interactor.SetRecommendationSourceEnabled
 import tachiyomi.domain.taste.interactor.UpsertCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.UpsertMangaSourceQualitySignal
 import tachiyomi.domain.taste.interactor.UpsertTagAlias
+import tachiyomi.domain.taste.model.CrossSourceGroupPrimary
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.domain.taste.model.MangaSourceQualitySignal
@@ -45,6 +48,11 @@ class TasteRestorer(
     // KMK --> v0.7.0: Phase 4
     private val getCrossSourceMangaLinks: GetCrossSourceMangaLinks = Injekt.get(),
     private val upsertCrossSourceMangaLinks: UpsertCrossSourceMangaLinks = Injekt.get(),
+    // KMK <--
+    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group. Restoring writes
+    // through tasteRepository directly (not SetCrossSourceGroupPrimary, which always stamps "now")
+    // so the backup's own updatedAt is preserved.
+    private val getCrossSourceGroupPrimary: GetCrossSourceGroupPrimary = Injekt.get(),
     // KMK <--
     // KMK --> v0.7.16: Best Version quality signals
     private val getMangaSourceQualitySignals: GetMangaSourceQualitySignals = Injekt.get(),
@@ -262,6 +270,46 @@ class TasteRestorer(
                 if (toUpsert.isNotEmpty()) upsertCrossSourceMangaLinks.await(toUpsert)
             } catch (e: Exception) {
                 errors.add("Cross-source link group '$groupId': ${e.message}")
+            }
+        }
+        return errors
+    }
+    // KMK <--
+
+    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group. Restored after
+    // restoreCrossSourceMangaLinks() (call-site ordering in BackupRestorer) so the group links exist
+    // first; a primary pointing at a link that failed to restore is still harmless — the display
+    // layer already fails open to the grouper's own choice when a stored primary is missing
+    // (RatedGroupPrimaryResolver).
+    suspend fun restoreCrossSourceGroupPrimaries(backupPrimaries: List<BackupCrossSourceGroupPrimary>): List<String> {
+        if (backupPrimaries.isEmpty()) return emptyList()
+        val errors = mutableListOf<String>()
+        // Merge by groupId: a backup may (incorrectly) contain more than one row per group — keep
+        // only the newest per group before comparing against the existing stored primary.
+        val byGroup = backupPrimaries
+            .filter { CrossSourceGroupPrimaryRestorePolicy.isValid(it) }
+            .groupBy { it.groupId }
+        for ((groupId, candidates) in byGroup) {
+            try {
+                val newest = CrossSourceGroupPrimaryRestorePolicy.newestOf(candidates)
+                val existing = getCrossSourceGroupPrimary.awaitByGroupId(groupId)
+                if (CrossSourceGroupPrimaryRestorePolicy.shouldRestore(existing?.updatedAt, newest.updatedAt)) {
+                    // Write directly through the repository (not SetCrossSourceGroupPrimary, which
+                    // always stamps "now") so the backup's own updatedAt is preserved — matching
+                    // restoreCrossSourceMangaLinks' pattern above and keeping future sync-merge
+                    // comparisons meaningful.
+                    tasteRepository.upsertCrossSourceGroupPrimary(
+                        CrossSourceGroupPrimary(
+                            groupId = newest.groupId,
+                            source = newest.source,
+                            url = newest.url,
+                            updatedAt = newest.updatedAt,
+                        ),
+                    )
+                }
+                // else: existing primary is newer — keep it, per plan §B3.
+            } catch (e: Exception) {
+                errors.add("Primary version for group '$groupId': ${e.message}")
             }
         }
         return errors

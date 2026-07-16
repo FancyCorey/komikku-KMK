@@ -1,8 +1,8 @@
-# KMK-Recs v0.7.9 Best Version Dialog and Preview Polish Implementation
+﻿# KMK-Recs v0.7.9 Best Version Dialog and Preview Polish Implementation
 
 Date: 2026-06-22
 
-Feature version / build label: KMK-Recs v0.7.9 — VERSION_CODE 790
+Feature version / build label: KMK-Recs v0.7.9 â€” VERSION_CODE 790
 
 User-approved scope: implement `docs/recommendations/KMK_RECS_V0_7_9_BEST_VERSION_DIALOG_AND_PREVIEW_POLISH_PLAN.md` strictly as scoped.
 
@@ -72,7 +72,7 @@ Preserves: `step`, `candidates`, `selectedKeys`, `candidateChapters`, `candidate
 
 Tapping a sampled thumbnail in `ComparePreviewContent` opens `FullscreenPagePreviewDialog`.
 
-The dialog uses `DialogProperties(usePlatformDefaultWidth = false)` to fill the screen. Image uses `ContentScale.Fit` for full-page view. Pinch-to-zoom (max 5×) and pan are implemented with `detectTransformGestures`. When scale returns to 1×, offset is reset to `Offset.Zero`. The close icon (top-right, `Icons.Outlined.Close`) and Android back button both call `onDismiss = { fullscreenPage = null }`.
+The dialog uses `DialogProperties(usePlatformDefaultWidth = false)` to fill the screen. Image uses `ContentScale.Fit` for full-page view. Pinch-to-zoom (max 5Ã—) and pan are implemented with `detectTransformGestures`. When scale returns to 1Ã—, offset is reset to `Offset.Zero`. The close icon (top-right, `Icons.Outlined.Close`) and Android back button both call `onDismiss = { fullscreenPage = null }`.
 
 `fullscreenPage` is local UI state (`var fullscreenPage by remember { mutableStateOf<FullscreenPreviewPage?>(null) }`). Closing fullscreen does not modify the screen model; all comparison state remains unchanged.
 
@@ -88,11 +88,11 @@ Preference `same_manga_match_preselect_results` defaults `true` (in `SourcePrefe
 | `BestVersionPageSamplerTest` | 11 | PASSED |
 | `BestVersionChapterMatcherTest` | 11 | PASSED |
 | `SameMangaMatchSettingsTest` | 18 | PASSED |
-| `:app:testDebugUnitTest` (full suite) | — | BUILD SUCCESSFUL |
+| `:app:testDebugUnitTest` (full suite) | â€” | BUILD SUCCESSFUL |
 
 ## APK / Build Output
 
-- Build: `:app:assembleDebug` — BUILD SUCCESSFUL in 1m 3s
+- Build: `:app:assembleDebug` â€” BUILD SUCCESSFUL in 1m 3s
 - Source APK: `app/build/outputs/apk/debug/app-universal-debug.apk`
 - Handoff APK: `C:\Users\USER\Downloads\Komikku\Komikku-v1.13.6-kmk.7.9-debug.apk`
 - Installs over v0.7.8 APK (VERSION_CODE 790 > 780)
@@ -102,7 +102,7 @@ Preference `same_manga_match_preselect_results` defaults `true` (in `SourcePrefe
 - **Fullscreen state loss on rotation/process death**: `fullscreenPage` is local UI state and resets on configuration changes. User reopens fullscreen manually.
 - **Thumbnail ContentScale.Crop**: Compact thumbnails use crop for space efficiency. For some source art styles this may crop important details. Deferred.
 - **Tap-to-close in fullscreen**: Not implemented. Single tap conflicts with pan gesture detection. Users close via the close icon or back button.
-- **No tap-to-dismiss at scale 1×**: Same conflict reason. Explicitly deferred in favor of stable gesture handling.
+- **No tap-to-dismiss at scale 1Ã—**: Same conflict reason. Explicitly deferred in favor of stable gesture handling.
 
 ## Deviations from Approved Plan
 
@@ -113,3 +113,4 @@ Preference `same_manga_match_preselect_results` defaults `true` (in `SourcePrefe
 ## Follow-Up Recommendations
 
 See `NEXT_WORK.md` for the deferred items from this pass (fullscreen state restoration, thumbnail ContentScale option, tap-to-close).
+

@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.14 Recommendation UX Formatting And Settings Consolidation Plan
+﻿# KMK-Recs v0.7.14 Recommendation UX Formatting And Settings Consolidation Plan
 
 Date: 2026-06-27
 
@@ -491,4 +491,5 @@ Do not implement in v0.7.14:
 - cross-source link group management UI unless it is already almost complete and trivial to expose.
 - backup/restore changes.
 - iOS work.
+
 

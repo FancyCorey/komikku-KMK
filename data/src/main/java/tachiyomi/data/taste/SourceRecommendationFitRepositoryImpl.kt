@@ -55,6 +55,10 @@ class SourceRecommendationFitRepositoryImpl(
                 verdict = fit.verdict.serialized,
                 reasonsJson = fit.reasonsJson,
                 errorMessage = fit.errorMessage,
+                // KMK --> v0.7.42
+                evaluationVersion = fit.evaluationVersion.toLong(),
+                expiresAt = fit.expiresAt,
+                // KMK <--
             )
         }
     }
@@ -97,6 +101,10 @@ private val sourceRecommendationFitMapper = {
         verdict: String,
         reasonsJson: String,
         errorMessage: String?,
+        // KMK --> v0.7.42
+        evaluationVersion: Long,
+        expiresAt: Long?,
+    // KMK <--
     ->
     SourceRecommendationFit(
         fitKey = fitKey,
@@ -123,6 +131,10 @@ private val sourceRecommendationFitMapper = {
         verdict = RecommendationQualityVerdict.fromSerialized(verdict),
         reasonsJson = reasonsJson,
         errorMessage = errorMessage,
+        // KMK --> v0.7.42
+        evaluationVersion = evaluationVersion.toInt(),
+        expiresAt = expiresAt,
+        // KMK <--
     )
 }
 // KMK <--

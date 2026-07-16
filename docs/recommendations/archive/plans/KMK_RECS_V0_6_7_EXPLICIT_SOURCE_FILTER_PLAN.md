@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.7 Explicit Porn/Hentai Source Filter Plan
+﻿# KMK-Recs v0.6.7 Explicit Porn/Hentai Source Filter Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -694,4 +694,5 @@ This implementation is complete only when:
 - Existing tests pass or failures are documented.
 - Documentation and release notes are updated to `KMK-Recs v0.6.7`.
 - A debug APK is produced using current versioning rules.
+
 

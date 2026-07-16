@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.1: Cross-Extension Match State And Seen Menu Fix — Implementation Report
+﻿# KMK-Recs v0.7.1: Cross-Extension Match State And Seen Menu Fix â€” Implementation Report
 
 Date: 2026-06-20
 
@@ -66,9 +66,9 @@ The `&& !isSeen` guard incorrectly hid "Seen other versions" after the current m
 
 All other KMK recs screens were verified safe:
 
-- `LovedMangaScreen : Screen()` — no constructor args
-- `SourceEvaluationScreen : Screen()` — no constructor args
-- `TopPicksScreen(mangaIds: ArrayList<Long>, isPartial: Boolean)` — both are serializable types
+- `LovedMangaScreen : Screen()` â€” no constructor args
+- `SourceEvaluationScreen : Screen()` â€” no constructor args
+- `TopPicksScreen(mangaIds: ArrayList<Long>, isPartial: Boolean)` â€” both are serializable types
 
 No changes needed to adjacent screens.
 
@@ -76,20 +76,20 @@ No changes needed to adjacent screens.
 
 ### New Files
 
-- `app/src/main/java/exh/recs/matching/CrossExtensionMatchRouteMode.kt` — internal object with `RATING`, `MARK_SEEN`, `FAVORITE` key constants; `fromMode()` and `toMode()` conversion functions
-- `app/src/test/java/exh/recs/matching/CrossExtensionMatchRouteModeTest.kt` — 8 unit tests for route helper
+- `app/src/main/java/exh/recs/matching/CrossExtensionMatchRouteMode.kt` â€” internal object with `RATING`, `MARK_SEEN`, `FAVORITE` key constants; `fromMode()` and `toMode()` conversion functions
+- `app/src/test/java/exh/recs/matching/CrossExtensionMatchRouteModeTest.kt` â€” 8 unit tests for route helper
 
 ### Modified Files
 
-- `app/src/main/java/exh/recs/matching/CrossExtensionMatchScreen.kt` — primitive constructor, `fromMode()` companion factory, safe error state on invalid mode, `remember(modeKey, ratingValue)` mode reconstruction
-- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreen.kt` — 3 call sites updated to `CrossExtensionMatchScreen.fromMode(originMangaId, mode)` (Rating, Favorite, MarkSeen)
-- `app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt` — removed `&& !isSeen` from Seen other versions guard
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE 700 → 710, VERSION_NAME → "KMK-Recs v0.7.1", added v0.7.1 What's New entries
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — added `rec_match_mode_invalid` string
-- `docs/recommendations/CURRENT_STATE.md` — updated version, CrossExtension state-save note, isSeen visibility note, test count
-- `docs/recommendations/NEXT_WORK.md` — marked v0.7.1 bug section as resolved
-- `docs/recommendations/README.md` — plan row updated; implementation report added
-- `RECOMMENDATION_VERSIONING.md` — v0.7.1 entry added
+- `app/src/main/java/exh/recs/matching/CrossExtensionMatchScreen.kt` â€” primitive constructor, `fromMode()` companion factory, safe error state on invalid mode, `remember(modeKey, ratingValue)` mode reconstruction
+- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreen.kt` â€” 3 call sites updated to `CrossExtensionMatchScreen.fromMode(originMangaId, mode)` (Rating, Favorite, MarkSeen)
+- `app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt` â€” removed `&& !isSeen` from Seen other versions guard
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE 700 â†’ 710, VERSION_NAME â†’ "KMK-Recs v0.7.1", added v0.7.1 What's New entries
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” added `rec_match_mode_invalid` string
+- `docs/recommendations/CURRENT_STATE.md` â€” updated version, CrossExtension state-save note, isSeen visibility note, test count
+- `docs/recommendations/NEXT_WORK.md` â€” marked v0.7.1 bug section as resolved
+- `docs/recommendations/README.md` â€” plan row updated; implementation report added
+- `RECOMMENDATION_VERSIONING.md` â€” v0.7.1 entry added
 
 ## Tests Run
 
@@ -118,6 +118,7 @@ CrossExtensionMatchSelectionTest (10 tests)                                    a
 
 ## Known Limitations and Follow-Ups
 
-- If `originMangaId` is invalid (manga was deleted), the screen model `init` block calls `getMangaInteractor.await(originMangaId)` which returns `null`, and the search is never started. The screen will show an infinite loading spinner (`state.total == 0` → `CircularProgressIndicator`). This pre-existed v0.7.1 and is not introduced by this fix. Flagged for a future pass if it becomes user-visible.
+- If `originMangaId` is invalid (manga was deleted), the screen model `init` block calls `getMangaInteractor.await(originMangaId)` which returns `null`, and the search is never started. The screen will show an infinite loading spinner (`state.total == 0` â†’ `CircularProgressIndicator`). This pre-existed v0.7.1 and is not introduced by this fix. Flagged for a future pass if it becomes user-visible.
 - Backup/restore for seen entries remains deferred.
 - Cross-source link groups remain deferred.
+

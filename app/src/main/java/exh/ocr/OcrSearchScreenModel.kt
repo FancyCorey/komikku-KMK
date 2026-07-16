@@ -33,7 +33,9 @@ class OcrSearchScreenModel(
         val showIndexAllConfirm: Boolean = false,
         val showForceReindexConfirm: Boolean = false,
         val maxPages: Int = 0,
-        val errorMessage: String? = null,
+        // KMK v0.7.46: typed key instead of raw exception text — OcrSearchScreen maps this to a
+        // KMR string at render time.
+        val errorKey: OcrErrorKey? = null,
     )
 
     private var searchJob: Job? = null
@@ -84,7 +86,7 @@ class OcrSearchScreenModel(
                 }
                 mutableState.update { it.copy(results = results, isSearching = false) }
             } catch (e: Exception) {
-                mutableState.update { it.copy(isSearching = false, errorMessage = e.message) }
+                mutableState.update { it.copy(isSearching = false, errorKey = OcrErrorClassifier.classify(e)) }
             }
         }
     }
@@ -161,7 +163,7 @@ class OcrSearchScreenModel(
                     )
                 }
             } catch (e: Exception) {
-                mutableState.update { it.copy(errorMessage = e.message) }
+                mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }
         }
     }
@@ -172,13 +174,50 @@ class OcrSearchScreenModel(
                 repository.deleteOldEngineRows(engineVersion)
                 refreshStats()
             } catch (e: Exception) {
-                mutableState.update { it.copy(errorMessage = e.message) }
+                mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }
         }
     }
 
+    // KMK --> v0.7.46 Phase 3: per-manga/per-chapter OCR deletion, reachable from the result row menu
+    fun deleteOcrForManga(mangaId: Long) {
+        screenModelScope.launchIO {
+            try {
+                repository.deleteByManga(mangaId)
+                mutableState.update { it.copy(results = it.results.filterNot { r -> r.mangaId == mangaId }) }
+                refreshStats()
+            } catch (e: Exception) {
+                mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
+            }
+        }
+    }
+
+    fun deleteOcrForChapter(chapterId: Long) {
+        screenModelScope.launchIO {
+            try {
+                repository.deleteByChapter(chapterId)
+                mutableState.update { it.copy(results = it.results.filterNot { r -> r.chapterId == chapterId }) }
+                refreshStats()
+            } catch (e: Exception) {
+                mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
+            }
+        }
+    }
+
+    fun clearEmptyAndFailed() {
+        screenModelScope.launchIO {
+            try {
+                repository.deleteEmptyAndFailed()
+                refreshStats()
+            } catch (e: Exception) {
+                mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
+            }
+        }
+    }
+    // KMK <--
+
     fun clearError() {
-        mutableState.update { it.copy(errorMessage = null) }
+        mutableState.update { it.copy(errorKey = null) }
     }
 }
 

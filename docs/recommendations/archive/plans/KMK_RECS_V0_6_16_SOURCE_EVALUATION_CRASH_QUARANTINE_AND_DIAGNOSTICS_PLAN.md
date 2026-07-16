@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.16: Source Evaluation Crash Quarantine and Diagnostics Plan
+﻿# KMK-Recs v0.6.16: Source Evaluation Crash Quarantine and Diagnostics Plan
 
 Date: 2026-06-20
 
@@ -915,3 +915,4 @@ Mitigation:
 Implement v0.6.16 as the next patch before doing more source discovery or scoring work.
 
 The provided log proves Source Evaluation can execute third-party extension code that kills the whole Komikku process. Since this is not catchable with normal Kotlin error handling, the app needs persistent crash recovery and quarantine around the extension currently being probed. Diagnostics should be included in the same APK so future failures can be diagnosed without guessing.
+

@@ -66,6 +66,7 @@ import eu.kanade.presentation.components.UpdatingBannerBackgroundColor
 import eu.kanade.presentation.more.settings.screen.ConfigureExhDialog
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen.Companion.getReleaseNotes
 import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewDialog
+import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewPolicy
 import eu.kanade.presentation.more.settings.screen.about.WhatsNewDialog
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
@@ -430,7 +431,12 @@ class MainActivity : BaseActivity() {
                 0,
             )
             var showKmkChangelog by remember {
-                mutableStateOf(KmkRecsReleaseNotes.VERSION_CODE > kmkRecsLastSeenVersion.get())
+                mutableStateOf(
+                    KmkRecsWhatsNewPolicy.hasUnseenChangelog(
+                        currentVersionCode = KmkRecsReleaseNotes.VERSION_CODE,
+                        lastSeenVersionCode = kmkRecsLastSeenVersion.get(),
+                    ),
+                )
             }
             // KMK <--
 
@@ -464,16 +470,21 @@ class MainActivity : BaseActivity() {
                     },
                 )
                 // KMK <--
-                // KMK -->
-            } else if (showKmkChangelog) {
+                // KMK --> v0.8.1-fix2: the normal Komikku changelog dialog takes priority within
+                // this launch — while showChangelog is true, shouldShowKmkDialog() always returns
+                // false, so the KMK dialog stays pending (not shown, not marked seen) rather than
+                // stacking both dialogs. Once showChangelog flips to false (dismissed/opened above),
+                // this branch is re-evaluated on the next recomposition and the KMK dialog shows
+                // then, if it still has unseen content. See KmkRecsWhatsNewPolicy's KDoc.
+            } else if (KmkRecsWhatsNewPolicy.shouldShowKmkDialog(showChangelog, showKmkChangelog)) {
                 KmkRecsWhatsNewDialog(
                     onDismissRequest = {
                         showKmkChangelog = false
-                        kmkRecsLastSeenVersion.set(KmkRecsReleaseNotes.VERSION_CODE)
+                        kmkRecsLastSeenVersion.set(KmkRecsWhatsNewPolicy.seenVersionCodeOnAcknowledge(KmkRecsReleaseNotes.VERSION_CODE))
                     },
                     onOpenWhatsNew = {
                         showKmkChangelog = false
-                        kmkRecsLastSeenVersion.set(KmkRecsReleaseNotes.VERSION_CODE)
+                        kmkRecsLastSeenVersion.set(KmkRecsWhatsNewPolicy.seenVersionCodeOnAcknowledge(KmkRecsReleaseNotes.VERSION_CODE))
                         navigator?.push(KmkRecsWhatsNewScreen())
                     },
                 )
@@ -697,6 +708,24 @@ class MainActivity : BaseActivity() {
             Constants.OPEN_SOURCE_EVALUATION -> {
                 navigator.popUntilRoot()
                 navigator.push(SourceEvaluationScreen())
+                null
+            }
+            // KMK v0.8.8: chapter-completion rating prompt's "rate other versions" step. Only
+            // primitives travel through the Intent (manga id + rating int) — the actual
+            // CrossExtensionMatchScreen/CrossExtensionMatchMode objects are constructed fresh here,
+            // never serialized. Reuses the exact same CrossExtensionMatchScreen.fromMode(...) entry
+            // point RatedMangaScreen's item menu already uses for "Find Other Versions".
+            Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING -> {
+                val mangaId = intent.extras?.getLong(Constants.CROSS_EXTENSION_MATCH_MANGA_ID_EXTRA) ?: return false
+                val ratingValue = intent.extras?.getInt(Constants.CROSS_EXTENSION_MATCH_RATING_EXTRA) ?: return false
+                val rating = tachiyomi.domain.taste.model.MangaRating.fromValue(ratingValue) ?: return false
+                navigator.popUntilRoot()
+                navigator.push(
+                    exh.recs.matching.CrossExtensionMatchScreen.fromMode(
+                        mangaId,
+                        exh.recs.matching.CrossExtensionMatchMode.Rating(rating),
+                    ),
+                )
                 null
             }
             // KMK OCR -->

@@ -39,6 +39,14 @@ object SourceEvaluationJobState {
     var pendingAllCandidates: List<EvaluationCandidate>? = null
     // KMK <--
 
+    // KMK --> v0.8.1-fix3: distinguishes which continuation queue/cursor slot this run belongs to,
+    // so a stale-reassessment batch does not overwrite (or get overwritten by) the normal
+    // unassessed-queue cursor. See SOURCE_EVALUATION_CONTINUATION_FIX_PLAN.
+    /** True when the pending/active run is a stale/outdated reassessment batch, not the normal unassessed queue. */
+    @Volatile
+    var pendingIsStaleRun: Boolean = false
+    // KMK <--
+
     fun reset() {
         pendingCandidates = null
         pendingOptions = null
@@ -47,6 +55,9 @@ object SourceEvaluationJobState {
         // KMK --> v0.7.6
         pendingCursorFingerprint = null
         pendingAllCandidates = null
+        // KMK <--
+        // KMK --> v0.8.1-fix3
+        pendingIsStaleRun = false
         // KMK <--
     }
 }

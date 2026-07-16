@@ -1,8 +1,15 @@
 ﻿# KMK Fork Community Consolidation Phases
 
-Date: 2026-06-26
+Date: 2026-06-26 (updated 2026-06-29 -- v0.7.34 reconciliation note added)
 
 Status: master phased consolidation plan. This document organizes the cleanup and community-readiness work. It does not approve code changes by itself.
+
+**2026-06-29 update:** Phases 0-7 were completed through approximately v0.7.20. A reconciliation and publishing-readiness audit was performed on 2026-06-29 to bring all documentation current with code through KMK-Recs v0.7.34. See:
+- `docs/community/KMK_FULL_RECONCILIATION_AUDIT.md` -- full audit findings
+- `docs/community/KMK_RECONCILIATION_AND_PUBLISHING_READINESS_IMPLEMENTATION_PLAN.md` -- reconciliation implementation plan
+- `docs/recommendations/CURRENT_STATE.md` -- now reflects v0.7.34
+
+Current private beta readiness as of 2026-06-29: applicationId is `app.komikku` (same as upstream) -- this is a blocker for community distribution unless changed. All documentation, tests, and code are in the best state since the project began.
 
 Related audit:
 
@@ -335,7 +342,7 @@ Acceptance criteria after eventual implementation:
 
 ## Phase 6 - Recommendation Core And UX Consolidation
 
-Status: mostly implemented through KMK-Recs v0.7.16. Settings reorganization, terminology cleanup, Loved Manga sort/no-duplicates feedback, Source Evaluation evidence/verdict i18n, Best Version cancel/fullscreen checks, and quality-signal backup/sync are complete. Remaining items are tracked in `docs/recommendations/NEXT_WORK.md`, primarily link-group management UI, live Loved Manga updates, and further source-evaluation hardening.
+Status: implemented and reconciled through KMK-Recs v0.7.34 as of 2026-06-29. Settings reorganization, terminology cleanup, Loved Manga sort/no-duplicates feedback, Source Evaluation evidence/verdict i18n, Best Version cancel/fullscreen checks, quality-signal backup/sync, link-group management UI, live Loved Manga updates, Source Evaluation polish, and the v0.7.29-v0.7.34 polish phases are documented. Remaining open items are tracked in `docs/recommendations/NEXT_WORK.md`.
 
 Goal:
 
@@ -693,6 +700,7 @@ Before making conclusions, Claude must identify what baseline it used:
 - official/current Komikku reference if local evidence is insufficient.
 
 If Claude cannot determine the exact upstream baseline, it must say so clearly and proceed by comparing KMK-marked and newly added fork files against the nearest local Komikku/Mihon/TachiyomiSY patterns. Do not narrow the audit to only the latest KMK version unless the user explicitly asks for that.
+
 
 
 

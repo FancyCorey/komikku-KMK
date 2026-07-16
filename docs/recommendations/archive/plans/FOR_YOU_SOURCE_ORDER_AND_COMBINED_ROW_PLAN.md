@@ -1,4 +1,4 @@
-# For You Source Order And Combined Row Implementation Plan
+﻿# For You Source Order And Combined Row Implementation Plan
 
 Date: 2026-06-14
 
@@ -580,3 +580,4 @@ That implementation note must include:
 - Do not include real Local Source unless separately approved.
 - Do not merge different manga only because their titles are similar.
 - Do not remove the existing manga-detail recommendation system.
+

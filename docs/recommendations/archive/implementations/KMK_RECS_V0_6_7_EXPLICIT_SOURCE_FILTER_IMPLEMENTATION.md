@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.7 Implementation Report: Explicit Porn/Hentai Source Filter
+﻿# KMK-Recs v0.6.7 Implementation Report: Explicit Porn/Hentai Source Filter
 
 Date: 2026-06-19
 
@@ -6,7 +6,7 @@ Status: implemented and shipped as `Komikku-v1.13.6-kmk.6.7-debug.apk`.
 
 ## Goal
 
-Add a user-facing toggle that hides clearly explicit porn/hentai sources from Browse > Sources, Browse > Extensions (available only), and Sources To Try — separately from the existing broad "Show NSFW sources" setting. Ecchi-only sources must not be blocked by the new setting.
+Add a user-facing toggle that hides clearly explicit porn/hentai sources from Browse > Sources, Browse > Extensions (available only), and Sources To Try â€” separately from the existing broad "Show NSFW sources" setting. Ecchi-only sources must not be blocked by the new setting.
 
 ## Motivation
 
@@ -30,7 +30,7 @@ Does NOT trigger on: `ecchi`, `nsfw`, `mature`, `lewd`, `adult` (alone).
 
 ### Preference reads `.get()` once per call
 
-`blockExplicitPornHentaiSources()` is read with `.get()` before the flow lambda in `GetExtensionsByType`, and inside the flow lambda in `GetNonInstalledSourceSuggestions` (same pattern as `nsfwEnabled`). No reactive preference changes are added — existing flows have no 6th combine source for this preference.
+`blockExplicitPornHentaiSources()` is read with `.get()` before the flow lambda in `GetExtensionsByType`, and inside the flow lambda in `GetNonInstalledSourceSuggestions` (same pattern as `nsfwEnabled`). No reactive preference changes are added â€” existing flows have no 6th combine source for this preference.
 
 ### Default `false`
 
@@ -44,8 +44,8 @@ The setting blocks content (more conservative direction), not reveals it. Authen
 
 ### New files
 
-- `app/src/main/java/exh/source/ExplicitSourceClassifier.kt` — pure classifier object, no Android deps
-- `app/src/test/java/exh/source/ExplicitSourceClassifierTest.kt` — JUnit 5 unit tests (20 tests)
+- `app/src/main/java/exh/source/ExplicitSourceClassifier.kt` â€” pure classifier object, no Android deps
+- `app/src/test/java/exh/source/ExplicitSourceClassifierTest.kt` â€” JUnit 5 unit tests (20 tests)
 
 ### Modified files
 
@@ -90,10 +90,11 @@ The setting blocks content (more conservative direction), not reveals it. Authen
 
 ## APK
 
-`Komikku-v1.13.6-kmk.6.7-debug.apk` — copied from `app-universal-debug.apk`
+`Komikku-v1.13.6-kmk.6.7-debug.apk` â€” copied from `app-universal-debug.apk`
 
 ## What Is Not Filtered
 
 - Installed/untrusted extensions (intentionally kept manageable)
 - Sources with `isNsfw = true` but no explicit keyword or known ID (e.g., ecchi-only sources)
 - Any source with only `adult` in the name without a qualifier (e.g., `adult comic`)
+

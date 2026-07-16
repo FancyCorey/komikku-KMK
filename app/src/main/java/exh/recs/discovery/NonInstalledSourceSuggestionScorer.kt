@@ -63,6 +63,10 @@ object NonInstalledSourceSuggestionScorer {
         /** Map of evaluation_key → verdict for sources already evaluated via source evaluation. */
         evaluations: Map<String, SourceEvaluationVerdict> = emptyMap(),
         // KMK <--
+        // KMK v0.8.1-fix4: source/library-quality dislike axis -- separate from dislikedKeys
+        // (recommendation-behavior dislike). Hides poor/too-explicit-marked sources regardless of
+        // the global explicit filter, since this is an explicit per-source user judgement.
+        qualityDislikedKeys: Set<String> = emptySet(),
     ): List<NonInstalledSourceSuggestion> {
         val normalizedLangs = recLanguages.map { it.lowercase() }.toSet()
         val installedKeys = installedHints.map { it.signatureHash + "|" + it.pkgName }.toSet()
@@ -86,6 +90,7 @@ object NonInstalledSourceSuggestionScorer {
                 if (dismissalKey in dismissed) continue
                 val candKey = RecommendationSourcePreferenceStore.availableKey(ext.signatureHash, ext.pkgName, null)
                 if (candKey in dislikedKeys) continue
+                if (candKey in qualityDislikedKeys) continue // KMK v0.8.1-fix4
                 // KMK -->
                 val evalVerdict = evaluations[dismissalKey]
                 if (evalVerdict == SourceEvaluationVerdict.REJECTED) continue
@@ -99,6 +104,7 @@ object NonInstalledSourceSuggestionScorer {
                     if (dismissalKey in dismissed) continue
                     val candKey = RecommendationSourcePreferenceStore.availableKey(ext.signatureHash, ext.pkgName, src.id)
                     if (candKey in dislikedKeys) continue
+                    if (candKey in qualityDislikedKeys) continue // KMK v0.8.1-fix4
                     // KMK -->
                     val evalVerdict = evaluations[dismissalKey]
                     if (evalVerdict == SourceEvaluationVerdict.REJECTED) continue

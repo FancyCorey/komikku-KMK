@@ -1,4 +1,4 @@
-# KMK-Recs v0.4.3 Adaptive Fill, Source Status, And Top Picks Drill-Down Plan
+﻿# KMK-Recs v0.4.3 Adaptive Fill, Source Status, And Top Picks Drill-Down Plan
 
 Date: 2026-06-14
 
@@ -342,37 +342,37 @@ Suggested display:
 - enabled + boosted + shown:
 
 ```text
-EN · #1 · Boosted · Shown: 20 matches
+EN Â· #1 Â· Boosted Â· Shown: 20 matches
 ```
 
 - boosted but empty:
 
 ```text
-EN · #1 · Boosted · No matches in last For You run
+EN Â· #1 Â· Boosted Â· No matches in last For You run
 ```
 
 - filtered:
 
 ```text
-EN · #4 · Filtered out by ratings/known/blocked tags
+EN Â· #4 Â· Filtered out by ratings/known/blocked tags
 ```
 
 - duplicate-hidden:
 
 ```text
-EN · #8 · Hidden by duplicate handling
+EN Â· #8 Â· Hidden by duplicate handling
 ```
 
 - not reached:
 
 ```text
-EN · #24 · Not searched: attempt limit reached
+EN Â· #24 Â· Not searched: attempt limit reached
 ```
 
 - no status yet:
 
 ```text
-EN · #12 · Not checked yet
+EN Â· #12 Â· Not checked yet
 ```
 
 Do not clutter the list with too much data. Counts are enough.
@@ -664,3 +664,4 @@ Implement KMK-Recs v0.4.3 as a bounded improvement to For You transparency and n
 - clean KMK-Recs What's New so it only contains user-facing changes and remove the no-op browser button.
 
 Keep the implementation efficient, local, bounded, and aligned with existing Komikku/KMK patterns.
+

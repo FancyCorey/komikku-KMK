@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- KMK: override app_name for the public test build so launcher shows "Komikku KMK" -->
+    <string name="app_name" translatable="false">Komikku KMK</string>
+</resources>

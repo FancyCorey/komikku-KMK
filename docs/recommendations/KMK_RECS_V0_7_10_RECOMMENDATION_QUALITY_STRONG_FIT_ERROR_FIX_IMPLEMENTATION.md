@@ -1,8 +1,8 @@
-# KMK-Recs v0.7.10 Recommendation Quality Strong-Fit Error Fix Implementation
+﻿# KMK-Recs v0.7.10 Recommendation Quality Strong-Fit Error Fix Implementation
 
 Date: 2026-06-23
 
-Feature version / build label: KMK-Recs v0.7.10 — VERSION_CODE 800
+Feature version / build label: KMK-Recs v0.7.10 â€” VERSION_CODE 800
 
 User-approved scope: implement `docs/recommendations/KMK_RECS_V0_7_10_RECOMMENDATION_QUALITY_STRONG_FIT_ERROR_FIX_PLAN.md` strictly as scoped.
 
@@ -56,7 +56,7 @@ If the user tapped "Evaluate recommendations" without first running a source eva
 val availableExtensions = loadAvailableExtensionsForRecQuality()
 ```
 
-`loadAvailableExtensionsForRecQuality()` reads `extensionManager.availableExtensionsFlow.value` — the same full unfiltered available extension list used by `GetSourceEvaluationCandidates`. This is populated whenever `availableExtensionsFlow` has been subscribed to (which happens at screen open, since `getSourceEvaluationCandidates.subscribe()` runs in `init`). Falls back to `lastCandidatePool.value?.allEligible` only if the flow returns empty.
+`loadAvailableExtensionsForRecQuality()` reads `extensionManager.availableExtensionsFlow.value` â€” the same full unfiltered available extension list used by `GetSourceEvaluationCandidates`. This is populated whenever `availableExtensionsFlow` has been subscribed to (which happens at screen open, since `getSourceEvaluationCandidates.subscribe()` runs in `init`). Falls back to `lastCandidatePool.value?.allEligible` only if the flow returns empty.
 
 ### New: `SourceRecommendationQualityInstalledResolver`
 
@@ -118,11 +118,11 @@ The non-installed path is unchanged:
 | `SourceRecommendationQualityExtensionResolverTest` | 10 | PASSED |
 | `SourceRecommendationQualityQueueTest` | 6 | PASSED |
 | `SourceRecommendationFitProbeTest` | 10 | PASSED |
-| `:app:testDebugUnitTest` (full suite) | — | BUILD SUCCESSFUL |
+| `:app:testDebugUnitTest` (full suite) | â€” | BUILD SUCCESSFUL |
 
 ## APK / Build Output
 
-- Build: `:app:assembleDebug` — BUILD SUCCESSFUL in 56s
+- Build: `:app:assembleDebug` â€” BUILD SUCCESSFUL in 56s
 - Source APK: `app/build/outputs/apk/debug/app-universal-debug.apk`
 - Handoff APK: `C:\Users\USER\Downloads\Komikku\Komikku-v1.13.6-kmk.7.10-debug.apk`
 - Installs over v0.7.9 APK (VERSION_CODE 800 > 790)
@@ -141,3 +141,4 @@ The non-installed path is unchanged:
 ## Follow-Up Recommendations
 
 See `NEXT_WORK.md` for deferred items (PromptRequired cleanup notification, re-run on profile change, evidence strings i18n).
+

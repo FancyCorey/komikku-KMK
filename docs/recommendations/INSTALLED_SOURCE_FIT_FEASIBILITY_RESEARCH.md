@@ -1,4 +1,4 @@
-# Installed Source Fit Feasibility Research
+﻿# Installed Source Fit Feasibility Research
 
 Date: 2026-06-16
 
@@ -649,4 +649,5 @@ This feature should move forward after the current recommendation system is stab
 - Mihon `CatalogueSource` API: https://raw.githubusercontent.com/mihonapp/mihon/main/source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/CatalogueSource.kt
 - Mihon `SManga` model: https://raw.githubusercontent.com/mihonapp/mihon/main/source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/SManga.kt
 - Neko README: https://github.com/nekomangaorg/Neko
+
 

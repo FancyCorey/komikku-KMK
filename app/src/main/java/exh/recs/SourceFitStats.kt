@@ -139,7 +139,7 @@ object SourceFitStatsStore {
                 "${s.recentErrorCount}$FIELD_SEP${s.windowStartAt}$FIELD_SEP" +
                 // KMK --> v0.7.32: D2 top picks contribution count (position 15)
                 "${s.topPicksContributionCount}"
-                // KMK <--
+            // KMK <--
         }
 
     fun parse(value: String): Map<Long, SourceFitStats> {
@@ -196,7 +196,9 @@ object SourceFitStatsStore {
         for (status in runStatuses) {
             if (status.status == RecommendationSourceStatus.Disabled ||
                 status.status == RecommendationSourceStatus.OutsideAttemptLimit
-            ) continue
+            ) {
+                continue
+            }
             val current = result[status.sourceId] ?: SourceFitStats(
                 sourceId = status.sourceId,
                 runCount = 0,

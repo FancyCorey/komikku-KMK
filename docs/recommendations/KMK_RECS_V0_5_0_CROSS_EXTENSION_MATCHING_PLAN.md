@@ -1,4 +1,4 @@
-# KMK-Recs v0.5.0 Cross-Extension Rating And Favorite Matching Plan
+﻿# KMK-Recs v0.5.0 Cross-Extension Rating And Favorite Matching Plan
 
 Date: 2026-06-16
 
@@ -743,3 +743,4 @@ Key requirements:
 - strongly consider persisting user-confirmed cross-source link groups;
 - if link groups are persisted, include backup/restore/sync with proto `624`;
 - update docs, tests, versioning, and user-facing What's New.
+

@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.11 Source Evaluation Hardening Correction
+﻿# KMK-Recs v0.7.11 Source Evaluation Hardening Correction
 
 Date: 2026-06-27
 
@@ -14,7 +14,7 @@ See also: `KMK_RECS_SOURCE_EVALUATION_COMMUNITY_HARDENING_IMPLEMENTATION.md` (in
 
 ### 1. Consent view-only path could accidentally start evaluation
 
-`showConsentWarning()` opened the same dialog as the pre-evaluation consent check, and `confirmConsent()` always called `startEvaluation()`. Result: tapping "View evaluation warning" and confirming the dialog would start an evaluation run — opposite of the intended behavior.
+`showConsentWarning()` opened the same dialog as the pre-evaluation consent check, and `confirmConsent()` always called `startEvaluation()`. Result: tapping "View evaluation warning" and confirming the dialog would start an evaluation run â€” opposite of the intended behavior.
 
 ### 2. `startReassessUpdated()` skipped the consent gate entirely
 
@@ -37,7 +37,7 @@ R-002 in the risk register was marked "MITIGATED v0.8.0" but the honest recovery
 
 ## What Changed
 
-### Consent flow — `PendingConsentAction` enum
+### Consent flow â€” `PendingConsentAction` enum
 
 Added `PendingConsentAction` enum to `SourceEvaluationScreenModel`:
 
@@ -61,10 +61,10 @@ Added `pendingConsentAction: PendingConsentAction? = null` to `State`.
 `continueEvaluation()` sets `pendingConsentAction = CONTINUE_EVALUATION`.
 
 `confirmConsent()` now reads `pendingConsentAction` from state, clears both `showConsentDialog` and `pendingConsentAction`, then dispatches:
-- `START_EVALUATION` → `startEvaluation()`
-- `REASSESS_UPDATED` → `doReassessUpdated()`
-- `CONTINUE_EVALUATION` → `continueEvaluation()`
-- `VIEW_ONLY` / null → do nothing (dialog closes, no evaluation starts)
+- `START_EVALUATION` â†’ `startEvaluation()`
+- `REASSESS_UPDATED` â†’ `doReassessUpdated()`
+- `CONTINUE_EVALUATION` â†’ `continueEvaluation()`
+- `VIEW_ONLY` / null â†’ do nothing (dialog closes, no evaluation starts)
 
 `dismissConsent()` now also clears `pendingConsentAction`.
 
@@ -78,11 +78,11 @@ Added `pendingConsentAction: PendingConsentAction? = null` to `State`.
 
 ### Versioning corrected to v0.7.11
 
-- `app/build.gradle.kts`: versionCode 82 → 83, comment → `KMK-Recs v0.7.11`
-- `KmkRecsReleaseNotes.kt`: VERSION_CODE 800 → 711, VERSION_NAME "v0.7.10" → "v0.7.11"; v0.7.11 What's New section added
-- `SourceEvaluationConsentPolicy.kt`: version comment v0.8.0 → v0.7.11
-- `SourceEvaluationConsentPolicyTest.kt`: version comment v0.8.0 → v0.7.11
-- `SourceEvaluationScreenModel.kt`: KMK marker comments v0.8.0 → v0.7.11
+- `app/build.gradle.kts`: versionCode 82 â†’ 83, comment â†’ `KMK-Recs v0.7.11`
+- `KmkRecsReleaseNotes.kt`: VERSION_CODE 800 â†’ 711, VERSION_NAME "v0.7.10" â†’ "v0.7.11"; v0.7.11 What's New section added
+- `SourceEvaluationConsentPolicy.kt`: version comment v0.8.0 â†’ v0.7.11
+- `SourceEvaluationConsentPolicyTest.kt`: version comment v0.8.0 â†’ v0.7.11
+- `SourceEvaluationScreenModel.kt`: KMK marker comments v0.8.0 â†’ v0.7.11
 
 ---
 
@@ -90,20 +90,20 @@ Added `pendingConsentAction: PendingConsentAction? = null` to `State`.
 
 | File | Change |
 |---|---|
-| `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreenModel.kt` | +`PendingConsentAction` enum; +`pendingConsentAction` to State; fix `showConsentWarning`/`dismissConsent`/`confirmConsent`; add consent check to `startReassessUpdated` + extract `doReassessUpdated`; add consent check to `continueEvaluation`; v0.8.0 → v0.7.11 comments |
-| `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` | VERSION_CODE 800 → 711; VERSION_NAME v0.7.10 → v0.7.11; added v0.7.11 What's New section |
-| `app/build.gradle.kts` | versionCode 82 → 83; comment v0.8.0 → v0.7.11 |
-| `app/src/main/java/exh/recs/evaluation/SourceEvaluationConsentPolicy.kt` | version comment v0.8.0 → v0.7.11 |
-| `app/src/test/java/exh/recs/evaluation/SourceEvaluationConsentPolicyTest.kt` | version comment v0.8.0 → v0.7.11 |
+| `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreenModel.kt` | +`PendingConsentAction` enum; +`pendingConsentAction` to State; fix `showConsentWarning`/`dismissConsent`/`confirmConsent`; add consent check to `startReassessUpdated` + extract `doReassessUpdated`; add consent check to `continueEvaluation`; v0.8.0 â†’ v0.7.11 comments |
+| `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` | VERSION_CODE 800 â†’ 711; VERSION_NAME v0.7.10 â†’ v0.7.11; added v0.7.11 What's New section |
+| `app/build.gradle.kts` | versionCode 82 â†’ 83; comment v0.8.0 â†’ v0.7.11 |
+| `app/src/main/java/exh/recs/evaluation/SourceEvaluationConsentPolicy.kt` | version comment v0.8.0 â†’ v0.7.11 |
+| `app/src/test/java/exh/recs/evaluation/SourceEvaluationConsentPolicyTest.kt` | version comment v0.8.0 â†’ v0.7.11 |
 
 ---
 
 ## Build Results
 
 ```
-.\gradlew.bat spotlessApply        → BUILD SUCCESSFUL
-.\gradlew.bat :app:testDebugUnitTest → BUILD SUCCESSFUL (267 tasks)
-.\gradlew.bat assembleDebug        → BUILD SUCCESSFUL
+.\gradlew.bat spotlessApply        â†’ BUILD SUCCESSFUL
+.\gradlew.bat :app:testDebugUnitTest â†’ BUILD SUCCESSFUL (267 tasks)
+.\gradlew.bat assembleDebug        â†’ BUILD SUCCESSFUL
 ```
 
 Output APK: `Komikku-v1.13.6-kmk.7.11-debug.apk` (162.4 MB)
@@ -112,9 +112,9 @@ Output APK: `Komikku-v1.13.6-kmk.7.11-debug.apk` (162.4 MB)
 
 ## Remaining Deferred Items
 
-- Structured Source Evaluation error categories (install timeout, source not found, network unavailable shown as distinct UI labels) — no change in this pass.
-- Network-loss retry/refresh UI during a running batch — no change in this pass.
-- Evidence strength strings full i18n hookup (`source_evaluation_evidence_*` keys exist but labels still hardcoded in `evidenceStrengthLabel()` / `lastEvaluatedLabel()`) — no change in this pass.
+- Structured Source Evaluation error categories (install timeout, source not found, network unavailable shown as distinct UI labels) â€” no change in this pass.
+- Network-loss retry/refresh UI during a running batch â€” no change in this pass.
+- Evidence strength strings full i18n hookup (`source_evaluation_evidence_*` keys exist but labels still hardcoded in `evidenceStrengthLabel()` / `lastEvaluatedLabel()`) â€” no change in this pass.
 - Process-death durable resume: still in-memory only. Honest failure message is in place.
 
 ---
@@ -124,3 +124,4 @@ Output APK: `Komikku-v1.13.6-kmk.7.11-debug.apk` (162.4 MB)
 `SourceEvaluationJobState.pendingCandidates` and `pendingOptions` are `@Volatile` in-memory fields. If the app process is killed between enqueuing the job and `doWork()` starting, they become null and the job writes a `source_evaluation_state_lost_error` failure to the queue state. The user sees a clear failure message and can restart or continue using the existing batch continuation flow.
 
 This is honest recovery, not durable resume. Process-death is handled by failing clearly, not by persisting the candidate queue to disk.
+

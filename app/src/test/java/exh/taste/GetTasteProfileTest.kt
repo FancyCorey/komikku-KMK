@@ -194,6 +194,13 @@ class GetTasteProfileTest {
         override suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String) {}
         override suspend fun deleteAllCrossSourceMangaLinks() {}
         // KMK <--
+        // KMK --> v0.8.0
+        override suspend fun getCrossSourceGroupPrimary(groupId: String): tachiyomi.domain.taste.model.CrossSourceGroupPrimary? = null
+        override suspend fun getAllCrossSourceGroupPrimaries(): List<tachiyomi.domain.taste.model.CrossSourceGroupPrimary> = emptyList()
+        override suspend fun upsertCrossSourceGroupPrimary(primary: tachiyomi.domain.taste.model.CrossSourceGroupPrimary) {}
+        override suspend fun deleteCrossSourceGroupPrimary(groupId: String) {}
+        override suspend fun deleteAllCrossSourceGroupPrimaries() {}
+        // KMK <--
         // KMK <-- (v0.7.3 source/url getMangaTaste)
     }
 

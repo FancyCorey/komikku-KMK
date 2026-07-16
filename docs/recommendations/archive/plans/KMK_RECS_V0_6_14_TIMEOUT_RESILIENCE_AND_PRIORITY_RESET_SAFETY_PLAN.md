@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.14: Timeout Resilience And Priority Reset Safety Plan
+﻿# KMK-Recs v0.6.14: Timeout Resilience And Priority Reset Safety Plan
 
 Date: 2026-06-19
 
@@ -585,3 +585,4 @@ Do not implement:
 Proceed with this as a focused resilience and safety pass.
 
 The timeout fix addresses a real batch stability problem: one bad extension/source should not make the user think they cancelled the run. The reset-priority fix removes a high-impact accidental action from the top bar and makes source order restoration intentional.
+

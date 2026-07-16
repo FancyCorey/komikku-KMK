@@ -123,7 +123,7 @@ class RecommendationBundleImportScreenModel(
                 }
             is RecommendationBundleValidator.ValidationResult.MalformedJson ->
                 run {
-                    mutableState.value = State.LoadError(LoadErrorKey.MalformedJson(v.message))
+                    mutableState.value = State.LoadError(LoadErrorKey.MalformedJson(v.message.ifBlank { null }))
                     return
                 }
         }

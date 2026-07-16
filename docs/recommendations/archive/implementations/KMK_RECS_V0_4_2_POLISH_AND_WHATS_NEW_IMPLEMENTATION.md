@@ -1,4 +1,4 @@
-# KMK-Recs v0.4.2 Polish And What's New Implementation
+﻿# KMK-Recs v0.4.2 Polish And What's New Implementation
 
 Date: 2026-06-14
 
@@ -10,25 +10,25 @@ APK: `Komikku-v1.13.6-kmk.4.2-debug.apk`
 
 | Check | Finding |
 |---|---|
-| `hideKnownManga` read order in `load()` | ✅ Bug confirmed: fingerprint computed at line 190, `hideKnownManga` read at line 196 — fixed by moving read before fingerprint call |
-| `loadFromCache()` known-manga filter | ❌ None found — added fail-open known filter matching live search path |
-| `profileFingerprint()` includes `hideKnownManga` | ❌ Not present — added `update("hideKnown:$hideKnownManga")` to digest |
-| `conservativeWorkKey` single-contributor limitation | ✅ Confirmed: author always wins over artist even when both present, NUL separator in key string |
-| Existing What's New infrastructure | ✅ Found `WhatsNewDialog`, `WhatsNewScreen` (ui), `WhatsNewScreen` (presentation), `MainActivity` changelog logic |
-| KMK preference pattern | ✅ Confirmed `Preference.appStateKey(...)` with `PreferenceStore.getInt(...)` pattern in MainActivity |
-| AboutScreen KMR string usage | ✅ KMR.strings used for KMK-specific About entries |
+| `hideKnownManga` read order in `load()` | âœ… Bug confirmed: fingerprint computed at line 190, `hideKnownManga` read at line 196 â€” fixed by moving read before fingerprint call |
+| `loadFromCache()` known-manga filter | âŒ None found â€” added fail-open known filter matching live search path |
+| `profileFingerprint()` includes `hideKnownManga` | âŒ Not present â€” added `update("hideKnown:$hideKnownManga")` to digest |
+| `conservativeWorkKey` single-contributor limitation | âœ… Confirmed: author always wins over artist even when both present, NUL separator in key string |
+| Existing What's New infrastructure | âœ… Found `WhatsNewDialog`, `WhatsNewScreen` (ui), `WhatsNewScreen` (presentation), `MainActivity` changelog logic |
+| KMK preference pattern | âœ… Confirmed `Preference.appStateKey(...)` with `PreferenceStore.getInt(...)` pattern in MainActivity |
+| AboutScreen KMR string usage | âœ… KMR.strings used for KMK-specific About entries |
 
 ## Files Changed
 
-- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt` — moved `hideKnownManga` read before `profileFingerprint()`, added `hideKnownManga: Boolean` param to `profileFingerprint()` and `loadFromCache()`, added fail-open known filter in `loadFromCache()`
-- `app/src/main/java/exh/recs/CombinedPicksAccumulator.kt` — replaced `conservativeWorkKey()` (single key) with `conservativeWorkKeys()` (set of keys), updated `add()` to resolve canonical bucket via any matching key, removed NUL separator
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — new KMK file with `VERSION_CODE = 402`, `VERSION_NAME`, `MARKDOWN`
-- `app/src/main/java/eu/kanade/tachiyomi/ui/more/KmkRecsWhatsNewScreen.kt` — new KMK Voyager screen wrapping `WhatsNewScreen` presentation with local notes, marks version as seen on open
-- `app/src/main/java/eu/kanade/presentation/more/settings/screen/about/KmkRecsWhatsNewDialog.kt` — new KMK dialog shown at launch when KMK version is newer than last seen
-- `app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt` — added `kmkRecsLastSeenVersion` preference, `showKmkChangelog` state, `KmkRecsWhatsNewDialog` shown as `else if` after upstream changelog
-- `app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt` — added KMK What's New entry before "What's Coming" (opens `KmkRecsWhatsNewScreen`)
-- `app/src/test/java/exh/recs/CombinedPicksAccumulatorTest.kt` — renamed helper tests from `conservativeWorkKey` to `conservativeWorkKeys`, updated assertions for set API, added tests for author-OR-artist logic (same title+same author+different artist merges, same title+same artist+different author merges, different author+different artist does not merge)
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — added `kmk_recs_whats_new`, `kmk_recs_updated`
+- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt` â€” moved `hideKnownManga` read before `profileFingerprint()`, added `hideKnownManga: Boolean` param to `profileFingerprint()` and `loadFromCache()`, added fail-open known filter in `loadFromCache()`
+- `app/src/main/java/exh/recs/CombinedPicksAccumulator.kt` â€” replaced `conservativeWorkKey()` (single key) with `conservativeWorkKeys()` (set of keys), updated `add()` to resolve canonical bucket via any matching key, removed NUL separator
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” new KMK file with `VERSION_CODE = 402`, `VERSION_NAME`, `MARKDOWN`
+- `app/src/main/java/eu/kanade/tachiyomi/ui/more/KmkRecsWhatsNewScreen.kt` â€” new KMK Voyager screen wrapping `WhatsNewScreen` presentation with local notes, marks version as seen on open
+- `app/src/main/java/eu/kanade/presentation/more/settings/screen/about/KmkRecsWhatsNewDialog.kt` â€” new KMK dialog shown at launch when KMK version is newer than last seen
+- `app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt` â€” added `kmkRecsLastSeenVersion` preference, `showKmkChangelog` state, `KmkRecsWhatsNewDialog` shown as `else if` after upstream changelog
+- `app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt` â€” added KMK What's New entry before "What's Coming" (opens `KmkRecsWhatsNewScreen`)
+- `app/src/test/java/exh/recs/CombinedPicksAccumulatorTest.kt` â€” renamed helper tests from `conservativeWorkKey` to `conservativeWorkKeys`, updated assertions for set API, added tests for author-OR-artist logic (same title+same author+different artist merges, same title+same artist+different author merges, different author+different artist does not merge)
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” added `kmk_recs_whats_new`, `kmk_recs_updated`
 
 ## Behavior Changed
 
@@ -65,9 +65,9 @@ About screen has a new "KMK-Recs What's new" entry (showing the version name as 
 
 ## Tests Run
 
-- `CombinedPicksAccumulatorTest` — 32 tests, BUILD SUCCESSFUL
-- Full `:app:testDebugUnitTest` — BUILD SUCCESSFUL
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `CombinedPicksAccumulatorTest` â€” 32 tests, BUILD SUCCESSFUL
+- Full `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 - APK: `Komikku-v1.13.6-kmk.4.2-debug.apk` (universal)
 
 ## Known Limitations
@@ -78,6 +78,7 @@ About screen has a new "KMK-Recs What's new" entry (showing the version name as 
 
 ## Deviations From Plan
 
-- Plan mentioned `IndexedRecommendation` as a possible local type for `loadFromCache()`. Implemented as a `List<Pair<Manga, Double>>` instead — simpler and avoids an unnecessary type.
-- Plan said "decide whether to bump cache key from `personal_v3` to `personal_v4`" — decided not to bump. Including `hideKnownManga` in the fingerprint naturally invalidates incompatible entries once. The `personal_v3` key is stable.
-- Work-key conflict resolution (multiple keys mapping to different existing buckets) is handled by `firstNotNullOfOrNull` — first matching key wins, which is insertion-ordered and deterministic given the order candidates arrive.
+- Plan mentioned `IndexedRecommendation` as a possible local type for `loadFromCache()`. Implemented as a `List<Pair<Manga, Double>>` instead â€” simpler and avoids an unnecessary type.
+- Plan said "decide whether to bump cache key from `personal_v3` to `personal_v4`" â€” decided not to bump. Including `hideKnownManga` in the fingerprint naturally invalidates incompatible entries once. The `personal_v3` key is stable.
+- Work-key conflict resolution (multiple keys mapping to different existing buckets) is handled by `firstNotNullOfOrNull` â€” first matching key wins, which is insertion-ordered and deterministic given the order candidates arrive.
+

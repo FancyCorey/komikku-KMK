@@ -3,6 +3,7 @@ package eu.kanade.domain.source.service
 import eu.kanade.domain.source.interactor.SetMigrateSorting
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import exh.recs.GroupPreviewBudgetPolicy
 import mihon.domain.migration.models.MigrationFlag
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
@@ -190,14 +191,40 @@ class SourcePreferences(
     fun recommendationEnrichmentCap() = preferenceStore.getInt("recommendation_enrichment_cap", 5)
     // KMK <--
 
+    // KMK v0.8.2: configurable visible-card budget per ordinary For You source row. Validated
+    // against ForYouResultBudgetPolicy.SUPPORTED_VALUES at every read site; raw/corrupt values here
+    // fall back to ForYouResultBudgetPolicy.DEFAULT rather than crashing.
+    /** Visible manga cards per ordinary For You source row. Supported: 5/10/15/20/30. Default 10. Boosted sources use max(value, 20). */
+    fun recommendationResultBudget() = preferenceStore.getInt("recommendation_result_budget", 10)
+
     /** Semicolon-separated dismissal keys for non-installed source suggestions. Format: signatureHash|pkgName|sourceId */
     fun dismissedNonInstalledRecommendationSources() = preferenceStore.getString("dismissed_non_installed_rec_sources", "")
+
+    // KMK v0.8.6: configurable initial-preview budget per extension for GROUP_PREVIEW group
+    // recommendation rows only. Validated against GroupPreviewBudgetPolicy.SUPPORTED_VALUES at
+    // every read site; raw/corrupt/migrated values fall back to GroupPreviewBudgetPolicy.DEFAULT.
+    // Never applied to For You (recommendationResultBudget above) or to normal global search.
+    /** Initial preview manga cards per extension in a group recommendation row. Supported: 5/10/15/20/30. Default 10. */
+    fun groupPreviewResultBudget() = preferenceStore.getInt("recommendation_group_preview_budget", GroupPreviewBudgetPolicy.DEFAULT)
+    // KMK <--
 
     /** Semicolon-separated liked recommendation source keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
     fun likedRecommendationSourceKeys() = preferenceStore.getString("liked_recommendation_source_keys", "")
 
     /** Semicolon-separated disliked recommendation source keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
     fun dislikedRecommendationSourceKeys() = preferenceStore.getString("disliked_recommendation_source_keys", "")
+
+    // KMK v0.8.1-fix4: source/library-quality preference axis -- separate from the recommendation-behavior
+    // axis above. Answers "is this source itself worth showing/suggesting/evaluating?" rather than
+    // "do I want this source's For You rows?" Same key format and serializer (RecommendationSourcePreferenceStore).
+    /** Semicolon-separated liked source/library-quality keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
+    fun likedSourceQualityKeys() = preferenceStore.getString("liked_source_quality_keys", "")
+
+    /** Semicolon-separated disliked source/library-quality keys (poor library / too explicit). Same key format. */
+    fun dislikedSourceQualityKeys() = preferenceStore.getString("disliked_source_quality_keys", "")
+
+    /** Subset of dislikedSourceQualityKeys marked specifically "too explicit" rather than generically "poor". Same key format. */
+    fun explicitSourceQualityKeys() = preferenceStore.getString("explicit_source_quality_keys", "")
 
     /** When true, hides clearly explicit porn/hentai sources from Browse and Sources To Try. Does not affect ecchi-only sources. */
     fun blockExplicitPornHentaiSources() = preferenceStore.getBoolean("block_explicit_porn_hentai_sources", false)
@@ -216,6 +243,13 @@ class SourcePreferences(
     /** Serialized [SourceEvaluationCursor] for continuing a paused evaluation queue. Blank = no cursor. */
     fun sourceEvaluationContinuationCursor() = preferenceStore.getString("source_evaluation_continuation_cursor", "")
 
+    // KMK --> v0.8.1-fix3: separate cursor slot for the stale/outdated reassessment queue, so
+    // switching between the normal unassessed queue and the stale-reassessment queue does not
+    // discard either one's progress. See SOURCE_EVALUATION_CONTINUATION_FIX_PLAN.
+    /** Serialized [SourceEvaluationCursor] for continuing a paused stale/outdated reassessment queue. Blank = no cursor. */
+    fun sourceEvaluationContinuationCursorStale() = preferenceStore.getString("source_evaluation_continuation_cursor_stale", "")
+    // KMK <--
+
     // KMK --> v0.7.11: source evaluation consent
     /** When true, the user has acknowledged the Source Evaluation pre-run warning. */
     fun sourceEvaluationConsentGiven() = preferenceStore.getBoolean("source_evaluation_consent_given", false)
@@ -229,8 +263,8 @@ class SourcePreferences(
     // KMK --> SEC-01 v0.7.16: leftover extension detection after process death
     /** Package name of a Shizuku-installed extension that was left behind by a process-death interruption. Blank = none. */
     fun sourceEvaluationLeftoverPkg() = preferenceStore.getString("source_evaluation_leftover_pkg", "")
-    // KMK <--
-    // KMK <--
+    // KMK <-- v0.7.6
+    // KMK <-- v0.6.20
 
     // KMK --> v0.7.8: same-manga matching and best-version comparison settings
     /** Max results per source for bounded same-manga workflows (Love/Like/Dislike/Seen/Favorite/Best-version). Valid: 1, 2, 5, 10. Default 2. */

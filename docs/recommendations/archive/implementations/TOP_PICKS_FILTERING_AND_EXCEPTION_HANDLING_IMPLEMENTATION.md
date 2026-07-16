@@ -1,4 +1,4 @@
-# Top Picks Filtering And Exception Handling Implementation
+﻿# Top Picks Filtering And Exception Handling Implementation
 
 Date: 2026-06-14
 
@@ -8,7 +8,7 @@ APK: `Komikku-v1.13.6-kmk.4.1-debug.apk`
 
 ## User-Approved Scope
 
-- Rename "Combined Picks" row to "Top Picks" (not just a string rename — reinforce that it represents the user's best preference-ranked picks).
+- Rename "Combined Picks" row to "Top Picks" (not just a string rename â€” reinforce that it represents the user's best preference-ranked picks).
 - Add conservative cross-source duplicate merging using exact title + exact author/artist.
 - Add local known-manga filter hiding rated, in-library, read, partially-read, or historically-read manga.
 - Add "Hide known manga" setting (default enabled).
@@ -20,32 +20,32 @@ APK: `Komikku-v1.13.6-kmk.4.1-debug.apk`
 
 | Check | Finding |
 |---|---|
-| "Combined Picks" strings in i18n-kmk/strings.xml | ✅ Found at lines 273-275: `rec_combined_picks_title`, `rec_combined_picks_subtitle`, `rec_combined_picks_matched` |
-| Row title from `rec_combined_picks_title` | ✅ Confirmed in `BrowsePersonalRecommendationsTab.kt` |
-| CombinedPicksAccumulator keys by `(manga.source, manga.url)` | ✅ Line 37: `"${rec.manga.source}:${rec.manga.url}"` |
-| Ranking uses only `bestScore + occurrence bonus + boosted bonus` | ✅ Lines 63-67 — no matched-group signal in primary score |
-| Screen model filters favorites/rated before scoring | ✅ Line 301: `.filterNot { it.favorite || shouldHideForYou(it, tasteByKey, visibility) }` |
-| PersonalRecommendationScorer uses explicit tags, learned weights, blocked groups, source affinity | ✅ All confirmed in scorer |
-| Existing helper for known/read manga IDs | ❌ None found. `GetReadMangaNotInLibrary` exists but returns all read manga, not batched by candidate IDs |
-| SQL query for read/started chapters by manga ID | ❌ None found. Added `getKnownRecommendationMangaIds` to `mangas.sq` |
-| Per-source failures already isolated | ✅ Each source in its own `async` block with try/catch |
-| New filter query failure could blank For You | ⚠️ Would if not guarded — added `runCatching { }.getOrElse { emptySet() }` to fail open |
+| "Combined Picks" strings in i18n-kmk/strings.xml | âœ… Found at lines 273-275: `rec_combined_picks_title`, `rec_combined_picks_subtitle`, `rec_combined_picks_matched` |
+| Row title from `rec_combined_picks_title` | âœ… Confirmed in `BrowsePersonalRecommendationsTab.kt` |
+| CombinedPicksAccumulator keys by `(manga.source, manga.url)` | âœ… Line 37: `"${rec.manga.source}:${rec.manga.url}"` |
+| Ranking uses only `bestScore + occurrence bonus + boosted bonus` | âœ… Lines 63-67 â€” no matched-group signal in primary score |
+| Screen model filters favorites/rated before scoring | âœ… Line 301: `.filterNot { it.favorite || shouldHideForYou(it, tasteByKey, visibility) }` |
+| PersonalRecommendationScorer uses explicit tags, learned weights, blocked groups, source affinity | âœ… All confirmed in scorer |
+| Existing helper for known/read manga IDs | âŒ None found. `GetReadMangaNotInLibrary` exists but returns all read manga, not batched by candidate IDs |
+| SQL query for read/started chapters by manga ID | âŒ None found. Added `getKnownRecommendationMangaIds` to `mangas.sq` |
+| Per-source failures already isolated | âœ… Each source in its own `async` block with try/catch |
+| New filter query failure could blank For You | âš ï¸ Would if not guarded â€” added `runCatching { }.getOrElse { emptySet() }` to fail open |
 | Newer markdown files changing scope | None found beyond `NEXT_WORK.md` which references the same plan |
 
 ## Files Changed
 
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — removed `rec_combined_picks_{title,subtitle,matched}`, added `rec_top_picks_{title,subtitle,matched}`, `rec_hide_known_manga`, `rec_hide_known_manga_summary`
-- `app/src/main/java/exh/recs/CombinedPicksAccumulator.kt` — added `workKeyToPrimaryKey` map, `conservativeWorkKey()` helper, `var manga` in Bucket, updated `add()` with work-key redirect, updated `clear()`, added `matchedGroups.size` tiebreaker in `rank()`
-- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsTab.kt` — string refs changed from `rec_combined_picks_*` to `rec_top_picks_*`, LazyColumn key changed from `"combined_picks"` to `"top_picks"`
-- `data/src/main/sqldelight/tachiyomi/data/mangas.sq` — added `getKnownRecommendationMangaIds` query (KMK block)
-- `domain/src/main/java/tachiyomi/domain/manga/repository/MangaRepository.kt` — added `getKnownRecommendationMangaIds(mangaIds: Collection<Long>): Set<Long>` (KMK block)
-- `data/src/main/java/tachiyomi/data/manga/MangaRepositoryImpl.kt` — implemented `getKnownRecommendationMangaIds` with empty-collection guard (KMK block)
-- `domain/src/main/java/tachiyomi/domain/taste/interactor/GetKnownRecommendationMangaIds.kt` — new interactor (KMK)
-- `app/src/main/java/eu/kanade/domain/KMKDomainModule.kt` — registered `GetKnownRecommendationMangaIds`
-- `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt` — added `recommendationHideKnownManga()` (default true)
-- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt` — injected `GetKnownRecommendationMangaIds`, added `hideKnownManga` param in `searchSource()`, applied fail-open known filter after `networkToLocalManga()`
-- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` — added `hideKnownMangaPref`, `hideKnownManga` state, `setHideKnownManga()` action
-- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` — added `HideKnownMangaRow` composable, added toggle item in settings LazyColumn
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” removed `rec_combined_picks_{title,subtitle,matched}`, added `rec_top_picks_{title,subtitle,matched}`, `rec_hide_known_manga`, `rec_hide_known_manga_summary`
+- `app/src/main/java/exh/recs/CombinedPicksAccumulator.kt` â€” added `workKeyToPrimaryKey` map, `conservativeWorkKey()` helper, `var manga` in Bucket, updated `add()` with work-key redirect, updated `clear()`, added `matchedGroups.size` tiebreaker in `rank()`
+- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsTab.kt` â€” string refs changed from `rec_combined_picks_*` to `rec_top_picks_*`, LazyColumn key changed from `"combined_picks"` to `"top_picks"`
+- `data/src/main/sqldelight/tachiyomi/data/mangas.sq` â€” added `getKnownRecommendationMangaIds` query (KMK block)
+- `domain/src/main/java/tachiyomi/domain/manga/repository/MangaRepository.kt` â€” added `getKnownRecommendationMangaIds(mangaIds: Collection<Long>): Set<Long>` (KMK block)
+- `data/src/main/java/tachiyomi/data/manga/MangaRepositoryImpl.kt` â€” implemented `getKnownRecommendationMangaIds` with empty-collection guard (KMK block)
+- `domain/src/main/java/tachiyomi/domain/taste/interactor/GetKnownRecommendationMangaIds.kt` â€” new interactor (KMK)
+- `app/src/main/java/eu/kanade/domain/KMKDomainModule.kt` â€” registered `GetKnownRecommendationMangaIds`
+- `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt` â€” added `recommendationHideKnownManga()` (default true)
+- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt` â€” injected `GetKnownRecommendationMangaIds`, added `hideKnownManga` param in `searchSource()`, applied fail-open known filter after `networkToLocalManga()`
+- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` â€” added `hideKnownMangaPref`, `hideKnownManga` state, `setHideKnownManga()` action
+- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` â€” added `HideKnownMangaRow` composable, added toggle item in settings LazyColumn
 
 ## Behavior Changed
 
@@ -85,26 +85,27 @@ Added `matchedGroups.size` as a tiebreaker between candidates with the same comb
 
 ## Tests Run
 
-- `CombinedPicksAccumulatorTest` — 24 tests, BUILD SUCCESSFUL
-- Full `:app:testDebugUnitTest` — BUILD SUCCESSFUL
+- `CombinedPicksAccumulatorTest` â€” 24 tests, BUILD SUCCESSFUL
+- Full `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL
 
 ## Known Limitations
 
 - Known-manga filter only catches manga Komikku still has records for. Cross-device reads or deleted history entries will not be detected.
-- The `getKnownRecommendationMangaIds` SQL query uses subselects rather than JOINs for `chapters` and `history`. This is correct but may be less efficient for very large collections. In practice, candidate counts are ≤ 60 per source.
+- The `getKnownRecommendationMangaIds` SQL query uses subselects rather than JOINs for `chapters` and `history`. This is correct but may be less efficient for very large collections. In practice, candidate counts are â‰¤ 60 per source.
 - AniList/tracker known-list filtering is not implemented (deferred per plan).
-- Minimum chapter count filter is not implemented (deferred per plan — would require network calls).
+- Minimum chapter count filter is not implemented (deferred per plan â€” would require network calls).
 - Top Picks header click remains no-op. Drill-down not implemented in this pass.
 
 ## Deviations From Plan
 
-- Plan showed the SQL query as a single LEFT JOIN. Implemented as three separate subselects to avoid row explosion from multiple LEFT JOINs (chapters × history can produce many rows per manga). The semantics are equivalent.
-- `matchedGroups.size` tiebreaker was added to `rank()`. Plan did not explicitly require it, but the plan said "more matched preferred/learned groups" should rank higher — this is the implementation of that intent.
+- Plan showed the SQL query as a single LEFT JOIN. Implemented as three separate subselects to avoid row explosion from multiple LEFT JOINs (chapters Ã— history can produce many rows per manga). The semantics are equivalent.
+- `matchedGroups.size` tiebreaker was added to `rank()`. Plan did not explicitly require it, but the plan said "more matched preferred/learned groups" should rank higher â€” this is the implementation of that intent.
 - No separate dedupe logic added for the Top Picks row vs. source rows. The plan noted combined row should not be run through `dedupedItems()`. This is preserved from v0.4.0.
 
 ## Follow-Up Recommendations
 
 - Consider adding a "Why hidden" debug mode that shows per-candidate hide reasons.
-- AniList known-list cache (Phase 6 from plan) — cache locally on tracker sync, use as weak "probably known" signal.
-- Chapter count filter (Phase 5) — implement using already-locally-known chapter counts only, no network.
+- AniList known-list cache (Phase 6 from plan) â€” cache locally on tracker sync, use as weak "probably known" signal.
+- Chapter count filter (Phase 5) â€” implement using already-locally-known chapter counts only, no network.
 - Top Picks header click drill-down (from v0.4.0 NEXT_WORK).
+

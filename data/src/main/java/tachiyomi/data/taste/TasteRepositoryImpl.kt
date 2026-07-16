@@ -2,6 +2,7 @@ package tachiyomi.data.taste
 
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.domain.taste.model.CrossSourceGroupPrimary
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.TagAlias
@@ -203,6 +204,41 @@ class TasteRepositoryImpl(
 
     // endregion KMK <--
 
+    // KMK --> v0.8.0: manga_cross_source_group_primary region
+
+    override suspend fun getCrossSourceGroupPrimary(groupId: String): CrossSourceGroupPrimary? {
+        return handler.awaitOneOrNull {
+            manga_cross_source_group_primaryQueries.getByGroupId(groupId, crossSourceGroupPrimaryMapper)
+        }
+    }
+
+    override suspend fun getAllCrossSourceGroupPrimaries(): List<CrossSourceGroupPrimary> {
+        return handler.awaitList {
+            manga_cross_source_group_primaryQueries.getAll(crossSourceGroupPrimaryMapper)
+        }
+    }
+
+    override suspend fun upsertCrossSourceGroupPrimary(primary: CrossSourceGroupPrimary) {
+        handler.await(inTransaction = true) {
+            manga_cross_source_group_primaryQueries.upsert(
+                groupId = primary.groupId,
+                source = primary.source,
+                url = primary.url,
+                updatedAt = primary.updatedAt,
+            )
+        }
+    }
+
+    override suspend fun deleteCrossSourceGroupPrimary(groupId: String) {
+        handler.await { manga_cross_source_group_primaryQueries.deleteByGroupId(groupId) }
+    }
+
+    override suspend fun deleteAllCrossSourceGroupPrimaries() {
+        handler.await { manga_cross_source_group_primaryQueries.deleteAll() }
+    }
+
+    // endregion KMK <--
+
     // region recommendation_disabled_source
 
     override suspend fun getAllDisabledSourceIds(): List<Long> {
@@ -284,6 +320,17 @@ private val crossSourceMangaLinkMapper = {
         groupId = groupId,
         title = title,
         createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
+}
+// KMK <--
+
+// KMK --> v0.8.0
+private val crossSourceGroupPrimaryMapper = { groupId: String, source: Long, url: String, updatedAt: Long ->
+    CrossSourceGroupPrimary(
+        groupId = groupId,
+        source = source,
+        url = url,
         updatedAt = updatedAt,
     )
 }

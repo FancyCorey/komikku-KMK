@@ -57,7 +57,27 @@ abstract class RecommendationPagingSource(
             manga: Manga,
             // KMK -->
             recommendationSource: RecommendationSource,
+            // KMK --> v0.7.43: group-seeded recommendations pass the combined/weighted group tag
+            // list here so cross-extension rows search by the whole group's genres, not just
+            // this one manga's. Null (single-manga path) keeps using manga.genre as before.
+            groupGenreOverride: List<String>? = null,
+            // KMK --> v0.7.44: group-seeded recommendations pass the combined/alternate group title
+            // list so a source that has no useful tag match can still fall back to a title search
+            // across every linked version, not just the primary manga's title.
+            groupTitlesOverride: List<String>? = null,
+            // KMK --> v0.7.44: when non-null (group-seeded path only), used instead of
+            // `sourceManager.getVisibleCatalogueSources().take(...)` for cross-extension rows, so
+            // group recommendations honor the same language/priority/disabled/disliked source
+            // policy as For You (RecommendationSourceSelector). Computed by the caller (already
+            // running in a coroutine) so this function can stay non-suspend. Null (single-manga
+            // path) keeps the existing raw visible-source behavior unchanged.
+            eligibleCrossExtensionSources: List<CatalogueSource>? = null,
             // KMK <--
+            // KMK v0.8.6: shared across every CrossExtensionGenreSearchSource created by this call so
+            // nested detail-enrichment requests are bounded by one total budget across all
+            // concurrently active GROUP_PREVIEW sources, not per-source. Null (single-manga path)
+            // keeps each source's enrichment unbounded-within-itself, same as before.
+            sharedEnrichmentSemaphore: kotlinx.coroutines.sync.Semaphore? = null,
         ): List<RecommendationPagingSource> {
             return buildList {
                 add(AniListPagingSource(manga))
@@ -103,12 +123,21 @@ abstract class RecommendationPagingSource(
                 // enriches the top results so RecommendationScorer has real genre data to compare.
                 val sourcePreferences: SourcePreferences = Injekt.get()
                 if (sourcePreferences.recommendationCrossExtensionSearch().get()) {
-                    val sourceManager: SourceManager = Injekt.get()
-                    sourceManager.getVisibleCatalogueSources()
-                        .take(MAX_CROSS_EXTENSION_SOURCES)
-                        .forEach { catalogueSource ->
-                            add(CrossExtensionGenreSearchSource(manga, catalogueSource))
-                        }
+                    val crossExtensionSources = eligibleCrossExtensionSources ?: run {
+                        val sourceManager: SourceManager = Injekt.get()
+                        sourceManager.getVisibleCatalogueSources().take(MAX_CROSS_EXTENSION_SOURCES)
+                    }
+                    crossExtensionSources.forEach { catalogueSource ->
+                        add(
+                            CrossExtensionGenreSearchSource(
+                                manga,
+                                catalogueSource,
+                                groupGenreOverride,
+                                groupTitlesOverride,
+                                sharedEnrichmentSemaphore,
+                            ),
+                        )
+                    }
                 }
                 // KMK <--
             }.sortedWith(compareBy({ it.name }, { it.category.resourceId }))

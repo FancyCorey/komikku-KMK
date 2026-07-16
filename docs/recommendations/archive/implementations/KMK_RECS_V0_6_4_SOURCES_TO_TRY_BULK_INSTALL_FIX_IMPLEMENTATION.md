@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.4 Sources To Try Bulk Install Fix Implementation
+﻿# KMK-Recs v0.6.4 Sources To Try Bulk Install Fix Implementation
 
 Date: 2026-06-19
 
@@ -8,7 +8,7 @@ Status: implemented as KMK-Recs v0.6.4.
 
 In v0.6.3, "Install visible suggestions" stopped after the first one or two extensions. The same bug affected individual Install buttons: the install-in-progress indicator would sometimes not clear.
 
-Root cause: both `installSuggestion()` and `installSuggestions()` called `extensionManager.installExtension(suggestion.extension).collect {}`. The `installExtension()` flow emits `InstallStep` values (Pending → Downloading → Installing → Installed) but does NOT terminate after `Installed` — it continues emitting (or stays open). Raw `.collect {}` blocks indefinitely, so in the bulk loop the first extension's coroutine never returned to the `for` loop body, and later extensions never started.
+Root cause: both `installSuggestion()` and `installSuggestions()` called `extensionManager.installExtension(suggestion.extension).collect {}`. The `installExtension()` flow emits `InstallStep` values (Pending â†’ Downloading â†’ Installing â†’ Installed) but does NOT terminate after `Installed` â€” it continues emitting (or stays open). Raw `.collect {}` blocks indefinitely, so in the bulk loop the first extension's coroutine never returned to the `for` loop body, and later extensions never started.
 
 ## Fix
 
@@ -26,7 +26,7 @@ private suspend fun Flow<InstallStep>.collectToInstallUpdate(extension: Extensio
 
 The key: `.takeWhile { ... }` terminates collection when a terminal step is reached. Without it, `.collect()` never returns.
 
-For our case we use `InstallStep.isCompleted()` (returns true for `Installed`, `Error`, or `Idle`) instead of checking only `Installed`, so any terminal state — including errors — ends collection and lets the loop advance:
+For our case we use `InstallStep.isCompleted()` (returns true for `Installed`, `Error`, or `Idle`) instead of checking only `Installed`, so any terminal state â€” including errors â€” ends collection and lets the loop advance:
 
 ```kotlin
 extensionManager.installExtension(suggestion.extension)
@@ -93,22 +93,23 @@ try {
   - Added imports: `InstallStep`, `CancellationException`, `kotlinx.coroutines.flow.collect`, `kotlinx.coroutines.flow.takeWhile`
   - Fixed `installSuggestion()`: `takeWhile { !it.isCompleted() }.collect()`
   - Fixed `installSuggestions()`: duplicate-batch guard, `takeWhile`, `CancellationException` rethrow, `finally` for both cleanup paths
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=604
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE=604
 
 ## What Was Not Changed
 
-- Sources To Try scoring, like/dislike semantics, source ordering — unchanged.
-- Normal Extensions tab install/update behavior — unchanged.
+- Sources To Try scoring, like/dislike semantics, source ordering â€” unchanged.
+- Normal Extensions tab install/update behavior â€” unchanged.
 - No new UI elements added.
 
 ## Commands Run
 
 ```text
-./gradlew :app:compileDebugKotlin --offline → BUILD SUCCESSFUL
-./gradlew :app:testDebugUnitTest --offline → BUILD SUCCESSFUL, all tests PASSED
-./gradlew :app:assembleDebug --offline → BUILD SUCCESSFUL
+./gradlew :app:compileDebugKotlin --offline â†’ BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest --offline â†’ BUILD SUCCESSFUL, all tests PASSED
+./gradlew :app:assembleDebug --offline â†’ BUILD SUCCESSFUL
 ```
 
 ## APK
 
 `Komikku-v1.13.6-kmk.6.4-debug.apk`
+

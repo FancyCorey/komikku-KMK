@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.6 Extension Selective Uninstall Implementation
+﻿# KMK-Recs v0.6.6 Extension Selective Uninstall Implementation
 
 Date: 2026-06-19
 
@@ -32,13 +32,13 @@ Same identity style already used for download/install tracking in `addDownloadSt
 
 ### Actions
 
-**`enterExtensionSelectionMode()`** — sets `isExtensionSelectionMode = true`.
+**`enterExtensionSelectionMode()`** â€” sets `isExtensionSelectionMode = true`.
 
-**`exitExtensionSelectionMode()`** — clears `isExtensionSelectionMode` and `selectedExtensionKeys` atomically.
+**`exitExtensionSelectionMode()`** â€” clears `isExtensionSelectionMode` and `selectedExtensionKeys` atomically.
 
-**`toggleExtensionSelected(extension)`** — ignores `Extension.Available`; toggles `selectionKey()` in `selectedExtensionKeys` for installed/untrusted extensions.
+**`toggleExtensionSelected(extension)`** â€” ignores `Extension.Available`; toggles `selectionKey()` in `selectedExtensionKeys` for installed/untrusted extensions.
 
-**`uninstallSelectedExtensions()`** — guards against overlapping bulk batches (`isBulkUninstallingExtensions`). Filters `state.value.items` to selected, installed/untrusted, idle (not actively installing) extensions. Fires `uninstallExtension()` for each with 300ms delay between calls to avoid rapid-fire Android intent stacking. Uses `try/finally` to always exit selection mode and clear state.
+**`uninstallSelectedExtensions()`** â€” guards against overlapping bulk batches (`isBulkUninstallingExtensions`). Filters `state.value.items` to selected, installed/untrusted, idle (not actively installing) extensions. Fires `uninstallExtension()` for each with 300ms delay between calls to avoid rapid-fire Android intent stacking. Uses `try/finally` to always exit selection mode and clear state.
 
 ### Uninstall execution strategy
 
@@ -66,11 +66,11 @@ New params on `ExtensionScreen` (all with defaults so existing call sites not br
 
 Same params added to `ExtensionContent` (private).
 
-**Selection controls item** — injected into the `LazyColumn` immediately after the "Installed" header when `state.isExtensionSelectionMode` is true:
-- "Uninstall selected (N)" `Button` — disabled when N = 0 or bulk uninstall running.
-- "Cancel" `OutlinedButton` — disabled when bulk uninstall running.
+**Selection controls item** â€” injected into the `LazyColumn` immediately after the "Installed" header when `state.isExtensionSelectionMode` is true:
+- "Uninstall selected (N)" `Button` â€” disabled when N = 0 or bulk uninstall running.
+- "Cancel" `OutlinedButton` â€” disabled when bulk uninstall running.
 
-**`ExtensionItem` changes** — 4 new params: `selectionMode`, `selectable`, `selected`, `onToggleSelected` (all default-valued).
+**`ExtensionItem` changes** â€” 4 new params: `selectionMode`, `selectable`, `selected`, `onToggleSelected` (all default-valued).
 
 - `selectable = true` when `selectionMode && (Installed || Untrusted) && installStep.isCompleted()`.
 - When `selectable`: clicking the row calls `onToggleSelected` instead of the normal open/install/trust action.
@@ -91,8 +91,8 @@ Same params added to `ExtensionContent` (private).
 ## Edge Cases Handled
 
 - **Available extension rows**: not selectable, no checkbox shown, normal display.
-- **Active install/update rows**: `installStep.isCompleted() == false` → excluded from selectable, existing CircularProgressIndicator shown normally.
-- **Stale selected keys**: `uninstallSelectedExtensions()` filters against current `state.items` — stale keys for hidden/uninstalled extensions are automatically ignored.
+- **Active install/update rows**: `installStep.isCompleted() == false` â†’ excluded from selectable, existing CircularProgressIndicator shown normally.
+- **Stale selected keys**: `uninstallSelectedExtensions()` filters against current `state.items` â€” stale keys for hidden/uninstalled extensions are automatically ignored.
 - **Back press in selection mode**: exits selection mode before clearing search query.
 - **Cancel in dialog**: only closes dialog, does not clear selection (user may want to try again).
 - **Zero selected on confirm**: guarded by disabled state on the "Uninstall selected (0)" button.
@@ -102,35 +102,36 @@ Same params added to `ExtensionContent` (private).
 
 ## What Was Not Changed
 
-- Normal long-press uninstall behavior — unchanged.
-- Single-extension uninstall from `onUninstallExtension` — unchanged.
-- Trust extension flow (dialog) — unchanged.
-- Install / update / update-all — unchanged.
-- For You, Recommendation Settings, Sources To Try — unchanged.
+- Normal long-press uninstall behavior â€” unchanged.
+- Single-extension uninstall from `onUninstallExtension` â€” unchanged.
+- Trust extension flow (dialog) â€” unchanged.
+- Install / update / update-all â€” unchanged.
+- For You, Recommendation Settings, Sources To Try â€” unchanged.
 
 ## Tests
 
 No new unit tests added. `ExtensionsScreenModel` depends on `Injekt` DI (Android `Application`, `ExtensionManager`, `GetExtensionsByType`), making unit testing of the new actions impractical without a test harness. The filtering logic in `uninstallSelectedExtensions()` is straightforward (type check + key set membership + `installStep.isCompleted()`).
 
 Existing test suite:
-- `:app:testDebugUnitTest --offline` → BUILD SUCCESSFUL, all tests PASSED.
+- `:app:testDebugUnitTest --offline` â†’ BUILD SUCCESSFUL, all tests PASSED.
 
 ## Files Changed
 
-- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt` — 3 new state fields, helper, 4 new actions
-- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt` — overflow action, BackHandler update, confirmation dialog, wiring
-- `app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt` — new params, selection controls item, checkbox in ExtensionItem, hide actions in selection mode
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — 5 new strings
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=606
+- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt` â€” 3 new state fields, helper, 4 new actions
+- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt` â€” overflow action, BackHandler update, confirmation dialog, wiring
+- `app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt` â€” new params, selection controls item, checkbox in ExtensionItem, hide actions in selection mode
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” 5 new strings
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE=606
 
 ## Commands Run
 
 ```text
-./gradlew :app:compileDebugKotlin --offline → BUILD SUCCESSFUL
-./gradlew :app:testDebugUnitTest --offline → BUILD SUCCESSFUL, all tests PASSED
-./gradlew :app:assembleDebug --offline → BUILD SUCCESSFUL
+./gradlew :app:compileDebugKotlin --offline â†’ BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest --offline â†’ BUILD SUCCESSFUL, all tests PASSED
+./gradlew :app:assembleDebug --offline â†’ BUILD SUCCESSFUL
 ```
 
 ## APK
 
 `Komikku-v1.13.6-kmk.6.6-debug.apk` (universal, 133 MB)
+

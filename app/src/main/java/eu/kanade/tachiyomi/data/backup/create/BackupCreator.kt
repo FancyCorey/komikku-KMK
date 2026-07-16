@@ -15,16 +15,17 @@ import eu.kanade.tachiyomi.data.backup.create.creators.SourcesBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.TasteBackupCreator
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
-import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
@@ -128,6 +129,9 @@ class BackupCreator(
                 // KMK <--
                 // KMK --> v0.7.28: seen manga keys
                 backupSeenMangaKeys = backupSeenMangaKeys(options),
+                // KMK <--
+                // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+                backupCrossSourceGroupPrimaries = backupCrossSourceGroupPrimaries(options),
                 // KMK <--
                 // KMK <--
             )
@@ -245,6 +249,13 @@ class BackupCreator(
     suspend fun backupMangaSourceQualitySignals(options: BackupOptions): List<BackupMangaSourceQualitySignal> {
         if (!options.tasteProfile) return emptyList()
         return tasteBackupCreator.backupMangaSourceQualitySignals()
+    }
+    // KMK <--
+
+    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+    suspend fun backupCrossSourceGroupPrimaries(options: BackupOptions): List<BackupCrossSourceGroupPrimary> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupCrossSourceGroupPrimaries()
     }
     // KMK <--
 

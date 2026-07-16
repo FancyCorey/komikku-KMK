@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.6 Extension Selective Uninstall Plan
+﻿# KMK-Recs v0.6.6 Extension Selective Uninstall Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -449,3 +449,4 @@ This implementation is complete only when:
 - Existing tests pass or failures are clearly documented.
 - Documentation and release notes are updated to `KMK-Recs v0.6.6`.
 - A debug APK is produced using current versioning rules.
+

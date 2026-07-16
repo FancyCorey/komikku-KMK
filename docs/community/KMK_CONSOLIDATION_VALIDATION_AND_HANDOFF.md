@@ -154,3 +154,4 @@ After Claude finishes Phase 0-1, Codex should inspect those outputs before movin
 ## Do Not Forget
 
 Claude must treat every document and plan as applying to the full fork delta from Komikku v1.13.6/current baseline, including all KMK-Recs, KMK-OCR, database, backup, sync, extension, UI, string, test, docs, and generated-artifact changes.
+

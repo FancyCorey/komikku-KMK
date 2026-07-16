@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.backup
 
 // KMK -->
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
@@ -223,6 +224,81 @@ class TasteBackupRoundTripTest {
         assertTrue(decoded.backupMangaSourceQualitySignals.isEmpty())
         assertEquals(mangaTastes, decoded.backupMangaTastes)
     }
+
+    // KMK --> v0.8.1-fix1: proto 627 collision guard tests
+
+    private val groupPrimaries = listOf(
+        BackupCrossSourceGroupPrimary(
+            groupId = "group-xyz",
+            source = 111L,
+            url = "/manga/link-a",
+            updatedAt = 1717977600000L,
+        ),
+        BackupCrossSourceGroupPrimary(
+            groupId = "group-other",
+            source = 222L,
+            url = "/manga/link-b",
+            updatedAt = 1717977700000L,
+        ),
+    )
+
+    @Test
+    fun `cross-source group primaries (proto 627) survive encode and decode`() {
+        val backup = Backup(
+            backupManga = emptyList(),
+            backupCrossSourceGroupPrimaries = groupPrimaries,
+        )
+
+        val bytes = parser.encodeToByteArray(Backup.serializer(), backup)
+        val decoded = parser.decodeFromByteArray(Backup.serializer(), bytes)
+
+        assertEquals(groupPrimaries, decoded.backupCrossSourceGroupPrimaries)
+    }
+
+    @Test
+    fun `all KMK proto fields 620-627 coexist without corruption`() {
+        val backup = Backup(
+            backupManga = emptyList(),
+            backupMangaTastes = mangaTastes,
+            backupTagTastes = tagTastes,
+            backupTagAliases = tagAliases,
+            backupDisabledRecommendationSources = disabledSources,
+            backupCrossSourceMangaLinks = crossSourceLinks,
+            backupMangaSourceQualitySignals = qualitySignals,
+            backupCrossSourceGroupPrimaries = groupPrimaries,
+        )
+
+        val bytes = parser.encodeToByteArray(Backup.serializer(), backup)
+        val decoded = parser.decodeFromByteArray(Backup.serializer(), bytes)
+
+        assertEquals(mangaTastes, decoded.backupMangaTastes)
+        assertEquals(tagTastes, decoded.backupTagTastes)
+        assertEquals(tagAliases, decoded.backupTagAliases)
+        assertEquals(disabledSources, decoded.backupDisabledRecommendationSources)
+        assertEquals(crossSourceLinks, decoded.backupCrossSourceMangaLinks)
+        assertEquals(qualitySignals, decoded.backupMangaSourceQualitySignals)
+        assertEquals(groupPrimaries, decoded.backupCrossSourceGroupPrimaries)
+        assertTrue(decoded.backupFeeds.isEmpty())
+    }
+
+    @Test
+    fun `backup without proto 627 field decodes to empty list (forward compat)`() {
+        // Simulates restoring a v0.8.0 backup (has 620-626, lacks 627)
+        val oldBackup = Backup(
+            backupManga = emptyList(),
+            backupMangaTastes = mangaTastes,
+            backupCrossSourceMangaLinks = crossSourceLinks,
+        )
+
+        val bytes = parser.encodeToByteArray(Backup.serializer(), oldBackup)
+        val decoded = parser.decodeFromByteArray(Backup.serializer(), bytes)
+
+        assertTrue(decoded.backupCrossSourceGroupPrimaries.isEmpty())
+        assertEquals(mangaTastes, decoded.backupMangaTastes)
+        assertEquals(crossSourceLinks, decoded.backupCrossSourceMangaLinks)
+    }
+
+    // KMK <--
 
     @Test
     fun `quality signal chapter number zero sentinel decodes correctly`() {

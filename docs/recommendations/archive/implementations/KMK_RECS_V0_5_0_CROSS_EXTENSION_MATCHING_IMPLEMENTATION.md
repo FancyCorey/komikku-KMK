@@ -1,4 +1,4 @@
-# KMK-Recs v0.5.0 Cross-Extension Rating Matching — Implementation Report
+﻿# KMK-Recs v0.5.0 Cross-Extension Rating Matching â€” Implementation Report
 
 Date: 2026-06-16
 
@@ -6,22 +6,22 @@ Status: implemented and tested.
 
 ## Scope Delivered
 
-Phase 1 (rating workflow) and Phase 5 (docs/versioning) are implemented. Phases 2–4 are deferred.
+Phase 1 (rating workflow) and Phase 5 (docs/versioning) are implemented. Phases 2â€“4 are deferred.
 
 **Delivered:**
 - Love/Like/Dislike other versions actions in the manga detail rating dropdown
-- `CrossExtensionMatchScreen` — separate bounded search workflow
-- `CrossExtensionMatchScreenModel` — per-source cap of 2, auto-selection, manual deselection preserved
-- `SetMangaTasteBatch` — batch taste writer
-- `SearchScreenModel.perSourceResultLimit` — opt-in cap, default `null` (normal global search uncapped)
+- `CrossExtensionMatchScreen` â€” separate bounded search workflow
+- `CrossExtensionMatchScreenModel` â€” per-source cap of 2, auto-selection, manual deselection preserved
+- `SetMangaTasteBatch` â€” batch taste writer
+- `SearchScreenModel.perSourceResultLimit` â€” opt-in cap, default `null` (normal global search uncapped)
 - Source selection respects recommendation language filter and source priority order
 - Local Source excluded
 - No global search preference writes from matching workflow
 
 **Deferred:**
-- Favorite mode (Phase 2) — `BulkFavoriteScreenModel` coupling is too tight; deferred to v0.5.1
-- Cross-source link groups and SQLDelight schema (Phase 3) — deferred to v0.5.1
-- Backup/restore/sync for link groups (Phase 4) — deferred with Phase 3
+- Favorite mode (Phase 2) â€” `BulkFavoriteScreenModel` coupling is too tight; deferred to v0.5.1
+- Cross-source link groups and SQLDelight schema (Phase 3) â€” deferred to v0.5.1
+- Backup/restore/sync for link groups (Phase 4) â€” deferred with Phase 3
 
 ## Changes
 
@@ -33,7 +33,7 @@ Added `protected open val perSourceResultLimit: Int? = null` property. The searc
 .let { list -> perSourceResultLimit?.let(list::take) ?: list }
 ```
 
-Default is `null` — no cap. Normal global search is unaffected. `GlobalSearchScreenModel` does not override this property, so it stays uncapped.
+Default is `null` â€” no cap. Normal global search is unaffected. `GlobalSearchScreenModel` does not override this property, so it stays uncapped.
 
 ### SetMangaTasteBatch.kt (new)
 
@@ -127,40 +127,40 @@ Registered `SetMangaTasteBatch` with `addFactory { SetMangaTasteBatch(get()) }`.
 
 ## Files Changed
 
-- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt` — added `perSourceResultLimit` property + cap application
+- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt` â€” added `perSourceResultLimit` property + cap application
 - `domain/src/main/java/tachiyomi/domain/taste/interactor/SetMangaTasteBatch.kt` (new)
 - `app/src/main/java/exh/recs/matching/CrossExtensionMatchScreenModel.kt` (new)
 - `app/src/main/java/exh/recs/matching/CrossExtensionMatchScreen.kt` (new)
-- `app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt` — `onTasteOtherVersionsClicked` param + dropdown items
-- `app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt` — `onTasteOtherVersionsClicked` threaded through 3 composables
-- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreen.kt` — navigation wiring + imports
-- `app/src/main/java/eu/kanade/domain/KMKDomainModule.kt` — registered `SetMangaTasteBatch`
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=500, v0.5.0 notes
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — 8 new strings
-- `app/src/test/java/exh/recs/matching/CrossExtensionMatchSelectionTest.kt` (new) — 8 tests
+- `app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt` â€” `onTasteOtherVersionsClicked` param + dropdown items
+- `app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt` â€” `onTasteOtherVersionsClicked` threaded through 3 composables
+- `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreen.kt` â€” navigation wiring + imports
+- `app/src/main/java/eu/kanade/domain/KMKDomainModule.kt` â€” registered `SetMangaTasteBatch`
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE=500, v0.5.0 notes
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” 8 new strings
+- `app/src/test/java/exh/recs/matching/CrossExtensionMatchSelectionTest.kt` (new) â€” 8 tests
 
 ## Tests Run
 
-- `exh.recs.matching.CrossExtensionMatchSelectionTest` — 8 tests, all PASSED
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (full suite)
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `exh.recs.matching.CrossExtensionMatchSelectionTest` â€” 8 tests, all PASSED
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL (full suite)
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 APK: `Komikku-v1.13.6-kmk.5.0-debug.apk`
 
 ## Deviations From Plan
 
-- **Favorite mode deferred** — plan suggested including it if `BulkFavoriteScreenModel` logic could be cleanly reused. After reviewing the coupling, it requires more refactoring than fits in this pass. Deferred to v0.5.1.
-- **Cross-source link groups deferred** — plan noted this as "strongly recommended if feasible in this pass." SQLDelight schema, migration, domain model, repository, interactors, backup/restore, and sync are all needed. Deferred to v0.5.1 to keep v0.5.0 focused and shippable.
-- **Backup/restore for link groups deferred** — with Phase 3.
-- **`CrossExtensionMatchScreenModel` does not extend `SearchScreenModel`** — plan offered two alternatives. Used the copied search loop approach because the selection state and source filtering logic differ too much, and the global search init (subscribing to `globalSearchPinnedState`) would have added unnecessary state. The `perSourceResultLimit` property was still added to `SearchScreenModel` as required for the test that confirms normal global search is uncapped.
-- **Per-source cap changed from 5 to 2** — plan specified 5 results per source. Changed to 2 after implementation to keep the confirmation list tighter and reduce wrong-match risk. `PER_SOURCE_RESULT_LIMIT = 2` in `CrossExtensionMatchScreenModel`.
-- **Confirmation navigates back immediately** — plan mentioned disabling the button during apply. Both are implemented: button is disabled while `isApplying`, and navigates back via `onComplete` after apply finishes.
+- **Favorite mode deferred** â€” plan suggested including it if `BulkFavoriteScreenModel` logic could be cleanly reused. After reviewing the coupling, it requires more refactoring than fits in this pass. Deferred to v0.5.1.
+- **Cross-source link groups deferred** â€” plan noted this as "strongly recommended if feasible in this pass." SQLDelight schema, migration, domain model, repository, interactors, backup/restore, and sync are all needed. Deferred to v0.5.1 to keep v0.5.0 focused and shippable.
+- **Backup/restore for link groups deferred** â€” with Phase 3.
+- **`CrossExtensionMatchScreenModel` does not extend `SearchScreenModel`** â€” plan offered two alternatives. Used the copied search loop approach because the selection state and source filtering logic differ too much, and the global search init (subscribing to `globalSearchPinnedState`) would have added unnecessary state. The `perSourceResultLimit` property was still added to `SearchScreenModel` as required for the test that confirms normal global search is uncapped.
+- **Per-source cap changed from 5 to 2** â€” plan specified 5 results per source. Changed to 2 after implementation to keep the confirmation list tighter and reduce wrong-match risk. `PER_SOURCE_RESULT_LIMIT = 2` in `CrossExtensionMatchScreenModel`.
+- **Confirmation navigates back immediately** â€” plan mentioned disabling the button during apply. Both are implemented: button is disabled while `isApplying`, and navigates back via `onComplete` after apply finishes.
 
 ## Known Risks
 
-- **Wrong match risk** — all results auto-selected by default. Users must deselect before confirming. Mitigated by 2-result cap per source and explicit confirmation button.
-- **Normal global search** — verified uncapped: `SearchScreenModel.perSourceResultLimit` defaults to `null`; `GlobalSearchScreenModel` does not override it.
-- **Preference pollution** — matching workflow does not call `setSourceFilter()` or write any global search preferences.
+- **Wrong match risk** â€” all results auto-selected by default. Users must deselect before confirming. Mitigated by 2-result cap per source and explicit confirmation button.
+- **Normal global search** â€” verified uncapped: `SearchScreenModel.perSourceResultLimit` defaults to `null`; `GlobalSearchScreenModel` does not override it.
+- **Preference pollution** â€” matching workflow does not call `setSourceFilter()` or write any global search preferences.
 
 ## Follow-up Recommendations
 
@@ -168,3 +168,4 @@ APK: `Komikku-v1.13.6-kmk.5.0-debug.apk`
 - v0.5.1: Cross-source link groups (SQLDelight table, domain model, backup at proto 624)
 - Future: "Link other versions" entry point once link groups are implemented
 - Future: Pre-populate matching screen with already-linked versions if link groups exist
+

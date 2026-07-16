@@ -618,3 +618,4 @@ Risk: Side-by-side APK cannot see app data.
 - User can clear OCR index data.
 - Tests cover normalization, indexing, search, stale handling, and key UI/view-model behavior.
 
+

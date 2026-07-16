@@ -1,11 +1,266 @@
-package exh.recs
+﻿package exh.recs
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 734
-    const val VERSION_NAME = "KMK-Recs v0.7.34"
+    const val VERSION_CODE = 759
+    const val VERSION_NAME = "KMK-Recs v0.8.9"
 
+    // KMK v0.8.9: entries from this version onward follow the official Komikku changelog structure
+    // (version heading, short summary, "What's Changed" heading, New/Improve/Fix sub-headings with
+    // bold area-label bullets) instead of a flat bullet list — see WhatsNewScreen.kt's MarkdownRender
+    // (GFMFlavourDescriptor), which already fully supports this exact structure (it's the same
+    // renderer used for the real official upstream changelog preview). Every entry below v0.8.9 is
+    // preserved exactly as it was written, in its original flat-bullet format — retroactively
+    // rewriting 40+ historical entries into the new structure was judged a large, error-prone
+    // content-rewrite disproportionate to a formatting change, and out of scope for this pass; see
+    // the v0.8.9 implementation report for this documented scope decision.
     val MARKDOWN = """
+        ## KMK-Recs v0.8.9
+
+        Official-style What's New formatting, and search for Recommendation Settings.
+
+        #### What's Changed
+
+        ##### New
+        - **Settings:** Recommendation Settings now has a search action — search across For You, Source Priority, Taste and Tags, Source Evaluation, Sources To Try, installer/background behavior, and Management/Diagnostics, and jump straight to the right screen.
+        - **What's New:** this changelog now follows the same New/Improve/Fix structure as the main Komikku changelog, going forward. Every past KMK-Recs entry remains available exactly as originally written.
+
+        ##### Improve
+        - **Settings:** search results show a category label so similarly named settings in different sections stay easy to tell apart, and a setting that's currently unavailable is shown as unavailable rather than left out of results silently.
+
+        ## KMK-Recs v0.8.8
+
+        Reading schedule enforcement fix (v0.8.7-fix1), a chapter-completion rating prompt, a Recommendation Settings index, and an outdated-evaluation fix.
+
+        - Fix (v0.8.7-fix1): the reading schedule could grant a fresh reading allowance every time you left a restricted reader and opened a different manga — restriction was never actually enforced across reader sessions, only shown as a toast. Reading is now genuinely blocked, immediately, for a reader opened while restricted; only a reader that was already open when a restriction begins may finish its current chapter, with no extra chapter and no way to bypass it via manual chapter selection, deep links, rotation, or backgrounding.
+        - New: after you finish the latest available chapter of a manga, an optional prompt offers Love/Like/Dislike/Not Interested/dismiss. Rating never fires twice for the same completion, and never appears while the reading schedule is restricting you.
+        - New: after rating from that prompt, if the manga has confirmed other versions on different sources, you're offered the chance to rate those too, using the same version-matching tool already used elsewhere.
+        - Change: Recommendation Settings now opens to a concise index of sections (For You, Source Priority, Taste and Tags, Source Evaluation, Sources To Try, Background/Installer, Management) instead of one long screen. Source Evaluation opens directly from the index. No preference or existing setting behavior changed — this is navigation only.
+        - Fix: Source Evaluation could show sources as "Outdated — reassess needed" that "Continue reassessing outdated" would never actually process (for example, because you'd since installed that source, changed your language filter, or disliked it) — silently doing nothing instead of explaining why. This now shows a clear explanation instead of a confusing no-op.
+
+        ## KMK-Recs v0.8.7
+
+        Reading schedule fix, and rated/settings UI refinements.
+
+        - Fix: the reading schedule's "Add window" flow could silently do nothing after you picked days — no time picker would appear. This is fixed: selecting weekdays now reliably opens the time picker.
+        - New: the reading schedule time picker now follows your device's 12-hour or 24-hour display preference instead of always showing 24-hour time.
+        - New: you can now add a "Whole day" window instead of only a specific time range.
+        - New: reading schedule windows can now be edited in place (pencil icon) instead of only deleted and re-added.
+        - Change: in the reading schedule dialog, Save commits your changes and Cancel (or tapping outside/back) discards them — tapping outside no longer accidentally saves a half-finished edit.
+        - New: the Rated (Loved/Liked/Disliked) bulk-selection bar's More menu now offers "Select all in group" when your current selection belongs to one confirmed group, not only from the per-item menu.
+        - New: Clear Rating and Mark Not Interested (bulk selection) now show an Undo option right after you confirm them.
+        - Change: Daily recommendations, Ratings and Known Manga, Tags, Source Priority, Same-Manga Matching, and Sources To Try in Recommendation Settings now show a one-line summary of their current state (selected languages, visibility mode and chapter minimum, preferred/blocked tag counts, enabled source count and top source, results-per-source and preselect setting, suggestion count) so you can see what's configured without expanding every section.
+
+        ## KMK-Recs v0.8.6
+
+        Group recommendation loading performance and a configurable preview size.
+
+        - New: "Initial results per extension" setting in Recommendation Settings (5/10/15/20/30, default 10) controls how many manga cards each extension shows in a group (Loved/Liked/Rated group) recommendation preview. Open a source row to keep loading more through the existing full search.
+        - Change: group recommendation source rows now run with a bounded number active at once instead of starting every eligible extension simultaneously, so results appear progressively instead of all-or-nothing.
+        - Change: a single slow or failing extension in a group recommendation now times out and shows its own row error instead of the possibility of stalling the screen.
+        - Fix: leaving the recommendations screen mid-load now reliably cancels the in-flight search instead of continuing in the background.
+        - Fix: cancelling a group recommendation load (navigating away) is no longer occasionally shown as a row error.
+        - This setting is scoped to group recommendation previews only — it does not change For You's existing "Results per source" setting, and normal global search remains completely unaffected and uncapped.
+
+        ## KMK-Recs v0.8.5
+
+        Optional reading schedule.
+
+        - New: an optional reading schedule (Settings > Reader > Reading schedule) that can restrict or allow reading during chosen days and times, entirely inside this app.
+        - New: add or remove any number of recurring time windows, each covering one or more days of the week, using the same time picker already used elsewhere in the app.
+        - Change: like the active-reading timer, a reading-schedule window never interrupts a chapter you're already reading — it lets you finish the chapter first.
+
+        ## KMK-Recs v0.8.4
+
+        Active-reading timer.
+
+        - New: a reading timer in the reader (tap the timer icon in the bottom bar). Choose 15, 30, or 60 minutes, or set a custom duration.
+        - New: optional warnings before time is up, and a choice to finish your current chapter — optionally one extra chapter — instead of being cut off mid-story.
+        - Change: manual chapter selection and going back to the previous chapter never count toward the one-extra-chapter allowance; only continuing forward naturally after time is up does.
+        - Change: the timer only counts while you're actively reading — it pauses automatically the moment you leave and resumes when you come back, unless you paused it yourself.
+
+        ## KMK-Recs v0.8.3
+
+        Recommendation Settings reorganized.
+
+        - Change: Recommendation Settings is now organized into For You behavior, Source priority, Source evaluation, Source management, and Discovery/cache management sections, matching the rest of the app's settings layout.
+
+        ## KMK-Recs v0.8.2
+
+        Configurable For You results per source.
+
+        - New: For You now has a "Results per source" setting (5/10/15/20/30, default 10) in Recommendation Settings.
+        - Change: your top 3 boosted sources always show at least 20 results, even if you pick a smaller number for other sources.
+
+        ## KMK-Recs v0.8.1-fix4
+
+        Source quality marks and final cleanup.
+
+        - New: you can now mark a source as poor or too explicit as a source/library, separate from your For You recommendation preference. Use it for sources whose overall library is bad, misleading, or too lewd/hentai-heavy — even if some individual results looked fine.
+        - New: sources marked poor or too explicit are hidden from Sources To Try and Source Evaluation by default, and no longer feed For You once installed. Nothing is deleted — past evaluation history is preserved and can be shown again with "Show disliked sources".
+        - New: a "Clear source quality marks" recovery action in Recommendation Settings removes every source/library mark at once.
+        - Fix: after a stale/outdated Source Evaluation reassessment finishes, the screen now shows a clear "Outdated reassessment complete" message instead of just quietly removing the action.
+        - Cleanup: What's New and other in-app text no longer reference build-channel wording; XML string comments and documentation were normalized.
+
+        ## KMK-Recs v0.8.1-fix3
+
+        Source Evaluation continuation fix.
+
+        - Fix: after a Source Evaluation batch finished reassessing sources, rows still marked "Outdated — reassess needed" could no longer be continued into — the screen reported 0 unassessed extensions remaining even though outdated rows were still visible in the results list.
+        - Fix: reassessing stale/outdated sources is now a separate, first-class queue with its own "Reassess outdated (N)" / "Continue reassessing outdated (N remaining)" action and its own progress cursor, so it can no longer be silently absorbed into the "already evaluated" count.
+        - Change: the unassessed queue and the outdated-reassessment queue track progress independently — switching between them, or changing batch size, never discards either queue's progress. A "Restart outdated reassessment" action lets you explicitly start that queue over from the beginning.
+
+        ## KMK-Recs v0.8.1-fix2
+
+        Version visibility and sync validation.
+
+        - Fix: opening Loved Manga no longer crashes with a "GetCrossSourceGroupPrimary" dependency error. The three primary-version interactors added in v0.8.0 were never registered, so any screen that needed them (Loved Manga, Linked Versions, backup, restore) could crash.
+        - Fix: the KMK-Recs What's new dialog and version number are now shown reliably, and never suppressed by the regular Komikku update dialog on the same launch.
+        - Fix: syncing your chosen primary version between devices now rejects malformed rows the same way restoring a backup already did.
+
+        ## KMK-Recs v0.8.1-fix1
+
+        Rated Manga and Source Evaluation polish.
+
+        - Fix: removing a linked version from the version list now asks for confirmation first, matching the same safeguard already used elsewhere.
+        - Fix: your chosen primary version per group is now included in backup, restore, and sync — it used to be lost when restoring or syncing.
+        - Fix: pressing "Select" in Loved/Liked/Disliked now enters selection mode without selecting anything. Long-press still selects the item you pressed.
+        - Change: the linked-version list now explains that the star sets the primary version, since that action isn't in the card menu directly.
+        - New: Source Evaluation rows can show an expandable "Details" section — enrichment counts, metadata sample counts, and liked/disliked/blocked/adult-risk counts — explaining why a source got its verdict.
+
+        ## KMK-Recs v0.8.0
+
+        Rated Manga bulk selection and group actions.
+
+        - Change: long-press in Loved / Liked / Disliked now enters bulk selection instead of opening recommendations. A "Select" button in the app bar does the same thing.
+        - New: selection mode adds a bottom action bar — Change rating, Clear rating, Group, and More (Mark not interested, Remove from group).
+        - New: each card has a menu with Recommendation, Rating, and Group actions, including "See group recommendations" (only shown for confirmed linked groups with 2+ versions), "Find other versions", and "Favorite other versions".
+        - New: a focused "Linked versions" screen shows every version in a confirmed group — source, language, title, rating, favorite status, installed/missing status, last updated, and which one is the primary version.
+        - New: you can set a primary version per group, which controls the cover/title shown in the rated list. Recommendations still use the whole group's metadata, not just the primary version.
+        - New: Merge Selected Into Group, Remove From Group, and Ungroup actions, all confirmed before running. Merging never happens automatically by title — only by manual selection.
+        - Safety: clearing a rating never deletes the manga, favorites, history, or version links.
+
+        ## KMK-Recs v0.7.47
+
+        Source Evaluation tag enrichment and scoring fix.
+
+        - Fix: Source Evaluation now fetches full manga details for a bounded set of catalogue samples that are missing tags on the list page, instead of scoring sources only on what Popular/Latest happen to expose. Sources that were previously marked weak just because their list pages omitted tags are re-evaluated fairly.
+        - Fix: sources with too little usable tag evidence are now shown as "needs manual review" instead of being confidently marked weak.
+        - Fix: sources with a mix of liked tags and blocked/adult tags (BL/GL/adult/explicit signals) can no longer reach "Strong fit" purely because of broad positive tags — blocked and adult-risk evidence now gates the verdict.
+        - Fix: source evaluation results scored under older app versions are now clearly shown as outdated and no longer sort above current, freshly-checked results.
+        - Change: Source Evaluation scoring is now version 3; all previous results are treated as outdated until reassessed.
+
+        ## KMK-Recs v0.7.46
+
+        Polish and OCR safety cleanup.
+
+        - OCR errors are now shown as safer, clearer messages instead of raw technical text.
+        - OCR page-error logs no longer include manga titles or chapter names.
+        - OCR index cleanup controls are easier to find — you can now clear OCR text for a single chapter or manga right from a search result, plus a quick way to clear empty/failed rows.
+        - Source Evaluation error rows show clearer, translated messages instead of raw technical text.
+        - Documentation and versioning were refreshed.
+
+        ## KMK-Recs v0.7.45
+
+        Final v0.7 release. This closes the v0.7 feature line and hardens the fork for everyday use.
+
+        - Change: Loved/Liked/Disliked Rated Manga views now show grouped (duplicate-collapsed) display by default. You can still switch to a flat list, and that choice now survives background refreshes.
+        - Change: Recommendation Settings now shows how often each source has contributed to your Top Picks (e.g. "Great fit · 5"), when it has contributed at least once.
+        - Fix: checking a non-installed source's For You search compatibility now requires the Private installer. If Private isn't available, those checks are skipped with a clear message instead of silently using Shizuku/Current, where a leftover extension could previously go unnoticed.
+        - Fix: Source Evaluation error rows no longer show raw internal exception text — errors are now classified into a small set of clear categories (network unavailable, timed out, unsupported, internal error).
+        - Clarified that OCR ships in the same build as KMK-Recs (it was never actually a separate build, despite older docs saying so) — this is now documented accurately, including its local-only storage and backup/export exclusion.
+
+        ## KMK-Recs v0.7.44
+
+        - Fix: `RecommendationCandidateVisibilityPolicyTest` and two other test classes that build a favorite manga no longer fail with an unrelated Injekt error — the whole recommendation test suite is clean again.
+        - Change: Loved/Liked group recommendations now actually search using every linked version's combined tags and titles, not just the primary version's — a source that can't match the primary version's exact tags now falls back through progressively looser tag attempts, then a title search across every linked version, before giving up on that row.
+        - Change: group recommendations now honor the same source language/priority/disabled/disliked-source rules as For You, and the same favorite/rated/Not Interested/known/min-chapter visibility rules — previously they only excluded exact duplicates and Not Interested titles.
+        - Fix: For You no longer gives up on a source after one overly strict tag search — it now tries up to three progressively looser attempts (same shared policy grouped recommendations use) before marking a source as having no results, and no longer "locks in" a search strategy that produced zero results.
+        - Change: Source Evaluation rows are more compact — detailed error/reason text is now collapsed behind a "Show details" toggle instead of always taking up space, and the remaining hardcoded English error labels are now translatable. The Shizuku setup card's action buttons and the compatibility-check action buttons now wrap instead of crowding on narrow phones.
+        - Added test coverage for the shared query-attempt policy and for the background For You search compatibility job's conflict-guard decision.
+
+        - Fix: "For You search compatibility" checks (missing/outdated/re-check all) now run as a background job, the same way full Source Evaluation does. Leaving the Source Evaluation screen no longer stops a check in progress — it keeps running, shows its own notification with progress, and you can tap the notification or reopen Source Evaluation to see current progress or cancel it.
+        - Fix: Source Evaluation and For You search compatibility can no longer run at the same time — starting one while the other is active now shows a clear message instead of letting them race over the same temporary extension installs.
+        - Change: Loved/Liked group recommendations ("Recommendations from this") now use the same provider/extension row layout as a single manga's Recommendations page, seeded by every confirmed linked version of that title instead of just one. Cross-extension genre search rows now search by the group's combined tags, not one version's tags alone. Versions already in the group never appear as recommendations. The old single-grid group recommendations screen was removed.
+        - Change: "Mark as seen" is renamed "Not interested" to honestly describe what it does — the title still stays hidden from For You and group recommendations, but similar manga are now also mildly deprioritized (much less strongly than Dislike). Your existing seen list is unaffected; nothing needs to be re-marked.
+
+        ## KMK-Recs v0.7.42-fix2
+
+        - Fix: Source Evaluation's sort menu no longer offers "Search reliability" — that sort ordered a field the app never actually measures. It's replaced with "For You compatibility", which truthfully orders sources by their real search-compatibility result: current good results first, then weak, then no-matches, then errors, then outdated results, then not-yet-checked, then ineligible sources last.
+        - Fix: a source whose search-compatibility result is out of date (an older scoring version, or expired) now clearly shows "Outdated - recheck" instead of silently displaying its old result as if it were still current.
+        - New: a "Recheck outdated" action lets you re-check only sources with stale results, without re-running every source like "Re-check all" does.
+        - Fix: "Re-check all" now actually rechecks every eligible source, including ones with outdated results — previously it could silently skip them.
+        - Fix: Best Fit sort no longer uses the retired "search reliability" figure as a tie-breaker; it now uses the real current search-compatibility result as a true tie-breaker, only after catalogue fit is equal.
+
+        ## KMK-Recs v0.7.42-fix1
+
+        - Fix: the manual "Check search compatibility" / "Re-check all" actions and diagnostics counts in Source Evaluation now use the exact same eligibility rules as automatic evaluation. A source with inconclusive catalogue evidence is no longer skipped by the manual check just because its individual verdict looked unfavorable.
+        - Fix: search compatibility results computed before this update are now automatically re-checked instead of silently being treated as still current.
+        - Fix: Source Evaluation rows no longer show a misleading "search 0%" figure — that field was never a real search measurement. Rows now show catalogue metadata confidence instead.
+
+        ## KMK-Recs v0.7.42
+
+        - Source Evaluation now scores catalogue fit (Popular/Latest samples) separately from search compatibility, instead of pooling both into one number. The redundant, less accurate tag-search probe that used to run inside Source Evaluation was removed — search compatibility is measured only by the dedicated probe, and its results are now labeled "For You search: Good/Great/…" instead of the misleading "Recommendations: Good/Great/…".
+        - Catalogue-fit matching now uses the exact same taste-matching logic as For You itself, including tag aliases and blocked-tag hard exclusion, instead of a simpler approximation.
+        - A source with sparse Popular/Latest tag metadata is no longer penalized as a poor fit — a new confidence signal tracks how much usable tag data was actually sampled, and a source with inconclusive catalogue evidence is still checked for search compatibility rather than being silently skipped.
+        - Existing Source Evaluation results are automatically treated as outdated and eligible for reassessment, since the scoring rules changed.
+
+        ## KMK-Recs v0.7.41
+
+        - Fix: cached and remembered candidates now obey exactly the same visibility rules as live results. A manga hidden by the minimum-chapter filter, or that is known/rated/seen/favorited/disliked, can no longer reappear just because it came from the cache or discovery memory.
+        - Fix: group-seeded recommendations no longer run short. Hidden candidates (already in library, rated, seen, below the chapter minimum, or part of the seed group) no longer use up the 20-result budget — the search keeps scanning bounded chunks until it collects 20 visible results or exhausts its safe limits.
+        - Fix: discovery retry state is now truthful. A page that used up all its retries is recorded as permanently exhausted (keeping its diagnostic) instead of a generic error, and a due retry of the final page (page 20) can run while a brand-new page past the cap (page 21) is never created.
+        - Fix: unknown extension errors are now treated as permanent rather than retried forever. Only genuine connectivity, I/O, and timeout failures are retried; HTTP 4xx and unexpected extension crashes stop after one record.
+        - Cancellation is never recorded as a failed retry.
+
+        ## KMK-Recs v0.7.40
+
+        - Fix: extra-page discovery candidates were dropped when For You memory was empty — they are now merged and ranked with the same path as page-1 and remembered candidates, so no valid candidates are silently lost.
+        - Fix: the same merge defect applied to the cached path — the early-return short-circuit on empty memory has been removed from both paths.
+        - Discovery retry: transient network failures (timeout, no connection, I/O errors) on additional-page probes now record retry metadata (attempt count, next-retry timestamp, failure kind) and are retried with bounded exponential backoff (5 min → 10 min → 20 min, capped at 24 hours, max 3 attempts). HTTP 4xx errors and UnsupportedOperation are recorded as permanent and not retried.
+        - Discovery timeout: additional-page probes are now bounded to 20 seconds. A timeout is recorded as a retryable failure so the page is retried on the next refresh.
+        - Group-seeded recommendations now use the user's real language preference, source priority order, and liked/disliked source exclusions — the same source selection logic that For You uses — instead of always searching all English sources without priority or exclusions.
+        - Group-seeded recommendations now apply the full For You visibility filter (favorites hidden, rated hidden per visibility setting, seen manga hidden, known manga hidden when enabled, min-chapter threshold) using a shared policy object.
+        - For You and group-seeded recommendations now share `RecommendationSourceSelector` and `RecommendationCandidateVisibilityPolicy` so both flows produce consistent results.
+
+        ## KMK-Recs v0.7.39
+
+        - For You rolling discovery: each refresh now tracks which pages were evaluated in a new `recommendation_discovery_progress` table (migration 57). Empty, filtered, and error pages are recorded so they are not retried on every refresh — only unevaluated pages are probed.
+        - Discovery advances progressively: after page 1 is evaluated, page 2 is probed on the next refresh; after page 2, page 3; and so on up to 20 pages per source/query before the discovery path is considered exhausted.
+        - Reset For You discovery history now also clears the progress table so discovery restarts from page 1 on the next refresh.
+        - Rated group recommendations remain unchanged (full cross-source group seeding was already implemented in v0.7.38 via GroupRecommendationSeedBuilder).
+
+        ## KMK-Recs v0.7.38
+
+        - For You discovery memory: discovered candidate manga are now remembered between refreshes. On the next For You refresh, remembered candidates are merged with newly discovered ones and re-ranked against the current taste profile — strong past candidates are not lost just because they didn't appear in the latest batch.
+        - Additional page discovery: after page-1 results are recorded, For You now probes page 2 (and page 3 on subsequent refreshes) to expand the candidate pool beyond what a single search page returns. Each additional page is bounded to 20 new candidates.
+        - Group-seeded recommendations: the recommendation seed is now built from ALL confirmed linked versions of a manga, not just the one being viewed. Sparse group members (fewer than 2 local genres) are enriched with live metadata — bounded to 8 members, 5 seconds per member, 20 seconds total — before the weighted tag seed is computed. Tags contributed by more group members receive higher weight in scoring.
+        - Group seed scoring: a new GroupSeedRecommendationScorer adds a seed-tag score on top of the personal taste score — tags that appear across 2+ group members score 1.0 (strong match), single-member tags score 0.3 (weak match), both scaled by the tag's group weight.
+        - Reset For You discovery history: new button in Recommendation Settings → Management clears all remembered For You candidates without affecting ratings, seen manga, or source settings.
+
+        ## KMK-Recs v0.7.37
+
+        - Group-seeded recommendations no longer stay on the loading spinner indefinitely. The total load time is now bounded by a 45-second screen timeout; if time runs out with partial results they are shown, and if none are found the screen shows the empty state.
+        - Localization of each candidate (NetworkToLocalManga) now has a 5-second per-candidate timeout. Candidates that take too long are skipped without blocking subsequent results.
+        - The screen now stops early once 20 results are collected rather than continuing to query all remaining sources and plans.
+        - Reduced source and candidate caps to values appropriate for a quick single-manga drill-down: 5 sources max, 8 raw candidates per source.
+        - Source-aware deduplication: candidates are now keyed by (sourceId, url) pairs instead of url alone, so the same path on different sources is no longer incorrectly merged.
+        - Cross-source link group rating exclusivity: if a confirmed linked group contains members with different ratings (e.g. one version Loved, another Liked), the group now appears in only one rating tab — the tab that matches the most-recently-updated member's rating. Previously, both tabs could show the same grouped manga.
+        - CancellationException is now re-thrown inside the per-source try/catch so navigating away from the screen correctly cancels the in-flight recommendation load.
+
+        ## KMK-Recs v0.7.36
+
+        - Rated Manga UI parity: Liked and Disliked manga screens now share the full Loved Manga feature set — sort chips, group-duplicates toggle, version badges, cross-source link management, and export. Export filenames are rating-appropriate (kmk_liked_manga.json, kmk_disliked_manga.json).
+        - Discoverability: each Loved/Liked card shows a small Explore icon overlay (top-left) that opens "Recommendations from this" without requiring a long-press. Long-press still works as a shortcut. Disliked cards omit the overlay to avoid confusing semantics.
+        - Library toolbar shortcuts: Loved Manga, Liked Manga, and Disliked Manga are now accessible from the Library overflow menu, not only from Browse > For You.
+        - Crash fix: group-seeded recommendations no longer crash when tapping a result. All candidates are now localized via NetworkToLocalManga before being shown, so MangaScreen always opens a valid local DB id. Candidates that fail localization are silently skipped.
+
+        ## KMK-Recs v0.7.35
+
+        - Fix: `NetworkOnMainThreadException` crash in the recommendation-quality probe — all source calls (`getFilterList`, `getSearchManga`, `getMangaDetails`) now run on the IO dispatcher. The exception is classified as an internal probe error and does not reduce source quality scores.
+        - Rated Manga: "Liked" and "Disliked" views accessible from the For You toolbar (thumbs-up and thumbs-down icons). Show manga rated LIKE or DISLIKE respectively; same installed-source filter and grid as Loved Manga.
+        - Group-seeded recommendations: long-press any Loved Manga card to open "Recommendations from [title]" — searches installed sources using the seed manga's genre tags (boosted in the taste profile), filters out the seed group members from results.
+
         ## KMK-Recs v0.7.34
 
         - Source Evaluation: per-source error category labels on rec-quality ERROR rows (e.g. "Ext not found", "Install failed", "Search timed out") so the failure type is visible without expanding the error detail (C1).

@@ -759,3 +759,4 @@ Possible later improvements, not part of v0.1.1 unless explicitly approved:
 - User-selectable OCR languages/models.
 - Background indexing while charging only.
 - OCR indexing only unread/recent/downloaded-favorite chapters.
+

@@ -1,4 +1,4 @@
-# Non-Installed Extension Discovery Implementation
+﻿# Non-Installed Extension Discovery Implementation
 
 Date: 2026-06-16
 
@@ -12,7 +12,7 @@ A conservative metadata-based "Sources To Try" section in Recommendation Setting
 
 **`NonInstalledSourceSuggestion.kt`**
 
-- `SuggestionConfidence` enum: `LOW`, `MEDIUM`. HIGH is intentionally absent — reserved for post-install installed-source fit learning.
+- `SuggestionConfidence` enum: `LOW`, `MEDIUM`. HIGH is intentionally absent â€” reserved for post-install installed-source fit learning.
 - `NonInstalledSuggestionReason` sealed interface: `LanguageMatch`, `SimilarToInstalledSource`, `SameRepoAsInstalledSources`, `NeedsTesting`.
 - `NonInstalledSourceSuggestion` data class holding original `Extension.Available`, selected `Extension.Available.Source?`, score, confidence, reasons, and stable `dismissalKey`.
 - `InstalledExtensionHints` internal data class: slim representation of installed extension data (no Android `Drawable`), used so the scorer has zero Android dependencies.
@@ -31,11 +31,11 @@ Filtering (exclude if):
 For extensions with multiple sources, each eligible source gets its own suggestion.
 
 Scoring signals:
-- `+0.20` — language match (always, since filtered otherwise).
-- `+0.10` — same repo name as any installed extension.
-- `+0.10` — source name similarity to any installed source (substring containment on normalized names, min length 6).
-- `+0.05` — source has a non-empty base URL.
-- `+0.05` — source name or base URL contains a content keyword (`scans`, `manhwa`, `manga`, `webtoon`, `comics`, `scan`).
+- `+0.20` â€” language match (always, since filtered otherwise).
+- `+0.10` â€” same repo name as any installed extension.
+- `+0.10` â€” source name similarity to any installed source (substring containment on normalized names, min length 6).
+- `+0.05` â€” source has a non-empty base URL.
+- `+0.05` â€” source name or base URL contains a content keyword (`scans`, `manhwa`, `manga`, `webtoon`, `comics`, `scan`).
 - Score capped at `0.69`.
 
 Confidence:
@@ -56,19 +56,19 @@ Interactor combining `availableExtensionsFlow`, `installedExtensionsFlow`, `untr
 - Added `suggestions` and `expandSuggestions` to `State`.
 - Subscribed to `GetNonInstalledSourceSuggestions.subscribe()` in `init`.
 - Added `installSuggestion()`, `dismissSuggestion()`, `toggleExpandSuggestions()` actions.
-- `installSuggestion()` calls `extensionManager.installExtension(suggestion.extension)` — with the original extension, not a synthetic `GetExtensionsByType` copy.
+- `installSuggestion()` calls `extensionManager.installExtension(suggestion.extension)` â€” with the original extension, not a synthetic `GetExtensionsByType` copy.
 
 ### Settings Screen Changes
 
 `RecommendationsSettingsScreen`:
 - Added "Sources To Try" section at the bottom of the LazyColumn.
 - Shows top 5 suggestions by default; "Show N more" expands to all.
-- Each suggestion row (`SourceSuggestionItem`): name, lang · repo · confidence label, reason text, Install button, Dismiss button.
+- Each suggestion row (`SourceSuggestionItem`): name, lang Â· repo Â· confidence label, reason text, Install button, Dismiss button.
 - Install triggers existing extension install flow. Dismissed suggestions are persisted immediately.
 
 ### Preference
 
-`SourcePreferences.dismissedNonInstalledRecommendationSources()` — semicolon-separated `"signatureHash|pkgName|sourceId"` strings.
+`SourcePreferences.dismissedNonInstalledRecommendationSources()` â€” semicolon-separated `"signatureHash|pkgName|sourceId"` strings.
 
 ### Strings Added
 
@@ -78,18 +78,18 @@ Interactor combining `availableExtensionsFlow`, `installedExtensionsFlow`, `untr
 
 - Automatic installation.
 - Website crawling or source-specific website scrapers.
-- Source quality learning from real For You runs (installed-source fit) — deferred, the plan recommends implementing it before or alongside discovery, but it is a larger feature.
-- Cross-source link groups, favorite mode, backup changes — unrelated.
+- Source quality learning from real For You runs (installed-source fit) â€” deferred, the plan recommends implementing it before or alongside discovery, but it is a larger feature.
+- Cross-source link groups, favorite mode, backup changes â€” unrelated.
 - Changes to normal global search or source migration.
-- A separate browseable extension discovery screen — Settings integration is sufficient for v1.
-- "Search in Extensions" action — users can navigate to the Extensions screen from the standard Browse tab.
-- Post-install pending-evaluation state — deferred, suggestions disappear naturally after install via installed flow.
+- A separate browseable extension discovery screen â€” Settings integration is sufficient for v1.
+- "Search in Extensions" action â€” users can navigate to the Extensions screen from the standard Browse tab.
+- Post-install pending-evaluation state â€” deferred, suggestions disappear naturally after install via installed flow.
 
 ## Original Extension Identity Issue
 
 `GetExtensionsByType` creates synthetic per-source copies of `Extension.Available` with modified `pkgName = "${ext.pkgName}-${source.id}"` for UI grouping. Passing one of these copies to `ExtensionManager.installExtension()` would use the wrong package identity.
 
-Resolution: `GetNonInstalledSourceSuggestions` works directly from `ExtensionManager.availableExtensionsFlow` (raw original extensions). Each `NonInstalledSourceSuggestion` stores the original `Extension.Available` as received from that flow, plus the specific `Extension.Available.Source` separately. `installSuggestion()` passes `suggestion.extension` directly — the original, unmodified extension.
+Resolution: `GetNonInstalledSourceSuggestions` works directly from `ExtensionManager.availableExtensionsFlow` (raw original extensions). Each `NonInstalledSourceSuggestion` stores the original `Extension.Available` as received from that flow, plus the specific `Extension.Available.Source` separately. `installSuggestion()` passes `suggestion.extension` directly â€” the original, unmodified extension.
 
 The `dismissalKey` includes `sourceId` when a source-level suggestion is dismissed so that dismissal targets the specific source, not the whole multi-source extension.
 
@@ -121,8 +121,8 @@ The `dismissalKey` includes `sourceId` when a source-level suggestion is dismiss
 ## Commands Run
 
 ```text
-./gradlew :app:testDebugUnitTest --tests "*NonInstalledSource*" → BUILD SUCCESSFUL, 12 tests PASSED
-./gradlew :app:assembleDebug → BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest --tests "*NonInstalledSource*" â†’ BUILD SUCCESSFUL, 12 tests PASSED
+./gradlew :app:assembleDebug â†’ BUILD SUCCESSFUL
 ```
 
 ## APK
@@ -146,3 +146,4 @@ Suggestions are recomputed from flows on each emission. This is fine for a small
 ### Very large available extension lists
 
 Scorer iterates all available extensions per emission. For a large repo, this is still fast (milliseconds) since all data is already in memory.
+

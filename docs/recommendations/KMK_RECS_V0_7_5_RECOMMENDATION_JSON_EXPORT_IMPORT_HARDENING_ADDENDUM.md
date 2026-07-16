@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.5 Recommendation JSON Export / Import Hardening Addendum
+﻿# KMK-Recs v0.7.5 Recommendation JSON Export / Import Hardening Addendum
 
 Date: 2026-06-22
 
@@ -213,3 +213,4 @@ The final implementation report must explicitly state:
 - which exception paths were handled,
 - which tests were added and run,
 - whether import/export was tested with malformed JSON, missing sources, and duplicate manga.
+

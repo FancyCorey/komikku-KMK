@@ -1,4 +1,4 @@
-# Recommendation Source List Diagnosis
+﻿# Recommendation Source List Diagnosis
 
 Date: 2026-06-14
 
@@ -89,7 +89,7 @@ Relevant file:
 
 This is why settings can show more sources than For You.
 
-### Visual Row Order — Fixed In v0.4.0
+### Visual Row Order â€” Fixed In v0.4.0
 
 Prior to v0.4.0, For You stored rows using:
 
@@ -147,3 +147,4 @@ Remaining open decisions:
 - product decision: whether Local Source should be included and what "Local Source recommendations" should mean,
 - optional diagnostics: show source status/counts so the user can tell whether a source was skipped, empty, disabled, filtered, or deduped away,
 - Top Picks header click drill-down (currently no-op).
+

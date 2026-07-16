@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.14 Recommendation UX Formatting And Settings Consolidation — Implementation
+﻿# KMK-Recs v0.7.14 Recommendation UX Formatting And Settings Consolidation â€” Implementation
 
 Date: 2026-06-27
 
@@ -31,7 +31,7 @@ Before making changes, the following nearby official Komikku settings patterns w
 
 All v0.7.14 additions follow these existing patterns.
 
-## Part 1 — Settings Layout Polish
+## Part 1 â€” Settings Layout Polish
 
 ### Problem
 
@@ -47,7 +47,7 @@ Removed the `daily_recs_header` item. The `lang_header` item now uses the `rec_s
 
 **File changed:** `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt`
 
-## Part 2 — Terminology Cleanup
+## Part 2 â€” Terminology Cleanup
 
 ### Hardcoded source fit badge labels
 
@@ -79,19 +79,19 @@ Removed the `daily_recs_header` item. The `lang_header` item now uses the `rec_s
 ### Terminology verified as correct
 
 The following terminology was reviewed and confirmed consistent with the plan's terminology table:
-- Love / Like / Dislike (manga ratings) — correct in all action labels.
-- Seen (neutral removal) — correctly separate from ratings in menu labels.
-- Prefer source / Avoid source — `rec_source_preference_like_for_you` / `rec_source_preference_dislike_for_you` already use neutral thumbs labels; the `rec_source_preference_scope_note` string explains the scope difference.
-- Strong Fit / Worth Trying (VerdictBadge in SourceEvaluationScreen) — correct.
-- Great / Good / Mixed / Weak / No matches / Error / Not checked / Too little evidence (Rec Quality) — all correct KMR strings already in place.
+- Love / Like / Dislike (manga ratings) â€” correct in all action labels.
+- Seen (neutral removal) â€” correctly separate from ratings in menu labels.
+- Prefer source / Avoid source â€” `rec_source_preference_like_for_you` / `rec_source_preference_dislike_for_you` already use neutral thumbs labels; the `rec_source_preference_scope_note` string explains the scope difference.
+- Strong Fit / Worth Trying (VerdictBadge in SourceEvaluationScreen) â€” correct.
+- Great / Good / Mixed / Weak / No matches / Error / Not checked / Too little evidence (Rec Quality) â€” all correct KMR strings already in place.
 
 **Files changed:** `i18n-kmk/src/commonMain/moko-resources/base/strings.xml`
 **Files changed:** `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt`
 
-## Part 3 — Source Status Ordering Verification
+## Part 3 â€” Source Status Ordering Verification
 
 `SourceStatusDisplayOrder` was read and confirmed correct:
-- `group(input)`: isDisliked → DISLIKED (2), hasMatches → HAS_MATCHES (0), else → NO_MATCHES (1)
+- `group(input)`: isDisliked â†’ DISLIKED (2), hasMatches â†’ HAS_MATCHES (0), else â†’ NO_MATCHES (1)
 - `sort(inputs)`: `compareBy(groupSortKey, priorityIndex, sourceId)`
 
 `SourceStatusDisplayOrderTest.kt` already exists with 7 tests covering:
@@ -99,41 +99,41 @@ The following terminology was reviewed and confirmed consistent with the plan's 
 - no-match before disliked
 - priority preserved inside each group
 - empty list does not crash
-- full ordering: HAS_MATCHES → NO_MATCHES → DISLIKED
+- full ordering: HAS_MATCHES â†’ NO_MATCHES â†’ DISLIKED
 - disliked sorts last even at high priority
 
 No changes needed. **Verified only.**
 
 The UI also correctly renders group labels using `source_status_group_matches` / `source_status_group_no_matches` / `source_status_group_disliked` KMR strings.
 
-## Part 4 — Same-Manga Matching Settings Verification
+## Part 4 â€” Same-Manga Matching Settings Verification
 
 Both bounded workflows were read and confirmed:
 
 **`CrossExtensionMatchScreenModel`** reads:
-- `sourcePreferences.sameMangaMatchResultsPerSource().get()` → capped via `SameMangaMatchSettings.clampResultCap()`
-- `sourcePreferences.sameMangaMatchPreselectResults().get()` → used in `updateItem()`
+- `sourcePreferences.sameMangaMatchResultsPerSource().get()` â†’ capped via `SameMangaMatchSettings.clampResultCap()`
+- `sourcePreferences.sameMangaMatchPreselectResults().get()` â†’ used in `updateItem()`
 
 **`BestVersionCompareScreenModel`** reads all 4 via `resolveSettings()`:
-- `sameMangaMatchResultsPerSource` → `resultsPerSource`
-- `sameMangaMatchPreselectResults` → `preselectResults`
-- `bestVersionPreviewSampleSize` → `previewSampleSize`
-- `bestVersionAvoidFirstPages` → `avoidFirstPages`
+- `sameMangaMatchResultsPerSource` â†’ `resultsPerSource`
+- `sameMangaMatchPreselectResults` â†’ `preselectResults`
+- `bestVersionPreviewSampleSize` â†’ `previewSampleSize`
+- `bestVersionAvoidFirstPages` â†’ `avoidFirstPages`
 
 Normal global search code was not touched and remains uncapped.
 
 The preselect summary string was updated as described in Part 2.
 
-**Verified only** — no code logic changes.
+**Verified only** â€” no code logic changes.
 
-## Part 5 — Loved Manga UX Polish
+## Part 5 â€” Loved Manga UX Polish
 
 ### Added sort options
 
 Added 4 sort modes to Loved Manga:
 - **Most recent** (default): entries sorted by `updatedAt` DESC, matching the load-time order
 - **Oldest first**: `entries.reversed()`
-- **Title A–Z**: sorted by `(manga?.title ?: taste.title).lowercase()`
+- **Title Aâ€“Z**: sorted by `(manga?.title ?: taste.title).lowercase()`
 - **Source**: sorted by `taste.source` (numeric source ID)
 
 Sort applies before grouping, so the group-duplicates toggle and sort work together correctly.
@@ -145,10 +145,10 @@ Sort applies before grouping, so the group-duplicates toggle and sort work toget
 - Grouping uses cross-source link groups as primary evidence (`getCrossSourceMangaLinks`), with title+author/artist+description similarity as secondary. Title-only matching is not used.
 
 **Files changed:**
-- `app/src/main/java/exh/recs/loved/LovedMangaScreenModel.kt` — `LoveSortMode` enum, `sortMode` in State.Success, `setSortMode()`, `sortEntries()` helper
-- `app/src/main/java/exh/recs/loved/LovedMangaScreen.kt` — `LoveSortRow` composable, added sort chip row in grid
+- `app/src/main/java/exh/recs/loved/LovedMangaScreenModel.kt` â€” `LoveSortMode` enum, `sortMode` in State.Success, `setSortMode()`, `sortEntries()` helper
+- `app/src/main/java/exh/recs/loved/LovedMangaScreen.kt` â€” `LoveSortRow` composable, added sort chip row in grid
 
-## Part 6 — Cache/Staleness Wording
+## Part 6 â€” Cache/Staleness Wording
 
 ### Added compact refresh hint
 
@@ -156,7 +156,7 @@ Added a `rec_settings_refresh_hint` string item immediately below the `hide_know
 
 > "Refresh For You after changing ratings, tags, source preferences, or known-manga settings."
 
-Placed as `bodySmall` + `onSurfaceVariant` text — consistent with other summary hints in the screen.
+Placed as `bodySmall` + `onSurfaceVariant` text â€” consistent with other summary hints in the screen.
 
 No new card or large warning. The hint is compact and in the right location.
 
@@ -199,7 +199,7 @@ rec_suggestions_show_more = "Show %1$d more"
 rec_settings_refresh_hint = "Refresh For You after changing ratings, tags, source preferences, or known-manga settings."
 loved_manga_sort_recent = "Most recent"
 loved_manga_sort_oldest = "Oldest first"
-loved_manga_sort_title = "Title A–Z"
+loved_manga_sort_title = "Title Aâ€“Z"
 loved_manga_sort_source = "Source"
 ```
 
@@ -212,48 +212,49 @@ same_manga_match_preselect_summary: appended "Turn off if a source returns too m
 ## Tests
 
 No new test files were added for v0.7.14. Changes were:
-- **Pure display changes** (hardcoded string extraction) — no logic to test.
-- **SourceStatusDisplayOrder** — already has 7 tests in `SourceStatusDisplayOrderTest.kt`; verified correct.
-- **Same-manga matching** — settings consumption verified by reading `CrossExtensionMatchScreenModel` and `BestVersionCompareScreenModel`; existing tests in `SameMangaMatchSettingsTest.kt` cover the settings logic.
-- **`LoveSortMode` sort** — the `sortEntries` function is pure. A future session can add tests for each sort mode.
+- **Pure display changes** (hardcoded string extraction) â€” no logic to test.
+- **SourceStatusDisplayOrder** â€” already has 7 tests in `SourceStatusDisplayOrderTest.kt`; verified correct.
+- **Same-manga matching** â€” settings consumption verified by reading `CrossExtensionMatchScreenModel` and `BestVersionCompareScreenModel`; existing tests in `SameMangaMatchSettingsTest.kt` cover the settings logic.
+- **`LoveSortMode` sort** â€” the `sortEntries` function is pure. A future session can add tests for each sort mode.
 
 ## Build Gates
 
 All run and passed:
 
 ```
-.\gradlew.bat spotlessApply    → BUILD SUCCESSFUL
-.\gradlew.bat spotlessCheck    → BUILD SUCCESSFUL
-.\gradlew.bat :app:testDebugUnitTest  → BUILD SUCCESSFUL (267 actionable tasks)
-.\gradlew.bat assembleDebug    → BUILD SUCCESSFUL
+.\gradlew.bat spotlessApply    â†’ BUILD SUCCESSFUL
+.\gradlew.bat spotlessCheck    â†’ BUILD SUCCESSFUL
+.\gradlew.bat :app:testDebugUnitTest  â†’ BUILD SUCCESSFUL (267 actionable tasks)
+.\gradlew.bat assembleDebug    â†’ BUILD SUCCESSFUL
 ```
 
 APK copied to: `Komikku-v1.13.6-kmk.7.14-debug.apk`
 
 ## Manual QA Checklist
 
-1. Open Recommendation Settings — confirm language selector appears at top without a redundant "Daily recommendations" header above it.
-2. Confirm section headers are not duplicated. Section order: Daily recommendations (language), Ratings and known manga, Tags, Source priority, Same manga matching, Source status, Management, Experimental — Source Evaluation.
+1. Open Recommendation Settings â€” confirm language selector appears at top without a redundant "Daily recommendations" header above it.
+2. Confirm section headers are not duplicated. Section order: Daily recommendations (language), Ratings and known manga, Tags, Source priority, Same manga matching, Source status, Management, Experimental â€” Source Evaluation.
 3. Confirm cache refresh hint appears below the Hide known manga toggle.
 4. Confirm source fit badges on priority rows show the correct label (Great fit / Good fit / Low fit / No matches / Often filtered / Often errors / Deduplicated).
 5. Confirm Sources To Try expand toggle shows "Show fewer" / "Show N more".
-6. Open Loved Manga — confirm sort chips appear: Most recent, Oldest first, Title A–Z, Source.
+6. Open Loved Manga â€” confirm sort chips appear: Most recent, Oldest first, Title Aâ€“Z, Source.
 7. Tap each sort chip and confirm order changes correctly.
-8. Toggle "Group clear duplicates" with each sort mode active — confirm grouping still works.
-9. Toggle same-manga preselect setting in Recommendation Settings — confirm summary includes "Turn off if a source returns too many wrong matches."
-10. Open Cross Extension Match from a manga — confirm candidates start selected (if preselect is on).
-11. Open Best Version — confirm candidates start selected (if preselect is on).
-12. Open Source Evaluation — confirm source status ordering: sources with results first, no results second, disliked last.
+8. Toggle "Group clear duplicates" with each sort mode active â€” confirm grouping still works.
+9. Toggle same-manga preselect setting in Recommendation Settings â€” confirm summary includes "Turn off if a source returns too many wrong matches."
+10. Open Cross Extension Match from a manga â€” confirm candidates start selected (if preselect is on).
+11. Open Best Version â€” confirm candidates start selected (if preselect is on).
+12. Open Source Evaluation â€” confirm source status ordering: sources with results first, no results second, disliked last.
 13. Normal global search behavior unchanged.
 
 ## Deferred Items
 
 Items explicitly out of scope for v0.7.14 (per plan's Non-Goals):
-- `evidenceStrengthLabel()` and `lastEvaluatedLabel()` in `SourceEvaluationScreen.kt` — these are non-`@Composable` functions returning hardcoded strings; KMR strings exist but refactoring requires context threading. Deferred.
-- `VerdictBadge` hardcoded verdict strings — not confusing per terminology table; deferred.
+- `evidenceStrengthLabel()` and `lastEvaluatedLabel()` in `SourceEvaluationScreen.kt` â€” these are non-`@Composable` functions returning hardcoded strings; KMR strings exist but refactoring requires context threading. Deferred.
+- `VerdictBadge` hardcoded verdict strings â€” not confusing per terminology table; deferred.
 - OCR changes.
 - Source evaluation probing changes.
 - Cross-source link group management UI.
 - Backup/restore changes.
-- `LoveSortMode` tests — `sortEntries` is pure and testable; add in a future session.
-- Loved Manga "clear duplicates" feedback when nothing changed — deferred.
+- `LoveSortMode` tests â€” `sortEntries` is pure and testable; add in a future session.
+- Loved Manga "clear duplicates" feedback when nothing changed â€” deferred.
+

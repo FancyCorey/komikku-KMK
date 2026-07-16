@@ -1,4 +1,4 @@
-# KMK Phase 10-11 Architecture, Code Style, Testing, Device QA, And Release Readiness Plan
+﻿# KMK Phase 10-11 Architecture, Code Style, Testing, Device QA, And Release Readiness Plan
 
 Date: 2026-06-26
 
@@ -305,3 +305,4 @@ Claude should report:
 - failures/limitations,
 - manual QA still needed,
 - what remains not community-ready.
+

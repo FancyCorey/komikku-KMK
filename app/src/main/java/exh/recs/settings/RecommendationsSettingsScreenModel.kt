@@ -8,6 +8,8 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.CatalogueSource
+import exh.recs.ForYouResultBudgetPolicy
+import exh.recs.GroupPreviewBudgetPolicy
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import exh.recs.RecommendationSourceRunStatus
@@ -37,6 +39,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.taste.interactor.ClearRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.ClearRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.ClearTagTaste
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetTagTaste
@@ -60,6 +64,12 @@ class RecommendationsSettingsScreenModel(
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getNonInstalledSourceSuggestions: GetNonInstalledSourceSuggestions = Injekt.get(),
     // KMK <--
+    // KMK --> v0.7.38: For You discovery memory reset
+    private val clearMemory: ClearRecommendationCandidateMemory = Injekt.get(),
+    // KMK <--
+    // KMK --> v0.7.39: also clear discovery progress when user resets discovery history
+    private val clearDiscoveryProgress: ClearRecommendationDiscoveryProgress = Injekt.get(),
+    // KMK <--
 ) : StateScreenModel<RecommendationsSettingsScreenModel.State>(State()) {
 
     private val ratedVisibilityPref = sourcePreferences.recommendationRatedMangaVisibility()
@@ -71,6 +81,12 @@ class RecommendationsSettingsScreenModel(
     // KMK <--
     // KMK --> v0.7.34: enrichment cap preference
     private val enrichmentCapPref = sourcePreferences.recommendationEnrichmentCap()
+    // KMK <--
+    // KMK --> v0.8.2: visible-card budget per ordinary For You source row
+    private val resultBudgetPref = sourcePreferences.recommendationResultBudget()
+    // KMK <--
+    // KMK --> v0.8.6: initial-preview budget per extension for group recommendation rows only
+    private val groupPreviewBudgetPref = sourcePreferences.groupPreviewResultBudget()
     // KMK <--
     private val lastSourceStatusesPref = sourcePreferences.recommendationLastSourceRunStatuses()
     // KMK --> v0.7.19
@@ -94,6 +110,9 @@ class RecommendationsSettingsScreenModel(
         val likedKeys = RecommendationSourcePreferenceStore.parse(sourcePreferences.likedRecommendationSourceKeys().get())
         val dislikedKeys = RecommendationSourcePreferenceStore.parse(sourcePreferences.dislikedRecommendationSourceKeys().get())
         // KMK <--
+        // KMK v0.8.1-fix4: source/library-quality axis, separate from the recommendation axis above
+        val qualityDislikedKeys = RecommendationSourcePreferenceStore.parse(sourcePreferences.dislikedSourceQualityKeys().get())
+        val qualityExplicitKeys = RecommendationSourcePreferenceStore.parse(sourcePreferences.explicitSourceQualityKeys().get())
         mutableState.update {
             it.copy(
                 orderedSources = allInOrder.toImmutableList(),
@@ -105,6 +124,10 @@ class RecommendationsSettingsScreenModel(
                 // KMK --> v0.7.34
                 enrichmentCap = enrichmentCapPref.get(),
                 // KMK <--
+                // KMK --> v0.8.2
+                resultBudget = ForYouResultBudgetPolicy.validate(resultBudgetPref.get()),
+                groupPreviewBudget = GroupPreviewBudgetPolicy.validate(groupPreviewBudgetPref.get()),
+                // KMK <--
                 recommendationLanguages = languages.toImmutableSet(),
                 availableLanguages = availableLangs.toImmutableList(),
                 sourceStatuses = parsedStatuses.toPersistentMap(),
@@ -115,6 +138,9 @@ class RecommendationsSettingsScreenModel(
                 likedSourceKeys = likedKeys.toImmutableSet(),
                 dislikedSourceKeys = dislikedKeys.toImmutableSet(),
                 // KMK <--
+                // KMK v0.8.1-fix4
+                qualityDislikedSourceKeys = qualityDislikedKeys.toImmutableSet(),
+                qualityExplicitSourceKeys = qualityExplicitKeys.toImmutableSet(),
                 // KMK --> v0.7.8
                 sameMangaResultsPerSource = sourcePreferences.sameMangaMatchResultsPerSource().get(),
                 sameMangaPreselectResults = sourcePreferences.sameMangaMatchPreselectResults().get(),
@@ -170,6 +196,19 @@ class RecommendationsSettingsScreenModel(
         }
         // KMK <--
 
+        // KMK v0.8.1-fix4: live-update the source/library-quality axis
+        screenModelScope.launch {
+            combine(
+                sourcePreferences.dislikedSourceQualityKeys().changes(),
+                sourcePreferences.explicitSourceQualityKeys().changes(),
+            ) { dislikedRaw, explicitRaw ->
+                RecommendationSourcePreferenceStore.parse(dislikedRaw).toImmutableSet() to
+                    RecommendationSourcePreferenceStore.parse(explicitRaw).toImmutableSet()
+            }.collectLatest { (disliked, explicit) ->
+                mutableState.update { it.copy(qualityDislikedSourceKeys = disliked, qualityExplicitSourceKeys = explicit) }
+            }
+        }
+
         screenModelScope.launch {
             combine(
                 getTagTaste.subscribeAll(),
@@ -217,6 +256,28 @@ class RecommendationsSettingsScreenModel(
     fun setEnrichmentCap(value: Int) {
         enrichmentCapPref.set(value)
         mutableState.update { it.copy(enrichmentCap = value) }
+    }
+    // KMK <--
+
+    // KMK --> v0.8.2: visible-card budget setter. Cache invalidation is automatic — the resolved
+    // value is part of BrowsePersonalRecommendationsScreenModel's cache fingerprint, so the next
+    // normal For You run detects the fingerprint mismatch and refetches instead of reusing a cache
+    // sized for the old budget.
+    fun setResultBudget(value: Int) {
+        val validated = ForYouResultBudgetPolicy.validate(value)
+        resultBudgetPref.set(validated)
+        mutableState.update { it.copy(resultBudget = validated) }
+    }
+    // KMK <--
+
+    // KMK --> v0.8.6: group-preview budget setter. Scoped exclusively to GROUP_PREVIEW rows — never
+    // touches resultBudgetPref (For You) or any global-search setting. Applies on the next load;
+    // the in-memory GROUP_PREVIEW cache keys on this value, so a changed budget naturally misses
+    // the cache instead of reusing a differently-sized preview.
+    fun setGroupPreviewBudget(value: Int) {
+        val validated = GroupPreviewBudgetPolicy.validate(value)
+        groupPreviewBudgetPref.set(validated)
+        mutableState.update { it.copy(groupPreviewBudget = validated) }
     }
     // KMK <--
 
@@ -402,6 +463,26 @@ class RecommendationsSettingsScreenModel(
     }
     // KMK <--
 
+    // KMK --> v0.7.38: For You discovery memory reset
+    fun requestClearDiscoveryHistory() {
+        mutableState.update { it.copy(showClearDiscoveryHistoryDialog = true) }
+    }
+
+    fun dismissClearDiscoveryHistoryDialog() {
+        mutableState.update { it.copy(showClearDiscoveryHistoryDialog = false) }
+    }
+
+    fun confirmClearDiscoveryHistory() {
+        mutableState.update { it.copy(showClearDiscoveryHistoryDialog = false) }
+        screenModelScope.launchNonCancellable {
+            clearMemory.await()
+            // KMK --> v0.7.39: also clear progress so discovery restarts from page 1
+            clearDiscoveryProgress.await()
+            // KMK <--
+        }
+    }
+    // KMK <--
+
     fun toggleExpandSuggestions() {
         mutableState.update { it.copy(suggestionsExpanded = !it.suggestionsExpanded) }
     }
@@ -489,6 +570,75 @@ class RecommendationsSettingsScreenModel(
     }
     // KMK <--
 
+    // KMK v0.8.1-fix4: source/library-quality actions -- separate axis from like/dislike above.
+    // "Do I consider this source itself worth showing/suggesting/evaluating?" not "do I want its
+    // For You rows?"
+
+    fun markInstalledSourceQualityPoor(sourceId: Long) =
+        applySourceQualityMark(RecommendationSourcePreferenceStore.installedKey(sourceId), poor = true)
+
+    fun markInstalledSourceQualityExplicit(sourceId: Long) =
+        applySourceQualityMark(RecommendationSourcePreferenceStore.installedKey(sourceId), poor = false)
+
+    fun clearInstalledSourceQualityMark(sourceId: Long) =
+        clearSourceQualityMark(RecommendationSourcePreferenceStore.installedKey(sourceId))
+
+    fun markAvailableSourceQualityPoor(suggestion: NonInstalledSourceSuggestion) = applySourceQualityMark(
+        RecommendationSourcePreferenceStore.availableKey(suggestion.extension.signatureHash, suggestion.extension.pkgName, suggestion.source?.id),
+        poor = true,
+    )
+
+    fun markAvailableSourceQualityExplicit(suggestion: NonInstalledSourceSuggestion) = applySourceQualityMark(
+        RecommendationSourcePreferenceStore.availableKey(suggestion.extension.signatureHash, suggestion.extension.pkgName, suggestion.source?.id),
+        poor = false,
+    )
+
+    fun clearAvailableSourceQualityMark(suggestion: NonInstalledSourceSuggestion) = clearSourceQualityMark(
+        RecommendationSourcePreferenceStore.availableKey(suggestion.extension.signatureHash, suggestion.extension.pkgName, suggestion.source?.id),
+    )
+
+    private fun applySourceQualityMark(key: String, poor: Boolean) {
+        val likedPref = sourcePreferences.likedSourceQualityKeys()
+        val dislikedPref = sourcePreferences.dislikedSourceQualityKeys()
+        val explicitPref = sourcePreferences.explicitSourceQualityKeys()
+        val current = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
+            liked = RecommendationSourcePreferenceStore.parse(likedPref.get()),
+            disliked = RecommendationSourcePreferenceStore.parse(dislikedPref.get()),
+            explicit = RecommendationSourcePreferenceStore.parse(explicitPref.get()),
+        )
+        val next = if (poor) {
+            exh.recs.sourceprefs.SourceQualityMarkPolicy.markPoor(current, key)
+        } else {
+            exh.recs.sourceprefs.SourceQualityMarkPolicy.markExplicit(current, key)
+        }
+        likedPref.set(RecommendationSourcePreferenceStore.serialize(next.liked))
+        dislikedPref.set(RecommendationSourcePreferenceStore.serialize(next.disliked))
+        explicitPref.set(RecommendationSourcePreferenceStore.serialize(next.explicit))
+    }
+
+    private fun clearSourceQualityMark(key: String) {
+        val likedPref = sourcePreferences.likedSourceQualityKeys()
+        val dislikedPref = sourcePreferences.dislikedSourceQualityKeys()
+        val explicitPref = sourcePreferences.explicitSourceQualityKeys()
+        val current = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
+            liked = RecommendationSourcePreferenceStore.parse(likedPref.get()),
+            disliked = RecommendationSourcePreferenceStore.parse(dislikedPref.get()),
+            explicit = RecommendationSourcePreferenceStore.parse(explicitPref.get()),
+        )
+        val next = exh.recs.sourceprefs.SourceQualityMarkPolicy.clear(current, key)
+        likedPref.set(RecommendationSourcePreferenceStore.serialize(next.liked))
+        dislikedPref.set(RecommendationSourcePreferenceStore.serialize(next.disliked))
+        explicitPref.set(RecommendationSourcePreferenceStore.serialize(next.explicit))
+    }
+
+    /** Management/recovery action: clears every source-quality mark across all sources. */
+    fun clearAllSourceQualityMarks() {
+        sourcePreferences.likedSourceQualityKeys().set("")
+        sourcePreferences.dislikedSourceQualityKeys().set("")
+        sourcePreferences.explicitSourceQualityKeys().set("")
+    }
+    // KMK <--
+
     // KMK --> v0.7.19: apply source order suggested by rolling fit stats
     fun applyFitSuggestedOrder() {
         val fitStats = state.value.sourceFitStats
@@ -543,6 +693,11 @@ class RecommendationsSettingsScreenModel(
         // KMK --> v0.7.34: enrichment cap — number of candidates to enrich per source
         val enrichmentCap: Int = 5,
         // KMK <--
+        // KMK --> v0.8.2: visible manga cards per ordinary For You source row
+        val resultBudget: Int = ForYouResultBudgetPolicy.DEFAULT,
+        // KMK v0.8.6: group-recommendation initial preview budget, independent of resultBudget above
+        val groupPreviewBudget: Int = GroupPreviewBudgetPolicy.DEFAULT,
+        // KMK <--
         val recommendationLanguages: ImmutableSet<String> = persistentSetOf("en"),
         val availableLanguages: ImmutableList<String> = persistentListOf(),
         val dialog: Dialog? = null,
@@ -560,6 +715,11 @@ class RecommendationsSettingsScreenModel(
         val likedSourceKeys: ImmutableSet<String> = persistentSetOf(),
         /** Serialized keys of user-disliked recommendation sources (installed or available). */
         val dislikedSourceKeys: ImmutableSet<String> = persistentSetOf(),
+        // KMK v0.8.1-fix4: source/library-quality axis -- separate from the recommendation axis above
+        /** Keys of sources marked poor or too-explicit as a source/library, regardless of For You fit. */
+        val qualityDislikedSourceKeys: ImmutableSet<String> = persistentSetOf(),
+        /** Subset of qualityDislikedSourceKeys marked specifically "too explicit" rather than generically "poor". */
+        val qualityExplicitSourceKeys: ImmutableSet<String> = persistentSetOf(),
         /** Dismissal keys of suggestions currently being installed individually or in bulk. */
         val installingSuggestionKeys: ImmutableSet<String> = persistentSetOf(),
         /** True while a bulk install of visible suggestions is in progress. */
@@ -571,6 +731,9 @@ class RecommendationsSettingsScreenModel(
         /** True while the source order reset confirmation dialog is visible. */
         // KMK --> v0.6.14
         val showResetSourceOrderDialog: Boolean = false,
+        // KMK <--
+        // KMK --> v0.7.38: For You discovery memory reset dialog
+        val showClearDiscoveryHistoryDialog: Boolean = false,
         // KMK <--
         // KMK --> v0.7.0: Phase 1 – number of dismissed source suggestions
         val dismissedSuggestionCount: Int = 0,

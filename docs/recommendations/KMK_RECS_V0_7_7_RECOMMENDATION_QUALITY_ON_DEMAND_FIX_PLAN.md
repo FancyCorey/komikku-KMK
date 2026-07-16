@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.7 Follow-Up: Recommendation Quality On-Demand Fix Plan
+﻿# KMK-Recs v0.7.7 Follow-Up: Recommendation Quality On-Demand Fix Plan
 
 Date: 2026-06-22
 
@@ -601,3 +601,4 @@ Do not mention documentation cleanup or internal helper names in What's New.
 The v0.7.7 on-demand recommendation-quality UI is correct in concept, but the implementation currently assumes promising sources are already installed. Since Source Evaluation is specifically about non-installed sources, that assumption breaks the main workflow.
 
 Fix the action so it can temporarily install/load promising sources, run the bounded recommendation probe, persist the real result, and clean up safely.
+

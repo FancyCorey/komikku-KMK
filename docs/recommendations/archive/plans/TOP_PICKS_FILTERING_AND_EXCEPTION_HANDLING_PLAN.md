@@ -1,4 +1,4 @@
-# Top Picks Filtering And Exception Handling Implementation Plan
+﻿# Top Picks Filtering And Exception Handling Implementation Plan
 
 Date: 2026-06-14
 
@@ -609,3 +609,4 @@ Implementation note must include:
 - Do not aggressively fuzzy-merge titles.
 - Do not redesign For You.
 - Do not change manga-detail recommendations unless required by shared strings/docs.
+

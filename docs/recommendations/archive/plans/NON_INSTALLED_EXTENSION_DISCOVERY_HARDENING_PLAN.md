@@ -1,4 +1,4 @@
-# Non-Installed Extension Discovery Hardening Plan
+﻿# Non-Installed Extension Discovery Hardening Plan
 
 Date: 2026-06-16
 
@@ -526,4 +526,5 @@ Change the meaning of the scorer:
 - only show a non-installed source when it has meaningful positive evidence, currently conservative similarity to an installed source.
 
 Update tests so language-only and same-repo-only sources are excluded. Update docs and release notes as KMK-Recs v0.6.1.
+
 

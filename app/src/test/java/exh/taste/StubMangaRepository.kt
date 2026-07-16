@@ -32,5 +32,6 @@ abstract class StubMangaRepository : MangaRepository {
     override suspend fun getReadMangaNotInLibraryView(): List<LibraryManga> = emptyList()
     // KMK -->
     override suspend fun getKnownRecommendationMangaIds(mangaIds: Collection<Long>): Set<Long> = emptySet()
+    override suspend fun getChapterCountsByMangaIds(mangaIds: Collection<Long>): Map<Long, Long> = emptyMap()
     // KMK <--
 }

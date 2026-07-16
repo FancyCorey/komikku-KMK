@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.7 Best Version / Visual Quality Migration Plan
+﻿# KMK-Recs v0.7.7 Best Version / Visual Quality Migration Plan
 
 Date: 2026-06-22
 
@@ -313,3 +313,4 @@ If an APK is built, expected naming:
 ```text
 Komikku-v1.13.6-kmk.7.7-debug.apk
 ```
+

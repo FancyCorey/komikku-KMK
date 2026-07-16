@@ -24,6 +24,9 @@ object SourceEvaluationCandidateFilter {
         val unsafeExtensionKeys: Set<String> = emptySet(),
         val unsafeHiddenCount: Int = 0,
         // KMK <--
+        // KMK v0.8.1-fix4: separate from dislikedHiddenCount (recommendation-behavior dislike) so
+        // the UI can truthfully explain why a candidate is missing.
+        val sourceQualityHiddenCount: Int = 0,
     )
 
     /**
@@ -51,12 +54,15 @@ object SourceEvaluationCandidateFilter {
         // KMK --> v0.6.16: crash quarantine — extension-level keys to skip
         unsafeExtensionKeys: Set<String> = emptySet(),
         // KMK <--
+        // KMK v0.8.1-fix4: source/library-quality dislike keys — separate axis from dislikedKeys
+        qualityDislikedKeys: Set<String> = emptySet(),
     ): CandidatePoolResult {
         var dislikedCount = 0
         // KMK --> v0.6.16: crash quarantine
         var unsafeCount = 0
         val unsafeKeys = mutableSetOf<String>()
         // KMK <--
+        var qualityDislikedCount = 0 // KMK v0.8.1-fix4
         val explicitExtKeys = mutableSetOf<String>()
         val seen = mutableSetOf<String>()
         val candidates = mutableListOf<EvaluationCandidate>()
@@ -73,6 +79,11 @@ object SourceEvaluationCandidateFilter {
             val dislikeKey = "a|${ext.signatureHash}|${ext.pkgName}"
             if (dislikeKey in dislikedKeys) {
                 dislikedCount++
+                continue
+            }
+            // KMK v0.8.1-fix4: source/library-quality dislike hides regardless of recommendation dislike
+            if (dislikeKey in qualityDislikedKeys) {
+                qualityDislikedCount++
                 continue
             }
 
@@ -103,6 +114,7 @@ object SourceEvaluationCandidateFilter {
             unsafeExtensionKeys = unsafeKeys,
             unsafeHiddenCount = unsafeCount,
             // KMK <--
+            sourceQualityHiddenCount = qualityDislikedCount, // KMK v0.8.1-fix4
         )
     }
 

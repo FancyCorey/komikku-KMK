@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.7 Recommendation Quality On-Demand Fix — Implementation Report
+﻿# KMK-Recs v0.7.7 Recommendation Quality On-Demand Fix â€” Implementation Report
 
 Date: 2026-06-22
 
@@ -10,8 +10,8 @@ This is a targeted follow-up to the recommendation-quality on-demand probe featu
 
 Two adjacent stale-state audits were also fixed in the same pass:
 
-- **Audit 8.1** — `installedExtensionKeys` in `SourceEvaluationScreenModel` was loaded once at init time (snapshot) and never updated. Extensions installed or uninstalled while the screen was open would not update the installed-filter chip display until the screen was reopened.
-- **Audit 8.2** — `visibleSources` in `RecommendationsSettingsScreenModel` was captured once at construction time. Extensions installed or uninstalled while the settings screen was open would not update the source priority list until the app was restarted.
+- **Audit 8.1** â€” `installedExtensionKeys` in `SourceEvaluationScreenModel` was loaded once at init time (snapshot) and never updated. Extensions installed or uninstalled while the screen was open would not update the installed-filter chip display until the screen was reopened.
+- **Audit 8.2** â€” `visibleSources` in `RecommendationsSettingsScreenModel` was captured once at construction time. Extensions installed or uninstalled while the settings screen was open would not update the source priority list until the app was restarted.
 
 ## What Changed
 
@@ -42,7 +42,7 @@ No Android dependencies. No state. No throws.
 - `kotlinx.coroutines.withTimeoutOrNull`
 - `tachiyomi.domain.taste.model.TasteProfile`
 
-**Audit 8.1 fix — `installedExtensionKeys` reactive:**
+**Audit 8.1 fix â€” `installedExtensionKeys` reactive:**
 
 The one-time cursor/keys launch block was split: cursor loading stays as a separate one-time `launch {}`. A new `extensionManager.installedExtensionsFlow .onEach { } .launchIn(screenModelScope)` observer replaces the snapshot. It:
 - runs immediately on subscription (providing the initial value that the one-time block previously provided),
@@ -64,14 +64,14 @@ The per-source loop body now calls the new `evaluateOneForRecQuality()` suspend 
 - **Installed path**: checks `installedExtensionsFlow.value` for exact pkgName+sig match. If found, locates the `CatalogueSource` by sourceId (fallback: unambiguous source name), probes, persists. Returns without install/cleanup.
 - **Non-installed path**:
   1. Calls `SourceRecommendationQualityExtensionResolver.resolve()`. If `NotFound` or `Ambiguous`, writes a descriptive error fit and returns.
-  2. Calls `extensionManager.installExtension(availableExt, installerOverride).first { terminal }` with `withTimeoutOrNull(90_000L)`. Timeout or `InstallStep.Error` → writes "Install failed or timed out", returns.
+  2. Calls `extensionManager.installExtension(availableExt, installerOverride).first { terminal }` with `withTimeoutOrNull(90_000L)`. Timeout or `InstallStep.Error` â†’ writes "Install failed or timed out", returns.
   3. Waits up to 20s for the extension to appear in `installedExtensionsFlow` via `flow.first { installed.any { ... } }`.
   4. Locates `CatalogueSource` in the loaded extension.
   5. Probes and persists inside `try { } finally { cleanupRecQualityExtension(availableExt) }` so cleanup always runs.
 
 `findSourceInInstalledExt(installedExt, evaluation)`: finds `CatalogueSource` by exact `sourceId`; falls back to unambiguous source name match.
 
-`cleanupRecQualityExtension(ext)`: reads current installed state, calls `SourceEvaluationCleanupPolicy.cleanupDecision(preExistingInstalled=false, ...)`. `RemovePrivateSilently` → uninstalls. `PromptRequired` → logs and skips (on-demand probe cannot show UI dialogs). `SkipPreExisting`/`NotNeeded` → no-op. Exceptions are caught (except `CancellationException`).
+`cleanupRecQualityExtension(ext)`: reads current installed state, calls `SourceEvaluationCleanupPolicy.cleanupDecision(preExistingInstalled=false, ...)`. `RemovePrivateSilently` â†’ uninstalls. `PromptRequired` â†’ logs and skips (on-demand probe cannot show UI dialogs). `SkipPreExisting`/`NotNeeded` â†’ no-op. Exceptions are caught (except `CancellationException`).
 
 `writeRecQualityErrorFit(evaluation, message)`: suspend wrapper around `buildRecQualityErrorFit` + `upsertSourceRecommendationFit.await()`. Catches all exceptions.
 
@@ -79,7 +79,7 @@ The per-source loop body now calls the new `evaluateOneForRecQuality()` suspend 
 
 ### Modified: `RecommendationsSettingsScreenModel.kt`
 
-**Audit 8.2 fix — `visibleSources` no longer a field:**
+**Audit 8.2 fix â€” `visibleSources` no longer a field:**
 
 Removed `private val visibleSources = sourceManager.getVisibleCatalogueSources()`.
 
@@ -111,7 +111,7 @@ VERSION_CODE and VERSION_NAME unchanged (780 / "KMK-Recs v0.7.8").
 
 ## New Tests
 
-**`SourceRecommendationQualityExtensionResolverTest.kt`** — 10 tests, all PASSED:
+**`SourceRecommendationQualityExtensionResolverTest.kt`** â€” 10 tests, all PASSED:
 
 | Test | Verifies |
 | --- | --- |
@@ -128,9 +128,9 @@ VERSION_CODE and VERSION_NAME unchanged (780 / "KMK-Recs v0.7.8").
 
 ## Tests Run
 
-- `SourceRecommendationQualityExtensionResolverTest` — 10 tests, all PASSED
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (full suite, no regressions)
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `SourceRecommendationQualityExtensionResolverTest` â€” 10 tests, all PASSED
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL (full suite, no regressions)
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ## APK
 
@@ -141,3 +141,4 @@ VERSION_CODE and VERSION_NAME unchanged (780 / "KMK-Recs v0.7.8").
 - **Re-run rec-quality probe after taste profile changes**: still no automatic trigger. Manual "Re-check all" required.
 - **Evidence strings i18n**: still hardcoded English strings in `SourceEvaluationScreen.kt`. Deferred from v0.7.4.
 - **Cleanup for PromptRequired extensions**: on-demand probe skips system-installed (non-private) extension cleanup to avoid showing uninstall dialogs. These extensions remain installed after the probe. This is a known limitation of the on-demand path.
+

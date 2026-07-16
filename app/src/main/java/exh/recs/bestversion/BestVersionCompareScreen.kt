@@ -63,6 +63,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
+import exh.recs.RecommendationErrorKind
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.matching.SameMangaCandidateResult
 import tachiyomi.domain.manga.model.Manga
@@ -70,6 +71,26 @@ import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+
+// KMK --> v0.7.46: maps a RecommendationErrorClassifier storage key to a KMR string. Every exception
+// caught in BestVersionCompareScreenModel is now routed through RecommendationErrorClassifier first
+// (never raw `.message`), so the only non-key value `message` can hold here is one deliberate,
+// already-curated, non-exception-derived literal ("Could not load origin manga." in
+// confirmMigration()) — passed through verbatim since it isn't raw exception text.
+@Composable
+private fun recommendationErrorText(key: String): String {
+    val kind = RecommendationErrorKind.fromStorageKey(key) ?: return key
+    return stringResource(
+        when (kind) {
+            RecommendationErrorKind.Network -> KMR.strings.rec_error_network
+            RecommendationErrorKind.Timeout -> KMR.strings.rec_error_timeout
+            RecommendationErrorKind.Cancelled -> KMR.strings.rec_error_cancelled
+            RecommendationErrorKind.FileAccess -> KMR.strings.rec_error_file_access
+            RecommendationErrorKind.Internal -> KMR.strings.rec_error_internal
+        },
+    )
+}
+// KMK <--
 
 // KMK --> v0.7.9
 private data class FullscreenPreviewPage(
@@ -223,7 +244,7 @@ class BestVersionCompareScreen(
                                 modifier = Modifier.padding(MaterialTheme.padding.medium),
                             ) {
                                 Text(
-                                    text = step.message,
+                                    text = recommendationErrorText(step.message),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error,
                                 )
@@ -415,7 +436,7 @@ private fun SelectChapterContent(
                                 )
                             is CandidateChapterState.ChapterError ->
                                 Text(
-                                    text = chapterState.message,
+                                    text = recommendationErrorText(chapterState.message),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                 )
@@ -488,7 +509,7 @@ private fun ComparePreviewContent(
                                             .height(180.dp)
                                             .aspectRatio(0.7f),
                                     ) {
-                                    // KMK <--
+                                        // KMK <--
                                         AsyncImage(
                                             model = page.imageUrl,
                                             contentDescription = stringResource(
@@ -529,7 +550,7 @@ private fun ComparePreviewContent(
                                             )
                                         }
                                         // KMK <--
-                                    // KMK --> v0.7.33
+                                        // KMK --> v0.7.33
                                     }
                                     // KMK <--
                                 }
@@ -537,7 +558,7 @@ private fun ComparePreviewContent(
                         }
                         is CandidatePreviewState.PreviewError -> {
                             Text(
-                                text = previewState.message,
+                                text = recommendationErrorText(previewState.message),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )

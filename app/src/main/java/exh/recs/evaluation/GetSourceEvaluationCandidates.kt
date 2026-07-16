@@ -51,7 +51,8 @@ class GetSourceEvaluationCandidates(
             sourcePreferences.showNsfwSource().changes(),
             sourcePreferences.blockExplicitPornHentaiSources().changes(),
             sourcePreferences.dislikedRecommendationSourceKeys().changes(),
-        ) { _, _, _, _ -> Unit }
+            sourcePreferences.dislikedSourceQualityKeys().changes(), // KMK v0.8.1-fix4
+        ) { _, _, _, _, _ -> Unit }
 
         return combine(
             extensionTripleFlow,
@@ -68,6 +69,10 @@ class GetSourceEvaluationCandidates(
             val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
             val dislikedKeys = RecommendationSourcePreferenceStore.parse(
                 sourcePreferences.dislikedRecommendationSourceKeys().get(),
+            )
+            // KMK v0.8.1-fix4: source/library-quality dislike axis
+            val qualityDislikedKeys = RecommendationSourcePreferenceStore.parse(
+                sourcePreferences.dislikedSourceQualityKeys().get(),
             )
             val installedPkgNames = installed.map { it.pkgName }.toSet()
             val untrustedPkgNames = untrusted.map { it.pkgName }.toSet()
@@ -87,6 +92,7 @@ class GetSourceEvaluationCandidates(
                 // KMK --> v0.6.16: crash quarantine
                 unsafeExtensionKeys = unsafeExtensionKeys,
                 // KMK <--
+                qualityDislikedKeys = qualityDislikedKeys, // KMK v0.8.1-fix4
             )
         }
     }

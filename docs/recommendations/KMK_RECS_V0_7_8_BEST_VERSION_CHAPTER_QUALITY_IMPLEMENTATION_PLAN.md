@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.8 Best Version / Chapter Quality Implementation Plan
+﻿# KMK-Recs v0.7.8 Best Version / Chapter Quality Implementation Plan
 
 Date: 2026-06-22
 
@@ -725,3 +725,4 @@ The implementation should be:
 - preview-based;
 - migration-safe;
 - resilient to bad source behavior.
+

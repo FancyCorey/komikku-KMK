@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.15 Phase 6/7 Cleanup And Komikku Alignment — Implementation
+﻿# KMK-Recs v0.7.15 Phase 6/7 Cleanup And Komikku Alignment â€” Implementation
 
 Date: 2026-06-27
 
@@ -20,22 +20,22 @@ v0.7.15 is a focused cleanup pass: removes remaining hardcoded English strings f
 
 Before changes, the following official Komikku widget files were inspected:
 
-- `BasePreferenceWidget.kt` — `sizeIn(minHeight = LocalPreferenceMinHeight.current)`, 16dp horizontal padding, vertically centered row
-- `SwitchPreferenceWidget.kt` — whole row clickable, `Switch(onCheckedChange = null)` to avoid double-fire
-- `PreferenceGroupHeader.kt` — `secondary` color, `bodyMedium` style, 14dp top / 8dp bottom padding, 16dp horizontal
-- `TextPreferenceWidget.kt` — `bodySmall` + `onSurfaceVariant` for subtitle/summary
+- `BasePreferenceWidget.kt` â€” `sizeIn(minHeight = LocalPreferenceMinHeight.current)`, 16dp horizontal padding, vertically centered row
+- `SwitchPreferenceWidget.kt` â€” whole row clickable, `Switch(onCheckedChange = null)` to avoid double-fire
+- `PreferenceGroupHeader.kt` â€” `secondary` color, `bodyMedium` style, 14dp top / 8dp bottom padding, 16dp horizontal
+- `TextPreferenceWidget.kt` â€” `bodySmall` + `onSurfaceVariant` for subtitle/summary
 
-All v0.7.15 additions follow these patterns. The duplicate-toggle feedback uses `bodySmall` + `onSurfaceVariant` + `padding(horizontal = 16.dp, vertical = 4.dp)` — consistent with other subdued hints in the screen.
+All v0.7.15 additions follow these patterns. The duplicate-toggle feedback uses `bodySmall` + `onSurfaceVariant` + `padding(horizontal = 16.dp, vertical = 4.dp)` â€” consistent with other subdued hints in the screen.
 
-## Part 1 — Source Evaluation String Cleanup
+## Part 1 â€” Source Evaluation String Cleanup
 
 ### Problem
 
 `SourceEvaluationScreen.kt` had three sets of hardcoded English user-facing strings:
 
-1. `evidenceStrengthLabel(evaluation): String` — returned `"Strong evidence"`, `"Moderate evidence"`, `"Weak evidence"`, `"Low confidence"`.
-2. `lastEvaluatedLabel(evaluatedAt): String` — returned `"Last evaluated today"` / `"Last evaluated N days ago"`.
-3. `VerdictBadge(verdict)` — hardcoded `"Strong Fit"`, `"Worth Trying"`, `"Neutral"`, `"Weak"`, `"Poor Search"`, `"Explicit"`, `"Ecchi"`, `"Rejected"`, `"Error"`, `"Review"`.
+1. `evidenceStrengthLabel(evaluation): String` â€” returned `"Strong evidence"`, `"Moderate evidence"`, `"Weak evidence"`, `"Low confidence"`.
+2. `lastEvaluatedLabel(evaluatedAt): String` â€” returned `"Last evaluated today"` / `"Last evaluated N days ago"`.
+3. `VerdictBadge(verdict)` â€” hardcoded `"Strong Fit"`, `"Worth Trying"`, `"Neutral"`, `"Weak"`, `"Poor Search"`, `"Explicit"`, `"Ecchi"`, `"Rejected"`, `"Error"`, `"Review"`.
 
 KMR strings for evidence and last-evaluated already existed from v0.6.20. Verdict strings were missing.
 
@@ -56,18 +56,18 @@ source_evaluation_verdict_error         = "Error"
 source_evaluation_verdict_review        = "Review"
 ```
 
-**`evidenceStrengthLabel()` → pure enum classifier:**
+**`evidenceStrengthLabel()` â†’ pure enum classifier:**
 
 Replaced `private fun evidenceStrengthLabel(evaluation): String` with:
 - `private enum class EvidenceStrength { STRONG, MODERATE, WEAK, LOW_CONFIDENCE }`
-- `private fun evidenceStrength(evaluation: SourceEvaluation): EvidenceStrength` — same logic, returns enum
+- `private fun evidenceStrength(evaluation: SourceEvaluation): EvidenceStrength` â€” same logic, returns enum
 
-**`lastEvaluatedLabel()` → pure int helper:**
+**`lastEvaluatedLabel()` â†’ pure int helper:**
 
 Replaced `private fun lastEvaluatedLabel(evaluatedAt): String` with:
-- `private fun lastEvaluatedDaysAgo(evaluatedAt: Long): Int` — returns day count, no localization
+- `private fun lastEvaluatedDaysAgo(evaluatedAt: Long): Int` â€” returns day count, no localization
 
-**`EvaluationResultRow` composable** — now maps enum and int to KMR strings via `stringResource(...)`:
+**`EvaluationResultRow` composable** â€” now maps enum and int to KMR strings via `stringResource(...)`:
 
 ```kotlin
 val evidenceStr = stringResource(when (evidenceStrength(evaluation)) {
@@ -82,7 +82,7 @@ val lastEvalStr = if (daysAgo <= 0) {
 }
 ```
 
-**`VerdictBadge()`** — now uses `labelRes` + `stringResource(labelRes)`:
+**`VerdictBadge()`** â€” now uses `labelRes` + `stringResource(labelRes)`:
 
 ```kotlin
 val (labelRes, color) = when (verdict) {
@@ -93,16 +93,16 @@ Badge(...) { Text(text = stringResource(labelRes), ...) }
 ```
 
 **Files changed:**
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — 10 new verdict strings added
-- `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt` — 3 functions replaced
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” 10 new verdict strings added
+- `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt` â€” 3 functions replaced
 
 ### Komikku Alignment
 
-- Pure classification helpers return enums/ints, not localized strings — matches Komikku's Compose i18n style.
-- Composables map enum/int to `stringResource(...)` — no Context passed into helpers.
+- Pure classification helpers return enums/ints, not localized strings â€” matches Komikku's Compose i18n style.
+- Composables map enum/int to `stringResource(...)` â€” no Context passed into helpers.
 - No hardcoded English user-facing strings remain in the touched composables.
 
-## Part 2 — Loved Manga Sort Tests
+## Part 2 â€” Loved Manga Sort Tests
 
 ### Added test file: `LovedMangaSortTest.kt`
 
@@ -110,20 +110,20 @@ Badge(...) { Text(text = stringResource(labelRes), ...) }
 
 | Test | Passes |
 |---|---|
-| `RECENT preserves load order` | ✓ |
-| `OLDEST reverses load order` | ✓ |
-| `TITLE_AZ sorts by manga title when manga is non-null` | ✓ |
-| `TITLE_AZ falls back to taste title when manga is null` | ✓ |
-| `TITLE_AZ is case-insensitive` | ✓ |
-| `SOURCE sorts by taste source id` | ✓ |
-| `sorting preserves all entries — none are dropped` | ✓ |
-| `empty list produces empty display items for all modes` | ✓ |
+| `RECENT preserves load order` | âœ“ |
+| `OLDEST reverses load order` | âœ“ |
+| `TITLE_AZ sorts by manga title when manga is non-null` | âœ“ |
+| `TITLE_AZ falls back to taste title when manga is null` | âœ“ |
+| `TITLE_AZ is case-insensitive` | âœ“ |
+| `SOURCE sorts by taste source id` | âœ“ |
+| `sorting preserves all entries â€” none are dropped` | âœ“ |
+| `empty list produces empty display items for all modes` | âœ“ |
 
 Testing approach: `sortEntries` is private, so tests drive it via `State.Success(groupDuplicates = false).displayItems`. This matches the integration test style in `LovedMangaDuplicateGrouperTest.kt` which also tests through `State.Success`.
 
-`Manga.create()` is used with `favorite = false` — the `GetCustomMangaInfo` lazy injection is not triggered, making this safe in tests without Injekt setup.
+`Manga.create()` is used with `favorite = false` â€” the `GetCustomMangaInfo` lazy injection is not triggered, making this safe in tests without Injekt setup.
 
-## Part 3 — Loved Manga Duplicate-Toggle Feedback
+## Part 3 â€” Loved Manga Duplicate-Toggle Feedback
 
 ### Problem
 
@@ -154,27 +154,27 @@ New KMR string:
 loved_manga_no_clear_duplicates = "No clear duplicates found."
 ```
 
-No dialog, no card — inline subdued text only, per alignment rules.
+No dialog, no card â€” inline subdued text only, per alignment rules.
 
 **Files changed:**
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — 1 new string
-- `app/src/main/java/exh/recs/loved/LovedMangaScreen.kt` — inline text item added in success state
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” 1 new string
+- `app/src/main/java/exh/recs/loved/LovedMangaScreen.kt` â€” inline text item added in success state
 
-## Part 4 — Seen/Read Behavior Verification
+## Part 4 â€” Seen/Read Behavior Verification
 
 ### Verified as already correct
 
 From CURRENT_STATE.md and code inspection:
 
-- `BrowsePersonalRecommendationsScreenModel` filters `seenRecommendationMangaKeys` from For You — confirmed documented.
-- `CrossExtensionMatchMode.MarkSeen` writes seen keys and a cross-source link group — confirmed in CrossExtensionMatchScreenModel.
+- `BrowsePersonalRecommendationsScreenModel` filters `seenRecommendationMangaKeys` from For You â€” confirmed documented.
+- `CrossExtensionMatchMode.MarkSeen` writes seen keys and a cross-source link group â€” confirmed in CrossExtensionMatchScreenModel.
 - "Seen other versions" remains visible after marking current manga as seen (v0.7.1 fix, documented in CURRENT_STATE.md).
-- `SeenRecommendationMangaStoreTest` covers parse/serialize/add/remove — 11 tests, all passing.
+- `SeenRecommendationMangaStoreTest` covers parse/serialize/add/remove â€” 11 tests, all passing.
 - Seen state stored in preferences only; backup/restore deferred.
 
 **No code changes.** Documented as verified.
 
-## Part 5 — Best Version Cancel And Fullscreen State Verification
+## Part 5 â€” Best Version Cancel And Fullscreen State Verification
 
 ### Verified as already fixed in v0.7.9
 
@@ -182,13 +182,13 @@ From CURRENT_STATE.md (Best Version / Chapter Quality Workflow section):
 
 > "After the user selects the best candidate, a Migrate / Copy / Cancel dialog calls MigrateMangaUseCase. Cancel correctly dismisses the dialog (v0.7.9 fix)."
 >
-> "Sampled page thumbnails are tappable. Tap opens a fullscreen FullscreenPagePreviewDialog (v0.7.9). Fullscreen preview supports pinch-to-zoom (max 5×) and pan via detectTransformGestures. Closing returns to the comparison screen with all state intact (v0.7.9)."
+> "Sampled page thumbnails are tappable. Tap opens a fullscreen FullscreenPagePreviewDialog (v0.7.9). Fullscreen preview supports pinch-to-zoom (max 5Ã—) and pan via detectTransformGestures. Closing returns to the comparison screen with all state intact (v0.7.9)."
 
 `BestVersionCompareScreen.kt` was confirmed to import `AlertDialog`, `TextButton`, and the `FullscreenPreviewPage` data class with zoom/pan via `detectTransformGestures`. `dismissMigrationDialog()` sets `selectedBestKey = null` and `isMigrating = false` without clearing state.
 
 **No code changes.** NEXT_WORK.md stale items removed (see Part 7).
 
-## Part 6 — Source Quality Signal Decision
+## Part 6 â€” Source Quality Signal Decision
 
 ### Decision: documentation cleanup only
 
@@ -198,7 +198,7 @@ The existing table schema is sufficient. Adding a `confirmed_quality = true` col
 
 **Files changed:** None (docs only).
 
-## Part 7 — Documentation And Versioning
+## Part 7 â€” Documentation And Versioning
 
 ### Versioning
 
@@ -207,17 +207,17 @@ The existing table schema is sufficient. Adding a `confirmed_quality = true` col
 
 ### Docs updated
 
-- `docs/recommendations/CURRENT_STATE.md` — updated to v0.7.15
-- `docs/recommendations/NEXT_WORK.md` — stale Best Version cancel/fullscreen items removed; sort tests marked done; evidence strings hookup marked done
+- `docs/recommendations/CURRENT_STATE.md` â€” updated to v0.7.15
+- `docs/recommendations/NEXT_WORK.md` â€” stale Best Version cancel/fullscreen items removed; sort tests marked done; evidence strings hookup marked done
 
 ## Files Modified
 
 | File | Change |
 |---|---|
 | `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` | 11 new KMR strings (10 verdict + 1 no-duplicates) |
-| `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt` | `evidenceStrengthLabel` → enum classifier; `lastEvaluatedLabel` → int helper; `EvaluationResultRow` uses KMR; `VerdictBadge` uses KMR |
+| `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt` | `evidenceStrengthLabel` â†’ enum classifier; `lastEvaluatedLabel` â†’ int helper; `EvaluationResultRow` uses KMR; `VerdictBadge` uses KMR |
 | `app/src/main/java/exh/recs/loved/LovedMangaScreen.kt` | Inline no-duplicates feedback item |
-| `app/src/test/java/exh/recs/loved/LovedMangaSortTest.kt` | New — 8 sort mode tests |
+| `app/src/test/java/exh/recs/loved/LovedMangaSortTest.kt` | New â€” 8 sort mode tests |
 | `app/build.gradle.kts` | `versionCode = 87` |
 | `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` | VERSION_CODE = 715, VERSION_NAME = "KMK-Recs v0.7.15", What's New |
 
@@ -247,17 +247,17 @@ loved_manga_no_clear_duplicates        = "No clear duplicates found."
 | Best Version fullscreen preview | Verified implemented in v0.7.9 |
 | Seen filtering from For You | Verified per code + docs |
 | "Seen other versions" availability | Verified per code + docs |
-| Source quality signal confirms | No `confirmed_quality` column needed — all writes are user-confirmed by workflow |
+| Source quality signal confirms | No `confirmed_quality` column needed â€” all writes are user-confirmed by workflow |
 
 ## Build Gates
 
 All run and passed:
 
 ```
-.\gradlew.bat spotlessApply    → BUILD SUCCESSFUL
-.\gradlew.bat spotlessCheck    → BUILD SUCCESSFUL
-.\gradlew.bat :app:testDebugUnitTest  → BUILD SUCCESSFUL (267 actionable tasks, 8 new LovedMangaSortTest tests PASSED)
-.\gradlew.bat assembleDebug    → BUILD SUCCESSFUL
+.\gradlew.bat spotlessApply    â†’ BUILD SUCCESSFUL
+.\gradlew.bat spotlessCheck    â†’ BUILD SUCCESSFUL
+.\gradlew.bat :app:testDebugUnitTest  â†’ BUILD SUCCESSFUL (267 actionable tasks, 8 new LovedMangaSortTest tests PASSED)
+.\gradlew.bat assembleDebug    â†’ BUILD SUCCESSFUL
 ```
 
 APK copied to: `Komikku-v1.13.6-kmk.7.15-debug.apk`
@@ -265,21 +265,22 @@ APK copied to: `Komikku-v1.13.6-kmk.7.15-debug.apk`
 ## Manual QA Checklist
 
 1. Open Source Evaluation. Confirm evidence labels and last-evaluated labels display correctly ("Strong evidence" / "Moderate evidence" / "Weak evidence" / "Low confidence"; "Last evaluated today" / "Last evaluated N days ago").
-2. Confirm verdict badges show correct labels ("Strong Fit", "Worth Trying", "Neutral", etc.) — same visual appearance as before.
-3. Open Loved Manga. Toggle "Group clear duplicates" ON when no duplicates exist — confirm "No clear duplicates found." appears as subdued text under the sort chips.
-4. Toggle "Group clear duplicates" OFF — confirm the text disappears.
-5. Toggle "Group clear duplicates" ON when duplicates DO exist — confirm the text does NOT appear (grouping happened, versionCount badges show).
-6. Try each Loved Manga sort mode (Most recent, Oldest first, Title A–Z, Source) — confirm order changes correctly.
-7. Open a manga marked Seen — confirm "Seen other versions" is still available in the rating menu.
-8. Open Best Version — confirm Cancel returns to the comparison screen (not exits the workflow).
+2. Confirm verdict badges show correct labels ("Strong Fit", "Worth Trying", "Neutral", etc.) â€” same visual appearance as before.
+3. Open Loved Manga. Toggle "Group clear duplicates" ON when no duplicates exist â€” confirm "No clear duplicates found." appears as subdued text under the sort chips.
+4. Toggle "Group clear duplicates" OFF â€” confirm the text disappears.
+5. Toggle "Group clear duplicates" ON when duplicates DO exist â€” confirm the text does NOT appear (grouping happened, versionCount badges show).
+6. Try each Loved Manga sort mode (Most recent, Oldest first, Title Aâ€“Z, Source) â€” confirm order changes correctly.
+7. Open a manga marked Seen â€” confirm "Seen other versions" is still available in the rating menu.
+8. Open Best Version â€” confirm Cancel returns to the comparison screen (not exits the workflow).
 9. Confirm normal global search behavior unchanged.
-10. Confirm Recommendation Settings looks correct — no regressions from v0.7.14.
+10. Confirm Recommendation Settings looks correct â€” no regressions from v0.7.14.
 
 ## Deferred Items
 
-- Evidence strength tests for `evidenceStrength()` — the function is private inside the Kotlin file. Could be extracted to an `internal` helper if tests are wanted. Deferred as low priority since the classification logic is the same as the original and covered by the existing integration.
-- Loved Manga live updates (load once at open time) — deferred from v0.7.0.
-- Backup/restore for seen manga — deferred.
-- Cross-source link group management UI — deferred.
-- Source quality signal display UI — deferred.
+- Evidence strength tests for `evidenceStrength()` â€” the function is private inside the Kotlin file. Could be extracted to an `internal` helper if tests are wanted. Deferred as low priority since the classification logic is the same as the original and covered by the existing integration.
+- Loved Manga live updates (load once at open time) â€” deferred from v0.7.0.
+- Backup/restore for seen manga â€” deferred.
+- Cross-source link group management UI â€” deferred.
+- Source quality signal display UI â€” deferred.
 - Phase 8 readiness: v0.7.15 closes the Phase 6/7 cleanup scope. Phase 8 can begin next.
+

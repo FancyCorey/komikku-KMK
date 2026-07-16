@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * R-026: Verifies that all KMK SQLDelight migrations (46–55) apply cleanly, in order,
+ * R-026: Verifies that all KMK SQLDelight migrations (46–62) apply cleanly, in order,
  * against an in-memory SQLite database, and that the resulting schema contains the expected
  * tables. Also verifies idempotency (IF NOT EXISTS) and ALTER TABLE correctness.
  *
@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test
 class KmkMigrationTest {
 
     companion object {
-        private val KMK_MIGRATION_RANGE = 46..55
+        private val KMK_MIGRATION_RANGE = 46..62
 
         // Tables introduced by each KMK migration (ALTER TABLE migrations add no new tables)
         private val NEW_TABLES_BY_MIGRATION: Map<Int, List<String>> = mapOf(
@@ -33,17 +33,79 @@ class KmkMigrationTest {
             53 to listOf("manga_source_quality_signal"),
             54 to listOf("ocr_indexed_page"),
             55 to emptyList(), // ALTER TABLE ocr_indexed_page – adds status columns
+            // KMK --> v0.7.38: For You candidate discovery memory
+            56 to listOf("recommendation_candidate_memory"),
+            // KMK <--
+            // KMK --> v0.7.39: For You rolling discovery progress
+            57 to listOf("recommendation_discovery_progress"),
+            // KMK <--
+            // KMK --> v0.7.40: retry metadata columns (ALTER TABLE, no new table)
+            58 to emptyList(),
+            // KMK <--
+            // KMK --> v0.7.42: Source Evidence Redesign (ALTER TABLE, no new tables)
+            59 to emptyList(),
+            60 to emptyList(),
+            // KMK <--
+            // KMK --> v0.7.47: Source Evaluation tag enrichment + scoring fix (ALTER TABLE, no new table)
+            61 to emptyList(),
+            // KMK <--
+            // KMK --> v0.8.0: Rated Manga bulk selection + group actions
+            62 to listOf("manga_cross_source_group_primary"),
+            // KMK <--
         )
 
         // table name → columns added by the ALTER TABLE migration for that migration number
         private val ALTER_MIGRATION_TABLE: Map<Int, String> = mapOf(
             51 to "source_evaluation",
             55 to "ocr_indexed_page",
+            // KMK --> v0.7.40
+            58 to "recommendation_discovery_progress",
+            // KMK <--
+            // KMK --> v0.7.42
+            59 to "source_evaluation",
+            60 to "source_recommendation_fit",
+            // KMK <--
+            // KMK --> v0.7.47
+            61 to "source_evaluation",
+            // KMK <--
         )
         private val ALTER_MIGRATION_COLUMNS: Map<Int, List<String>> = mapOf(
             51 to listOf("extension_version_name", "extension_version_code", "extension_apk_name"),
             55 to listOf("recognized_text_length", "recognized_word_count", "ocr_status"),
+            // KMK --> v0.7.40
+            58 to listOf("attempt_count", "next_retry_at", "failure_kind"),
+            // KMK <--
+            // KMK --> v0.7.42
+            59 to listOf("catalogue_metadata_confidence"),
+            60 to listOf("evaluation_version", "expires_at"),
+            // KMK <--
+            // KMK --> v0.7.47
+            61 to listOf(
+                "detail_enrichment_attempt_count", "detail_enrichment_success_count",
+                "metadata_candidate_count", "positive_candidate_count", "negative_candidate_count",
+                "explicit_preferred_group_hit_count", "learned_positive_group_hit_count",
+                "blocked_candidate_count", "adult_signal_candidate_count",
+            ),
+            // KMK <--
         )
+
+        // KMK --> v0.7.38
+        val RECOMMENDATION_CANDIDATE_MEMORY_COLUMNS = listOf(
+            "source_id", "url", "manga_id", "title", "thumbnail_url", "normalized_title",
+            "last_score", "matched_groups_json", "result_reasons_json",
+            "query_signature", "query_tags_json", "query_strategy",
+            "page", "discovered_at", "last_scored_at", "last_seen_at",
+            "profile_fingerprint", "filtered_reason",
+        )
+        // KMK <--
+        // KMK --> v0.7.39
+        val RECOMMENDATION_DISCOVERY_PROGRESS_COLUMNS = listOf(
+            "source_id", "query_signature", "query_tags_json", "query_strategy",
+            "page", "evaluated_at", "raw_count", "localized_count",
+            "scored_count", "visible_count", "filtered_count",
+            "status", "error_message", "profile_fingerprint",
+        )
+        // KMK <--
 
         val ALL_KMK_TABLES: Set<String> = NEW_TABLES_BY_MIGRATION.values.flatten().toSet()
     }
@@ -102,7 +164,7 @@ class KmkMigrationTest {
     // ---- Structural tests (no SQLite execution needed) ----
 
     @Test
-    fun `all KMK migration files 46-55 are present on classpath`() {
+    fun `all KMK migration files 46-62 are present on classpath`() {
         for (n in KMK_MIGRATION_RANGE) {
             val resource = javaClass.classLoader?.getResourceAsStream("$n.sqm")
             assertNotNull(resource) { "Migration $n.sqm not found on test classpath" }
@@ -111,8 +173,8 @@ class KmkMigrationTest {
     }
 
     @Test
-    fun `KMK migration range 46-55 is exactly 10 files`() {
-        assertEquals(10, KMK_MIGRATION_RANGE.count())
+    fun `KMK migration range 46-62 is exactly 17 files`() {
+        assertEquals(17, KMK_MIGRATION_RANGE.count())
     }
 
     @Test
@@ -173,7 +235,7 @@ class KmkMigrationTest {
     // ---- Execution tests (require JdbcSqliteDriver + sqlite-driver dep) ----
 
     @Test
-    fun `all KMK migrations 46-55 apply cleanly to empty database in sequence`() {
+    fun `all KMK migrations 46-62 apply cleanly to empty database in sequence`() {
         val driver = openDriver()
         for (n in KMK_MIGRATION_RANGE) {
             driver.executeMigration(n)
@@ -230,6 +292,193 @@ class KmkMigrationTest {
             }
         }
     }
+
+    // KMK --> v0.7.38: migration 56 — recommendation_candidate_memory
+    @Test
+    fun `migration 56 adds recommendation_candidate_memory with all required columns`() {
+        val driver = openDriver()
+        for (n in 46..56) driver.executeMigration(n)
+        val tables = driver.tableNames()
+        assertTrue(tables.contains("recommendation_candidate_memory")) {
+            "recommendation_candidate_memory table not found after migration 56. Tables: $tables"
+        }
+        val actual = driver.columnNames("recommendation_candidate_memory")
+        for (col in RECOMMENDATION_CANDIDATE_MEMORY_COLUMNS) {
+            assertTrue(actual.contains(col)) {
+                "Migration 56: column '$col' missing from recommendation_candidate_memory. Found: $actual"
+            }
+        }
+    }
+    // KMK <--
+
+    // KMK --> v0.7.39: migration 57 — recommendation_discovery_progress
+    @Test
+    fun `migration 57 adds recommendation_discovery_progress with all required columns`() {
+        val driver = openDriver()
+        for (n in 46..57) driver.executeMigration(n)
+        val tables = driver.tableNames()
+        assertTrue(tables.contains("recommendation_discovery_progress")) {
+            "recommendation_discovery_progress table not found after migration 57. Tables: $tables"
+        }
+        val actual = driver.columnNames("recommendation_discovery_progress")
+        for (col in RECOMMENDATION_DISCOVERY_PROGRESS_COLUMNS) {
+            assertTrue(actual.contains(col)) {
+                "Migration 57: column '$col' missing from recommendation_discovery_progress. Found: $actual"
+            }
+        }
+    }
+    // KMK <--
+
+    // KMK --> v0.7.40: migration 58 — retry metadata columns on recommendation_discovery_progress
+    @Test
+    fun `migration 58 adds retry metadata columns to recommendation_discovery_progress`() {
+        val driver = openDriver()
+        for (n in 46..58) driver.executeMigration(n)
+        val table = ALTER_MIGRATION_TABLE[58]!!
+        val expectedCols = ALTER_MIGRATION_COLUMNS[58]!!
+        val actual = driver.columnNames(table)
+        for (col in expectedCols) {
+            assertTrue(actual.contains(col)) {
+                "Migration 58: column '$col' missing from '$table'. Found: $actual"
+            }
+        }
+    }
+    // KMK <--
+
+    // KMK --> v0.7.42: migration 59 — catalogue metadata confidence on source_evaluation
+    @Test
+    fun `migration 59 adds catalogue_metadata_confidence to source_evaluation`() {
+        val driver = openDriver()
+        for (n in 46..59) driver.executeMigration(n)
+        val table = ALTER_MIGRATION_TABLE[59]!!
+        val expectedCols = ALTER_MIGRATION_COLUMNS[59]!!
+        val actual = driver.columnNames(table)
+        for (col in expectedCols) {
+            assertTrue(actual.contains(col)) {
+                "Migration 59: column '$col' missing from '$table'. Found: $actual"
+            }
+        }
+    }
+    // KMK <--
+
+    // KMK --> v0.7.42: migration 60 — version/expiry columns on source_recommendation_fit
+    @Test
+    fun `migration 60 adds evaluation_version and expires_at to source_recommendation_fit`() {
+        val driver = openDriver()
+        for (n in 46..60) driver.executeMigration(n)
+        val table = ALTER_MIGRATION_TABLE[60]!!
+        val expectedCols = ALTER_MIGRATION_COLUMNS[60]!!
+        val actual = driver.columnNames(table)
+        for (col in expectedCols) {
+            assertTrue(actual.contains(col)) {
+                "Migration 60: column '$col' missing from '$table'. Found: $actual"
+            }
+        }
+    }
+    // KMK <--
+
+    // KMK --> v0.7.47: migration 61 — detail-enrichment + split evidence counters on source_evaluation
+    @Test
+    fun `migration 61 adds detail-enrichment and evidence counter columns to source_evaluation`() {
+        val driver = openDriver()
+        for (n in 46..61) driver.executeMigration(n)
+        val table = ALTER_MIGRATION_TABLE[61]!!
+        val expectedCols = ALTER_MIGRATION_COLUMNS[61]!!
+        val actual = driver.columnNames(table)
+        for (col in expectedCols) {
+            assertTrue(actual.contains(col)) {
+                "Migration 61: column '$col' missing from '$table'. Found: $actual"
+            }
+        }
+    }
+
+    @Test
+    fun `migration 61 defaults existing source_evaluation rows to zero evidence counts`() {
+        val driver = openDriver()
+        for (n in 46..47) driver.executeMigration(n)
+        // Insert a pre-migration-61 row using only columns that existed at migration 47.
+        driver.execute(
+            null,
+            """
+            INSERT INTO source_evaluation(
+                evaluation_key, extension_pkg_name, signature_hash, extension_name, source_name, lang,
+                source_count, is_nsfw, evaluation_version, evaluated_at, sample_count, popular_count,
+                latest_count, search_count, search_success_count, liked_title_match_count,
+                preferred_tag_match_count, blocked_tag_match_count, explicit_signal_count,
+                ecchi_signal_count, error_count, quality_score, recommendation_fit_score,
+                search_reliability_score, explicit_score, ecchi_score, verdict
+            ) VALUES (
+                'legacy-key', 'eu.kanade.legacy', 'sig', 'Legacy Ext', 'Legacy Source', 'en',
+                1, 0, 1, 0, 5, 5, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0.5, 0.5, 0.0, 0.0, 0.0, 'weak'
+            )
+            """.trimIndent(),
+            0,
+        )
+        for (n in 48..61) driver.executeMigration(n)
+
+        var attemptCount = -1L
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT detail_enrichment_attempt_count, positive_candidate_count, adult_signal_candidate_count " +
+                "FROM source_evaluation WHERE evaluation_key = 'legacy-key'",
+            mapper = { cursor ->
+                assertTrue(cursor.next().value) { "Legacy row missing after migration 61" }
+                attemptCount = cursor.getLong(0) ?: -1L
+                assertEquals(0L, cursor.getLong(1)) { "positive_candidate_count should default to 0" }
+                assertEquals(0L, cursor.getLong(2)) { "adult_signal_candidate_count should default to 0" }
+                QueryResult.Value(Unit)
+            },
+            parameters = 0,
+        )
+        assertEquals(0L, attemptCount) { "detail_enrichment_attempt_count should default to 0" }
+    }
+    // KMK <--
+
+    // KMK --> v0.8.0: migration 62 — manga_cross_source_group_primary
+    @Test
+    fun `migration 62 adds manga_cross_source_group_primary table`() {
+        val driver = openDriver()
+        for (n in 46..62) driver.executeMigration(n)
+        val tables = driver.tableNames()
+        assertTrue(tables.contains("manga_cross_source_group_primary")) {
+            "manga_cross_source_group_primary table not found after migration 62. Tables: $tables"
+        }
+        val cols = driver.columnNames("manga_cross_source_group_primary")
+        for (col in listOf("group_id", "source", "url", "updated_at")) {
+            assertTrue(cols.contains(col)) {
+                "migration 62: column '$col' missing from manga_cross_source_group_primary. Found: $cols"
+            }
+        }
+    }
+
+    @Test
+    fun `migration 62 does not lose existing manga_cross_source_link rows`() {
+        val driver = openDriver()
+        for (n in 46..50) driver.executeMigration(n) // 50 creates manga_cross_source_link
+        driver.execute(
+            null,
+            """
+            INSERT INTO manga_cross_source_link(source, url, group_id, title, created_at, updated_at)
+            VALUES (1, '/a', 'group-1', 'A', 0, 0)
+            """.trimIndent(),
+            0,
+        )
+        for (n in 51..62) driver.executeMigration(n)
+
+        var rowCount = -1L
+        driver.executeQuery(
+            identifier = null,
+            sql = "SELECT COUNT(*) FROM manga_cross_source_link WHERE group_id = 'group-1'",
+            mapper = { cursor ->
+                assertTrue(cursor.next().value)
+                rowCount = cursor.getLong(0) ?: -1L
+                QueryResult.Value(Unit)
+            },
+            parameters = 0,
+        )
+        assertEquals(1L, rowCount) { "Existing manga_cross_source_link row was lost after migration 62" }
+    }
+    // KMK <--
 
     @Test
     fun `IF NOT EXISTS makes CREATE TABLE idempotent - re-running CREATE TABLE does not error`() {
@@ -291,6 +540,9 @@ class KmkMigrationTest {
             "source_recommendation_fit",
             "manga_source_quality_signal",
             "ocr_indexed_page",
+            // KMK --> v0.7.38
+            "recommendation_candidate_memory",
+            // KMK <--
         )
         for (table in expected) {
             assertTrue(tables.contains(table)) { "Expected KMK table '$table' not found after full migration" }

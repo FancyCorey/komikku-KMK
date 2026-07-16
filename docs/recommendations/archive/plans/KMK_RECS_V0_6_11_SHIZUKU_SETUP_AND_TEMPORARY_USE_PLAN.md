@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.11: Shizuku Setup And Temporary Use Plan
+﻿# KMK-Recs v0.6.11: Shizuku Setup And Temporary Use Plan
 
 Date: 2026-06-19
 
@@ -561,3 +561,4 @@ but Android/Shizuku remains responsible for starting, stopping, granting, and un
 ```
 
 This gives the user the temporary workflow they want while keeping the implementation accurate, safe, and maintainable.
+

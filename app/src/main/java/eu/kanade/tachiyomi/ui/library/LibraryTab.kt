@@ -59,6 +59,8 @@ import exh.recs.RecommendsScreen
 import exh.recs.batch.RecommendationSearchBottomSheetDialog
 import exh.recs.batch.RecommendationSearchProgressDialog
 import exh.recs.batch.SearchStatus
+import exh.recs.loved.LovedMangaScreen
+import exh.recs.loved.RatedMangaScreen
 import exh.source.MERGED_SOURCE_ID
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
@@ -73,6 +75,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryGroup
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
@@ -184,6 +187,11 @@ data object LibraryTab : Tab {
                     isSyncEnabled = state.isSyncEnabled,
                     // SY <--
                     searchQuery = state.searchQuery,
+                    // KMK --> v0.7.36: Library toolbar shortcuts for Loved/Liked/Disliked manga
+                    onClickLovedManga = { navigator.push(LovedMangaScreen()) },
+                    onClickLikedManga = { navigator.push(RatedMangaScreen(MangaRating.LIKE.value)) },
+                    onClickDislikedManga = { navigator.push(RatedMangaScreen(MangaRating.DISLIKE.value)) },
+                    // KMK <--
                     onSearchQueryChange = screenModel::search,
                     onInvalidateDownloadCache = { context ->
                         Injekt.get<DownloadCache>().invalidateCache()

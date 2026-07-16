@@ -100,5 +100,60 @@ class LovedMangaSourceFilterTest {
         // Only 1 entry reaches the grouper → versionCount will be 1, not 2.
         assertEquals(1, filtered.size)
     }
+
+    // KMK --> v0.7.35: generalized filter tests
+    @Test
+    fun `filterRatedTastesByInstalledSources keeps LIKE entries with matching rating`() {
+        val t = taste(1, source = 10L, rating = MangaRating.LIKE.value)
+        val result = filterRatedTastesByInstalledSources(
+            listOf(t),
+            installedSourceIds = setOf(10L),
+            allowedRatings = setOf(MangaRating.LIKE.value),
+        )
+        assertEquals(listOf(t), result)
+    }
+
+    @Test
+    fun `filterRatedTastesByInstalledSources keeps DISLIKE entries with matching rating`() {
+        val t = taste(1, source = 10L, rating = MangaRating.DISLIKE.value)
+        val result = filterRatedTastesByInstalledSources(
+            listOf(t),
+            installedSourceIds = setOf(10L),
+            allowedRatings = setOf(MangaRating.DISLIKE.value),
+        )
+        assertEquals(listOf(t), result)
+    }
+
+    @Test
+    fun `filterRatedTastesByInstalledSources excludes entries with different rating`() {
+        val liked = taste(1, source = 10L, rating = MangaRating.LIKE.value)
+        val loved = taste(2, source = 10L, rating = MangaRating.LOVE.value)
+        val result = filterRatedTastesByInstalledSources(
+            listOf(liked, loved),
+            installedSourceIds = setOf(10L),
+            allowedRatings = setOf(MangaRating.LIKE.value),
+        )
+        assertEquals(listOf(liked), result)
+    }
+
+    @Test
+    fun `filterRatedTastesByInstalledSources excludes entries from uninstalled sources`() {
+        val t = taste(1, source = 99L, rating = MangaRating.LIKE.value)
+        val result = filterRatedTastesByInstalledSources(
+            listOf(t),
+            installedSourceIds = setOf(10L),
+            allowedRatings = setOf(MangaRating.LIKE.value),
+        )
+        assertEquals(emptyList<MangaTaste>(), result)
+    }
+
+    @Test
+    fun `filterLovedTastesByInstalledSources still delegates correctly after refactor`() {
+        val loved = taste(1, source = 10L, rating = MangaRating.LOVE.value)
+        val liked = taste(2, source = 10L, rating = MangaRating.LIKE.value)
+        val result = filterLovedTastesByInstalledSources(listOf(loved, liked), installedSourceIds = setOf(10L))
+        assertEquals(listOf(loved), result, "Legacy wrapper must still filter LOVE only")
+    }
+    // KMK <--
 }
 // KMK <--

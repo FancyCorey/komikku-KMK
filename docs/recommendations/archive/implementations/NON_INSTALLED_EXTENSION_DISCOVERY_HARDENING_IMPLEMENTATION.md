@@ -1,4 +1,4 @@
-# Non-Installed Extension Discovery Hardening Implementation
+﻿# Non-Installed Extension Discovery Hardening Implementation
 
 Date: 2026-06-16
 
@@ -13,7 +13,7 @@ The v0.6.0 "Sources To Try" scorer treated language match, same repo, base URL, 
 `NonInstalledSourceSuggestionScorer` was rewritten to use an evidence gate:
 
 - `score()` now returns `null` when no meaningful evidence is found.
-- `hasMeaningfulEvidence()` checks for `SimilarToInstalledSource` — the only accepted evidence for v0.6.1.
+- `hasMeaningfulEvidence()` checks for `SimilarToInstalledSource` â€” the only accepted evidence for v0.6.1.
 - Sources that pass language/NSFW/installed/untrusted/dismissed filters but have no similarity to an installed source are excluded (return null).
 
 ## Signals Reclassified
@@ -29,13 +29,13 @@ The v0.6.0 "Sources To Try" scorer treated language match, same repo, base URL, 
 
 ## Similarity Rules
 
-1. Exact normalized name match → score 0.60 (MEDIUM confidence).
-2. Containment where both normalized names ≥ 8 chars → score 0.50 (LOW confidence).
-3. Distinctive token overlap: at least one shared token of length ≥ 5 not in GENERIC_TOKENS → score 0.50 (LOW confidence).
+1. Exact normalized name match â†’ score 0.60 (MEDIUM confidence).
+2. Containment where both normalized names â‰¥ 8 chars â†’ score 0.50 (LOW confidence).
+3. Distinctive token overlap: at least one shared token of length â‰¥ 5 not in GENERIC_TOKENS â†’ score 0.50 (LOW confidence).
 
 Generic single-word names (`manga`, `scans`, `scan`, `manhwa`, `webtoon`, `comics`, `comic`, `source`) are excluded from both sides of the comparison.
 
-`distinctiveTokens()` uses the ORIGINAL (non-normalized) name so that word boundaries are preserved for splitting. Example: "Asura Scans" → token "asura" (scans is generic). If pre-normalized: "asurascans" → single token "asurascans" which is a different match.
+`distinctiveTokens()` uses the ORIGINAL (non-normalized) name so that word boundaries are preserved for splitting. Example: "Asura Scans" â†’ token "asura" (scans is generic). If pre-normalized: "asurascans" â†’ single token "asurascans" which is a different match.
 
 ## Interactor Change
 
@@ -43,7 +43,7 @@ Generic single-word names (`manga`, `scans`, `scan`, `manhwa`, `webtoon`, `comic
 
 ## Confidence Threshold
 
-Threshold adjusted from ≥ 0.35 to ≥ 0.55 to match the new score range. Exact match (0.60) → MEDIUM. Similarity match (0.50) → LOW.
+Threshold adjusted from â‰¥ 0.35 to â‰¥ 0.55 to match the new score range. Exact match (0.60) â†’ MEDIUM. Similarity match (0.50) â†’ LOW.
 
 ## Empty State
 
@@ -55,11 +55,11 @@ No strong source suggestions yet. Install and use more sources to improve sugges
 
 ## Files Changed
 
-- `app/src/main/java/exh/recs/discovery/NonInstalledSourceSuggestionScorer.kt` — complete rewrite
-- `app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt` — added 5th combine source
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=601, v0.6.1 notes
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — updated rec_sources_to_try_empty
-- `app/src/test/java/exh/recs/discovery/NonInstalledSourceSuggestionScorerTest.kt` — rewritten (18 tests)
+- `app/src/main/java/exh/recs/discovery/NonInstalledSourceSuggestionScorer.kt` â€” complete rewrite
+- `app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt` â€” added 5th combine source
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE=601, v0.6.1 notes
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” updated rec_sources_to_try_empty
+- `app/src/test/java/exh/recs/discovery/NonInstalledSourceSuggestionScorerTest.kt` â€” rewritten (18 tests)
 
 ## Tests
 
@@ -76,9 +76,9 @@ Key new tests:
 - `distinctiveTokens filters generic words and short tokens`
 
 ```text
-./gradlew :app:testDebugUnitTest --tests "*NonInstalledSource*" → BUILD SUCCESSFUL, 18 tests PASSED
-./gradlew :app:testDebugUnitTest → BUILD SUCCESSFUL
-./gradlew :app:assembleDebug → BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest --tests "*NonInstalledSource*" â†’ BUILD SUCCESSFUL, 18 tests PASSED
+./gradlew :app:testDebugUnitTest â†’ BUILD SUCCESSFUL
+./gradlew :app:assembleDebug â†’ BUILD SUCCESSFUL
 ```
 
 ## APK
@@ -91,3 +91,4 @@ Key new tests:
 - Source-family profiles
 - Post-install pending evaluation
 - Automatic source priority suggestions
+

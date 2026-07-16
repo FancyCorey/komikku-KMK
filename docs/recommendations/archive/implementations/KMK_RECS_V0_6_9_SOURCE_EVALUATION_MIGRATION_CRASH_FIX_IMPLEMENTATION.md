@@ -1,10 +1,10 @@
-# KMK-Recs v0.6.9: Source Evaluation Migration Crash Fix — Implementation Notes
+﻿# KMK-Recs v0.6.9: Source Evaluation Migration Crash Fix â€” Implementation Notes
 
 Date: 2026-06-19
 
 Feature version: KMK-Recs v0.6.9
 
-User-approved scope: Focused hotfix — add the missing SQLite migration for `source_evaluation` and add defensive read fallbacks so the crash cannot recur even on corrupt/missing table states.
+User-approved scope: Focused hotfix â€” add the missing SQLite migration for `source_evaluation` and add defensive read fallbacks so the crash cannot recur even on corrupt/missing table states.
 
 ---
 
@@ -81,7 +81,7 @@ The Source Evaluation screen opens with an empty past-evaluations list instead o
 
 | File | Change |
 |------|--------|
-| `data/src/main/sqldelight/tachiyomi/migrations/47.sqm` | NEW — creates source_evaluation table and indexes |
+| `data/src/main/sqldelight/tachiyomi/migrations/47.sqm` | NEW â€” creates source_evaluation table and indexes |
 | `app/.../discovery/GetNonInstalledSourceSuggestions.kt` | Added `.catch` on `subscribeAll()` flow |
 | `app/.../evaluation/SourceEvaluationScreenModel.kt` | Added `.catch` on `subscribeAll()` flow |
 | `app/.../KmkRecsReleaseNotes.kt` | VERSION_CODE=609, VERSION_NAME=v0.6.9, release notes entry |
@@ -100,8 +100,8 @@ The Source Evaluation screen opens with an empty past-evaluations list instead o
 
 ## Tests Run
 
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, all passing)
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL (267 tasks, all passing)
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 Test details: all 267 existing tests passed. No new tests were added; the migration itself cannot be covered by JVM unit tests without an Android instrumented test harness (none present in this project).
 
@@ -109,7 +109,7 @@ Test details: all 267 existing tests passed. No new tests were added; the migrat
 
 ## APK
 
-`Komikku-v1.13.6-kmk.6.9-debug.apk` — 133,236,305 bytes
+`Komikku-v1.13.6-kmk.6.9-debug.apk` â€” 133,236,305 bytes
 
 ---
 
@@ -138,3 +138,4 @@ None. Implementation matches the plan exactly.
 
 - Add an Android instrumented test or SQLDelight migration verification task to catch missing migrations earlier.
 - Consider adding a migration smoke test that opens an old database, runs migrations, and verifies all KMK tables exist.
+

@@ -13,6 +13,8 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -39,22 +41,24 @@ import eu.kanade.presentation.browse.components.GlobalSearchResultItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.util.formattedMessage
-import tachiyomi.presentation.core.screens.EmptyScreen
-import tachiyomi.presentation.core.screens.EmptyScreenAction
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.loved.LovedMangaScreen
-import exh.recs.settings.RecommendationsSettingsScreen
+import exh.recs.loved.RatedMangaScreen
+import exh.recs.settings.RecommendationSettingsIndexScreen
 import exh.recs.share.RecommendationBundleExporter
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.screens.EmptyScreen
+import tachiyomi.presentation.core.screens.EmptyScreenAction
 
 @Composable
 fun Screen.personalRecommendationsTab(): TabContent {
@@ -125,6 +129,18 @@ fun Screen.personalRecommendationsTab(): TabContent {
                 onClick = { navigator.push(LovedMangaScreen()) },
             ),
             // KMK <--
+            // KMK --> v0.7.35: Liked / Disliked manga entry points
+            AppBar.Action(
+                title = stringResource(KMR.strings.liked_manga_title),
+                icon = Icons.Outlined.ThumbUp,
+                onClick = { navigator.push(RatedMangaScreen(MangaRating.LIKE.value)) },
+            ),
+            AppBar.Action(
+                title = stringResource(KMR.strings.disliked_manga_title),
+                icon = Icons.Outlined.ThumbDown,
+                onClick = { navigator.push(RatedMangaScreen(MangaRating.DISLIKE.value)) },
+            ),
+            // KMK <--
             // KMK --> v0.7.5: Export Top Picks
             AppBar.Action(
                 title = stringResource(KMR.strings.rec_bundle_export_top_picks),
@@ -138,7 +154,8 @@ fun Screen.personalRecommendationsTab(): TabContent {
             AppBar.Action(
                 title = stringResource(KMR.strings.taste_settings_title),
                 icon = Icons.Outlined.Settings,
-                onClick = { navigator.push(RecommendationsSettingsScreen()) },
+                // KMK v0.8.8: entry point is now the concise settings index, not the single big screen directly.
+                onClick = { navigator.push(RecommendationSettingsIndexScreen) },
             ),
         ),
         content = { contentPadding, _ ->
@@ -257,69 +274,69 @@ private fun PersonalRecommendationsContent(
                     },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                // KMK <--
-                LazyColumn(contentPadding = contentPadding) {
-                    // Top Picks row — appears first, derived from all source results
-                    if (hasCombined) {
-                        item(key = "top_picks") {
-                            val combined = combinedResult as PersonalRecommendationResult.Success
-                            val subtitle = combined.reason?.let {
-                                stringResource(KMR.strings.rec_top_picks_matched, it)
-                            } ?: stringResource(KMR.strings.rec_top_picks_subtitle)
-                            GlobalSearchResultItem(
-                                title = stringResource(KMR.strings.rec_top_picks_title),
-                                subtitle = subtitle,
-                                onClick = onClickTopPicks,
-                            ) {
-                                GlobalSearchCardRow(
-                                    titles = combined.result.map { it.manga },
-                                    getManga = getManga,
-                                    onClick = onClickItem,
-                                    onLongClick = onClickItem,
-                                    selection = emptyList(),
-                                )
-                            }
-                        }
-                    }
-                    // Per-source rows in priority order
-                    visibleOrderedSources.forEach { source ->
-                        item(key = source.id) {
-                            val result = dedupedMap[source] ?: return@item
-                            val reason = (result as? PersonalRecommendationResult.Success)?.reason
-                            GlobalSearchResultItem(
-                                title = source.name,
-                                subtitle = if (reason != null) {
-                                    stringResource(KMR.strings.taste_matched_tags, reason)
-                                } else {
-                                    source.lang.uppercase()
-                                },
-                                onClick = { onClickSource(source) },
-                                // KMK --> v0.7.5: long-press to export source row
-                                onLongClick = onLongClickSource?.let { handler -> { handler(source) } },
-                                // KMK <--
-                            ) {
-                                when (result) {
-                                    PersonalRecommendationResult.Loading -> GlobalSearchLoadingResultItem()
-                                    is PersonalRecommendationResult.Success -> GlobalSearchCardRow(
-                                        titles = result.result.map { it.manga },
+                    // KMK <--
+                    LazyColumn(contentPadding = contentPadding) {
+                        // Top Picks row — appears first, derived from all source results
+                        if (hasCombined) {
+                            item(key = "top_picks") {
+                                val combined = combinedResult as PersonalRecommendationResult.Success
+                                val subtitle = combined.reason?.let {
+                                    stringResource(KMR.strings.rec_top_picks_matched, it)
+                                } ?: stringResource(KMR.strings.rec_top_picks_subtitle)
+                                GlobalSearchResultItem(
+                                    title = stringResource(KMR.strings.rec_top_picks_title),
+                                    subtitle = subtitle,
+                                    onClick = onClickTopPicks,
+                                ) {
+                                    GlobalSearchCardRow(
+                                        titles = combined.result.map { it.manga },
                                         getManga = getManga,
                                         onClick = onClickItem,
                                         onLongClick = onClickItem,
                                         selection = emptyList(),
                                     )
-                                    is PersonalRecommendationResult.Error -> {
-                                        GlobalSearchErrorResultItem(
-                                            message = with(LocalContext.current) {
-                                                result.throwable.formattedMessage
-                                            },
+                                }
+                            }
+                        }
+                        // Per-source rows in priority order
+                        visibleOrderedSources.forEach { source ->
+                            item(key = source.id) {
+                                val result = dedupedMap[source] ?: return@item
+                                val reason = (result as? PersonalRecommendationResult.Success)?.reason
+                                GlobalSearchResultItem(
+                                    title = source.name,
+                                    subtitle = if (reason != null) {
+                                        stringResource(KMR.strings.taste_matched_tags, reason)
+                                    } else {
+                                        source.lang.uppercase()
+                                    },
+                                    onClick = { onClickSource(source) },
+                                    // KMK --> v0.7.5: long-press to export source row
+                                    onLongClick = onLongClickSource?.let { handler -> { handler(source) } },
+                                    // KMK <--
+                                ) {
+                                    when (result) {
+                                        PersonalRecommendationResult.Loading -> GlobalSearchLoadingResultItem()
+                                        is PersonalRecommendationResult.Success -> GlobalSearchCardRow(
+                                            titles = result.result.map { it.manga },
+                                            getManga = getManga,
+                                            onClick = onClickItem,
+                                            onLongClick = onClickItem,
+                                            selection = emptyList(),
                                         )
+                                        is PersonalRecommendationResult.Error -> {
+                                            GlobalSearchErrorResultItem(
+                                                message = with(LocalContext.current) {
+                                                    result.throwable.formattedMessage
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                // KMK --> v0.7.29
+                    // KMK --> v0.7.29
                 }
                 // KMK <--
             }

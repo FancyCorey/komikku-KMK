@@ -1,4 +1,4 @@
-# KMK-Recs v0.4.3 Implementation Report
+﻿# KMK-Recs v0.4.3 Implementation Report
 
 Date: 2026-06-14
 
@@ -26,11 +26,11 @@ Status: complete.
 
 ### Phase 3: Adaptive source fill
 
-`BrowsePersonalRecommendationsScreenModel.kt` — major refactor:
+`BrowsePersonalRecommendationsScreenModel.kt` â€” major refactor:
 
 - Replaced `orderedEnabledSources.take(MAX_SOURCES)` with adaptive batch loop
 - Added `SourceSearchOutcome` private data class: source, result, successfulStrategy, status, isUseful
-- Constants renamed/added: `MAX_SOURCES` → `MAX_VISIBLE_SOURCE_ROWS=20`, added `MAX_SOURCE_ATTEMPTS=40`, `BOOSTED_SOURCE_COUNT=3`, `SOURCE_BATCH_SIZE=5`, `TOP_PICKS_ROW_CAP=20`, `TOP_PICKS_DETAIL_CAP=50` (replacing `COMBINED_ROW_CAP`)
+- Constants renamed/added: `MAX_SOURCES` â†’ `MAX_VISIBLE_SOURCE_ROWS=20`, added `MAX_SOURCE_ATTEMPTS=40`, `BOOSTED_SOURCE_COUNT=3`, `SOURCE_BATCH_SIZE=5`, `TOP_PICKS_ROW_CAP=20`, `TOP_PICKS_DETAIL_CAP=50` (replacing `COMBINED_ROW_CAP`)
 - `State` gains `combinedDetailResult: PersonalRecommendationResult?` and `sourceStatuses: PersistentMap<Long, RecommendationSourceRunStatus>`
 - `searchSource()` now returns `SourceSearchOutcome` instead of `RecommendationQueryStrategyType?`; determines `Shown`/`NoMatches`/`FilteredOut`/`Error` from result; no longer calls `updateItem()` internally
 - `updateItem()` gains optional `status` param, ranks Top Picks twice (row cap 20, detail cap 50), updates `combinedDetailResult` and `sourceStatuses` atomically
@@ -38,9 +38,9 @@ Status: complete.
 - Boosted sources: fixed top-3 of `orderedEnabledSources`, not adaptive
 
 Status determination in `searchSource()`:
-- Cache hit with results → `Shown`
-- Cache hit empty → `NoMatches`
-- Live search: scored non-empty → `Shown`; `page.mangas` empty → `NoMatches`; raw non-empty but scored empty → `FilteredOut`; exception on all plans → `Error`
+- Cache hit with results â†’ `Shown`
+- Cache hit empty â†’ `NoMatches`
+- Live search: scored non-empty â†’ `Shown`; `page.mangas` empty â†’ `NoMatches`; raw non-empty but scored empty â†’ `FilteredOut`; exception on all plans â†’ `Error`
 
 ### Phase 4: Source status in Recommendation Settings
 
@@ -54,7 +54,7 @@ Status determination in `searchSource()`:
 `RecommendationsSettingsScreen.kt`:
 
 - Added `status: RecommendationSourceRunStatus?` param to `SourcePriorityItem`
-- Subtitle line now shows `"${lang} · #$rank · $statusText"` — status text derived from `status` and `enabled`
+- Subtitle line now shows `"${lang} Â· #$rank Â· $statusText"` â€” status text derived from `status` and `enabled`
 - Call site passes `state.sourceStatuses[source.id]`
 - Status strings from `KMR.strings.rec_source_status_*`
 
@@ -82,7 +82,7 @@ Status determination in `searchSource()`:
 
 `WhatsNewScreen.kt`:
 
-- `onOpenInBrowser: () -> Unit` → `onOpenInBrowser: (() -> Unit)? = null`
+- `onOpenInBrowser: () -> Unit` â†’ `onOpenInBrowser: (() -> Unit)? = null`
 - Browser button wrapped in `if (onOpenInBrowser != null)` guard
 
 `KmkRecsWhatsNewScreen.kt`:
@@ -97,10 +97,10 @@ Status determination in `searchSource()`:
 
 ## Tests Added
 
-`RecommendationSourceRunStatusStoreTest.kt` — 9 tests:
+`RecommendationSourceRunStatusStoreTest.kt` â€” 9 tests:
 
-- serialize empty → empty string
-- parse empty/blank → empty map
+- serialize empty â†’ empty string
+- parse empty/blank â†’ empty map
 - single Shown round-trip
 - multiple statuses round-trip
 - malformed rows skipped without crash
@@ -111,19 +111,20 @@ Status determination in `searchSource()`:
 
 ## Tests Run
 
-- `:app:testDebugUnitTest --tests "exh.recs.*"` — BUILD SUCCESSFUL
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (all tests)
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest --tests "exh.recs.*"` â€” BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL (all tests)
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ## Known Limitations
 
 - `HiddenByDuplicateHandling` status is not recorded. A source whose candidates are fully hidden by cross-source dedupe shows as `Shown` (it produced scored results). The plan noted this was deferred.
-- Status for disabled sources relies on the Settings screen checking `state.disabledSourceIds` rather than a stored `Disabled` entry — disabled sources never appear in `eligibleSources` so they are never added to `allStatuses`.
+- Status for disabled sources relies on the Settings screen checking `state.disabledSourceIds` rather than a stored `Disabled` entry â€” disabled sources never appear in `eligibleSources` so they are never added to `allStatuses`.
 - `TopPicksScreen` shows the Top Picks result available at the time the user taps the header. If For You is still loading, the list may be partial. This is expected behavior per the plan.
 - The `progress/total` counter in `State` remains item-count based. With adaptive fill, `total` grows as batches are added.
 
 ## Deviations From Plan
 
-- Plan suggested considering `Disabled` status for disabled sources via the stored map. Implementation instead derives "Disabled" display from `!enabled` in the settings UI — simpler and avoids enumerating disabled sources in `load()`.
+- Plan suggested considering `Disabled` status for disabled sources via the stored map. Implementation instead derives "Disabled" display from `!enabled` in the settings UI â€” simpler and avoids enumerating disabled sources in `load()`.
 - `SourceSearchOutcome.isUseful` defined as `result is Success && result.result.isNotEmpty()` (pre-dedupe as planned).
-- Plan mentioned `OutsideVisibleLimit` enum value — not added; `OutsideAttemptLimit` covers sources not reached; sources within the attempt limit but not producing useful rows are shown with `NoMatches`/`FilteredOut`/`Error`.
+- Plan mentioned `OutsideVisibleLimit` enum value â€” not added; `OutsideAttemptLimit` covers sources not reached; sources within the attempt limit but not producing useful rows are shown with `NoMatches`/`FilteredOut`/`Error`.
+

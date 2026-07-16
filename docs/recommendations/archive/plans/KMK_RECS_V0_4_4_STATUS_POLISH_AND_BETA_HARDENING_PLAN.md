@@ -1,4 +1,4 @@
-# KMK-Recs v0.4.4 Status Polish And Beta Hardening Plan
+﻿# KMK-Recs v0.4.4 Status Polish And Beta Hardening Plan
 
 Date: 2026-06-14
 
@@ -198,13 +198,13 @@ Implementation guidance:
 1. Add compact text in `SourcePriorityItem` subtitle when status exists:
 
 ```text
-EN · #4 · Shown: 10 matches · checked 2m ago
+EN Â· #4 Â· Shown: 10 matches Â· checked 2m ago
 ```
 
 or:
 
 ```text
-EN · #4 · Shown: 10 matches
+EN Â· #4 Â· Shown: 10 matches
 ```
 
 with a section summary:
@@ -413,3 +413,4 @@ Implement KMK-Recs v0.4.4 as a small beta hardening pass:
 - update release notes, docs, tests, and versioning.
 
 Do not add heavier recommendation features in this pass.
+

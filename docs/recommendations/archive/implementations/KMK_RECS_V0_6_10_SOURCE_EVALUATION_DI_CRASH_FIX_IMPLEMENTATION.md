@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.10: Source Evaluation DI Crash Fix Implementation
+﻿# KMK-Recs v0.6.10: Source Evaluation DI Crash Fix Implementation
 
 Date: 2026-06-19
 
@@ -16,13 +16,13 @@ Fixed a crash when opening Source Evaluation from Recommendation Settings. The c
 private val getNonInstalled: GetNonInstalledSourceSuggestions = Injekt.get()
 ```
 
-But the class was never registered in `KMKDomainModule`. Injekt throws `InjektionException` at construction time — before the screen renders, before any flow subscription. No `.catch` on a Flow can catch this because the crash happens outside a coroutine context.
+But the class was never registered in `KMKDomainModule`. Injekt throws `InjektionException` at construction time â€” before the screen renders, before any flow subscription. No `.catch` on a Flow can catch this because the crash happens outside a coroutine context.
 
-`RecommendationsSettingsScreenModel` avoided the crash by manually constructing the helper (`GetNonInstalledSourceSuggestions()` — valid because the class has `= Injekt.get()` constructor defaults), but this created an inconsistent pattern.
+`RecommendationsSettingsScreenModel` avoided the crash by manually constructing the helper (`GetNonInstalledSourceSuggestions()` â€” valid because the class has `= Injekt.get()` constructor defaults), but this created an inconsistent pattern.
 
 ## Why v0.6.9 Did Not Fix This
 
-v0.6.9 added `.catch` fallbacks on `getSourceEvaluations.subscribeAll()` flows — protecting against the `source_evaluation` table being absent. The v0.6.10 crash is in `SourceEvaluationScreenModel.<init>` during Injekt graph resolution, which happens synchronously before any flow is subscribed. These are independent failure modes.
+v0.6.9 added `.catch` fallbacks on `getSourceEvaluations.subscribeAll()` flows â€” protecting against the `source_evaluation` table being absent. The v0.6.10 crash is in `SourceEvaluationScreenModel.<init>` during Injekt graph resolution, which happens synchronously before any flow is subscribed. These are independent failure modes.
 
 ## Files Changed
 
@@ -91,8 +91,8 @@ This matches the pattern used for other KMK interactors in this module.
 
 ## Tests Run
 
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL, all tests PASSED
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL, all tests PASSED
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ## APK
 
@@ -103,3 +103,4 @@ Copied to: `Komikku-v1.13.6-kmk.6.10-debug.apk`
 ## Manual Verification
 
 Not performed by this session. Required manual test: install v0.6.10 APK over v0.6.9, open Recommendation Settings > Source Evaluation, confirm no crash, confirm candidate list loads or shows safe empty state.
+

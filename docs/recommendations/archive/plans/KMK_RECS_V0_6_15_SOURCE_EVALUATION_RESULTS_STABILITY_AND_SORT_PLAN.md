@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.15: Source Evaluation Results Stability and Sort Plan
+﻿# KMK-Recs v0.6.15: Source Evaluation Results Stability and Sort Plan
 
 Date: 2026-06-19
 
@@ -304,13 +304,13 @@ Do not make it visually heavy. The row should remain compact.
 Suggested subtitle:
 
 ```text
-Extension Name • EN • fit 82% • search 70%
+Extension Name â€¢ EN â€¢ fit 82% â€¢ search 70%
 ```
 
 If the result is an error:
 
 ```text
-Extension Name • Error: <short message>
+Extension Name â€¢ Error: <short message>
 ```
 
 Also consider showing:
@@ -606,3 +606,4 @@ If the app still crashes, immediately collect a fresh crash log from that v0.6.1
 Proceed with this as a focused stability-and-usability patch.
 
 The Source Evaluation engine itself appears to be useful now. The weak point is the results screen: it is currently too trusting for a cache built from many third-party extension probes. A small pure sanitizer/sorter plus stable UI keys and deterministic ordering should make the page much harder to crash and much easier to use.
+

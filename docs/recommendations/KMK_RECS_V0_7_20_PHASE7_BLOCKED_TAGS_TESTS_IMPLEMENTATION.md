@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.20 — Phase 7 Blocked Tags Tests + Local Source Decision
+﻿# KMK-Recs v0.7.20 â€” Phase 7 Blocked Tags Tests + Local Source Decision
 
 Date: 2026-06-28
 
@@ -18,7 +18,7 @@ Phase 7 of the deferred feature plan. The query-time blocked tag exclusion logic
 
 - If the TriState name matches a blocked genre (by normalized name or `BUILT_IN_SYNONYMS` synonym)
 - AND the TriState is currently `STATE_IGNORE` (not already set to INCLUDE by the desired-genre pass)
-- → sets it to `STATE_EXCLUDE`
+- â†’ sets it to `STATE_EXCLUDE`
 
 Post-fetch `PersonalRecommendationScorer` blocking always runs as fallback regardless of filter-push outcome.
 
@@ -29,7 +29,7 @@ val searchParams = GenreFilterMapper.buildSearch(
     plan.tags,
     aliasCandidates,
     plan.forceTextOnly,
-    // KMK --> v0.7.0: Phase 7 — push blocked tags as exclusion filters
+    // KMK --> v0.7.0: Phase 7 â€” push blocked tags as exclusion filters
     blockedGenres = profile.blockedGroups.toList(),
     // KMK <--
 )
@@ -42,7 +42,7 @@ val searchParams = GenreFilterMapper.buildSearch(
 | Test | What it verifies |
 |---|---|
 | `blocked genre triState in group is set to STATE_EXCLUDE` | Basic exclusion path works |
-| `blocked genre does not downgrade a filter already set to STATE_INCLUDE` | INCLUDE wins over EXCLUDE — code guards with `child.state == STATE_IGNORE` |
+| `blocked genre does not downgrade a filter already set to STATE_INCLUDE` | INCLUDE wins over EXCLUDE â€” code guards with `child.state == STATE_IGNORE` |
 | `blocked genre with no matching filter causes no crash and no mutation` | Unknown blocked genre silently skipped |
 | `blocked genre skips CheckBox filters` | Only TriState has exclusion semantics; CheckBox unchanged |
 | `forceTextOnly skips blocked genre filter application` | `!forceTextOnly &&` guard works |
@@ -68,8 +68,8 @@ No code changes required. Decision documented here and in NEXT_WORK.md.
 
 ## Files Changed
 
-- `app/src/test/java/exh/recs/sources/GenreFilterMapperTest.kt` — 7 new blocked-genre tests
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — v0.7.20 entry
+- `app/src/test/java/exh/recs/sources/GenreFilterMapperTest.kt` â€” 7 new blocked-genre tests
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” v0.7.20 entry
 - Documentation updates: CURRENT_STATE.md, NEXT_WORK.md, master plan, risk register, security review
 
 ---
@@ -78,11 +78,12 @@ No code changes required. Decision documented here and in NEXT_WORK.md.
 
 ```
 BUILD SUCCESSFUL
-GenreFilterMapperTest — 23/23 PASSED
-:app:testDebugUnitTest — all existing tests PASSED
-:app:assembleDebug — BUILD SUCCESSFUL
+GenreFilterMapperTest â€” 23/23 PASSED
+:app:testDebugUnitTest â€” all existing tests PASSED
+:app:assembleDebug â€” BUILD SUCCESSFUL
 ```
 
 ## APK Naming
 
 `Komikku-v1.13.6-kmk.7.20-debug.apk`
+

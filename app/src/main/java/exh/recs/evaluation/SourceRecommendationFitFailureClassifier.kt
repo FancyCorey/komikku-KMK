@@ -24,6 +24,8 @@ enum class SourceRecommendationProbeFailureKind {
     RAW_RESULTS_EMPTY,
     RESULTS_NO_METADATA,
     ALL_RESULTS_BLOCKED,
+    // KMK v0.7.45: non-installed probe refused because the Private installer isn't available
+    PRIVATE_INSTALLER_REQUIRED,
     UNKNOWN,
 }
 
@@ -67,6 +69,8 @@ object SourceRecommendationFitFailureClassifier {
                 SourceRecommendationProbeFailureKind.SEARCH_ERROR
             errorMessage.contains("No taste profile", ignoreCase = true) ->
                 SourceRecommendationProbeFailureKind.NO_TASTE_EVIDENCE
+            errorMessage.contains("Private installer required", ignoreCase = true) ->
+                SourceRecommendationProbeFailureKind.PRIVATE_INSTALLER_REQUIRED
             else -> SourceRecommendationProbeFailureKind.UNKNOWN
         }
     }

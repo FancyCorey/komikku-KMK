@@ -123,6 +123,10 @@ class SourceEvaluationRunner(
                 val recLanguages = RecommendationSourceFilter.normalizeLanguages(
                     sourcePreferences.recommendationSourceLanguages().get(),
                 )
+                // KMK --> v0.7.42: loaded once per batch — catalogue-fit scoring now resolves tags
+                // through the same alias map PersonalRecommendationScorer uses (decision D4)
+                val aliasMap = runCatching { getTagAliases.awaitAliasMap() }.getOrDefault(emptyMap())
+                // KMK <--
 
                 supervisorScope {
                     for (candidate in candidates) {
@@ -151,7 +155,7 @@ class SourceEvaluationRunner(
                         }
 
                         // KMK --> v0.6.13: pass options and privateAvailable for diagnostics + cleanup
-                        evaluateExtension(ext, installerOverride, tasteProfile, recLanguages, options, privateAvailable, batchId)
+                        evaluateExtension(ext, installerOverride, tasteProfile, aliasMap, recLanguages, options, privateAvailable, batchId)
                         // KMK <--
 
                         // Respectful inter-extension delay
@@ -192,6 +196,9 @@ class SourceEvaluationRunner(
         ext: Extension.Available,
         installerOverride: BasePreferences.ExtensionInstaller?,
         tasteProfile: TasteProfile,
+        // KMK --> v0.7.42
+        aliasMap: Map<String, String>,
+        // KMK <--
         recLanguages: Set<String>,
         // KMK --> v0.6.13
         options: SourceEvaluationOptions,
@@ -282,7 +289,7 @@ class SourceEvaluationRunner(
             for (source in catalogueSources) {
                 if (_state.value.status == SourceEvaluationQueueState.Status.Cancelling) break
                 try {
-                    val evaluation = probeAndScore(ext, installedExt, source, tasteProfile, batchId, extStartedAt)
+                    val evaluation = probeAndScore(ext, installedExt, source, tasteProfile, aliasMap, batchId, extStartedAt)
                     upsertSourceEvaluation.await(evaluation)
                     addResult(ext, source, evaluation.verdict)
                 } catch (e: Exception) {
@@ -297,7 +304,9 @@ class SourceEvaluationRunner(
                         lang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang,
                         repoName = ext.repoName,
                         isNsfw = ext.isNsfw,
-                        errorMessage = e.message ?: "Probe error",
+                        // KMK v0.7.45: classified key, not the raw exception message — see
+                        // SourceEvaluationProbeErrorClassifier and EvaluationResultRow's rendering.
+                        errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e),
                         // KMK --> v0.7.4: record extension version
                         extensionVersionName = ext.versionName,
                         extensionVersionCode = ext.versionCode,
@@ -313,7 +322,9 @@ class SourceEvaluationRunner(
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Extension evaluation failed: ${ext.name}" }
-            recordExtensionError(ext, e.message ?: "Unknown error")
+            // KMK v0.7.46: classified key, not raw exception text — same UI path (EvaluationResultRow)
+            // as the per-source probe catch above; see SourceEvaluationProbeErrorClassifier.
+            recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e))
         } finally {
             // KMK --> v0.6.16: crash quarantine — write marker before cleanup, then clear after
             writeProbeMarker(ext, null, null, ext.lang, SourceEvaluationQueueState.Phase.Cleanup, batchId, extStartedAt)
@@ -398,17 +409,21 @@ class SourceEvaluationRunner(
         installedExt: Extension.Installed,
         source: CatalogueSource,
         tasteProfile: TasteProfile,
+        // KMK --> v0.7.42: catalogue-fit taste matching now uses the same alias map as For You
+        aliasMap: Map<String, String>,
+        // KMK <--
         // KMK --> v0.6.16: crash quarantine
         batchId: String,
         startedAt: Long,
         // KMK <--
     ): SourceEvaluation {
-        val sampledTitles = mutableListOf<String>()
-        val sampledTags = mutableListOf<String>()
+        // KMK --> v0.7.42: catalogue samples only (Popular + Latest) — the scorer's own search probe
+        // was removed; search compatibility is measured separately by SourceRecommendationFitProbe
+        // below (decision D1). Each sample keeps its own genre list for per-item taste matching.
+        val rawCatalogueItems = mutableListOf<eu.kanade.tachiyomi.source.model.SManga>()
+        // KMK <--
         var popularCount = 0
         var latestCount = 0
-        var searchCount = 0
-        var searchSuccessCount = 0
         var errorCount = 0
 
         val sourceLang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang
@@ -427,8 +442,7 @@ class SourceEvaluationRunner(
             } else {
                 val items = page.mangas.take(15)
                 popularCount = items.size
-                sampledTitles += items.map { it.title }
-                sampledTags += items.flatMap { it.genre?.split(",")?.map(String::trim) ?: emptyList() }
+                rawCatalogueItems += items
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -451,8 +465,7 @@ class SourceEvaluationRunner(
                 } else {
                     val items = page.mangas.take(10)
                     latestCount = items.size
-                    sampledTitles += items.map { it.title }
-                    sampledTags += items.flatMap { it.genre?.split(",")?.map(String::trim) ?: emptyList() }
+                    rawCatalogueItems += items
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -461,40 +474,18 @@ class SourceEvaluationRunner(
             // KMK <--
         }
 
-        // Search probes using taste profile data
-        setPhase(ext.name, source.name, SourceEvaluationQueueState.Phase.ProbingSearch)
-        val searchQueries = buildSearchQueries(tasteProfile)
-        for (query in searchQueries.take(3)) {
-            if (_state.value.status == SourceEvaluationQueueState.Status.Cancelling) break
-            // KMK --> v0.6.16: crash quarantine — write marker before each search that may crash the process
-            writeProbeMarker(ext, source.id, source.name, sourceLang, SourceEvaluationQueueState.Phase.ProbingSearch, batchId, startedAt)
-            // KMK <--
-            // KMK --> v0.6.14: withTimeoutOrNull so search probe timeout is a local failure, not batch cancel
-            try {
-                val page = withTimeoutOrNull(25_000L) {
-                    source.getSearchManga(1, query, source.getFilterList())
-                }
-                if (page == null) {
-                    logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} search probe timed out after 25000ms" }
-                    searchCount++
-                    errorCount++
-                } else {
-                    val items = page.mangas.take(8)
-                    searchCount++
-                    if (items.isNotEmpty()) {
-                        searchSuccessCount++
-                        sampledTitles += items.map { it.title }
-                        sampledTags += items.flatMap { it.genre?.split(",")?.map(String::trim) ?: emptyList() }
-                    }
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                searchCount++
-                errorCount++
-            }
-            // KMK <--
-            delay(300L)
-        }
+        // KMK --> v0.7.47: bounded getMangaDetails() enrichment for list entries missing genre
+        // metadata, before scoring — see SourceEvaluationCatalogueEnricher and the tag-enrichment
+        // fix plan. Sequential, timeout-bounded, cancellation-aware; does not fetch chapters/pages
+        // and does not write to the app manga table.
+        setPhase(ext.name, source.name, SourceEvaluationQueueState.Phase.EnrichingDetails)
+        val enrichResult = SourceEvaluationCatalogueEnricher.enrich(
+            source = source,
+            rawItems = rawCatalogueItems,
+            sourceId = source.id,
+        )
+        val catalogueSamples = enrichResult.samples
+        // KMK <--
 
         // Score
         setPhase(ext.name, source.name, SourceEvaluationQueueState.Phase.Scoring)
@@ -509,14 +500,16 @@ class SourceEvaluationRunner(
             repoName = ext.repoName,
             sourceCount = installedExt.sources.size,
             isNsfw = ext.isNsfw,
-            sampledTitles = sampledTitles.distinct(),
-            sampledTags = sampledTags.distinct(),
+            catalogueSamples = catalogueSamples,
             popularCount = popularCount,
             latestCount = latestCount,
-            searchCount = searchCount,
-            searchSuccessCount = searchSuccessCount,
             errorCount = errorCount,
             tasteProfile = tasteProfile,
+            aliasMap = aliasMap,
+            // KMK --> v0.7.47: enrichment evidence
+            detailEnrichmentAttemptCount = enrichResult.detailAttempts,
+            detailEnrichmentSuccessCount = enrichResult.detailSuccesses,
+            // KMK <--
             // KMK --> v0.7.4: record extension version for update-reassessment detection
             extensionVersionName = ext.versionName,
             extensionVersionCode = ext.versionCode,
@@ -574,15 +567,6 @@ class SourceEvaluationRunner(
         // KMK <--
 
         return evaluation
-    }
-
-    private fun buildSearchQueries(tasteProfile: TasteProfile): List<String> {
-        // Derive 3-5 search terms from the top positive tag weights
-        return tasteProfile.learnedTagWeights.entries
-            .filter { it.value > 0.5 }
-            .sortedByDescending { it.value }
-            .take(4)
-            .map { it.key }
     }
 
     // KMK --> v0.6.13: private-aware cleanup using SourceEvaluationCleanupPolicy

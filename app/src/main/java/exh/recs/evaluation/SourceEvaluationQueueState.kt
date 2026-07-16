@@ -30,6 +30,11 @@ data class SourceEvaluationQueueState(
         ProbingPopular,
         ProbingLatest,
         ProbingSearch,
+        // KMK --> v0.7.47: bounded getMangaDetails() enrichment pass for catalogue samples missing
+        // genre metadata, run after Popular/Latest and before Scoring — see
+        // SourceEvaluationCatalogueEnricher.
+        EnrichingDetails,
+        // KMK <--
         Scoring,
         Cleanup,
     }

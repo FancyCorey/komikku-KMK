@@ -126,6 +126,9 @@ class SyncManager(
             // KMK --> v0.7.16: Best Version quality signals
             backupMangaSourceQualitySignals = backupCreator.backupMangaSourceQualitySignals(backupOptions),
             // KMK <--
+            // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+            backupCrossSourceGroupPrimaries = backupCreator.backupCrossSourceGroupPrimaries(backupOptions),
+            // KMK <--
             // KMK <--
         )
         logcat(LogPriority.DEBUG) { "End create backup" }

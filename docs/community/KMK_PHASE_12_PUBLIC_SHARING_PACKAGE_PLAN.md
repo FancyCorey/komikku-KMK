@@ -1,4 +1,4 @@
-# KMK Phase 12 Public Sharing Package Plan
+﻿# KMK Phase 12 Public Sharing Package Plan
 
 Date: 2026-06-26
 
@@ -253,3 +253,4 @@ Claude should report:
 - what tests/builds were verified,
 - what still blocks public sharing,
 - whether any files outside docs were changed.
+

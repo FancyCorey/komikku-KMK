@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.1: Cross-Extension Match State And Seen Menu Fix Plan
+﻿# KMK-Recs v0.7.1: Cross-Extension Match State And Seen Menu Fix Plan
 
 Date: 2026-06-20
 
@@ -530,4 +530,5 @@ Do not mention internal serialization, Parcelable, or documentation work in What
 ## Recommendation
 
 Proceed with this fix before further v0.7.x feature work. It is small, targeted, and addresses a confirmed crash in a user-facing manga-detail action. The preferred implementation is route-safe primitive screen arguments because it prevents the same Android state-save crash for all matching modes, not only `MarkSeen`.
+
 

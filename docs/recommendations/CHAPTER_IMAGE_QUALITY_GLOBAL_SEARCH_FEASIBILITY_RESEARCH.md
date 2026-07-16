@@ -1,4 +1,4 @@
-# Chapter / Image Quality Global Search Feasibility Research
+﻿# Chapter / Image Quality Global Search Feasibility Research
 
 Date: 2026-06-22
 
@@ -459,7 +459,7 @@ Example row:
 
 ```text
 Asura Scans
-Best coverage · 124 chapters · Latest 124 · Sample pages loaded · 2 image samples: 1600px wide
+Best coverage Â· 124 chapters Â· Latest 124 Â· Sample pages loaded Â· 2 image samples: 1600px wide
 ```
 
 ### Identity Confidence
@@ -684,3 +684,4 @@ Then a later optional phase can add:
 2. then manual image sample checks.
 
 Do not start with image sampling. Start with the cheaper chapter-coverage comparison first.
+

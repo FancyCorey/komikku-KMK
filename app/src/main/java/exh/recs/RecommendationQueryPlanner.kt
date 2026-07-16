@@ -26,7 +26,13 @@ internal data class RecommendationQueryPlan(
  */
 internal object RecommendationQueryPlanner {
 
-    const val MAX_STRATEGIES_PER_SOURCE = 2
+    // KMK --> v0.7.44: widened from 2 to 3 so a source that fails one strict attempt still gets a
+    // second, more lenient fallback instead of being marked empty/bad too early (shared
+    // strict-to-lenient chain principle also used by RecommendationQueryAttemptPolicy for group
+    // recommendations). "Last successful" still starts the chain when known, preserving the
+    // existing fast-path behavior.
+    const val MAX_STRATEGIES_PER_SOURCE = 3
+    // KMK <--
     const val MIN_USEFUL_RESULTS_NORMAL = 3
     const val MIN_USEFUL_RESULTS_BOOSTED = 5
 
@@ -53,12 +59,17 @@ internal object RecommendationQueryPlanner {
         topTags: List<String>,
         lastSuccessful: RecommendationQueryStrategyType? = null,
     ): List<RecommendationQueryPlan> {
-        val primary = planFor(lastSuccessful ?: RecommendationQueryStrategyType.TOP_TAGS_FILTER, topTags)
-        val fallback = fallbackFor(primary.type, topTags)
-        return buildList {
-            add(primary)
-            if (fallback != null && fallback.type != primary.type) add(fallback)
+        // KMK --> v0.7.44: walk the full fallbackFor() chain (not just one hop) so a source gets
+        // up to MAX_STRATEGIES_PER_SOURCE progressively more lenient attempts, still starting from
+        // lastSuccessful when known. TEXT_ONLY_TOP_TAGS remains terminal (fallbackFor returns null).
+        val plans = mutableListOf(planFor(lastSuccessful ?: RecommendationQueryStrategyType.TOP_TAGS_FILTER, topTags))
+        while (plans.size < MAX_STRATEGIES_PER_SOURCE) {
+            val next = fallbackFor(plans.last().type, topTags) ?: break
+            if (next.type == plans.last().type) break
+            plans.add(next)
         }
+        return plans
+        // KMK <--
     }
 
     private fun planFor(type: RecommendationQueryStrategyType, topTags: List<String>): RecommendationQueryPlan =

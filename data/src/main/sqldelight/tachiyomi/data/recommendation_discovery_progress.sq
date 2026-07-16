@@ -1,0 +1,79 @@
+-- KMK --> v0.7.39: For You rolling discovery progress tracker
+CREATE TABLE recommendation_discovery_progress (
+    source_id INTEGER NOT NULL,
+    query_signature TEXT NOT NULL,
+    query_tags_json TEXT NOT NULL,
+    query_strategy TEXT,
+    page INTEGER NOT NULL,
+    evaluated_at INTEGER NOT NULL,
+    raw_count INTEGER NOT NULL DEFAULT 0,
+    localized_count INTEGER NOT NULL DEFAULT 0,
+    scored_count INTEGER NOT NULL DEFAULT 0,
+    visible_count INTEGER NOT NULL DEFAULT 0,
+    filtered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    profile_fingerprint TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at INTEGER,
+    failure_kind TEXT,
+    PRIMARY KEY (source_id, query_signature, page)
+);
+
+CREATE INDEX recommendation_discovery_progress_source_index
+    ON recommendation_discovery_progress(source_id);
+CREATE INDEX recommendation_discovery_progress_query_index
+    ON recommendation_discovery_progress(source_id, query_signature);
+
+getBySourceQuery:
+SELECT *
+FROM recommendation_discovery_progress
+WHERE source_id = :sourceId
+AND query_signature = :querySignature
+ORDER BY page ASC;
+
+getEvaluatedPagesBySourceQuery:
+SELECT page
+FROM recommendation_discovery_progress
+WHERE source_id = :sourceId
+AND query_signature = :querySignature;
+
+upsert:
+INSERT INTO recommendation_discovery_progress(
+    source_id, query_signature, query_tags_json, query_strategy, page,
+    evaluated_at, raw_count, localized_count, scored_count, visible_count,
+    filtered_count, status, error_message, profile_fingerprint,
+    attempt_count, next_retry_at, failure_kind
+) VALUES (
+    :sourceId, :querySignature, :queryTagsJson, :queryStrategy, :page,
+    :evaluatedAt, :rawCount, :localizedCount, :scoredCount, :visibleCount,
+    :filteredCount, :status, :errorMessage, :profileFingerprint,
+    :attemptCount, :nextRetryAt, :failureKind
+)
+ON CONFLICT(source_id, query_signature, page)
+DO UPDATE SET
+    evaluated_at = :evaluatedAt,
+    raw_count = :rawCount,
+    localized_count = :localizedCount,
+    scored_count = :scoredCount,
+    visible_count = :visibleCount,
+    filtered_count = :filteredCount,
+    status = :status,
+    error_message = :errorMessage,
+    profile_fingerprint = :profileFingerprint,
+    attempt_count = :attemptCount,
+    next_retry_at = :nextRetryAt,
+    failure_kind = :failureKind;
+
+deleteBySourceQuery:
+DELETE FROM recommendation_discovery_progress
+WHERE source_id = :sourceId
+AND query_signature = :querySignature;
+
+deleteBySource:
+DELETE FROM recommendation_discovery_progress
+WHERE source_id = :sourceId;
+
+deleteAll:
+DELETE FROM recommendation_discovery_progress;
+-- KMK <--

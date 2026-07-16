@@ -58,7 +58,8 @@ class OcrIndexService(
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "OCR: failed to enumerate pages" }
-            onProgress(OcrIndexProgress(isFailed = true, lastError = e.message))
+            // KMK v0.7.46: stable key, not raw exception text — see OcrErrorClassifier.
+            onProgress(OcrIndexProgress(isFailed = true, lastError = OcrErrorClassifier.classifyToStorageKey(e)))
             return
         }
 
@@ -170,8 +171,10 @@ class OcrIndexService(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // KMK v0.7.46: sanitized diagnostic — no manga title, chapter name, or OCR text in
+                // logcat. IDs are safe to log; page content and human-readable titles are not.
                 logcat(LogPriority.WARN, e) {
-                    "OCR: page error manga=${pageRef.manga.title} ch=${pageRef.chapter.name} page=${pageRef.pageIndex}"
+                    "OCR: page error mangaId=${pageRef.manga.id} chapterId=${pageRef.chapter.id} page=${pageRef.pageIndex}"
                 }
                 failed++
                 completed++
@@ -195,7 +198,10 @@ class OcrIndexService(
                         rawText = "",
                         normalizedText = "",
                         indexedAt = System.currentTimeMillis(),
-                        errorMessage = e.message ?: "Unknown error",
+                        // KMK v0.7.46: stable key, not raw exception text — see OcrErrorClassifier.
+                        // Old rows written before this change may still hold raw text; those are
+                        // shown generically by the UI (see OcrErrorKey.fromStorageKey usage).
+                        errorMessage = OcrErrorClassifier.classifyToStorageKey(e),
                         recognizedTextLength = 0L,
                         recognizedWordCount = 0L,
                         ocrStatus = OCR_STATUS_FAILED,

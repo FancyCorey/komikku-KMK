@@ -27,3 +27,6 @@ app/standard/preview/*
 
 # KMK fork: exclude AI assistant memory directory from source control
 /memory/
+
+# KMK fork: exclude private diagnostic SQLite snapshots pulled from a real device (contain user data)
+tachiyomi_kmk_debug_diagnostic*.db*

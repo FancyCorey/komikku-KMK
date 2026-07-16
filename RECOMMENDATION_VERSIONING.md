@@ -56,6 +56,43 @@ Examples:
 - If an older topic is revisited later, continue that topic's existing line rather than assigning a new unrelated version.
 
 This keeps the version trail readable during long-running development and prevents feature plans from flip-flopping between unrelated version numbers.
+## Canonical Versioning Rule (Effective v0.7.42 Follow-Up)
+
+The early history used a mixture of semantic-style labels, topic-line labels, and sequential
+`v0.7.N` feature labels. Those historical entries remain unchanged because they describe APKs
+that were actually handed off. They are not a template for future releases.
+
+For every release after `KMK-Recs v0.7.42`, use this single convention:
+
+| Situation | Feature label | `KmkRecsReleaseNotes.VERSION_CODE` | APK handoff name |
+|---|---|---:|---|
+| New approved recommendation feature or coherent phase | `KMK-Recs v0.7.<next>` | Next unused integer greater than the current one | `Komikku-v1.13.6-kmk.7.<next>-debug.apk` |
+| Corrective follow-up to the current feature release | `KMK-Recs v0.7.<current>-fix<N>` | Next unused integer greater than the current one | `Komikku-v1.13.6-kmk.7.<current>.<N>-debug.apk` |
+| Rebuild with no source, resource, schema, or release-note change | Keep the existing feature label | Keep the existing code | Use the same APK identity only when it replaces an unshared artifact; otherwise do not hand it off as a new release |
+
+Rules:
+
+- `VERSION_CODE` is a monotonic local KMK What's New marker. It must never decrease and must
+  increase whenever a corrected APK needs to display a new KMK What's New entry.
+- The KMK feature label, release-note heading, implementation report, `CURRENT_STATE.md`,
+  `NEXT_WORK.md`, `RECOMMENDATION_VERSIONING.md`, and APK filename must all name the same
+  release identity.
+- A `-fix<N>` label is still part of its parent feature family. It is not a new feature phase.
+  Example: the corrective follow-up to v0.7.42 is `KMK-Recs v0.7.42-fix1`, code `743`, APK
+  `Komikku-v1.13.6-kmk.7.42.1-debug.apk`.
+- Do not infer Android package install compatibility from this local marker. The upstream
+  Android `versionCode` and `versionName` remain authoritative for Android install/update
+  behavior and live in `app/build.gradle.kts`.
+- If a release must install over a previously distributed APK, verify the Android package
+  version separately before handoff. Do not attempt to solve that by changing only
+  `KmkRecsReleaseNotes.VERSION_CODE`.
+
+### Historical Versioning Note
+
+Entries before this rule may contain labels such as `v0.6.22`, `v0.7.4`, or a numerical code
+that no longer follows the current monotonic convention. Treat those as an archival record,
+not as an active rule. New documentation must cite the canonical convention above rather than
+copying an older entry.
 
 ## Current Version Trail
 
@@ -1271,6 +1308,795 @@ Tests run:
 
 APK: `Komikku-v1.13.6-kmk.7.10-debug.apk` (VERSION_CODE 800)
 
+### KMK-Recs v0.7.11 through v0.7.34
+
+Implemented in individual passes. See `docs/recommendations/` implementation reports for details.
+Notable milestones: v0.7.14 (sort chips in Loved Manga), v0.7.26 (min chapter filter), v0.7.28 (Seen key backup), v0.7.30 (link group management), v0.7.31 (enrichment cap setting), v0.7.32–34 (source stats 30-day rolling, Top Picks contribution count, evaluation error labels, retry button, profile-changed banner).
+
+### KMK-Recs v0.7.35
+
+Rated Manga entry points (Liked/Disliked) and group-seeded recommendations.
+
+Files changed: see `docs/recommendations/KMK_RECS_V0_7_35_RATED_MANGA_AND_GROUP_SEEDED_RECOMMENDATIONS_IMPLEMENTATION.md`
+
+APK: `Komikku-v1.13.6-kmk.7.35-debug.apk` (VERSION_CODE 735)
+
+### KMK-Recs v0.7.36
+
+Rated Manga UI parity, Library toolbar shortcuts, group-seeded recommendation crash fix, and discoverability.
+
+Files changed:
+- `app/src/main/java/exh/recs/loved/RatedMangaScreen.kt` — full rewrite; shared `RatedMangaCollectionContent` composable with full feature set (export, sort, grouping, link management, version badge, explore overlay for LOVE/LIKE)
+- `app/src/main/java/exh/recs/loved/LovedMangaScreen.kt` — simplified to delegation via `RatedMangaCollectionContent`
+- `app/src/main/java/exh/recs/group/GroupSeededRecommendationsScreenModel.kt` — inject `NetworkToLocalManga`, localize all results before emitting
+- `app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt` — 3 optional callbacks for Loved/Liked/Disliked shortcuts
+- `app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt` — wire callbacks
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=736
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — `rec_bundle_export_liked_manga`, `rec_bundle_export_disliked_manga`
+
+Tests run:
+- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, full suite)
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.36-debug.apk` (VERSION_CODE 736)
+
+### KMK-Recs v0.7.37
+
+Group-seeded recommendations bounded runtime, source-aware dedup, cross-source rating exclusivity, and CancellationException propagation fix.
+
+Files changed:
+- `app/src/main/java/exh/recs/group/GroupSeededRecommendationsScreenModel.kt` — new constants (MAX_SOURCES=5, RAW_CAP_PER_SOURCE=8, TARGET_RESULTS=20, SEARCH_TIMEOUT_MS=12s, LOCALIZE_TIMEOUT_MS=5s, TOTAL_LOAD_TIMEOUT_MS=45s); extracted `buildRecommendations()` loop; `withTimeoutOrNull` around full load and per-candidate localization; early exit at TARGET_RESULTS via `break@outer`; source-aware `(sourceId, url)` dedup via `GroupRecommendationLoopPolicy`; CancellationException rethrow in per-source catch
+- `app/src/main/java/exh/recs/group/GroupRecommendationLoopPolicy.kt` — new pure helper object with `CandidateState`, `tryAcceptNetwork`, `tryAcceptLocal`, `reachedTarget`
+- `app/src/main/java/exh/recs/loved/LovedMangaSourceFilter.kt` — new `resolveLinkedGroupRatingConflicts` function; for confirmed cross-source link groups with conflicting member ratings, keeps only members matching the most-recently-updated rating
+- `app/src/main/java/exh/recs/loved/LovedMangaScreenModel.kt` — load link groups before rating filter; apply `resolveLinkedGroupRatingConflicts` before `filterRating` so each confirmed group appears in exactly one rating tab
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=737
+- `app/src/test/java/exh/recs/group/GroupRecommendationLoopPolicyTest.kt` — 13 new tests covering tryAcceptNetwork (new, duplicate, same-url different-source, seed member, non-seed on different source), tryAcceptLocal (new, duplicate, independent ids), reachedTarget (below/equal/above/zero), and combined flow
+- `app/src/test/java/exh/recs/loved/RatedMangaExclusivityTest.kt` — 9 new tests covering standalone kept, same-rating group kept, love-newer-than-like, like-newer-than-love, dislike-newest, standalone unaffected, rating overwrite display, empty list, key-not-in-map standalone
+
+Tests run:
+- `:app:spotlessApply` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, full suite, all PASSED)
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.37-debug.apk` (VERSION_CODE 737)
+
+### KMK-Recs v0.7.38
+
+For You candidate discovery memory and group-seeded recommendation enrichment.
+
+Files changed: see `docs/recommendations/KMK_RECS_V0_7_38_RECOMMENDATION_DISCOVERY_MEMORY_AND_GROUP_SEED_ENRICHMENT_IMPLEMENTATION.md`
+
+Key additions:
+- `recommendation_candidate_memory` SQLDelight table (migration 56, local-only, NOT in backup/sync)
+- `RecommendationCandidateMemoryStore`, `RecommendationCandidateMemoryRanker`, `RecommendationDiscoveryPlanner`
+- `GroupSeedTag`, `GroupSeedRecommendationScorer`, rewritten `GroupRecommendationSeedBuilder`
+- Reset For You discovery history button in Settings → Management
+
+Tests run:
+- `:app:spotlessApply` — BUILD SUCCESSFUL
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, full suite, all PASSED)
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.38-debug.apk` (VERSION_CODE 738)
+
+### KMK-Recs v0.7.42
+
+Source Evidence Redesign: `SourceEvaluationScorer` scores catalogue fit (Popular/Latest samples)
+only and reuses `PersonalRecommendationScorer` for per-item taste matching; the scorer's own
+internal search probe was removed; `catalogueMetadataConfidence` added; `SourceRecommendationFitEligibility`
+fails open toward probing when catalogue metadata confidence is low/unknown; staleness parity added
+to `source_recommendation_fit` (migrations 59/60); UI relabeled "Recommendations" → "For You search"
+where the value represents search compatibility.
+
+Files changed: see `docs/recommendations/KMK_RECS_V0_7_42_SOURCE_EVIDENCE_REDESIGN_IMPLEMENTATION.md`
+
+Tests run:
+- `:app:spotlessApply` — BUILD SUCCESSFUL
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, full suite, all PASSED)
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.42-debug.apk` (VERSION_CODE 742)
+
+### KMK-Recs v0.7.42-fix1 (corrective follow-up, not a new feature phase)
+
+Per the Canonical Versioning Rule above: this is a corrective follow-up to `v0.7.42`, using the next
+monotonic `VERSION_CODE` and a `.1` APK suffix — not a new `v0.7.43` feature line.
+
+Codex review after the v0.7.42 implementation found that several downstream Source Evaluation UI/queue
+consumers still used pre-v0.7.42 assumptions even though the core scorer/schema/tests were
+build-healthy:
+
+- `SourceRecommendationQualityQueue.compute()` used a hardcoded `{STRONG_FIT, WORTH_TRYING}`
+  "promising" gate instead of `SourceRecommendationFitEligibility.check(...)`, so a WEAK/NEUTRAL
+  catalogue verdict with LOW/UNKNOWN metadata confidence — eligible under the v0.7.42 policy — was
+  invisible to the manual "Check search compatibility"/"Re-check all" actions.
+- The same queue only checked whether a `SourceRecommendationFit` row existed, not whether it was
+  current (`evaluationVersion`/`expiresAt`, added in v0.7.42), so pre-redesign compatibility results
+  could be silently treated as still valid.
+- `SourceRecommendationQualityDiagnostics.compute()` duplicated the same hardcoded gate, so its
+  counts could disagree with the queue and the automatic evaluation path.
+- The Source Evaluation row subtitle still displayed `SourceEvaluation.searchReliabilityScore` as
+  `search N%`, even though that field is intentionally always `0.0` as of v0.7.42 — a misleading,
+  fabricated figure.
+
+Fix: `SourceRecommendationFitEligibility` gained two shared functions —
+`isProbeEligible(evaluation)` and `isFitCurrent(fit, now)` — that both the queue and diagnostics now
+call, so there is one source of truth for probe eligibility and fit staleness. The row subtitle now
+shows catalogue metadata confidence (new KMR strings) instead of the fabricated search percentage.
+v0.7.41 documentation that said v0.7.42 was still planning-only was corrected to note it was
+implemented later, without rewriting the historical record.
+
+No database migration was added.
+
+Files changed: see `docs/recommendations/KMK_RECS_V0_7_42_SOURCE_EVIDENCE_REDESIGN_FOLLOWUP_IMPLEMENTATION.md`
+
+Tests run:
+- `:app:testDebugUnitTest --tests "*.SourceRecommendationQualityQueueTest"` — BUILD SUCCESSFUL (17 tests, all PASSED)
+- `:app:testDebugUnitTest --tests "*.SourceRecommendationQualityDiagnosticsTest"` — BUILD SUCCESSFUL (16 tests, all PASSED)
+- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, full suite, all PASSED)
+- `:app:spotlessApply` / `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.42.1-debug.apk` (VERSION_CODE 743)
+
+### KMK-Recs v0.7.42-fix2 (corrective follow-up, not a new feature phase)
+
+Per the Canonical Versioning Rule above: this is a second corrective follow-up to `v0.7.42`, using the
+next monotonic `VERSION_CODE` and a `.2` APK suffix — not a new `v0.7.43` feature line.
+
+A code review after v0.7.42-fix1 found that the remaining presentation/action paths still carried old
+assumptions, even though fix1 correctly unified automatic evaluation, the manual queue, diagnostics,
+fit staleness, and the catalogue row subtitle:
+
+- `SourceEvaluationResultList.SortMode.SEARCH_RELIABILITY` sorted a retired field
+  (`SourceEvaluation.searchReliabilityScore`), which v0.7.42 intentionally always writes as `0.0`.
+- `BEST_FIT` still used that same retired field as a tie-breaker.
+- Individual row labels used a separate hardcoded Strong Fit/Worth Trying check rather than
+  `SourceRecommendationFitEligibility.isProbeEligible`, and could display an expired or
+  older-version `SourceRecommendationFit` as if it were a current result.
+- The action area could check missing fits or re-check every fit, but had no way to target only
+  stale (outdated) fits, and "Re-check all" silently excluded them.
+- `CURRENT_STATE.md` still described the pre-v0.7.42 (`STRONG_FIT`/`WORTH_TRYING`-only) eligibility
+  rule without a historical qualifier, and still listed "Search reliability" as if it were an active
+  sort mode.
+
+Fix: one new pure, Android-free `SourceRecommendationFitDisplayPolicy` resolves every source to exactly
+one truthful `CompatibilityDisplayState` (`INELIGIBLE`, `NOT_CHECKED`, `OUTDATED`, `GREAT`, `GOOD`,
+`MIXED`, `WEAK`, `NO_MATCHES`, `ERROR`) by reusing `SourceRecommendationFitEligibility.isProbeEligible`/
+`isFitCurrent` — no new score, no duplicated verdict/confidence/version/expiry logic. The queue
+(`SourceRecommendationQualityQueue`), diagnostics (`SourceRecommendationQualityDiagnostics`), row labels
+(`SourceEvaluationScreen`), and sorting (`SourceEvaluationResultList`) all resolve through this one
+policy. The queue gained a fourth bucket (`outdatedPromising`, distinct from `missingPromising`); a new
+`recheckOutdatedRecommendationQuality()` action targets only stale fits; "Re-check all" now correctly
+includes outdated rows. `SortMode.SEARCH_RELIABILITY` was replaced with `SortMode.FOR_YOU_COMPATIBILITY`,
+which orders by `SourceRecommendationFitDisplayPolicy`'s seven-bucket rank (current positive/weak/
+no-matches/error, then outdated, then not-checked, then ineligible); `BEST_FIT` remains catalogue-first,
+using current compatibility as a true tie-breaker only after catalogue verdict/fit/quality are equal.
+
+No database migration was added.
+
+Files changed: see `docs/recommendations/KMK_RECS_V0_7_42_SOURCE_EVIDENCE_DISPLAY_AND_SORT_FOLLOWUP_IMPLEMENTATION.md`
+
+Tests run:
+- `:app:testDebugUnitTest --tests "*.SourceRecommendationFitDisplayPolicyTest"` — BUILD SUCCESSFUL (27 tests, all PASSED)
+- `:app:testDebugUnitTest --tests "*.SourceRecommendationQualityQueueTest"` — BUILD SUCCESSFUL (20 tests, all PASSED)
+- `:app:testDebugUnitTest --tests "*.SourceRecommendationQualityDiagnosticsTest"` — BUILD SUCCESSFUL (18 tests, all PASSED)
+- `:app:testDebugUnitTest --tests "*.SourceEvaluationResultListTest"` — BUILD SUCCESSFUL (21 tests, all PASSED)
+- `:app:testDebugUnitTest` — BUILD SUCCESSFUL (267 tasks, full suite, all PASSED)
+- `:app:spotlessApply` / `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.42.2-debug.apk` (VERSION_CODE 744)
+
+### KMK-Recs v0.7.43 (new feature release)
+
+Per the Canonical Versioning Rule above: this is a new feature line (not a `-fixN` corrective
+follow-up), using the next monotonic `VERSION_CODE` and no APK sub-suffix.
+
+Three related coherence problems, addressed together:
+
+1. **For You search compatibility ran in `screenModelScope`, not as a background job.** Leaving the
+   Source Evaluation screen could stop a check in progress, unlike full Source Evaluation (which
+   already ran as a `SourceEvaluationJob` WorkManager job). Fix: a new, separate
+   `SourceRecommendationQualityJob` (`SourceRecommendationQualityJob:active` unique work name, never
+   reusing `SourceEvaluationJob:active`) with its own process-scoped state bridge
+   (`SourceRecommendationQualityJobState`), notifier/channel (`CHANNEL_SOURCE_RECOMMENDATION_QUALITY`,
+   IDs `-803`/`-804`), and runner (`SourceRecommendationQualityRunner`, extracted verbatim from the old
+   screen-model probe loop). A `ScreenErrorKey.JobConflict` guard prevents Source Evaluation and the
+   compatibility job from running at the same time (both may temporarily install extensions).
+2. **Loved/Liked group recommendations used a separate one-grid search flow**
+   (`GroupSeededRecommendationsScreenModel`) instead of the manga-detail Recommendations page's
+   provider/extension row pattern. Fix: `RecommendsScreen`/`RecommendsScreenModel` gained a
+   `CrossSourceGroupSeed` route that reuses `RecommendationPagingSource.createSources(...)` and
+   `CrossExtensionGenreSearchSource`, seeded by every confirmed linked version via the existing
+   `GroupRecommendationSeedBuilder`. Seed members are excluded from results; cross-extension rows
+   search by the group's combined/weighted tags; `GroupSeedRecommendationScorer` contributes a
+   group-tag-aware score bonus on top of the existing single-manga `RecommendationScorer`. The old
+   `GroupSeededRecommendationsScreen`/`GroupSeededRecommendationsScreenModel`/
+   `GroupRecommendationLoopPolicy` were removed as dead code once nothing referenced them.
+3. **"Seen" sounded neutral but the desired behavior is a mild negative signal.** Fix: user-facing
+   copy renamed to "Not interested" (`rec_mark_seen`, `rec_clear_seen`, `rec_match_title_seen`, and the
+   cross-extension-match apply/applying strings). Internal storage is unchanged —
+   `SeenRecommendationMangaStore`, `seenRecommendationMangaKeys()`, and backup proto field 626 all keep
+   their existing names/format for compatibility; only the UI label changed. For You scoring
+   (`BrowsePersonalRecommendationsScreenModel`) now builds a scoring-only adjusted `TasteProfile` that
+   applies `NOT_INTERESTED_WEIGHT = -0.3` per genre occurrence for genres found on already-locally-known
+   Not Interested manga (bounded lookup, never triggers a network call) — roughly 6-7x weaker than a
+   Dislike rating's `-2.0` per occurrence. Query-tag selection still uses the raw profile; only ranking
+   is affected. This never writes to the ratings table, so it does not count toward the reassessment
+   threshold. Exact Not Interested/Seen manga remain hard-excluded from both For You (pre-existing) and
+   group recommendations (added — this exclusion had been dropped when the group screen was replaced
+   in the same release; see the implementation report for detail).
+
+No database migration was added; no backup schema changed.
+
+Files changed: see
+`docs/recommendations/KMK_RECS_V0_7_43_BACKGROUND_COMPATIBILITY_GROUP_RECS_AND_SEEN_SIGNAL_IMPLEMENTATION.md`
+
+Tests run:
+- `:app:testDebugUnitTest --tests "*SourceRecommendationQuality*"` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest --tests "*SourceEvaluation*"` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest --tests "*Group*Recommendation*"` — BUILD SUCCESSFUL (7 tests, all PASSED — no Phase B/C-specific new tests were added; existing `GroupRecommendationSourcePolicyTest`/`GroupSeedEnrichmentTest` still pass against the reused seed builder/scorer)
+- `:app:testDebugUnitTest --tests "*Seen*"` — BUILD SUCCESSFUL (backup round-trip and cross-extension-match route tests confirm storage compatibility survived the copy-only rename)
+- `:app:testDebugUnitTest --tests "*RecommendationCandidateVisibilityPolicy*"` — 3 of 16 tests FAILED; pre-existing and unrelated (see Deviations below)
+- `:app:testDebugUnitTest` — 928 tests, 3 failed (same pre-existing 3), 1 skipped, rest PASSED
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.43-debug.apk` (VERSION_CODE 745)
+
+Deviations from the plan:
+- No new focused unit tests were added for Phase A/B/C behavior (target job state transitions, group
+  seed exclusion, Not Interested weighting). Existing tests for the reused pure helpers
+  (`SourceRecommendationQualityQueue`, `GroupRecommendationSeedBuilder`/`GroupSeedRecommendationScorer`,
+  `SeenRecommendationMangaStore`) continued to pass unchanged, and compile + manual reasoning verified
+  the new wiring, but net-new test coverage for the new job/route/scoring code itself was not written.
+- `RecommendationCandidateVisibilityPolicy` (favorite/rated/known/min-chapter) is not applied to
+  group-seeded recommendations — only exact seed-member and exact-Seen exclusion are. The single-manga
+  Recommendations page these rows now share code with never applied that policy either, so this keeps
+  the two paths symmetric rather than adding new filtering asymmetrically.
+- The mild Not Interested scoring penalty is wired into For You only, not group recommendations
+  (group recs still get exact-Seen hiding, matching the plan's "must remain hidden" requirement).
+- Pre-existing test failures unrelated to this work: 3 cases in `RecommendationCandidateVisibilityPolicyTest`
+  throw `InjektionException` for `GetCustomMangaInfo` whenever the test helper builds a
+  `Manga.copy(favorite = true)` — `Manga.kt:42-46` eagerly resolves that interactor via Injekt when
+  `favorite` is true, and unit tests never register the binding. Reproduces in complete isolation with
+  or without any of this release's changes; not touched by this work.
+
+### KMK-Recs v0.7.44 (corrective/consolidation release, not a UI redesign)
+
+Follow-up to v0.7.43's structural moves (background compatibility job, row-based group recs), fixing
+the behavioral and test gaps its own implementation report flagged as deviations:
+
+1. **Fixed the 3 pre-existing `RecommendationCandidateVisibilityPolicyTest` failures for real**, plus
+   2 more test classes with the same latent bug (`BrowsePersonalRecommendationsFilterTest`,
+   `RecommendationCandidateMemoryRankerTest`). Root cause: `Manga.kt`'s constructor eagerly resolves
+   `GetCustomMangaInfo` via Injekt whenever `favorite = true`, and unit tests never bootstrap the real
+   Injekt graph. Fixed by registering a no-op `GetCustomMangaInfo` binding via a shared
+   `TestInjektSupport.ensureCustomMangaInfoBound()` helper called from each affected test class's
+   `@BeforeAll` — no production code touched. Full suite is clean: 949 tests, 0 failures.
+2. **New shared query-attempt policy** (`RecommendationQueryAttemptPolicy`, pure/Android-free):
+   builds the strict-to-lenient tag chain (`TOP_TAGS_FILTER` → `TAG_PAIR`/`SINGLE_STRONGEST_TAG` →
+   `TEXT_ONLY_TOP_TAGS`, capped at 3 attempts) and classifies outcomes into typed
+   `RecommendationQueryFailureKind`s (`NO_RAW_RESULTS`, `FILTER_UNSUPPORTED`, `FILTERED_UNRELATED`,
+   `WEAK_METADATA`, `SOURCE_EXCEPTION`, `CANCELLED`). Used directly by `CrossExtensionGenreSearchSource`
+   (both single-manga and group rows) for the tag chain plus a new bounded title fallback. For You's
+   existing `RecommendationQueryPlanner` was deepened (`MAX_STRATEGIES_PER_SOURCE` 2 → 3) to walk the
+   same fallback chain rather than stopping after one fallback, so both paths now follow the same
+   strict-to-lenient principle even though they're two coordinated pure objects, not one shared class
+   (`RecommendationQueryPlanner` keeps its `lastSuccessful`-first persisted-strategy behavior, which
+   the new one-shot `RecommendationQueryAttemptPolicy` doesn't need).
+3. **Group recommendations now actually use the whole linked group**: `CrossExtensionGenreSearchSource`
+   gained a `titlesOverride` (fed `GroupRecommendationSeed.titles` — every linked version's title) used
+   as a bounded (max 2) fallback search once every tag attempt fails. `RecommendationPagingSource`/
+   `RecommendsScreenModel` thread this through unchanged for the single-manga path (`titlesOverride =
+   null` falls back to `manga.ogTitle` only, as before).
+4. **Group recommendations now honor source selection and visibility policy**: cross-extension rows use
+   `RecommendationSourceSelector.select(...)` (language/priority/disabled/disliked) instead of raw
+   visible-source order, and candidates go through the full `RecommendationCandidateVisibilityPolicy`
+   (favorite/rated/seen/known/min-chapter), batched once per row rather than per candidate. Both are
+   scoped to the `CrossSourceGroupSeed` path only — single-manga recommendations are unchanged.
+5. **Group rows now filter out near-zero-relevance candidates** (`GROUP_RELEVANCE_MIN_SCORE = 0.1`)
+   instead of only sorting them last, when the seed has real tag evidence.
+6. **For You**: a source's "successful strategy" is no longer persisted when the final attempt in the
+   chain produced zero results — previously a source could get "locked" onto a strategy that never
+   actually worked, just because it was the last one tried.
+7. **New pure test coverage** for the background For You search compatibility job's conflict-guard
+   decision (`SourceRecommendationQualityJobConflictPolicy`, extracted from two inline `isRunning()`
+   checks in `SourceEvaluationScreenModel`) and for `SourceRecommendationQualityRunner.loadAvailableExtensions()`,
+   which now does a bounded (5s) wait for `availableExtensionsFlow` to warm up instead of returning
+   empty immediately if the job starts right after app startup.
+8. **Phone UI density pass** (Source Evaluation, Recommendations Settings): `EvaluationResultRow`'s
+   error-kind badge and reason-hint text are now collapsed behind a per-row "Show details" toggle
+   (`rememberSaveable(evaluation.evaluationKey)`) instead of always shown; the 13 previously-hardcoded
+   English failure-kind labels are now KMR strings. The Shizuku setup card's action row, the
+   missing/outdated/recheck-all action row, and the source-suggestion install/dismiss/like/dislike row
+   now use `FlowRow` instead of `Row` so they wrap instead of crowding on a 360dp-wide phone.
+9. **Not Interested unchanged** — no MarkSeen/Not Interested behavior changes in this release per
+   explicit instruction; storage/proto field 626 untouched.
+
+No database migration was added; no backup schema changed; no new background job or network behavior
+was introduced (the bounded `availableExtensionsFlow` wait reuses the existing job's existing flow).
+
+Files changed: see
+`docs/recommendations/KMK_RECS_V0_7_44_SHARED_QUERY_POLICY_AND_GROUP_RECS_FIX_IMPLEMENTATION.md`
+
+Tests run:
+- `:app:testDebugUnitTest --tests "*RecommendationCandidateVisibilityPolicyTest*"` — BUILD SUCCESSFUL (16/16 PASSED)
+- `:app:testDebugUnitTest --tests "*RecommendationQueryPlanner*"` — BUILD SUCCESSFUL (14/14 PASSED)
+- `:app:testDebugUnitTest --tests "*GenreFilterMapper*"` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest --tests "*Group*Recommendation*"` — BUILD SUCCESSFUL (7/7 PASSED)
+- `:app:testDebugUnitTest --tests "*SourceRecommendationQuality*"` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest --tests "*Seen*"` — BUILD SUCCESSFUL
+- `:app:testDebugUnitTest` — 949 tests, 0 failed
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK: `Komikku-v1.13.6-kmk.7.44-debug.apk` (VERSION_CODE 746)
+
+Deviations from the plan:
+- Phase D (For You uses the shared attempt policy) was implemented as "`RecommendationQueryPlanner`'s
+  existing fallback chain deepened to 3 steps" rather than literally swapping in
+  `RecommendationQueryAttemptPolicy` at the For You call site — the plan explicitly allowed either
+  shape ("Keep `RecommendationQueryPlanner` as the deterministic planner, **or** create a small
+  companion"). Reusing the existing, already-integrated planner (persisted per-source strategy,
+  discovery-progress recording, candidate memory) was far lower-risk than rewiring `searchSource()`'s
+  ~300-line loop around a new abstraction.
+- Phase D items 2 ("filtered as unrelated" status) and 4 (don't poison rolling discovery on one strict
+  failure) were verified as **already correct** in the existing code (per-plan `STATUS_SUCCESS`/
+  `STATUS_FILTERED`/`STATUS_EMPTY` progress classification; progress is only recorded once a plan
+  succeeds or the chain is exhausted) rather than requiring new code — confirmed by reading
+  `searchSource()`, not assumed.
+- Phase G (phone UI pass) was scoped to the explicitly-named highest-risk spots (Shizuku card, rec-
+  quality actions, source-suggestion row, `EvaluationResultRow` diagnostics) rather than an exhaustive
+  review of all ~59 button/row sites in `SourceEvaluationScreen.kt`. `RatedSortRow`'s `FilterChip` row
+  and the settings page's tag-preference `FlowRow`s were reviewed and found already compliant (existing
+  `horizontalScroll`/`FlowRow` usage). No screenshot/device testing was available — verification was by
+  Compose layout code inspection only, as the plan permits when device testing isn't available.
+- No new SQLDelight table, no new backup field — none were needed.
+
+### KMK-Recs v0.7.45 (final v0.7 closure + public release readiness pass)
+
+Retroactive entry — this release shipped with its own implementation report but was never added here;
+added in v0.7.46 per the public-polish closeout plan's explicit instruction to fill the gap.
+
+Combined the last approved small v0.7 feature window with public-release hardening: Rated Manga
+(Loved/Liked/Disliked) grouped display now defaults on (and the toggle survives reactive reloads,
+fixing a real bug where it silently reset); Top Picks contribution count surfaced compactly on the
+source fit badge; non-installed recommendation-quality probes now require the Private installer or are
+refused (closing the `PromptRequired`-log-only public-safety gap); the one genuine raw-exception-to-UI
+path (`SourceEvaluationRunner`'s per-source probe catch → `EvaluationResultRow` subtitle) was classified
+via a new `SourceEvaluationProbeErrorClassifier`; confirmed OCR ships in the same build as KMK-Recs
+(including `kmkPublicTest`) and corrected docs that claimed otherwise.
+
+Full detail: `docs/community/KMK_V0_7_FINAL_PUBLIC_RELEASE_READINESS_IMPLEMENTATION.md`.
+
+Tests: `:app:testDebugUnitTest` — 954 tests, 0 failures. `spotlessCheck`, `:app:assembleKmkPublicTest`,
+`assembleDebug` all passed. `:app:lintKmkPublicTest` was **not** run (documented gap, closed in v0.7.46).
+
+APK: `Komikku-v1.13.6-kmk.7.45-debug.apk` (private) / `Komikku-KMK-PublicTest-v1.13.6-kmk.7.45-debug.apk`
+(public, `app.komikku.kmk`) (VERSION_CODE 747)
+
+### KMK-Recs v0.7.46 (public polish closeout)
+
+Follow-up cleanup pass closing the gaps v0.7.45's own implementation report flagged as deviations/limitations:
+
+1. **OCR error/privacy polish.** New `OcrErrorClassifier` (pure, 6-way:
+   `Storage`/`ImageDecode`/`NoDownloadedPages`/`Cancelled`/`PermissionOrFileAccess`/`Internal`) replaces
+   every `e.message`/`"Unknown error"` UI-facing OCR path (`OcrSearchScreenModel`'s search/clear/clear-old-rows
+   catches, `OcrIndexService`'s enumerate-pages and per-page failure catches). New failed OCR rows store a
+   stable key in `ocr_indexed_page.error_message` instead of raw exception text; old rows with raw text are
+   unaffected (that field was never actually displayed in normal UI — see the implementation report).
+   OCR page-error logcat no longer includes manga title or chapter name, only numeric IDs.
+2. **OCR deletion/storage controls.** `OcrIndexRepository.deleteByManga`/`deleteByChapter` (already
+   existed) are now reachable from a per-result overflow menu in `OcrSearchScreen`, each with its own
+   confirm dialog stating downloaded images are unaffected. Added a compact "Clear empty/failed rows"
+   button (`deleteEmptyAndFailed`, already existed, was unused) shown only when relevant.
+3. **Non-OCR error hygiene.** Fixed a second raw-exception-to-UI instance in `SourceEvaluationRunner`
+   (`recordExtensionError`, same `EvaluationResultRow` path as v0.7.45's fix, missed previously). New
+   shared `RecommendationErrorClassifier` (`Network`/`Timeout`/`Cancelled`/`FileAccess`/`Internal`) fixes
+   3 genuinely-displayed raw-exception sites in `BestVersionCompareScreenModel`/`BestVersionCompareScreen`
+   and the bundle-import file-read path in `RecommendationBundleImporter`. Several other `e.message`
+   hits (`RecommendationBundleImportScreenModel`, `RecommendationBundleLibraryAdder`, the various job/queue
+   `errorMessage` fields) were confirmed diagnostic-only/never-rendered by tracing every consumer — see
+   the implementation report for the full per-hit breakdown.
+4. **Docs.** Filled in this file's missing v0.7.45 entry (above); marked
+   `KMK_RECS_DEFERRED_FEATURE_MASTER_IMPLEMENTATION_PLAN.md` historical; cleaned mojibake from
+   `docs/recommendations/README.md`; fixed the wrong `KmkRecsReleaseNotes.kt` path in the encyclopedia
+   (if it was wrong); public README now says `v0.7.46` and "debug-signed public test build."
+
+No database migration, no backup/proto field changes, no OCR build-line split (OCR remains included in
+both build lines, per explicit instruction for this pass).
+
+Full detail: `docs/community/KMK_V0_7_46_PUBLIC_POLISH_CLOSEOUT_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.7.47 (Source Evaluation tag enrichment and scoring fix)
+
+Root-cause fix for the evidence-pipeline defect found in
+`docs/recommendations/KMK_SOURCE_EVALUATION_COMPLETE_AUDIT_2026_07_12.md`: catalogue-fit scoring
+never enriched Popular/Latest samples missing genre tags, so many sources were effectively being
+scored on "does the list page expose tags?" instead of real taste fit. Implemented per
+`docs/recommendations/KMK_SOURCE_EVALUATION_TAG_ENRICHMENT_AND_SCORING_FIX_PLAN.md`:
+
+1. **Bounded catalogue detail enrichment.** New `SourceEvaluationCatalogueEnricher.enrich()` (pure,
+   unit-tested with a fake `CatalogueSource`) deduplicates Popular+Latest samples by URL, then calls
+   `source.getMangaDetails()` sequentially for up to 12 samples lacking genre metadata, each wrapped
+   in a 10s `withTimeoutOrNull` + `runCatching`, rethrowing `CancellationException`. A failed/timed-out
+   call keeps the original list-entry candidate; enriched results are never written to the app manga
+   table (evidence-only) and no chapter lists or page images are fetched. Wired into
+   `SourceEvaluationRunner.probeAndScore()` under a new `EnrichingDetails` queue phase.
+2. **Split evidence counters (migration 61, 9 additive columns, all default 0).**
+   `detail_enrichment_attempt_count`, `detail_enrichment_success_count`, `metadata_candidate_count`,
+   `positive_candidate_count`, `negative_candidate_count`, `explicit_preferred_group_hit_count`,
+   `learned_positive_group_hit_count`, `blocked_candidate_count`, `adult_signal_candidate_count`.
+   `preferred_tag_match_count`/`blocked_tag_match_count` are kept and now mirror
+   `positive_candidate_count`/`blocked_candidate_count` for backward compatibility.
+3. **Revised fit-score formula and verdict order.** Ratio-based fit score (positive/negative/
+   blocked/adult candidate ratios, metadata-confidence penalty) replaces the old raw
+   preferred-minus-blocked count. `NEEDS_MANUAL_REVIEW` now covers metadata-sparse evidence (`UNKNOWN`
+   confidence, or `LOW` confidence with any positive signal) instead of a confident `WEAK`.
+   `STRONG_FIT`/`WORTH_TRYING` now additionally require low blocked/adult-risk ratios, so a source
+   cannot reach Strong Fit purely from broad positive tags alongside heavy BL/GL/adult/blocked content.
+4. **Staleness bump and enforcement.** `SourceEvaluationKeys.CURRENT_VERSION`: `2 -> 3` — every
+   existing row (v1 or v2) is now stale. New `SourceEvaluationDisplayPolicy`
+   (CURRENT/OUTDATED_VERSION/EXPIRED/METADATA_SPARSE/ERROR) drives an "Outdated — reassess needed"
+   row subtitle and a `BEST_FIT` sort fix so a stale row (any verdict) can never outrank a current
+   row. `SourceRecommendationFitEligibility.check()` gained a `STALE_EVALUATION` result, checked
+   before the verdict/confidence gates, so a stale catalogue row can no longer feed the search-
+   compatibility probe queue as if it were current evidence.
+5. **No cross-cutting changes.** Catalogue fit and For You search compatibility
+   (`SourceRecommendationFitProbe`/`SourceRecommendationFit`) remain fully separate signals — neither
+   file was touched. Source Evaluation remains strictly one-extension-at-a-time. No source-specific
+   (Elf Toon/KaliScan/etc.) hacks were added.
+
+No backup/proto field changes. No new user-facing screens; `SourceEvaluationScreen`'s existing row
+subtitle and verdict badge machinery render the new states.
+
+Full detail: `docs/recommendations/KMK_SOURCE_EVALUATION_TAG_ENRICHMENT_AND_SCORING_FIX_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.8.0 (Rated Manga bulk selection + group actions, private feature)
+
+Implemented per
+`docs/recommendations/KMK_RECS_V0_8_0_RATED_MANGA_BULK_SELECTION_AND_GROUP_ACTIONS_PLAN.md`:
+
+1. **Selection mode replaces the hidden long-press recommendation gesture.** Long-press in
+   Loved/Liked/Disliked (`RatedMangaScreen.kt`/`RatedMangaCollectionContent`) now enters bulk
+   selection and selects the pressed item; a top-right "Select" app-bar action does the same. Tap
+   toggles selection while in that mode; outside it, tap still opens the manga as before.
+2. **Phone-friendly selection UI.** App bar shows selected count + close; a bottom action bar
+   exposes Change (rating), Clear (rating), Group (merge selected, or select-all-in-group for a
+   single confirmed-group selection), and More (Mark not interested, Remove from group).
+3. **Per-item action menu**, grouped into Recommendation Actions (See recommendations — the
+   pre-existing single-entry `RecommendsScreen.Args.SingleSourceManga` route, confirmed distinct
+   from group recommendations; See group recommendations — confirmed-group-with-2+-versions only,
+   reuses `RecommendsScreen.Args.CrossSourceGroupSeed` unchanged; Find other versions — reuses
+   `CrossExtensionMatchScreen.fromMode(_, CrossExtensionMatchMode.Rating(_))`; Favorite other
+   versions — reuses the existing `CrossExtensionMatchMode.Favorite` mode, not a new deferred
+   action), Rating Actions (Change/Clear via `SetMangaTaste`/`ClearMangaTaste`; Mark not interested
+   via the existing `SeenRecommendationMangaStore` preference store), and Group Actions (Manage
+   group, View linked versions, Set primary version, Select all in group, Merge selected into
+   group, Remove from group, Ungroup).
+4. **New focused version-list screen** — `exh/recs/links/LinkedVersionListScreen.kt` +
+   `LinkedVersionListScreenModel.kt` — loads directly from persisted group data by `groupId`
+   (independent of the rated screen's in-memory display state). Shows source name/language, title,
+   rating, favorite status, installed/missing status, last-updated, and a primary marker per row.
+   Missing/uninstalled sources render as "Source not installed," never crash.
+5. **User-selected primary version** — new additive table `manga_cross_source_group_primary`
+   (migration 62: `group_id TEXT PRIMARY KEY, source INTEGER, url TEXT, updated_at INTEGER`), new
+   domain model `CrossSourceGroupPrimary` + `GetCrossSourceGroupPrimary`/`SetCrossSourceGroupPrimary`/
+   `ClearCrossSourceGroupPrimary` interactors, new `TasteRepository`/`TasteRepositoryImpl` methods.
+   `RatedGroupPrimaryResolver` (pure, unit-tested) resolves which member controls the grouped
+   display's cover/title: the stored primary wins only if it's present among the group's currently
+   loaded members; otherwise falls back to the grouper's own primary-key choice — a missing/
+   uninstalled stored primary never crashes. Recommendations are unaffected — `CrossSourceGroupSeed`
+   still seeds from full group metadata via the unchanged `GroupRecommendationSeedBuilder` path.
+6. **`LinkGroupManagementScreen` gained an optional `focusedGroupId`** (instead of a new global
+   manager) for the "Manage Group" action.
+7. **Group merge is manual-selection-only** — `RatedGroupMergePlanner` (pure, unit-tested): with 0
+   existing groups among the selection, creates a new group; with exactly 1, reuses it; with 2+,
+   merges into the lexicographically-first target and folds every member of every merged-away group
+   (not just the selected subset) into the target. Titles are used only as fallback display text for
+   brand-new link rows, never to decide grouping.
+8. **Confirmations required**: Clear rating, Merge selected into group, Remove from group, Ungroup,
+   and Mark not interested. Clearing a rating never touches `manga_cross_source_link` or
+   `manga_cross_source_group_primary` rows; removing from a group/ungrouping never touches
+   `manga_taste` rows.
+9. **All new user-facing strings are KMR strings** (`rated_manga_*`, `linked_version_list_*`).
+
+**Deviation from the plan (documented, not silent):** the plan asked to check whether
+`manga_cross_source_link` is included in backup/sync and, if so, "include primary-version data
+consistently." It is included (proto 624, confirmed via
+`docs/database/KMK_DATABASE_BACKUP_SYNC_AUDIT.md`). This pass deliberately does **not** add
+backup/sync/proto support for the new `manga_cross_source_group_primary` table — doing so would
+require touching the backup proto schema, `BackupCreator`/`TasteBackupCreator`,
+`BackupRestorer`/`TasteRestorer`, and `SyncManager`/`SyncService`, which was judged out of scope for
+this UI/management-layer pass. The primary-version selection is local-only until a follow-up adds
+it. See the implementation report for the full list of files changed and tests run.
+
+No database migration to `manga_cross_source_link` itself (only additive migration 62 for the new
+table). No change to `SourceEvaluationScorer`, For You, or any other recommendation-scoring path.
+
+Full detail: `docs/recommendations/KMK_RECS_V0_8_0_RATED_MANGA_BULK_SELECTION_AND_GROUP_ACTIONS_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.8.1-fix1 (Rated Manga + Source Evaluation polish, private corrective follow-up)
+
+**Private build only. No public release was prepared or requested.** Fixes five gaps found after
+v0.8.0/v0.7.47, per
+`docs/recommendations/KMK_RECS_V0_8_1_FIX1_RATED_MANGA_AND_SOURCE_EVALUATION_POLISH_PLAN.md`:
+
+1. **Linked-version remove confirmation.** `LinkedVersionListScreen`'s delete action previously
+   called `screenModel.removeFromGroup(row.key)` directly with no confirmation. It now shows an
+   `AlertDialog` naming the version's title where resolvable (falls back to a generic message
+   otherwise); confirm removes, dismiss cancels. Removal still only deletes the
+   `manga_cross_source_link` row — never rating, favorite, history, or manga data.
+2. **Group primary version backup/restore/sync (proto 627).** New
+   `BackupCrossSourceGroupPrimary` model (`groupId`/`source`/`url`/`updatedAt`, proto numbers 1-4).
+   Added to `Backup.kt` at `@ProtoNumber(627)` (626 was the next-available KMK taste field; 627 was
+   confirmed unoccupied by inspection). `TasteBackupCreator.backupCrossSourceGroupPrimaries()` reads
+   through `GetCrossSourceGroupPrimary`; `BackupCreator.backupCrossSourceGroupPrimaries(options)`
+   gates on `options.tasteProfile`, matching every other taste-profile field. Restore:
+   `TasteRestorer.restoreCrossSourceGroupPrimaries()`, called in `BackupRestorer` immediately after
+   `restoreCrossSourceMangaLinks()` so the group already exists; merges by `groupId` (a backup
+   containing more than one row per group keeps only the newest), skips invalid rows (blank
+   `groupId`, `source == 0`, blank `url`), writes directly through `tasteRepository
+   .upsertCrossSourceGroupPrimary()` (not `SetCrossSourceGroupPrimary`, which always stamps "now")
+   so the backup's own `updatedAt` survives restore, and collects errors per group without aborting
+   the rest of taste restore. Precedence logic extracted into pure, unit-tested
+   `CrossSourceGroupPrimaryRestorePolicy` (`isValid`/`newestOf`/`shouldRestore`). Sync:
+   `SyncManager` includes `backupCrossSourceGroupPrimaries` in the payload alongside cross-source
+   links; `SyncService.mergeCrossSourceGroupPrimariesPure()` (a testable companion-object function,
+   mirroring `mergeCrossSourceMangaLinks`' shape) merges local/remote by `groupId`, keeping the
+   newer `updatedAt`, filtering blank-`groupId` rows.
+3. **Select action no longer auto-selects.** `RatedSelectionReducer.enterEmpty()` enters selection
+   mode without adding any key (preserves an existing selection if one is somehow already present,
+   consistent with `enter()`'s additive behavior); `LovedMangaScreenModel.enterSelectionMode()`
+   wires it to the app-bar "Select" action in `RatedMangaScreen.kt`, replacing the previous
+   `displayItems.firstOrNull()` auto-select. Long-press (`enterSelection(key)`) is unchanged.
+4. **Set Primary Version access clarified, not relocated.** Confirmed no direct rated-item-menu
+   action exists for this (searched `RatedMangaScreen.kt`'s item menu — only `View linked versions`
+   is present). Per the plan's preferred minimal path, this was kept as-is; `LinkedVersionListScreen`
+   now shows a `linked_version_list_primary_hint` caption ("Tap the star to choose which version
+   controls the cover and title shown in the rated list.") above the row list. No second primary
+   picker was built.
+5. **Source Evaluation evidence explainability.** New pure `SourceEvaluationEvidenceSummaryPolicy`
+   (`evidenceFor(evaluation, displayState)`) decides whether a row should offer a "Details" toggle at
+   all — returns `null` for outdated/expired rows (stale counters), `ERROR` rows (no samples
+   collected), and zero-sample rows. `EvaluationResultRow` gained a second, independent
+   expand/collapse block (`source_evaluation_details_toggle`/`_hide`, new strings) below the
+   existing rec-quality-error details block, showing `source_evaluation_detail_enriched_count`
+   (existing string), `source_evaluation_detail_enrichment_failed_count` (existing, shown only when
+   > 0), the new `source_evaluation_metadata_sample_count`, `source_evaluation_positive_negative_summary`
+   (existing), and `source_evaluation_verdict_review_explanation` (existing, shown only for
+   `NEEDS_MANUAL_REVIEW`). No raw exception traces were added.
+
+Tests added: `CrossSourceGroupPrimaryRestorePolicyTest` (8), extended `TasteBackupRoundTripTest`
+(+3, proto 627 round-trip/coexistence/forward-compat), `SyncServiceCrossSourceGroupPrimaryMergeTest`
+(8, local-only/remote-only/conflict-newer-wins/tie/blank-filtering), extended
+`RatedSelectionReducerTest` (+3, `enterEmpty`), `SourceEvaluationEvidenceSummaryPolicyTest` (7).
+Full suite: 1046 tests, 0 failures (up from 1016 pre-existing).
+
+No database migration in this pass (proto-only backup field, per plan §Non-Goals). No change to
+`SourceEvaluationScorer`'s scoring formulas, group recommendation scoring, or any other
+recommendation-scoring path.
+
+Full detail: `docs/recommendations/KMK_RECS_V0_8_1_FIX1_RATED_MANGA_AND_SOURCE_EVALUATION_POLISH_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.8.1-fix2 (Version visibility + sync validation, private corrective follow-up)
+
+**Private build only. No public release was prepared or requested.** `KmkRecsReleaseNotes
+.VERSION_CODE = 752`, `VERSION_NAME = "KMK-Recs v0.8.1-fix2"`. Fixes a crash and two smaller gaps
+found in v0.8.1-fix1, per
+`docs/recommendations/KMK_RECS_V0_8_1_FIX2_VERSION_VISIBILITY_AND_SYNC_VALIDATION_PLAN.md`:
+
+1. **Loved Manga crash fixed.** The v0.8.0 group-primary interactors
+   (`GetCrossSourceGroupPrimary`, `SetCrossSourceGroupPrimary`, `ClearCrossSourceGroupPrimary`)
+   were never registered in `KMKDomainModule` — every screen model or backup/restore class that
+   requested one via `Injekt.get()` (`LovedMangaScreenModel`, `LinkedVersionListScreenModel`,
+   `TasteBackupCreator`, `TasteRestorer`) crashed with `InjektionException`. Fixed by adding the
+   three `addFactory { ... }` registrations immediately after the existing cross-source-link-group
+   registrations in `KMKDomainModule.kt`. Regression-guarded by a new
+   `CrossSourceGroupPrimaryDomainModuleRegistrationTest`, which mirrors the exact registration
+   pattern against a minimal fake `TasteRepository` and asserts all three interactors resolve via
+   `Injekt.get()` — it does not invoke the real `KMKDomainModule.registerInjectables()` (that also
+   registers many Android-only dependencies, e.g. a real `DatabaseHandler`, impractical in a pure
+   JVM unit test), but directly guards against "forgot to add the addFactory line" for these three
+   types specifically.
+2. **KMK-Recs What's New sequencing verified and made explicit.** New pure `KmkRecsWhatsNewPolicy`
+   (`hasUnseenChangelog`, `shouldShowKmkDialog`, `seenVersionCodeOnAcknowledge`) in
+   `eu.kanade.presentation.more.settings.screen.about`, wired into `MainActivity.kt` and
+   `KmkRecsWhatsNewScreen.kt`. Investigation confirmed `MainActivity`'s existing `if (showChangelog)
+   {...} else if (showKmkChangelog) {...}` structure already prevents the normal Komikku changelog
+   and the KMK changelog from rendering simultaneously — Compose recomposes the tree the instant
+   `showChangelog` flips to `false`, so the KMK dialog reliably shows on the next frame rather than
+   being suppressed. This pass named that behavior in a dedicated, unit-tested policy object instead
+   of restructuring it (no functional sequencing bug was found — see the plan's own framing: "verify
+   and repair the trigger/visibility path, not invent a separate release-note system"). Also fixed a
+   minor Compose anti-pattern: `KmkRecsWhatsNewScreen`'s mark-seen write now runs inside a
+   `LaunchedEffect(Unit)` instead of directly in the composable body. The compact update dialog
+   (`KmkRecsWhatsNewDialog`) gained a one-line body via new KMR string `kmk_recs_updated_body`, so it
+   is not just a bare title + two buttons. The manual About entry (`kmk_recs_whats_new` row, subtitle
+   `KmkRecsReleaseNotes.VERSION_NAME`) was already correct and required no change.
+3. **Group-primary sync validation hardened to match restore.**
+   `SyncService.mergeCrossSourceGroupPrimariesPure()` previously only filtered blank `groupId` rows
+   before merging — looser than restore's `CrossSourceGroupPrimaryRestorePolicy.isValid()` (blank
+   `groupId`, `source == 0L`, or blank `url`). Now both paths call the same `isValid()` function
+   (imported directly from the restore package — not architecturally awkward, both are subpackages
+   of `eu.kanade.tachiyomi.data` in the same Gradle module, `internal` visibility is module-scoped).
+   Merge behavior otherwise unchanged: merge by `groupId`, newer `updatedAt` wins, equal `updatedAt`
+   keeps local.
+
+Tests added: `CrossSourceGroupPrimaryDomainModuleRegistrationTest` (1), `KmkRecsWhatsNewPolicyTest`
+(8), extended `SyncServiceCrossSourceGroupPrimaryMergeTest` (+3: `source == 0L` filtered, blank
+`url` filtered, valid rows still merge after invalid rows are filtered). Confirmed still passing:
+`CrossSourceGroupPrimaryRestorePolicyTest`, `TasteBackupRoundTripTest`. Full suite: **1058 tests, 0
+failures** (up from 1046 pre-existing).
+
+No database migration in this pass. No change to `SourceEvaluationScorer`'s scoring formulas, For
+You ranking, group recommendation scoring, OCR, or Rated Manga bulk actions.
+
+Private APK handoff: `private/Komikku-v1.13.6-kmk.8.1-fix2-debug.apk` (private line,
+`app.komikku.dev`, built via `:app:assembleDebug`). No public-test (`app.komikku.kmk`) build was
+produced.
+
+Full detail: `docs/recommendations/KMK_RECS_V0_8_1_FIX2_VERSION_VISIBILITY_AND_SYNC_VALIDATION_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.8.1-fix3 (Source Evaluation continuation fix, corrective follow-up)
+
+Internal/private handoff build for development. No public release was prepared or requested.
+`KmkRecsReleaseNotes.VERSION_CODE = 753`, `VERSION_NAME = "KMK-Recs v0.8.1-fix3"`. Fixes a queue-
+semantics bug found after real-device use of v0.8.1-fix2's Source Evaluation reassessment flow, per
+`docs/recommendations/KMK_RECS_V0_8_1_FIX3_SOURCE_EVALUATION_CONTINUATION_FIX_PLAN.md`:
+
+1. **Root cause**: `SourceEvaluationCandidateFilter.shouldSkip()` treats any extension with
+   existing evaluation rows — including stale/outdated ones — as "already evaluated, hidden" unless
+   the caller passes `reEvaluateStale = true`. The screen's default options never set that, so
+   `state.candidates`/`canContinue`/`remainingCandidateCount` (all derived from `state.candidates` +
+   cursor) went to zero once the unassessed pool was exhausted, even though stale rows remained
+   visible in the (separately populated) results list.
+2. **Fix**: new pure `SourceEvaluationCandidateQueuePolicy.staleCandidates()` classifies the
+   stale/outdated reassessment queue independent of the unassessed queue's option toggles.
+   `SourceEvaluationScreenModel.State` gained a second, fully independent set of queue fields
+   (`staleCandidates`, `continuationCursorStale`, `canContinueStale`,
+   `remainingStaleCandidateCount`) with their own preference-backed cursor slot
+   (`sourceEvaluationContinuationCursorStale`) and a `|queue=stale`-suffixed fingerprint, so the two
+   queues' cursors can never collide or clobber each other — including across batch-size changes,
+   which (as with the unassessed queue) never invalidate either cursor.
+3. **New actions**: `startOrContinueStaleReassessment()` (consent/online/prompt-heavy gated, same as
+   the existing actions) and `restartStaleReassessment()` (explicit reset, separate from continue).
+   `SourceEvaluationJobState.pendingIsStaleRun` routes the background job's completion handling to
+   the correct cursor slot.
+4. **UI**: a compact "Reassess outdated (N)" / "Continue reassessing outdated (N remaining)" button,
+   shown only when the stale queue is non-empty, plus a "Restart outdated reassessment" text action
+   once a cursor exists.
+
+Failed/attempted candidates were verified (not changed) to already advance the cursor correctly —
+`SourceEvaluationRunner` records a candidate as completed as soon as it is handed off, before
+success/failure is known.
+
+Tests added: `SourceEvaluationCandidateQueuePolicyTest` (6), 3 new tests in
+`SourceEvaluationContinuationPolicyTest` covering the `|queue=stale` fingerprint-separation
+mechanism. Verification: `:app:testDebugUnitTest --tests "*SourceEvaluation*"` (all passed,
+including new tests), `spotlessCheck` (passed), `assembleDebug` (`BUILD SUCCESSFUL`).
+
+No database migration in this pass. No change to `SourceEvaluationScorer`'s scoring formulas, For
+You ranking, group recommendation scoring, or Rated Manga.
+
+Internal handoff APK: `private/Komikku-v1.13.6-kmk.8.1-fix3-debug.apk` (universal ABI variant,
+built via `:app:assembleDebug`). No app-facing string added or touched in this pass uses "private
+build," "public build," "internal build," "test build," or "personal line" wording — verified by
+grep audit of every new/changed string (see the implementation report's "Wording Audit" section).
+
+Full detail: `docs/recommendations/KMK_RECS_V0_8_1_FIX3_SOURCE_EVALUATION_CONTINUATION_FIX_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.8.1-fix4 (Final cleanup + source/library-quality dislike, corrective follow-up)
+
+Internal/private handoff build for development. No public release was prepared or requested.
+`KmkRecsReleaseNotes.VERSION_CODE = 754`, `VERSION_NAME = "KMK-Recs v0.8.1-fix4"`. Implemented per
+`docs/recommendations/KMK_RECS_V0_8_1_FIX4_FINAL_CLEANUP_AND_SOURCE_QUALITY_DISLIKE_PLAN.md`:
+
+1. **New source/library-quality preference axis**, independent of the existing recommendation-
+   behavior like/dislike axis: `SourcePreferences.likedSourceQualityKeys()` /
+   `dislikedSourceQualityKeys()` / `explicitSourceQualityKeys()`, backed by a new pure
+   `SourceQualityMarkPolicy` and reusing `RecommendationSourcePreferenceStore`'s existing key format
+   and serializer (no duplicate serializer, no database migration).
+2. **Filtering**: `NonInstalledSourceSuggestionScorer` (Sources To Try) and
+   `SourceEvaluationCandidateFilter.buildPool()` (Source Evaluation candidates) both exclude
+   source-quality-disliked sources, with a separate `sourceQualityHiddenCount` diagnostic distinct
+   from the recommendation-dislike count. `BrowsePersonalRecommendationsScreenModel`/
+   `RecommendsScreenModel` also exclude installed quality-disliked sources from For You/grouped
+   recommendation source selection.
+3. **Past evaluations preserved**: `SourceEvaluationDisplayFilter` hides quality-disliked rows by
+   default (never deletes), recoverable via a new "Show disliked sources" toggle.
+4. **Recovery**: per-row "Clear source mark" and a bulk "Clear source quality marks" action.
+5. **Stale-queue completion feedback**: a state-derived "Outdated reassessment complete" card once
+   the v0.8.1-fix3 stale/outdated queue is fully drained.
+6. **v0.8.1-fix3 wording/encoding cleanup**: removed remaining app-facing private/public/internal/
+   test-build wording from `KmkRecsReleaseNotes` and `kmk_recs_updated_body`; normalized malformed
+   `<!-- KMK --> vX.Y: ... -->` XML comments in `strings.xml` to valid `<!-- KMK vX.Y: ... -->` form.
+
+Tests added: 9 in `RecommendationSourcePreferenceStoreTest` (axis independence, mark/clear
+behavior), 3 in `NonInstalledSourceSuggestionScorerTest`, 3 in `SourceEvaluationCandidateFilterTest`,
+1 in `SourceEvaluationCandidateQueuePolicyTest` (unassessed-exhausted-but-stale-actionable
+regression), 2 in `SourceEvaluationContinuationPolicyTest` (stale completion state, failed-candidate
+cursor advancement). Verification: `:app:testDebugUnitTest --tests "*SourceEvaluation*"` / `*
+RecommendationSourcePreferenceStoreTest` / `*NonInstalledSourceSuggestionScorerTest"` all passed;
+`spotlessCheck` passed (after one `spotlessApply` for lambda formatting); `assembleDebug`
+`BUILD SUCCESSFUL`; wording grep returned no app-facing matches.
+
+No database migration in this pass — purely preference-backed. No change to `SourceEvaluationScorer`'s
+scoring formulas, For You ranking, or group recommendation scoring.
+
+Internal handoff APK: `private/Komikku-v1.13.6-kmk.8.1-fix4-debug.apk` (universal ABI variant,
+built via `:app:assembleDebug`).
+
+Full detail: `docs/recommendations/KMK_RECS_V0_8_1_FIX4_FINAL_CLEANUP_AND_SOURCE_QUALITY_DISLIKE_IMPLEMENTATION.md`.
+
+### KMK-Recs v0.8.2-v0.8.5 (For You results budget, Recommendation Settings reorganization, active-reading timer, optional reading schedule)
+
+Internal/private handoff build for development. No public release was prepared or requested.
+`KmkRecsReleaseNotes.VERSION_CODE = 755`, `VERSION_NAME = "KMK-Recs v0.8.5"`. Implemented as one
+coordinated session with four internal milestones and a single final build, per
+`docs/recommendations/KMK_RECS_V0_8_2_TO_V0_8_5_MASTER_IMPLEMENTATION_PLAN.md`:
+
+1. **v0.8.2 — For You results budget.** New `ForYouResultBudgetPolicy` pure resolver
+   (`SUPPORTED_VALUES = [5,10,15,20,30]`, `DEFAULT = 10`, `BOOSTED_MINIMUM = 20`) and
+   `SourcePreferences.recommendationResultBudget()`. Replaces the hardcoded
+   `NORMAL_RESULTS_PER_SOURCE`/`BOOSTED_RESULTS_PER_SOURCE` constants at both `displayLimit`
+   computation sites in `BrowsePersonalRecommendationsScreenModel.searchSource()`. Included in
+   `profileFingerprint()`'s digest so a cache built under a smaller budget cannot satisfy a larger
+   request — reuses the existing fingerprint-mismatch mechanism, no new invalidation logic. Source
+   count, priority, enrichment, Source Evaluation, Top Picks, and query-attempt limits untouched.
+2. **v0.8.3 — Recommendation Settings reorganized** into For You behavior / Source priority /
+   Source evaluation / Source management / Discovery-cache-management (composable reorder only).
+   Most other v0.8.3 requirements (shared rated-collection UI, non-pinned quarantine controls, For
+   You shortcuts) were already satisfied by prior sessions — confirmed by inspection, not re-done.
+3. **v0.8.4 — Active-reading timer.** New `eu.kanade.tachiyomi.ui.reader.timer` package: pure
+   `ReaderTimerReducer` state machine (IDLE/RUNNING/PAUSED/CHAPTER_GRACE/EXTRA_CHAPTER_GRACE/
+   EXPIRED), monotonic-clock based (`SystemClock.elapsedRealtime()`, never wall-clock),
+   `SavedStateHandle`-persisted as individual primitives (matching the existing `chapter_id`/
+   `page_index` convention). Lifecycle-bound to `ReaderViewModel`/`ReaderActivity` — pauses on
+   `onPause`, auto-resumes on `onResume` only if not explicitly user-paused. Reader bottom-bar
+   "Reading timer" icon and dialog. "Warning" is an event/set-diff (`firedWarningMinutes`), not a
+   literal phase, for StateFlow-collector-safety reasons documented in the reducer's own doc comment.
+4. **v0.8.5 — Optional reading schedule.** New `eu.kanade.tachiyomi.ui.reader.schedule` package:
+   pure `ReaderScheduleResolver` (day/time windows, midnight-crossing support, ALLOWED/RESTRICTED
+   modes, one mode per schedule per the plan's own sanctioned simplification). Reuses the timer's
+   grace mechanism via a **second, independent** `ReaderTimerCoordinator` instance (a zero-duration
+   session whose first tick immediately enters the reducer's already-tested `CHAPTER_GRACE` logic)
+   rather than adding schedule branches to the reducer itself. New "Reading schedule" section in
+   Settings > Reader, reusing the existing declarative `Preference.PreferenceGroup` framework.
+
+Tests added: 78 total — `ForYouResultBudgetPolicyTest` (11), `ReaderTimerReducerTest` (30),
+`ReaderTimerStateCodecTest` (9), `ReaderTimerCoordinatorTest` (6), `ReaderScheduleResolverTest`
+(16), `ReaderScheduleStoreTest` (9)`. Verification: `exh.recs.*` + `eu.kanade.tachiyomi.ui.reader.*`
+targeted packages passed; full `:app:testDebugUnitTest` passed; `spotlessCheck` passed;
+`assembleDebug` `BUILD SUCCESSFUL` (built twice — once pre-version-bump to validate, once
+post-bump to bake the final version metadata into the handoff APK).
+
+No database migration in this pass — every new persistent value
+(`recommendationResultBudget`/`readingScheduleEnabled`/`readingScheduleMode`/
+`readingScheduleWindows`) uses the existing generic preference-store mechanism, which this fork
+already backs up/restores/syncs automatically via `preferenceStore.getAll()` — no manual backup
+registration needed. No Injekt registrations needed — every new class is a pure object or is
+constructed directly by its owner. No change to `SourceEvaluationScorer`'s scoring formulas, For
+You ranking, group recommendation scoring, or any `.sq` database schema file.
+
+Known limitations: the reading-schedule editor's "edit" is delete-then-recreate rather than
+in-place field editing, matching the existing `BiometricTimesScreen.kt` time-range-list precedent;
+no preference persists the timer's last-used warning/grace configuration between sessions; the
+schedule-grace coordinator's
+session isn't persisted across process death (only the underlying schedule preferences are — the
+next evaluation correctly re-derives the restriction). No on-device manual QA (rotation, lock
+screen, real backgrounding, DST transitions) was possible in this environment — recorded as
+unavailable, not claimed as verified.
+
+Internal handoff APK: `private/Komikku-v1.13.6-kmk.8.5-debug.apk` (universal ABI variant, built via
+`:app:assembleDebug`).
+
+Full detail: `docs/recommendations/KMK_RECS_V0_8_2_TO_V0_8_5_FOR_YOU_UI_AND_READING_TIMER_IMPLEMENTATION.md`.
+
 ### Planned Follow-Ups
 
 These are planning placeholders only. Do not mark them implemented until each has an implementation report, test results, and APK handoff details.
@@ -1298,6 +2124,30 @@ Implemented. See `### KMK-Recs v0.7.0` entry above.
 #### KMK-Recs v0.7.2
 
 Implemented. See `### KMK-Recs v0.7.2` entry above.
+
+### KMK-Recs v0.8.6-v0.8.9 (catch-up summary)
+
+This file was not updated per-version through v0.8.6-v0.8.8; those releases' full detail lives in
+their own implementation reports (`docs/recommendations/KMK_RECS_V0_8_6_SEARCH_PERFORMANCE_AND_
+LOADING_IMPLEMENTATION.md`, `KMK_RECS_V0_8_7_RATED_UI_AND_RECOMMENDATION_SETTINGS_REFINEMENT_
+IMPLEMENTATION.md`, `KMK_RECS_V0_8_7_FIX1_AND_V0_8_8_IMPLEMENTATION.md`) and `CURRENT_STATE.md`'s
+per-version sections, which are kept current. Brief pointer only, to keep this file's version trail
+from silently going stale:
+
+- **v0.8.6** — group-recommendation search performance/loading (bounded concurrency, timeouts,
+  cache, budget policy). `VERSION_CODE = 756`.
+- **v0.8.7** — Reading Schedule dialog root-cause fix; partial Rated UI/Recommendation Settings
+  refinement. `VERSION_CODE = 757`.
+- **v0.8.7-fix1 + v0.8.8** (shipped together) — real reading-schedule enforcement (previously
+  toast-only), chapter-completion rating prompt, Recommendation Settings split into per-category
+  screens, outdated-evaluation reconciliation fix. `VERSION_CODE = 758`.
+- **v0.8.9** — What's New now uses the official Komikku New/Improve/Fix changelog structure going
+  forward (renderer unchanged — it already supported this; only content changed), all 76 prior
+  historical entries preserved individually; new Recommendation Settings search (category-level, 7
+  destinations, pure ranked index, read-only). `VERSION_CODE = 759`. See
+  `docs/recommendations/KMK_RECS_V0_8_9_WHATS_NEW_AND_RECOMMENDATION_SETTINGS_SEARCH_IMPLEMENTATION.md`.
+
+APK for this version: `Komikku-v1.13.6-kmk.8.9-debug.apk`.
 
 ## APK Naming Recommendation
 

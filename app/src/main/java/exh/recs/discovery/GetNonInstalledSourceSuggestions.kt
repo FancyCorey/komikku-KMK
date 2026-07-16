@@ -24,6 +24,8 @@ class GetNonInstalledSourceSuggestions(
         val dismissedPref = sourcePreferences.dismissedNonInstalledRecommendationSources()
         val likedPref = sourcePreferences.likedRecommendationSourceKeys()
         val dislikedPref = sourcePreferences.dislikedRecommendationSourceKeys()
+        // KMK v0.8.1-fix4: separate source/library-quality dislike axis
+        val qualityDislikedPref = sourcePreferences.dislikedSourceQualityKeys()
 
         val extensionTripleFlow = combine(
             extensionManager.availableExtensionsFlow,
@@ -44,10 +46,11 @@ class GetNonInstalledSourceSuggestions(
         val dislikedAndEvaluationsFlow = combine(
             dislikedPref.changes(),
             safeEvaluationsFlow,
-        ) { dislikedRaw, evaluationList ->
+            qualityDislikedPref.changes(),
+        ) { dislikedRaw, evaluationList, qualityDislikedRaw ->
             val verdictMap: Map<String, SourceEvaluationVerdict> =
                 evaluationList.associate { it.evaluationKey to it.verdict }
-            Pair(dislikedRaw, verdictMap)
+            Triple(dislikedRaw, verdictMap, qualityDislikedRaw)
         }
 
         return combine(
@@ -56,7 +59,7 @@ class GetNonInstalledSourceSuggestions(
             sourcePreferences.recommendationSourceLanguages().changes(),
             likedPref.changes(),
             dislikedAndEvaluationsFlow,
-        ) { (available, installed, untrusted), dismissedRaw, _, likedRaw, (dislikedRaw, evaluations) ->
+        ) { (available, installed, untrusted), dismissedRaw, _, likedRaw, (dislikedRaw, evaluations, qualityDislikedRaw) ->
             val nsfwEnabled = sourcePreferences.showNsfwSource().get()
             // KMK -->
             val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
@@ -67,6 +70,7 @@ class GetNonInstalledSourceSuggestions(
             val dismissed = NonInstalledSourceSuggestionStore.parse(dismissedRaw)
             val likedKeys = RecommendationSourcePreferenceStore.parse(likedRaw)
             val dislikedKeys = RecommendationSourcePreferenceStore.parse(dislikedRaw)
+            val qualityDislikedKeys = RecommendationSourcePreferenceStore.parse(qualityDislikedRaw) // KMK v0.8.1-fix4
             val installedHints = installed.map { ext ->
                 InstalledExtensionHints(
                     signatureHash = ext.signatureHash,
@@ -90,6 +94,7 @@ class GetNonInstalledSourceSuggestions(
                 // KMK -->
                 evaluations = evaluations,
                 // KMK <--
+                qualityDislikedKeys = qualityDislikedKeys, // KMK v0.8.1-fix4
             )
         }
     }

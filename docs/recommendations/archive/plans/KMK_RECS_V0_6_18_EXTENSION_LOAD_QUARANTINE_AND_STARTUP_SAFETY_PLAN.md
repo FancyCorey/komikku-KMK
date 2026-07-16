@@ -501,3 +501,4 @@ Mitigation:
 Proceed with v0.6.18 as a safety hotfix.
 
 The newest crash proves v0.6.17 was not sufficient because it only protected Source Evaluation candidate selection. The next fix needs to move the protection to the extension loading boundary, before dangerous extension code is instantiated. The narrowest reliable fix is a static package-level guard for DigitalComicMuseum plus a visible package-level quarantine system for diagnostics and user control.
+

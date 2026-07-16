@@ -1,4 +1,4 @@
-# KMK Feature Classification Matrix
+﻿# KMK Feature Classification Matrix
 
 Date: 2026-06-26
 
@@ -113,3 +113,4 @@ Phase 2 should create:
 
 - `docs/community/KMK_DOCUMENTATION_HYGIENE_AUDIT.md`
 - `docs/community/KMK_PUBLIC_README_DRAFT.md`
+

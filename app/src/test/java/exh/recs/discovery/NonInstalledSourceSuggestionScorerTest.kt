@@ -375,6 +375,63 @@ class NonInstalledSourceSuggestionScorerTest {
         assertTrue(result.isEmpty())
     }
 
+    // KMK v0.8.1-fix4: source/library-quality dislike is a separate axis from recommendation dislike
+
+    @Test
+    fun `source-quality disliked available source is excluded from suggestions`() {
+        val ext = availableExt(sources = listOf(availableSource(1L, "Asura Scans EN")))
+        val hint = installedHint(sourceNames = listOf("Asura Scans"))
+        val candKey = RecommendationSourcePreferenceStore.availableKey(ext.signatureHash, ext.pkgName, 1L)
+        val result = NonInstalledSourceSuggestionScorer.scoreAndFilter(
+            available = listOf(ext),
+            installedHints = listOf(hint),
+            untrusted = emptyList(),
+            recLanguages = recLanguages,
+            nsfwEnabled = nsfwEnabled,
+            dismissed = noDismissed,
+            qualityDislikedKeys = setOf(candKey),
+        )
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `source-quality dislike is hidden even when global explicit filter is off`() {
+        val ext = availableExt(sources = listOf(availableSource(1L, "Asura Scans EN")))
+        val hint = installedHint(sourceNames = listOf("Asura Scans"))
+        val candKey = RecommendationSourcePreferenceStore.availableKey(ext.signatureHash, ext.pkgName, 1L)
+        val result = NonInstalledSourceSuggestionScorer.scoreAndFilter(
+            available = listOf(ext),
+            installedHints = listOf(hint),
+            untrusted = emptyList(),
+            recLanguages = recLanguages,
+            nsfwEnabled = nsfwEnabled,
+            blockExplicit = false,
+            dismissed = noDismissed,
+            qualityDislikedKeys = setOf(candKey),
+        )
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `recommendation-disliked source and source-quality-disliked source are independently excluded`() {
+        val extA = availableExt(pkgName = "eu.a", signatureHash = "siga", sources = listOf(availableSource(1L, "Asura Scans EN")))
+        val extB = availableExt(pkgName = "eu.b", signatureHash = "sigb", sources = listOf(availableSource(2L, "Bato Scans EN")))
+        val hint = installedHint(sourceNames = listOf("Asura Scans", "Bato Scans"))
+        val recDislikeKey = RecommendationSourcePreferenceStore.availableKey("siga", "eu.a", 1L)
+        val qualityDislikeKey = RecommendationSourcePreferenceStore.availableKey("sigb", "eu.b", 2L)
+        val result = NonInstalledSourceSuggestionScorer.scoreAndFilter(
+            available = listOf(extA, extB),
+            installedHints = listOf(hint),
+            untrusted = emptyList(),
+            recLanguages = recLanguages,
+            nsfwEnabled = nsfwEnabled,
+            dismissed = noDismissed,
+            dislikedKeys = setOf(recDislikeKey),
+            qualityDislikedKeys = setOf(qualityDislikeKey),
+        )
+        assertTrue(result.isEmpty())
+    }
+
     @Test
     fun `liked available source is included even without metadata similarity`() {
         val ext = availableExt(sources = listOf(availableSource(1L, "SomeSource")))

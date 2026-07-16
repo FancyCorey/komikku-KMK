@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.backup.create.creators
 
 // KMK -->
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
@@ -10,6 +11,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import exh.recs.SeenRecommendationMangaStore
+import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetMangaSourceQualitySignals
@@ -26,6 +28,9 @@ class TasteBackupCreator(
     private val getDisabledSources: GetDisabledRecommendationSources = Injekt.get(),
     // KMK --> v0.7.0: Phase 4
     private val getCrossSourceMangaLinks: GetCrossSourceMangaLinks = Injekt.get(),
+    // KMK <--
+    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+    private val getCrossSourceGroupPrimary: GetCrossSourceGroupPrimary = Injekt.get(),
     // KMK <--
     // KMK --> v0.7.16: Best Version quality signals
     private val getMangaSourceQualitySignals: GetMangaSourceQualitySignals = Injekt.get(),
@@ -79,6 +84,18 @@ class TasteBackupCreator(
                 groupId = link.groupId,
                 title = link.title,
                 updatedAt = link.updatedAt,
+            )
+        }
+    // KMK <--
+
+    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+    suspend fun backupCrossSourceGroupPrimaries(): List<BackupCrossSourceGroupPrimary> =
+        getCrossSourceGroupPrimary.awaitAll().map { primary ->
+            BackupCrossSourceGroupPrimary(
+                groupId = primary.groupId,
+                source = primary.source,
+                url = primary.url,
+                updatedAt = primary.updatedAt,
             )
         }
     // KMK <--

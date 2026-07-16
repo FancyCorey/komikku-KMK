@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.2: Loved Manga Smart Grouping And Link Usage Plan
+﻿# KMK-Recs v0.7.2: Loved Manga Smart Grouping And Link Usage Plan
 
 Date: 2026-06-20
 
@@ -532,4 +532,5 @@ Mitigation:
 ## Recommendation
 
 Proceed with v0.7.2 after approval. This should be a Loved Manga stabilization pass, not a broad recommendation rewrite. The key improvement is to use confirmed cross-source link groups as primary identity evidence, then apply conservative metadata fallback for cases where no link exists.
+
 

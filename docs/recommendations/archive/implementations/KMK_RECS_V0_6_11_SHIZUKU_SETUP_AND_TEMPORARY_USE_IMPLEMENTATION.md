@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.11: Shizuku Setup And Temporary Use Implementation
+﻿# KMK-Recs v0.6.11: Shizuku Setup And Temporary Use Implementation
 
 Date: 2026-06-19
 
@@ -6,7 +6,7 @@ Feature version: KMK-Recs v0.6.11
 
 ## Summary
 
-Added Shizuku setup controls to Source Evaluation. Users can now install/open Shizuku, use it temporarily for one evaluation run, stop using it, and launch Android's uninstall confirmation for Shizuku — all from within the Source Evaluation screen.
+Added Shizuku setup controls to Source Evaluation. Users can now install/open Shizuku, use it temporarily for one evaluation run, stop using it, and launch Android's uninstall confirmation for Shizuku â€” all from within the Source Evaluation screen.
 
 Source Evaluation now reads real Shizuku status (installed, binder alive, permission granted) instead of always treating Shizuku as unavailable.
 
@@ -35,7 +35,7 @@ The safety note shown to users: "Komikku can stop using Shizuku, but Android/Shi
 
 ### New: `app/src/main/java/exh/recs/evaluation/ShizukuSetupHelper.kt`
 
-Pure state query and shortcut helper. No Android dependencies on Shizuku API are called at class-load time — all calls are wrapped in `try/catch`.
+Pure state query and shortcut helper. No Android dependencies on Shizuku API are called at class-load time â€” all calls are wrapped in `try/catch`.
 
 - `ShizukuSetupHelper.State` data class: `installed`, `binderAlive`, `permissionGranted`.
 - `readState(context)`: reads `context.isShizukuInstalled`, then conditionally tries `Shizuku.pingBinder()` and `Shizuku.checkSelfPermission()`.
@@ -49,12 +49,12 @@ Pure state query and shortcut helper. No Android dependencies on Shizuku API are
 - `State` gains `shizukuState: ShizukuSetupHelper.State` (default all-false).
 - `refreshInstallerPolicy()` now calls `ShizukuSetupHelper.readState(context)` and stores result in state alongside policy. Replaces the previous hardcoded `shizukuBinderAlive = false` / `shizukuPermissionGranted = false`.
 - New actions:
-  - `useShizukuForEvaluation()` — sets `installerMode = SHIZUKU`, refreshes policy.
-  - `stopUsingShizukuForEvaluation()` — reads `privateAvailable`, calls `ShizukuSetupHelper.stopUsingFallbackMode()`, sets mode, refreshes policy. Does NOT mutate the global `BasePreferences.extensionInstaller()` preference.
-  - `openShizukuSetup()` — delegates to `ShizukuSetupHelper.openDownload()`.
-  - `openShizukuApp()` — delegates to `ShizukuSetupHelper.openApp()`; falls back to `openDownload()` if not installed.
-  - `uninstallShizuku()` — no-op when `queueState.isRunning`; otherwise calls `ShizukuSetupHelper.openUninstall()` then refreshes policy.
-  - `refreshShizukuState()` — calls `refreshInstallerPolicy()`.
+  - `useShizukuForEvaluation()` â€” sets `installerMode = SHIZUKU`, refreshes policy.
+  - `stopUsingShizukuForEvaluation()` â€” reads `privateAvailable`, calls `ShizukuSetupHelper.stopUsingFallbackMode()`, sets mode, refreshes policy. Does NOT mutate the global `BasePreferences.extensionInstaller()` preference.
+  - `openShizukuSetup()` â€” delegates to `ShizukuSetupHelper.openDownload()`.
+  - `openShizukuApp()` â€” delegates to `ShizukuSetupHelper.openApp()`; falls back to `openDownload()` if not installed.
+  - `uninstallShizuku()` â€” no-op when `queueState.isRunning`; otherwise calls `ShizukuSetupHelper.openUninstall()` then refreshes policy.
+  - `refreshShizukuState()` â€” calls `refreshInstallerPolicy()`.
 
 ### Updated: `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt`
 
@@ -63,9 +63,9 @@ Added `ShizukuSetupCard` composable. Inserted as a new lazy list item (`key = "s
 Card shows one of five status strings:
 
 - Not installed
-- Installed but not running — open Shizuku to start it
-- Running — grant Komikku permission in the Shizuku app
-- Ready — tap "Use for this run" to use Shizuku for evaluation
+- Installed but not running â€” open Shizuku to start it
+- Running â€” grant Komikku permission in the Shizuku app
+- Ready â€” tap "Use for this run" to use Shizuku for evaluation
 - Komikku will use Shizuku for this evaluation run
 
 Context-sensitive buttons:
@@ -100,27 +100,27 @@ Added 12 new English strings under `<!-- KMK v0.6.11 Shizuku setup -->`:
 
 8 unit tests covering pure logic:
 
-- Shizuku not installed → UNAVAILABLE
-- Shizuku installed but binder dead → UNAVAILABLE
-- Shizuku running but permission missing → NEEDS_PERMISSION
-- Shizuku installed, running, permission granted → READY
+- Shizuku not installed â†’ UNAVAILABLE
+- Shizuku installed but binder dead â†’ UNAVAILABLE
+- Shizuku running but permission missing â†’ NEEDS_PERMISSION
+- Shizuku installed, running, permission granted â†’ READY
 - stop-using fallback prefers PRIVATE when available
 - stop-using fallback uses CURRENT when PRIVATE unavailable
-- PRIVATE mode available → READY
-- PRIVATE mode unavailable → UNAVAILABLE
+- PRIVATE mode available â†’ READY
+- PRIVATE mode unavailable â†’ UNAVAILABLE
 
 ## Existing Behavior Preserved
 
-- Source Evaluation continues using temporary installer override via `SourceEvaluationInstallerPolicy.effectiveInstallerOverride()` — global installer preference is never mutated.
+- Source Evaluation continues using temporary installer override via `SourceEvaluationInstallerPolicy.effectiveInstallerOverride()` â€” global installer preference is never mutated.
 - `ShizukuInstaller.onDestroy()` unbinding behavior is unchanged.
 - No changes to source evaluation scoring, batch sizes, or runner logic.
 - v0.6.9 migration (`47.sqm`) and v0.6.10 DI fix remain intact.
 
 ## Tests Run
 
-- `exh.recs.evaluation.SourceEvaluationInstallerPolicyTest` — 8 tests, all PASSED
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL, all prior tests continue to PASS
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `exh.recs.evaluation.SourceEvaluationInstallerPolicyTest` â€” 8 tests, all PASSED
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL, all prior tests continue to PASS
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ## APK
 
@@ -130,7 +130,7 @@ Copied to: `Komikku-v1.13.6-kmk.6.11-debug.apk`
 
 ## Manual Verification
 
-Not performed by this session. Recommended manual test steps are documented in the plan file `KMK_RECS_V0_6_11_SHIZUKU_SETUP_AND_TEMPORARY_USE_PLAN.md` (steps 1–15).
+Not performed by this session. Recommended manual test steps are documented in the plan file `KMK_RECS_V0_6_11_SHIZUKU_SETUP_AND_TEMPORARY_USE_PLAN.md` (steps 1â€“15).
 
 Key points to verify manually:
 
@@ -141,3 +141,4 @@ Key points to verify manually:
 5. "Stop using" switches installer mode away from Shizuku without touching the global installer pref.
 6. "Uninstall Shizuku" opens Android's uninstall confirmation.
 7. Uninstall button is disabled while evaluation is running.
+

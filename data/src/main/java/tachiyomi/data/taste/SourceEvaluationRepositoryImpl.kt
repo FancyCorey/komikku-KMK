@@ -3,6 +3,7 @@ package tachiyomi.data.taste
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.taste.model.SourceEvaluation
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 import tachiyomi.domain.taste.repository.SourceEvaluationRepository
 
@@ -83,6 +84,20 @@ class SourceEvaluationRepositoryImpl(
                 extensionVersionCode = evaluation.extensionVersionCode,
                 extensionApkName = evaluation.extensionApkName,
                 // KMK <--
+                // KMK --> v0.7.42
+                catalogueMetadataConfidence = evaluation.catalogueMetadataConfidence.serialized,
+                // KMK <--
+                // KMK --> v0.7.47
+                detailEnrichmentAttemptCount = evaluation.detailEnrichmentAttemptCount.toLong(),
+                detailEnrichmentSuccessCount = evaluation.detailEnrichmentSuccessCount.toLong(),
+                metadataCandidateCount = evaluation.metadataCandidateCount.toLong(),
+                positiveCandidateCount = evaluation.positiveCandidateCount.toLong(),
+                negativeCandidateCount = evaluation.negativeCandidateCount.toLong(),
+                explicitPreferredGroupHitCount = evaluation.explicitPreferredGroupHitCount.toLong(),
+                learnedPositiveGroupHitCount = evaluation.learnedPositiveGroupHitCount.toLong(),
+                blockedCandidateCount = evaluation.blockedCandidateCount.toLong(),
+                adultSignalCandidateCount = evaluation.adultSignalCandidateCount.toLong(),
+                // KMK <--
             )
         }
     }
@@ -139,6 +154,20 @@ private val sourceEvaluationMapper = {
         extensionVersionName: String?,
         extensionVersionCode: Long?,
         extensionApkName: String?,
+        // KMK <--
+        // KMK --> v0.7.42
+        catalogueMetadataConfidence: String,
+        // KMK <--
+        // KMK --> v0.7.47
+        detailEnrichmentAttemptCount: Long,
+        detailEnrichmentSuccessCount: Long,
+        metadataCandidateCount: Long,
+        positiveCandidateCount: Long,
+        negativeCandidateCount: Long,
+        explicitPreferredGroupHitCount: Long,
+        learnedPositiveGroupHitCount: Long,
+        blockedCandidateCount: Long,
+        adultSignalCandidateCount: Long,
     // KMK <--
     ->
     SourceEvaluation(
@@ -180,6 +209,20 @@ private val sourceEvaluationMapper = {
         extensionVersionName = extensionVersionName,
         extensionVersionCode = extensionVersionCode,
         extensionApkName = extensionApkName,
+        // KMK <--
+        // KMK --> v0.7.42
+        catalogueMetadataConfidence = SourceEvaluationMetadataConfidence.fromSerialized(catalogueMetadataConfidence),
+        // KMK <--
+        // KMK --> v0.7.47
+        detailEnrichmentAttemptCount = detailEnrichmentAttemptCount.toInt(),
+        detailEnrichmentSuccessCount = detailEnrichmentSuccessCount.toInt(),
+        metadataCandidateCount = metadataCandidateCount.toInt(),
+        positiveCandidateCount = positiveCandidateCount.toInt(),
+        negativeCandidateCount = negativeCandidateCount.toInt(),
+        explicitPreferredGroupHitCount = explicitPreferredGroupHitCount.toInt(),
+        learnedPositiveGroupHitCount = learnedPositiveGroupHitCount.toInt(),
+        blockedCandidateCount = blockedCandidateCount.toInt(),
+        adultSignalCandidateCount = adultSignalCandidateCount.toInt(),
         // KMK <--
     )
 }

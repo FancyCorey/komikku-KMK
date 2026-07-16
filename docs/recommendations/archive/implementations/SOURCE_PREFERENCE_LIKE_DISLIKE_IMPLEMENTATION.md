@@ -1,4 +1,4 @@
-# Source Like/Dislike Preferences Implementation
+﻿# Source Like/Dislike Preferences Implementation
 
 Date: 2026-06-17
 
@@ -20,14 +20,14 @@ Enum: `LIKE`, `DISLIKE`, `NEUTRAL`.
 
 Pure stateless store with no Android dependencies.
 
-- `installedKey(sourceId: Long): String` — builds `i|sourceId`
-- `availableKey(signatureHash, pkgName, sourceId?): String` — builds `a|signatureHash|pkgName[|sourceId]`
-- `parse(raw: String): Set<String>` — splits semicolon-separated keys
-- `serialize(keys: Set<String>): String` — joins with semicolons
-- `like(liked, disliked, key)` — adds to liked, removes from disliked
-- `dislike(liked, disliked, key)` — adds to disliked, removes from liked
-- `reset(liked, disliked, key)` — removes from both
-- `installedSourceIds(keys)` — extracts `Long` source IDs from installed-prefix keys
+- `installedKey(sourceId: Long): String` â€” builds `i|sourceId`
+- `availableKey(signatureHash, pkgName, sourceId?): String` â€” builds `a|signatureHash|pkgName[|sourceId]`
+- `parse(raw: String): Set<String>` â€” splits semicolon-separated keys
+- `serialize(keys: Set<String>): String` â€” joins with semicolons
+- `like(liked, disliked, key)` â€” adds to liked, removes from disliked
+- `dislike(liked, disliked, key)` â€” adds to disliked, removes from liked
+- `reset(liked, disliked, key)` â€” removes from both
+- `installedSourceIds(keys)` â€” extracts `Long` source IDs from installed-prefix keys
 
 ### NonInstalledSuggestionReason
 
@@ -40,9 +40,9 @@ New constant: `SCORE_USER_LIKED = 0.68`.
 `scoreAndFilter` now accepts `likedKeys: Set<String> = emptySet()` and `dislikedKeys: Set<String> = emptySet()`.
 
 In the scoring loop:
-- Disliked candidate → skip (same position as dismissed check, before calling `score()`).
-- Liked candidate → `score()` returns immediately with `UserLikedSource` + `NeedsTesting` reasons, score 0.68 (`MEDIUM` confidence). Evidence gate bypassed.
-- Neutral → existing v0.6.1 hardened behavior: requires `SimilarToInstalledSource` evidence.
+- Disliked candidate â†’ skip (same position as dismissed check, before calling `score()`).
+- Liked candidate â†’ `score()` returns immediately with `UserLikedSource` + `NeedsTesting` reasons, score 0.68 (`MEDIUM` confidence). Evidence gate bypassed.
+- Neutral â†’ existing v0.6.1 hardened behavior: requires `SimilarToInstalledSource` evidence.
 
 ### Interactor Changes (`GetNonInstalledSourceSuggestions.kt`)
 
@@ -76,21 +76,21 @@ New state fields:
 Initialized from preferences on startup; subscribed to changes via a 2-arg combine flow.
 
 New actions:
-- `setInstalledSourcePreference(sourceId, preference)` — builds `i|sourceId` key and calls `applySourcePreference`.
-- `setAvailableSourcePreference(suggestion, preference)` — builds `a|...` key and calls `applySourcePreference`.
-- `applySourcePreference(key, preference)` — reads current liked/disliked sets, applies mutation, writes back both prefs.
+- `setInstalledSourcePreference(sourceId, preference)` â€” builds `i|sourceId` key and calls `applySourcePreference`.
+- `setAvailableSourcePreference(suggestion, preference)` â€” builds `a|...` key and calls `applySourcePreference`.
+- `applySourcePreference(key, preference)` â€” reads current liked/disliked sets, applies mutation, writes back both prefs.
 
 ### Settings Screen UI (`RecommendationsSettingsScreen.kt`)
 
 **`SourcePriorityItem`** (installed source rows):
 - Added `isLiked`, `isDisliked`, `onLike`, `onDislike` parameters.
-- Status text shows `rec_source_status_disliked` ("Disliked · excluded from For You") in error color when disliked, before the disabled check.
+- Status text shows `rec_source_status_disliked` ("Disliked Â· excluded from For You") in error color when disliked, before the disabled check.
 - Added thumbs-up and thumbs-down `IconButton` elements between status column and the enable/disable Switch.
 - Filled icon variant when active; outlined when not. Primary color for liked; error color for disliked.
 
 **`SourceSuggestionItem`** (Sources To Try rows):
 - Added `isLiked`, `isDisliked`, `onLike`, `onDislike` parameters.
-- Added `UserLikedSource → rec_suggestion_reason_user_liked` to reason text mapping.
+- Added `UserLikedSource â†’ rec_suggestion_reason_user_liked` to reason text mapping.
 - Added thumbs-up and thumbs-down `IconButton` elements in the button row alongside Install and Dismiss.
 
 Icons used: `Icons.Outlined.ThumbUp`, `Icons.Filled.ThumbUp`, `Icons.Outlined.ThumbDown`, `Icons.Filled.ThumbDown` (all from `material-icons-extended`).
@@ -99,10 +99,10 @@ Icons used: `Icons.Outlined.ThumbUp`, `Icons.Filled.ThumbUp`, `Icons.Outlined.Th
 
 4 new strings in `i18n-kmk/strings.xml`:
 
-- `rec_suggestion_reason_user_liked` — "You liked this source"
-- `rec_source_preference_like` — "Like"
-- `rec_source_preference_dislike` — "Dislike"
-- `rec_source_status_disliked` — "Disliked · excluded from For You"
+- `rec_suggestion_reason_user_liked` â€” "You liked this source"
+- `rec_source_preference_like` â€” "Like"
+- `rec_source_preference_dislike` â€” "Dislike"
+- `rec_source_status_disliked` â€” "Disliked Â· excluded from For You"
 
 ## What Was Intentionally Not Implemented
 
@@ -131,25 +131,25 @@ Disliked installed sources are excluded from For You (added to the effective dis
 
 - `app/src/main/java/exh/recs/sourceprefs/RecommendationSourcePreference.kt` (new)
 - `app/src/main/java/exh/recs/sourceprefs/RecommendationSourcePreferenceStore.kt` (new)
-- `app/src/main/java/exh/recs/discovery/NonInstalledSourceSuggestion.kt` — UserLikedSource reason
-- `app/src/main/java/exh/recs/discovery/NonInstalledSourceSuggestionScorer.kt` — liked/disliked support
-- `app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt` — liked/disliked pref flows
-- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt` — effectiveDisabledIds
-- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` — state and actions
-- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` — thumbs UI
-- `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt` — two new prefs
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=602
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — 4 new strings
-- `app/src/test/java/exh/recs/sourceprefs/RecommendationSourcePreferenceStoreTest.kt` (new) — 13 tests
-- `app/src/test/java/exh/recs/discovery/NonInstalledSourceSuggestionScorerTest.kt` — 5 new tests (23 total)
+- `app/src/main/java/exh/recs/discovery/NonInstalledSourceSuggestion.kt` â€” UserLikedSource reason
+- `app/src/main/java/exh/recs/discovery/NonInstalledSourceSuggestionScorer.kt` â€” liked/disliked support
+- `app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt` â€” liked/disliked pref flows
+- `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt` â€” effectiveDisabledIds
+- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` â€” state and actions
+- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` â€” thumbs UI
+- `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt` â€” two new prefs
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE=602
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” 4 new strings
+- `app/src/test/java/exh/recs/sourceprefs/RecommendationSourcePreferenceStoreTest.kt` (new) â€” 13 tests
+- `app/src/test/java/exh/recs/discovery/NonInstalledSourceSuggestionScorerTest.kt` â€” 5 new tests (23 total)
 
 ## Commands Run
 
 ```text
-./gradlew :app:compileDebugKotlin → BUILD SUCCESSFUL
-./gradlew :app:testDebugUnitTest --tests "*NonInstalledSource*" --tests "*RecommendationSourcePreference*" → BUILD SUCCESSFUL, all tests PASSED
-./gradlew :app:testDebugUnitTest → BUILD SUCCESSFUL
-./gradlew :app:assembleDebug → BUILD SUCCESSFUL
+./gradlew :app:compileDebugKotlin â†’ BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest --tests "*NonInstalledSource*" --tests "*RecommendationSourcePreference*" â†’ BUILD SUCCESSFUL, all tests PASSED
+./gradlew :app:testDebugUnitTest â†’ BUILD SUCCESSFUL
+./gradlew :app:assembleDebug â†’ BUILD SUCCESSFUL
 ```
 
 ## APK
@@ -161,3 +161,4 @@ Disliked installed sources are excluded from For You (added to the effective dis
 - Disliked non-installed sources have no reset path from the current UI. A future "Manage hidden sources" section would address this.
 - Like for installed sources does not affect the current For You source order. It is stored for future use (source-fit learning, source priority suggestions).
 - No backup/restore for liked/disliked preferences.
+

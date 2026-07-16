@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.5 Recommendation JSON Export / Import Plan
+﻿# KMK-Recs v0.7.5 Recommendation JSON Export / Import Plan
 
 Date: 2026-06-22
 
@@ -619,3 +619,4 @@ The most important requirements are:
 6. keep normal global search unchanged.
 
 If these rules are followed, this should fit cleanly into Komikku/KMK without undermining existing backup, migration, or recommendation behavior.
+

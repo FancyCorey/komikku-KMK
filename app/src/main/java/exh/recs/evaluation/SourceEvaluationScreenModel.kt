@@ -5,22 +5,16 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
-import eu.kanade.tachiyomi.extension.model.Extension
-import eu.kanade.tachiyomi.extension.model.InstallStep
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.isOnline
 import exh.recs.KmkRecsReleaseNotes
 import exh.recs.RecommendationSourceFilter
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.taste.interactor.ClearSourceEvaluationProbeMarker
@@ -32,16 +26,12 @@ import tachiyomi.domain.taste.interactor.DeleteUnsafeExtensionPackage
 import tachiyomi.domain.taste.interactor.GetSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.GetSourceEvaluationUnsafeSources
 import tachiyomi.domain.taste.interactor.GetSourceEvaluations
-import tachiyomi.domain.taste.interactor.GetTagAliases
 import tachiyomi.domain.taste.interactor.GetTasteProfile
 import tachiyomi.domain.taste.interactor.GetUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.MarkSourceEvaluationUnsafe
-import tachiyomi.domain.taste.interactor.UpsertSourceRecommendationFit
-import tachiyomi.domain.taste.model.RecommendationQualityVerdict
 import tachiyomi.domain.taste.model.SourceEvaluation
 import tachiyomi.domain.taste.model.SourceEvaluationUnsafeSource
 import tachiyomi.domain.taste.model.SourceRecommendationFit
-import tachiyomi.domain.taste.model.TasteProfile
 import tachiyomi.domain.taste.model.TasteProfileConfidence
 import tachiyomi.domain.taste.model.UnsafeExtensionPackage
 import uy.kohesive.injekt.Injekt
@@ -57,6 +47,11 @@ sealed interface ScreenErrorKey {
     data class CandidateLoadFailed(val detail: String?) : ScreenErrorKey
     /** Crash-quarantine recovery: an extension was marked unsafe on this or a previous run. */
     data class CrashRecovery(val extensionName: String, val phase: String) : ScreenErrorKey
+    // KMK --> v0.7.43: Source Evaluation and For You compatibility checks may not install
+    // extensions at the same time; surface which job is already running.
+    enum class ActiveJobKind { SOURCE_EVALUATION, RECOMMENDATION_QUALITY }
+    data class JobConflict(val activeJob: ActiveJobKind) : ScreenErrorKey
+    // KMK <--
 }
 // KMK <--
 
@@ -90,9 +85,6 @@ class SourceEvaluationScreenModel(
     private val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
     // KMK --> v0.7.6: rec-quality probe results
     private val getSourceRecommendationFit: tachiyomi.domain.taste.interactor.GetSourceRecommendationFit = Injekt.get(),
-    // KMK --> v0.7.7: rec-quality in-screen evaluation action
-    private val upsertSourceRecommendationFit: UpsertSourceRecommendationFit = Injekt.get(),
-    private val getTagAliases: GetTagAliases = Injekt.get(),
     // KMK <--
     // KMK <--
     // KMK <--
@@ -180,9 +172,16 @@ class SourceEvaluationScreenModel(
         // KMK <--
         // KMK <--
         // KMK --> v0.7.7: rec-quality in-screen action progress
+        // KMK --> v0.7.43: now driven by SourceRecommendationQualityJobState (background job),
+        // not screenModelScope — see SourceRecommendationQualityJob / SourceRecommendationQualityRunner.
         val recQualityRunning: Boolean = false,
         val recQualityProgress: Int = 0,
         val recQualityTotal: Int = 0,
+        val recQualityCurrentSourceName: String? = null,
+        // KMK <--
+        // KMK --> v0.7.45: non-installed probes skipped because Private installer was unavailable
+        val recQualityNonInstalledSkippedCount: Int = 0,
+        // KMK <--
         // KMK <--
         // KMK --> v0.7.11: pre-run consent dialog and pending action
         val showConsentDialog: Boolean = false,
@@ -194,6 +193,24 @@ class SourceEvaluationScreenModel(
         // KMK --> v0.7.31: C3 — true when profile changed notably since last eval run
         val profileChangedSinceLastEval: Boolean = false,
         // KMK <--
+        // KMK --> v0.8.1-fix3: separate first-class stale/outdated reassessment queue, independent
+        // of the unassessed queue's candidates/cursor/canContinue. See
+        // SOURCE_EVALUATION_CONTINUATION_FIX_PLAN — "stale/outdated rows must remain actionable
+        // until reassessed, not merely counted as already-evaluated-hidden."
+        val staleCandidates: List<EvaluationCandidate> = emptyList(),
+        val continuationCursorStale: SourceEvaluationCursor? = null,
+        val canContinueStale: Boolean = false,
+        val remainingStaleCandidateCount: Int = 0,
+        val pendingStaleReassessmentAfterPromptWarning: Boolean = false,
+        // KMK <--
+        // KMK v0.8.8: reconciles visible "Outdated" rows against actual reassessment-queue
+        // eligibility — see SourceEvaluationOutdatedReconciliation.
+        val outdatedReconciliation: SourceEvaluationOutdatedReconciliation.Result = SourceEvaluationOutdatedReconciliation.Result(emptySet(), emptySet()),
+        // KMK v0.8.1-fix4: source/library-quality preference axis on Source Evaluation rows
+        val qualityDislikedSourceKeys: Set<String> = emptySet(),
+        val qualityExplicitSourceKeys: Set<String> = emptySet(),
+        val showSourceQualityDisliked: Boolean = false,
+        val hiddenSourceQualityCount: Int = 0,
     )
 
     // KMK --> v0.6.20: typed management action for confirmation dialogs
@@ -214,6 +231,7 @@ class SourceEvaluationScreenModel(
         START_EVALUATION,
         REASSESS_UPDATED,
         CONTINUE_EVALUATION,
+        STALE_REASSESSMENT, // KMK v0.8.1-fix3
         VIEW_ONLY,
     }
     // KMK <--
@@ -321,17 +339,53 @@ class SourceEvaluationScreenModel(
             .launchIn(screenModelScope)
         // KMK <--
 
+        // KMK --> v0.7.43: reconnect to any active background For You compatibility job
+        SourceRecommendationQualityJobState.activeQueueState
+            .onEach { jobQueueState ->
+                mutableState.update {
+                    it.copy(
+                        recQualityRunning = jobQueueState?.isRunning == true,
+                        recQualityProgress = jobQueueState?.completedCount ?: 0,
+                        recQualityTotal = jobQueueState?.totalCount ?: 0,
+                        recQualityCurrentSourceName = jobQueueState?.currentSourceName,
+                        recQualityNonInstalledSkippedCount = jobQueueState?.nonInstalledSkippedCount ?: 0,
+                    )
+                }
+                if (jobQueueState?.isTerminal == true) {
+                    loadRecommendationFits()
+                }
+            }
+            .launchIn(screenModelScope)
+        // KMK <--
+
         // KMK --> v0.7.6: load persisted cursor
         screenModelScope.launch {
             try {
                 val raw = sourcePreferences.sourceEvaluationContinuationCursor().get()
                 val cursor = SourceEvaluationContinuationPolicy.deserialize(raw)
-                mutableState.update { it.copy(continuationCursor = cursor) }
+                // KMK --> v0.8.1-fix3: load stale-queue cursor from its own preference slot
+                val rawStale = sourcePreferences.sourceEvaluationContinuationCursorStale().get()
+                val cursorStale = SourceEvaluationContinuationPolicy.deserialize(rawStale)
+                mutableState.update { it.copy(continuationCursor = cursor, continuationCursorStale = cursorStale) }
+                // KMK <--
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load cursor" }
             }
         }
         loadRecommendationFits()
+        // KMK <--
+
+        // KMK v0.8.1-fix4: live-update the source/library-quality axis and re-derive display state
+        kotlinx.coroutines.flow.combine(
+            sourcePreferences.dislikedSourceQualityKeys().changes(),
+            sourcePreferences.explicitSourceQualityKeys().changes(),
+        ) { dislikedRaw, explicitRaw ->
+            exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(dislikedRaw) to
+                exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(explicitRaw)
+        }.onEach { (disliked, explicit) ->
+            mutableState.update { it.copy(qualityDislikedSourceKeys = disliked, qualityExplicitSourceKeys = explicit) }
+            applyDisplayFilter()
+        }.launchIn(screenModelScope)
         // KMK <--
 
         // KMK --> SEC-01 v0.7.16: surface leftover-extension warning if startup recovery detected one
@@ -568,21 +622,30 @@ class SourceEvaluationScreenModel(
             return
         }
         // KMK <--
-        mutableState.update { it.copy(showPromptHeavyWarningDialog = false) }
-        launchEvaluation(promptHeavyCleanupAllowed = true)
+        // KMK --> v0.8.1-fix3
+        val staleRun = state.value.pendingStaleReassessmentAfterPromptWarning
+        val isContinuation = if (staleRun) state.value.canContinueStale else false
+        mutableState.update { it.copy(showPromptHeavyWarningDialog = false, pendingStaleReassessmentAfterPromptWarning = false) }
+        launchEvaluation(promptHeavyCleanupAllowed = true, isContinuation = isContinuation, staleRun = staleRun)
+        // KMK <--
     }
 
     /** User chose to switch to Private instead of continuing with prompt-heavy mode. */
     fun switchToPrivateAndStart() {
+        // KMK --> v0.8.1-fix3
+        val staleRun = state.value.pendingStaleReassessmentAfterPromptWarning
+        val isContinuation = if (staleRun) state.value.canContinueStale else false
+        // KMK <--
         mutableState.update {
             it.copy(
                 showPromptHeavyWarningDialog = false,
+                pendingStaleReassessmentAfterPromptWarning = false, // KMK v0.8.1-fix3
                 options = it.options.copy(installerMode = SourceEvaluationInstallerPolicy.InstallerMode.PRIVATE),
                 showShizukuSetup = false, // KMK --> v0.6.19
             )
         }
         refreshInstallerPolicy()
-        launchEvaluation(promptHeavyCleanupAllowed = false)
+        launchEvaluation(promptHeavyCleanupAllowed = false, isContinuation = isContinuation, staleRun = staleRun)
     }
 
     /** Switch to Private installer without starting evaluation. Used from Shizuku card. */
@@ -597,7 +660,7 @@ class SourceEvaluationScreenModel(
     }
 
     fun dismissPromptWarningDialog() {
-        mutableState.update { it.copy(showPromptHeavyWarningDialog = false) }
+        mutableState.update { it.copy(showPromptHeavyWarningDialog = false, pendingStaleReassessmentAfterPromptWarning = false) }
     }
 
     // KMK --> v0.7.11: consent dialog actions
@@ -624,17 +687,47 @@ class SourceEvaluationScreenModel(
             PendingConsentAction.START_EVALUATION -> startEvaluation()
             PendingConsentAction.REASSESS_UPDATED -> doReassessUpdated()
             PendingConsentAction.CONTINUE_EVALUATION -> continueEvaluation()
+            PendingConsentAction.STALE_REASSESSMENT -> startOrContinueStaleReassessment() // KMK v0.8.1-fix3
             PendingConsentAction.VIEW_ONLY, null -> { /* view-only — never starts evaluation */ }
         }
     }
 
     // KMK <--
 
-    private fun launchEvaluation(promptHeavyCleanupAllowed: Boolean, isContinuation: Boolean = false) {
+    // KMK --> v0.8.1-fix3: staleRun selects the stale/outdated reassessment queue instead of the
+    // normal unassessed queue — separate candidate list, cursor slot, and fingerprint, so neither
+    // queue's continuation progress can clobber the other's. See SOURCE_EVALUATION_CONTINUATION_FIX_PLAN.
+    private fun launchEvaluation(promptHeavyCleanupAllowed: Boolean, isContinuation: Boolean = false, staleRun: Boolean = false) {
+        // KMK --> v0.7.43/v0.7.44: Source Evaluation and For You compatibility checks both may
+        // temporarily install/uninstall extensions and must not run at the same time. The decision
+        // itself is a pure, tested policy (SourceRecommendationQualityJobConflictPolicyTest);
+        // only the isRunning() reads here are Android/WorkManager-backed.
+        val evaluationConflict = SourceRecommendationQualityJobConflictPolicy.conflictFor(
+            starting = ScreenErrorKey.ActiveJobKind.SOURCE_EVALUATION,
+            sourceEvaluationRunning = false,
+            recommendationQualityRunning = SourceRecommendationQualityJob.isRunning(context),
+        )
+        if (evaluationConflict != null) {
+            mutableState.update { it.copy(screenError = ScreenErrorKey.JobConflict(evaluationConflict)) }
+            return
+        }
+        // KMK <--
         val s = state.value
-        val opts = s.options.copy(promptHeavyCleanupAllowed = promptHeavyCleanupAllowed)
+        // KMK --> v0.8.1-fix3: stale reassessment always treats candidates as already-evaluated-but-
+        // stale, regardless of the user's persisted skipAlreadyEvaluated/reEvaluateStale toggles —
+        // those toggles govern the *unassessed* queue only.
+        val opts = if (staleRun) {
+            s.options.copy(
+                promptHeavyCleanupAllowed = promptHeavyCleanupAllowed,
+                skipAlreadyEvaluated = false,
+                reEvaluateStale = true,
+                onlyUpdatedEvaluated = false,
+            )
+        } else {
+            s.options.copy(promptHeavyCleanupAllowed = promptHeavyCleanupAllowed)
+        }
         // KMK --> v0.7.6: slice via continuation policy before passing to runner
-        val allCandidates = s.candidates
+        val allCandidates = if (staleRun) s.staleCandidates else s.candidates
         val recLanguages = RecommendationSourceFilter.normalizeLanguages(
             sourcePreferences.recommendationSourceLanguages().get(),
         )
@@ -646,8 +739,12 @@ class SourceEvaluationScreenModel(
             reEvaluateStale = opts.reEvaluateStale,
             onlyUpdatedEvaluated = opts.onlyUpdatedEvaluated,
             blockExplicit = blockExplicit,
-        )
-        val cursor = if (isContinuation) s.continuationCursor else null
+        ) + if (staleRun) "|queue=stale" else ""
+        val cursor = if (isContinuation) {
+            if (staleRun) s.continuationCursorStale else s.continuationCursor
+        } else {
+            null
+        }
         val slice = SourceEvaluationContinuationPolicy.sliceForRun(
             candidates = allCandidates,
             batchSize = opts.batchSize,
@@ -666,6 +763,9 @@ class SourceEvaluationScreenModel(
         SourceEvaluationJobState.pendingCursorFingerprint = fingerprint
         SourceEvaluationJobState.pendingAllCandidates = allCandidates
         // KMK <--
+        // KMK --> v0.8.1-fix3
+        SourceEvaluationJobState.pendingIsStaleRun = staleRun
+        // KMK <--
         SourceEvaluationJobState.activeQueueState.value = SourceEvaluationQueueState(
             status = SourceEvaluationQueueState.Status.Running,
             totalCount = slice.size,
@@ -674,6 +774,37 @@ class SourceEvaluationScreenModel(
         )
         SourceEvaluationJob.start(context)
         // KMK <--
+    }
+    // KMK <--
+
+    // KMK --> v0.8.1-fix3: start or continue the stale/outdated reassessment queue. Explicit and
+    // separate from startEvaluation()/continueEvaluation() (which only ever operate on the
+    // unassessed queue) — see plan requirement "restart/reassess-from-beginning explicit and
+    // separate from continue".
+    fun startOrContinueStaleReassessment() {
+        val s = state.value
+        if (s.staleCandidates.isEmpty()) return
+        if (SourceEvaluationConsentPolicy.isConsentRequired(sourcePreferences.sourceEvaluationConsentGiven().get())) {
+            mutableState.update { it.copy(showConsentDialog = true, pendingConsentAction = PendingConsentAction.STALE_REASSESSMENT) }
+            return
+        }
+        if (!context.isOnline()) {
+            mutableState.update { it.copy(screenError = ScreenErrorKey.Offline) }
+            return
+        }
+        val policy = s.installerPolicy
+        if (policy != null && policy.requiresPromptWarning && s.options.batchSize > 1) {
+            mutableState.update { it.copy(showPromptHeavyWarningDialog = true, pendingStaleReassessmentAfterPromptWarning = true) }
+            return
+        }
+        launchEvaluation(promptHeavyCleanupAllowed = false, isContinuation = s.canContinueStale, staleRun = true)
+    }
+
+    /** Explicitly restart the stale/outdated reassessment queue from the beginning, discarding its cursor. */
+    fun restartStaleReassessment() {
+        sourcePreferences.sourceEvaluationContinuationCursorStale().set("")
+        mutableState.update { it.copy(continuationCursorStale = null, canContinueStale = false) }
+        startOrContinueStaleReassessment()
     }
     // KMK <--
 
@@ -782,14 +913,75 @@ class SourceEvaluationScreenModel(
             evaluations = s.evaluations,
             installedExtensionKeys = s.installedExtensionKeys,
             showInstalled = s.showInstalled,
+            // KMK v0.8.1-fix4
+            qualityDislikedExtensionKeys = s.qualityDislikedSourceKeys,
+            showSourceQualityDisliked = s.showSourceQualityDisliked,
         )
         mutableState.update {
             it.copy(
                 filteredEvaluations = result.visible,
                 hiddenInstalledCount = result.hiddenInstalledCount,
+                hiddenSourceQualityCount = result.hiddenSourceQualityCount, // KMK v0.8.1-fix4
             )
         }
     }
+
+    // KMK v0.8.1-fix4: source/library-quality actions on Source Evaluation rows -- separate axis
+    // from recommendation-behavior dislike. History is preserved (no row deletion); marked rows are
+    // hidden from future candidate pools and, by default, from the past-results list (recoverable
+    // via setShowSourceQualityDisliked(true)).
+
+    fun setShowSourceQualityDisliked(show: Boolean) {
+        mutableState.update { it.copy(showSourceQualityDisliked = show) }
+        applyDisplayFilter()
+    }
+
+    private fun applySourceQualityMark(evaluation: SourceEvaluation, poor: Boolean) {
+        val key = "a|${evaluation.extensionKey}"
+        val likedPref = sourcePreferences.likedSourceQualityKeys()
+        val dislikedPref = sourcePreferences.dislikedSourceQualityKeys()
+        val explicitPref = sourcePreferences.explicitSourceQualityKeys()
+        val current = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
+            liked = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(likedPref.get()),
+            disliked = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(dislikedPref.get()),
+            explicit = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(explicitPref.get()),
+        )
+        val next = if (poor) {
+            exh.recs.sourceprefs.SourceQualityMarkPolicy.markPoor(current, key)
+        } else {
+            exh.recs.sourceprefs.SourceQualityMarkPolicy.markExplicit(current, key)
+        }
+        likedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.liked))
+        dislikedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.disliked))
+        explicitPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.explicit))
+        mutableState.update { it.copy(qualityDislikedSourceKeys = next.disliked, qualityExplicitSourceKeys = next.explicit) }
+        applyDisplayFilter()
+        applyOptionsAndUpdateState()
+    }
+
+    fun markSourceQualityPoor(evaluation: SourceEvaluation) = applySourceQualityMark(evaluation, poor = true)
+
+    fun markSourceQualityExplicit(evaluation: SourceEvaluation) = applySourceQualityMark(evaluation, poor = false)
+
+    fun clearSourceQualityMark(evaluation: SourceEvaluation) {
+        val key = "a|${evaluation.extensionKey}"
+        val likedPref = sourcePreferences.likedSourceQualityKeys()
+        val dislikedPref = sourcePreferences.dislikedSourceQualityKeys()
+        val explicitPref = sourcePreferences.explicitSourceQualityKeys()
+        val current = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
+            liked = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(likedPref.get()),
+            disliked = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(dislikedPref.get()),
+            explicit = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(explicitPref.get()),
+        )
+        val next = exh.recs.sourceprefs.SourceQualityMarkPolicy.clear(current, key)
+        likedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.liked))
+        dislikedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.disliked))
+        explicitPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.explicit))
+        mutableState.update { it.copy(qualityDislikedSourceKeys = next.disliked, qualityExplicitSourceKeys = next.explicit) }
+        applyDisplayFilter()
+        applyOptionsAndUpdateState()
+    }
+    // KMK <--
 
     // KMK --> v0.7.6: load rec-quality fits into state for display
     private fun loadRecommendationFits() {
@@ -817,298 +1009,66 @@ class SourceEvaluationScreenModel(
     // KMK <--
 
     // KMK --> v0.7.7: evaluate recommendation quality for promising sources from this screen
+    // KMK --> v0.7.42-fix2: reCheckAll now targets missing + outdated + checked (all eligible rows),
+    // matching the plan's "Recheck all is the only action targeting all eligible rows" requirement —
+    // previously it targeted missing + checked only, silently skipping outdated rows because the
+    // pre-fix2 queue conflated missing and outdated into one bucket.
     fun evaluateRecommendationQualityForPromising(reCheckAll: Boolean = false) {
-        if (state.value.recQualityRunning) return
         val s = state.value
         val queue = SourceRecommendationQualityQueue.compute(s.evaluations, s.recommendationFitsByEvalKey)
         val targets = if (reCheckAll) {
-            queue.missingPromising + queue.checkedPromising
+            queue.missingPromising + queue.outdatedPromising + queue.checkedPromising
         } else {
             queue.missingPromising
         }
+        startRecQualityJob(targets)
+    }
+    // KMK <--
+
+    // KMK --> v0.7.42-fix2: targeted recheck for stale-only fits — distinct from the normal "missing
+    // only" check and from "Recheck all". Never touches missing or current rows.
+    fun recheckOutdatedRecommendationQuality() {
+        val s = state.value
+        val queue = SourceRecommendationQualityQueue.compute(s.evaluations, s.recommendationFitsByEvalKey)
+        startRecQualityJob(queue.outdatedPromising)
+    }
+    // KMK <--
+
+    // KMK --> v0.7.43: enqueue SourceRecommendationQualityJob (WorkManager) instead of running the
+    // probe loop in screenModelScope, so the check survives navigating away from this screen. Guards
+    // concurrency (recQualityRunning), empty targets, and conflict with a running full Source
+    // Evaluation job (both may temporarily install extensions and must not overlap).
+    private fun startRecQualityJob(targets: List<SourceEvaluation>) {
+        if (state.value.recQualityRunning) return
         if (targets.isEmpty()) return
-
-        mutableState.update {
-            it.copy(recQualityRunning = true, recQualityTotal = targets.size, recQualityProgress = 0)
-        }
-
-        screenModelScope.launch {
-            try {
-                val tasteProfile = try {
-                    getTasteProfile.await()
-                } catch (e: Exception) {
-                    logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load taste profile for rec-quality action" }
-                    mutableState.update { it.copy(recQualityRunning = false) }
-                    return@launch
-                }
-                val probe = SourceRecommendationFitProbe(getTagAliases)
-                // KMK --> v0.7.10: load full available extension list, not just the current candidate pool
-                val availableExtensions = loadAvailableExtensionsForRecQuality()
-                // KMK <--
-                val installerOverride = SourceEvaluationInstallerPolicy.effectiveInstallerOverride(
-                    mode = state.value.options.installerMode,
-                    currentGlobalInstaller = basePreferences.extensionInstaller().get(),
-                    privateAvailable = state.value.privateAvailable,
-                )
-
-                for ((index, evaluation) in targets.withIndex()) {
-                    try {
-                        evaluateOneForRecQuality(evaluation, probe, tasteProfile, availableExtensions, installerOverride)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: rec-quality probe failed for ${evaluation.sourceName}" }
-                        writeRecQualityErrorFit(evaluation, e.message ?: "Probe error")
-                    }
-                    mutableState.update { it.copy(recQualityProgress = index + 1) }
-                }
-            } finally {
-                loadRecommendationFits()
-                mutableState.update { it.copy(recQualityRunning = false) }
-            }
-        }
-    }
-
-    // KMK --> v0.7.7 follow-up: per-source rec-quality evaluation with temporary install support
-    // KMK --> v0.7.10: use robust installed/source resolvers; guard empty available list
-    private suspend fun evaluateOneForRecQuality(
-        evaluation: SourceEvaluation,
-        probe: SourceRecommendationFitProbe,
-        tasteProfile: TasteProfile,
-        availableExtensions: List<Extension.Available>,
-        installerOverride: BasePreferences.ExtensionInstaller?,
-    ) {
-        // Installed path: probe directly without any install/cleanup
-        val installedList = extensionManager.installedExtensionsFlow.value
-        val installedResolve = SourceRecommendationQualityInstalledResolver.resolve(evaluation, installedList)
-        if (installedResolve is SourceRecommendationQualityInstalledResolver.ResolveResult.Found) {
-            val alreadyInstalled = installedResolve.extension
-            when (val sr = SourceRecommendationQualitySourceResolver.resolve(alreadyInstalled, evaluation)) {
-                is SourceRecommendationQualitySourceResolver.ResolveResult.Found -> {
-                    val outcome = probe.probe(sr.source, tasteProfile)
-                    upsertSourceRecommendationFit.await(buildRecQualityFitFromOutcome(evaluation, outcome))
-                }
-                is SourceRecommendationQualitySourceResolver.ResolveResult.Ambiguous -> {
-                    writeRecQualityErrorFit(evaluation, "Source match ambiguous in installed extension: ${sr.reason}")
-                }
-                is SourceRecommendationQualitySourceResolver.ResolveResult.NotFound -> {
-                    writeRecQualityErrorFit(evaluation, "Source not found in installed extension")
-                }
-            }
-            return
-        }
-        if (installedResolve is SourceRecommendationQualityInstalledResolver.ResolveResult.Ambiguous) {
-            writeRecQualityErrorFit(evaluation, "Installed extension match ambiguous: ${installedResolve.reason}")
-            return
-        }
-
-        // Non-installed path: resolve from available pool, install temporarily, probe, cleanup
-        if (availableExtensions.isEmpty()) {
-            writeRecQualityErrorFit(evaluation, "Available extension list unavailable")
-            return
-        }
-        val resolved = SourceRecommendationQualityExtensionResolver.resolve(evaluation, availableExtensions)
-        val availableExt = when (resolved) {
-            is SourceRecommendationQualityExtensionResolver.ResolveResult.NotFound -> {
-                writeRecQualityErrorFit(evaluation, "Extension not found in available sources")
-                return
-            }
-            is SourceRecommendationQualityExtensionResolver.ResolveResult.Ambiguous -> {
-                writeRecQualityErrorFit(evaluation, "Extension match ambiguous: ${resolved.reason}")
-                return
-            }
-            is SourceRecommendationQualityExtensionResolver.ResolveResult.Found -> resolved.extension
-        }
-
-        val installSuccess = withTimeoutOrNull(90_000L) {
-            try {
-                extensionManager.installExtension(availableExt, installerOverride)
-                    .first { it == InstallStep.Installed || it == InstallStep.Error } == InstallStep.Installed
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                false
-            }
-        } ?: false
-
-        if (!installSuccess) {
-            writeRecQualityErrorFit(evaluation, "Install failed or timed out")
-            return
-        }
-
-        val installedExt = withTimeoutOrNull(20_000L) {
-            extensionManager.installedExtensionsFlow.first { installed ->
-                installed.any { it.pkgName == availableExt.pkgName && it.signatureHash == availableExt.signatureHash }
-            }.find { it.pkgName == availableExt.pkgName && it.signatureHash == availableExt.signatureHash }
-        }
-
-        if (installedExt == null) {
-            writeRecQualityErrorFit(evaluation, "Installed extension did not load")
-            cleanupRecQualityExtension(availableExt)
-            return
-        }
-
-        try {
-            when (val sr = SourceRecommendationQualitySourceResolver.resolve(installedExt, evaluation)) {
-                is SourceRecommendationQualitySourceResolver.ResolveResult.Found -> {
-                    val outcome = probe.probe(sr.source, tasteProfile)
-                    upsertSourceRecommendationFit.await(buildRecQualityFitFromOutcome(evaluation, outcome))
-                }
-                is SourceRecommendationQualitySourceResolver.ResolveResult.Ambiguous -> {
-                    writeRecQualityErrorFit(evaluation, "Source match ambiguous after install: ${sr.reason}")
-                }
-                is SourceRecommendationQualitySourceResolver.ResolveResult.NotFound -> {
-                    writeRecQualityErrorFit(evaluation, "Source not found after install")
-                }
-            }
-        } finally {
-            cleanupRecQualityExtension(availableExt)
-        }
-    }
-    // KMK <--
-
-    // KMK --> v0.7.10: prefer full available extension list over the screen-local candidate pool
-    private fun loadAvailableExtensionsForRecQuality(): List<Extension.Available> {
-        val fromManager = extensionManager.availableExtensionsFlow.value
-        if (fromManager.isNotEmpty()) return fromManager
-        val fromPool = lastCandidatePool.value?.allEligible?.map { it.extension }
-        if (!fromPool.isNullOrEmpty()) return fromPool
-        return emptyList()
-    }
-    // KMK <--
-
-    private fun cleanupRecQualityExtension(ext: Extension.Available) {
-        try {
-            val installedExt = extensionManager.installedExtensionsFlow.value.find {
-                it.pkgName == ext.pkgName && it.signatureHash == ext.signatureHash
-            }
-            val decision = SourceEvaluationCleanupPolicy.cleanupDecision(
-                preExistingInstalled = false,
-                installedAfterEvaluation = installedExt != null,
-                isShared = installedExt?.isShared ?: false,
-            )
-            when (decision) {
-                SourceEvaluationCleanupPolicy.CleanupDecision.RemovePrivateSilently -> {
-                    extensionManager.uninstallExtension(installedExt!!)
-                }
-                SourceEvaluationCleanupPolicy.CleanupDecision.PromptRequired -> {
-                    logcat(LogPriority.INFO) {
-                        "KMK SourceEvaluation rec-quality: skipping system-installed cleanup for ${ext.name}"
-                    }
-                }
-                else -> { /* SkipPreExisting or NotNeeded */ }
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            logcat(LogPriority.WARN, e) { "KMK SourceEvaluation rec-quality: cleanup failed for ${ext.name}" }
-        }
-    }
-
-    private suspend fun writeRecQualityErrorFit(evaluation: SourceEvaluation, message: String) {
-        try {
-            upsertSourceRecommendationFit.await(buildRecQualityErrorFit(evaluation, message))
-        } catch (_: Exception) {}
-    }
-
-    private fun buildRecQualityFitFromOutcome(
-        evaluation: SourceEvaluation,
-        outcome: SourceRecommendationFitProbeOutcome,
-    ): SourceRecommendationFit {
-        val qualityScore = SourceRecommendationFitScorer.score(outcome.toScorerOutcome())
-        val label = outcome.label()
-        val verdict = RecommendationQualityVerdict.fromSerialized(label.name.lowercase())
-        // KMK --> v0.7.12: populate errorMessage so the UI can display why the probe failed
-        // KMK --> v0.7.13: extend to WEAK and NO_MATCHES so user sees reason, not just label
-        val probeErrorMessage = when (label) {
-            RecommendationQualityLabel.ERROR -> {
-                if (outcome.reasons.isNotEmpty()) {
-                    outcome.reasons.take(2).joinToString("; ").take(200)
-                } else {
-                    null
-                }
-            }
-            RecommendationQualityLabel.NO_MATCHES -> {
-                if (outcome.weakMetadataCandidateCount > 0) {
-                    "Search returned results but none had usable genre metadata"
-                } else {
-                    "Search returned no results for taste profile tags"
-                }
-            }
-            RecommendationQualityLabel.WEAK -> {
-                buildString {
-                    if (outcome.weakMetadataCandidateCount > 0) {
-                        append("${outcome.weakMetadataCandidateCount} result(s) had no genre even after enrichment")
-                    }
-                    if (outcome.blockedTagCandidateCount > 0) {
-                        if (isNotEmpty()) append("; ")
-                        append("${outcome.blockedTagCandidateCount} blocked by tag filter")
-                    }
-                    if (isEmpty()) {
-                        append("Results did not match taste profile tags")
-                    }
-                }.take(200)
-            }
-            else -> null
-        }
-        // KMK <--
-        // KMK <--
-        return SourceRecommendationFit(
-            fitKey = SourceRecommendationFit.fitKeyFor(evaluation.evaluationKey),
-            evaluationKey = evaluation.evaluationKey,
-            sourceId = evaluation.sourceId,
-            extensionPkgName = evaluation.extensionPkgName,
-            signatureHash = evaluation.signatureHash,
-            extensionName = evaluation.extensionName,
-            sourceName = evaluation.sourceName,
-            lang = evaluation.lang,
-            evaluatedAt = System.currentTimeMillis(),
-            queryCount = outcome.queryCount,
-            querySuccessCount = outcome.querySuccessCount,
-            rawResultCount = outcome.rawResultCount,
-            visibleCandidateCount = outcome.visibleCandidateCount,
-            filteredOutCount = outcome.filteredOutCount,
-            blockedTagCandidateCount = outcome.blockedTagCandidateCount,
-            matchedGroupCount = outcome.matchedGroupCount,
-            topPicksContribution = outcome.topPicksContribution,
-            noMatchesCount = outcome.noMatchesCount,
-            errorCount = outcome.errorCount,
-            avgCandidateScore = outcome.avgCandidateScore,
-            recommendationQualityScore = qualityScore,
-            verdict = verdict,
-            reasonsJson = "[${outcome.reasons.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }}]",
-            errorMessage = probeErrorMessage,
+        val qualityConflict = SourceRecommendationQualityJobConflictPolicy.conflictFor(
+            starting = ScreenErrorKey.ActiveJobKind.RECOMMENDATION_QUALITY,
+            sourceEvaluationRunning = SourceEvaluationJob.isRunning(context),
+            recommendationQualityRunning = false,
         )
+        if (qualityConflict != null) {
+            mutableState.update { it.copy(screenError = ScreenErrorKey.JobConflict(qualityConflict)) }
+            return
+        }
+
+        SourceRecommendationQualityJobState.pendingTargets = targets
+        SourceRecommendationQualityJobState.activeQueueState.value = SourceRecommendationQualityQueueState(
+            status = SourceRecommendationQualityQueueState.Status.Running,
+            totalCount = targets.size,
+        )
+        SourceRecommendationQualityJob.start(context, state.value.options.installerMode)
     }
     // KMK <--
 
-    private fun buildRecQualityErrorFit(
-        evaluation: SourceEvaluation,
-        errorMessage: String,
-    ) = SourceRecommendationFit(
-        fitKey = SourceRecommendationFit.fitKeyFor(evaluation.evaluationKey),
-        evaluationKey = evaluation.evaluationKey,
-        sourceId = evaluation.sourceId,
-        extensionPkgName = evaluation.extensionPkgName,
-        signatureHash = evaluation.signatureHash,
-        extensionName = evaluation.extensionName,
-        sourceName = evaluation.sourceName,
-        lang = evaluation.lang,
-        evaluatedAt = System.currentTimeMillis(),
-        queryCount = 0,
-        querySuccessCount = 0,
-        rawResultCount = 0,
-        visibleCandidateCount = 0,
-        filteredOutCount = 0,
-        blockedTagCandidateCount = 0,
-        matchedGroupCount = 0,
-        topPicksContribution = 0,
-        noMatchesCount = 0,
-        errorCount = 1,
-        avgCandidateScore = 0.0,
-        recommendationQualityScore = 0.0,
-        verdict = RecommendationQualityVerdict.ERROR,
-        reasonsJson = "[]",
-        errorMessage = errorMessage,
-    )
+    // KMK --> v0.7.43: cancel a running background For You compatibility check
+    fun cancelRecommendationQualityCheck() {
+        SourceRecommendationQualityJob.cancel(context)
+        SourceRecommendationQualityJobState.activeQueueState.value =
+            SourceRecommendationQualityJobState.activeQueueState.value
+                ?.copy(status = SourceRecommendationQualityQueueState.Status.Cancelled)
+                ?: SourceRecommendationQualityQueueState(status = SourceRecommendationQualityQueueState.Status.Cancelled)
+    }
+    // KMK <--
 
     private fun updateContinuationCursor() {
         screenModelScope.launch {
@@ -1118,28 +1078,41 @@ class SourceEvaluationScreenModel(
                 val completedKeys = runner.completedCandidateKeys
                 if (completedKeys.isEmpty()) return@launch
                 val fingerprint = SourceEvaluationJobState.pendingCursorFingerprint ?: return@launch
-                val allCandidates = SourceEvaluationJobState.pendingAllCandidates ?: s.candidates
+                // KMK --> v0.8.1-fix3: route to the stale-queue cursor slot when this run was a
+                // stale/outdated reassessment batch, so it never overwrites the unassessed cursor.
+                val staleRun = SourceEvaluationJobState.pendingIsStaleRun
+                val allCandidates = SourceEvaluationJobState.pendingAllCandidates
+                    ?: if (staleRun) s.staleCandidates else s.candidates
+                val priorCursor = if (staleRun) s.continuationCursorStale else s.continuationCursor
                 val newCursor = SourceEvaluationContinuationPolicy.advanceCursor(
-                    current = s.continuationCursor,
+                    current = priorCursor,
                     completedKeys = completedKeys,
                     allCandidates = allCandidates,
                     currentFingerprint = fingerprint,
                 )
                 val serialized = SourceEvaluationContinuationPolicy.serialize(newCursor)
-                sourcePreferences.sourceEvaluationContinuationCursor().set(serialized)
+                if (staleRun) {
+                    sourcePreferences.sourceEvaluationContinuationCursorStale().set(serialized)
+                } else {
+                    sourcePreferences.sourceEvaluationContinuationCursor().set(serialized)
+                }
 
                 val recLanguages = RecommendationSourceFilter.normalizeLanguages(
                     sourcePreferences.recommendationSourceLanguages().get(),
                 )
                 val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
-                val currentFingerprint = SourceEvaluationContinuationPolicy.buildFilterFingerprint(
-                    languages = recLanguages,
-                    includeExplicit = s.options.includeExplicitCandidates,
-                    skipAlreadyEvaluated = s.options.skipAlreadyEvaluated,
-                    reEvaluateStale = s.options.reEvaluateStale,
-                    onlyUpdatedEvaluated = s.options.onlyUpdatedEvaluated,
-                    blockExplicit = blockExplicit,
-                )
+                val currentFingerprint = if (staleRun) {
+                    fingerprint
+                } else {
+                    SourceEvaluationContinuationPolicy.buildFilterFingerprint(
+                        languages = recLanguages,
+                        includeExplicit = s.options.includeExplicitCandidates,
+                        skipAlreadyEvaluated = s.options.skipAlreadyEvaluated,
+                        reEvaluateStale = s.options.reEvaluateStale,
+                        onlyUpdatedEvaluated = s.options.onlyUpdatedEvaluated,
+                        blockExplicit = blockExplicit,
+                    )
+                }
                 val canContinue = SourceEvaluationContinuationPolicy.canContinue(
                     candidates = allCandidates,
                     cursor = newCursor,
@@ -1151,12 +1124,21 @@ class SourceEvaluationScreenModel(
                     currentFingerprint = currentFingerprint,
                 )
                 mutableState.update {
-                    it.copy(
-                        continuationCursor = newCursor,
-                        canContinue = canContinue,
-                        remainingCandidateCount = remaining,
-                    )
+                    if (staleRun) {
+                        it.copy(
+                            continuationCursorStale = newCursor,
+                            canContinueStale = canContinue,
+                            remainingStaleCandidateCount = remaining,
+                        )
+                    } else {
+                        it.copy(
+                            continuationCursor = newCursor,
+                            canContinue = canContinue,
+                            remainingCandidateCount = remaining,
+                        )
+                    }
                 }
+                // KMK <--
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to update cursor" }
             }
@@ -1444,6 +1426,29 @@ class SourceEvaluationScreenModel(
         val remaining = SourceEvaluationContinuationPolicy.remainingCount(result.candidates, currentCursor, fingerprint)
         // KMK <--
 
+        // KMK --> v0.8.1-fix3: compute the stale/outdated reassessment queue independently of the
+        // unassessed-queue options above — see SourceEvaluationCandidateQueuePolicy doc.
+        val staleCandidates = SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now)
+        val staleFingerprint = SourceEvaluationContinuationPolicy.buildFilterFingerprint(
+            languages = recLanguages,
+            includeExplicit = opts.includeExplicitCandidates,
+            skipAlreadyEvaluated = false,
+            reEvaluateStale = true,
+            onlyUpdatedEvaluated = false,
+            blockExplicit = blockExplicit,
+        ) + "|queue=stale"
+        val currentCursorStale = state.value.continuationCursorStale
+        val canContinueStale = SourceEvaluationContinuationPolicy.canContinue(staleCandidates, currentCursorStale, staleFingerprint)
+        val remainingStale = SourceEvaluationContinuationPolicy.remainingCount(staleCandidates, currentCursorStale, staleFingerprint)
+        // KMK <--
+
+        // KMK v0.8.8: root-cause fix for "visible Outdated rows but Continue reassessing outdated
+        // reports zero candidates" — see SourceEvaluationOutdatedReconciliation's class doc for the
+        // full traced pipeline and confirmed cause. Reconciles the display-only "Outdated" row
+        // classification against actual candidate-pool eligibility so the UI can explain a
+        // zero-candidate outdated queue truthfully instead of it looking like a silent failure.
+        val outdatedReconciliation = SourceEvaluationOutdatedReconciliation.reconcile(state.value.evaluations, pool, now)
+
         // KMK --> v0.7.18: warn when candidates empty AND available extensions list is also empty
         val repoUnavailable = result.candidates.isEmpty() &&
             pool.allEligible.isEmpty() &&
@@ -1470,6 +1475,13 @@ class SourceEvaluationScreenModel(
                 canContinue = canContinue,
                 remainingCandidateCount = remaining,
                 // KMK <--
+                // KMK --> v0.8.1-fix3: stale/outdated reassessment queue state
+                staleCandidates = staleCandidates,
+                canContinueStale = canContinueStale,
+                remainingStaleCandidateCount = remainingStale,
+                // KMK <--
+                // KMK v0.8.8
+                outdatedReconciliation = outdatedReconciliation,
                 // KMK --> v0.7.18
                 repoUnavailableWarning = repoUnavailable && s.screenError == null,
                 // KMK <--

@@ -1,4 +1,4 @@
-# Source Preference Like/Dislike Implementation Plan
+﻿# Source Preference Like/Dislike Implementation Plan
 
 Date: 2026-06-17
 
@@ -348,7 +348,7 @@ If disliked installed sources are excluded from For You, the UI should show this
 Suggested row label:
 
 ```text
-Disliked · excluded from For You
+Disliked Â· excluded from For You
 ```
 
 Alternative:
@@ -624,3 +624,4 @@ For installed sources:
 - disliked source is marked and excluded/deprioritized from For You according to the chosen implementation.
 
 Do not auto-install, auto-uninstall, crawl websites, or implement source-fit learning in this pass.
+

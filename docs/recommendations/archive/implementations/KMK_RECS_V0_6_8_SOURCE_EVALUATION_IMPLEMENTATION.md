@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.8: Source Evaluation — Implementation Notes
+﻿# KMK-Recs v0.6.8: Source Evaluation â€” Implementation Notes
 
 ## Overview
 
@@ -48,48 +48,48 @@ All registered in `KMKDomainModule`.
 
 ### Evaluation engine (`app/.../exh/recs/evaluation/`)
 
-**`SourceEvaluationInstallerPolicy`** — pure object, no Android deps
+**`SourceEvaluationInstallerPolicy`** â€” pure object, no Android deps
 - `InstallerMode`: `CURRENT`, `PRIVATE`, `SHIZUKU`
 - `validate(...)` returns `PolicyResult` with readiness, max batch size, cleanup silence, message
 - PRIVATE: max 100, cleanup silent; SHIZUKU: max 50, cleanup NOT silent; CURRENT: delegates
-- `effectiveInstallerOverride()` → `BasePreferences.ExtensionInstaller?` for Option A threading
-- `recommendDefaultMode()` → prefers PRIVATE > SHIZUKU > CURRENT
+- `effectiveInstallerOverride()` â†’ `BasePreferences.ExtensionInstaller?` for Option A threading
+- `recommendDefaultMode()` â†’ prefers PRIVATE > SHIZUKU > CURRENT
 
-**`SourceEvaluationQueueState`** — observable UI state
+**`SourceEvaluationQueueState`** â€” observable UI state
 - `Status`: Idle/Running/Cancelling/Completed/Cancelled/Failed
 - `Phase`: Idle/Downloading/Installing/LoadingSources/ProbingPopular/ProbingLatest/ProbingSearch/Scoring/Cleanup
 - `EvaluationResult` per source; computed properties for verdict counts
 
-**`SourceEvaluationOptions`** — run configuration (installerMode, batchSize, skip flags)
+**`SourceEvaluationOptions`** â€” run configuration (installerMode, batchSize, skip flags)
 
-**`EvaluationCandidate`** — wrapper for `Extension.Available` + priority rank
+**`EvaluationCandidate`** â€” wrapper for `Extension.Available` + priority rank
 
-**`SourceEvaluationScorer`** — pure stateless scorer, no Android deps
+**`SourceEvaluationScorer`** â€” pure stateless scorer, no Android deps
 - Probes explicit signals in sampled titles/tags (`EXPLICIT_TAG_TERMS`, `ECCHI_TAG_TERMS`)
 - Uses `ExplicitSourceClassifier.isExplicitName/isExplicitPackageName` for name bias
 - Uses `normalizeTag()` for tag matching against taste profile
 - Scores: `qualityScore`, `searchReliabilityScore`, `recommendationFitScore`, `explicitScore`, `ecchiScore`
-- Verdict logic: explicit ≥ 0.5 → `EXPLICIT_HEAVY`; ecchi ≥ 0.5 AND explicit < 0.3 → `ECCHI_HEAVY`;
-  fitScore ≥ 0.70 AND quality ≥ 0.5 AND search ≥ 0.4 → `STRONG_FIT`; fit ≥ 0.50 AND quality ≥ 0.3 → `WORTH_TRYING`
+- Verdict logic: explicit â‰¥ 0.5 â†’ `EXPLICIT_HEAVY`; ecchi â‰¥ 0.5 AND explicit < 0.3 â†’ `ECCHI_HEAVY`;
+  fitScore â‰¥ 0.70 AND quality â‰¥ 0.5 AND search â‰¥ 0.4 â†’ `STRONG_FIT`; fit â‰¥ 0.50 AND quality â‰¥ 0.3 â†’ `WORTH_TRYING`
 - Post-install scores exceed 0.70 (pre-install metadata scorer caps at 0.69)
 - `errorRecord(...)` helper for install/load failures
 
-**`SourceEvaluationRunner`** — Kotlin coroutine orchestrator
+**`SourceEvaluationRunner`** â€” Kotlin coroutine orchestrator
 - `start(candidates, options)` runs sequentially via a `supervisorScope` loop (never parallel)
-- Per extension: download (timeout 90s) → install wait → load sources (20s) → probe each source → score → persist → cleanup
-- Per source: popular (30s) → latest (30s) → 3 search probes (25s each) → score
-- Cleanup via `extensionManager.uninstallExtension()` — for private-installed extensions this is
+- Per extension: download (timeout 90s) â†’ install wait â†’ load sources (20s) â†’ probe each source â†’ score â†’ persist â†’ cleanup
+- Per source: popular (30s) â†’ latest (30s) â†’ 3 search probes (25s each) â†’ score
+- Cleanup via `extensionManager.uninstallExtension()` â€” for private-installed extensions this is
   silent (`ExtensionLoader.uninstallPrivateExtension` + `ExtensionInstallReceiver.notifyRemoved`)
 - Installer override: `installerOverride` param threaded through `ExtensionManager.installExtension`
-  → `ExtensionInstaller.downloadAndInstall` → `installApk`. Global preference never mutated.
+  â†’ `ExtensionInstaller.downloadAndInstall` â†’ `installApk`. Global preference never mutated.
 
-**`SourceEvaluationScreenModel`** — Voyager StateScreenModel
+**`SourceEvaluationScreenModel`** â€” Voyager StateScreenModel
 - Observes evaluations via `GetSourceEvaluations.subscribeAll()`
 - Loads candidates from `GetNonInstalledSourceSuggestions.subscribe()`
 - Resolves installer policy (PRIVATE availability, Shizuku package presence)
 - `startEvaluation()` creates `SourceEvaluationRunner` and mirrors its state
 
-**`SourceEvaluationScreen`** — Voyager Screen
+**`SourceEvaluationScreen`** â€” Voyager Screen
 - Options: batch size (10/25/50/100), installer mode, skip-already-evaluated, include-explicit
 - Progress card (phase label, extension/source name, progress bar, cancel button)
 - Summary card (verdict counts on completion/cancel/fail)
@@ -104,23 +104,23 @@ during evaluation; normal installs and updates are unchanged.
 
 ### Sources To Try integration
 
-**`NonInstalledSourceSuggestion.kt`** — four new reason variants inside `// KMK -->` marker:
+**`NonInstalledSourceSuggestion.kt`** â€” four new reason variants inside `// KMK -->` marker:
 - `EvaluatedStrongFit`, `EvaluatedWorthTrying`, `EvaluatedExplicitHeavy`, `EvaluatedEcchiHeavy`
 
-**`NonInstalledSourceSuggestionScorer.scoreAndFilter()`** — new `evaluations` param
-- `REJECTED` verdict → excluded from suggestions
-- `EXPLICIT_HEAVY` verdict + blockExplicit on → excluded
-- `STRONG_FIT` → score 0.90; `WORTH_TRYING` → 0.75; `EXPLICIT_HEAVY` → 0.10; `ECCHI_HEAVY` → 0.30
+**`NonInstalledSourceSuggestionScorer.scoreAndFilter()`** â€” new `evaluations` param
+- `REJECTED` verdict â†’ excluded from suggestions
+- `EXPLICIT_HEAVY` verdict + blockExplicit on â†’ excluded
+- `STRONG_FIT` â†’ score 0.90; `WORTH_TRYING` â†’ 0.75; `EXPLICIT_HEAVY` â†’ 0.10; `ECCHI_HEAVY` â†’ 0.30
 - Evaluated weak/neutral/poor-search fall through to metadata-only scoring
 
-**`GetNonInstalledSourceSuggestions.subscribe()`** — adds evaluation data as 6th reactive source
+**`GetNonInstalledSourceSuggestions.subscribe()`** â€” adds evaluation data as 6th reactive source
 - `kotlinx.coroutines.combine` supports max 5 type-safe sources; 6th (evaluations flow) is paired
   with `dislikedPref.changes()` via a nested `combine` to stay within the limit
 
-**`RecommendationsSettingsScreen.kt`** — `when` on `NonInstalledSuggestionReason` extended:
-- `EvaluatedStrongFit` → `rec_suggestion_reason_evaluated_strong_fit`
-- `EvaluatedWorthTrying` → `rec_suggestion_reason_evaluated_worth_trying`
-- `EvaluatedExplicitHeavy`, `EvaluatedEcchiHeavy` → `null` (hidden from reason chips)
+**`RecommendationsSettingsScreen.kt`** â€” `when` on `NonInstalledSuggestionReason` extended:
+- `EvaluatedStrongFit` â†’ `rec_suggestion_reason_evaluated_strong_fit`
+- `EvaluatedWorthTrying` â†’ `rec_suggestion_reason_evaluated_worth_trying`
+- `EvaluatedExplicitHeavy`, `EvaluatedEcchiHeavy` â†’ `null` (hidden from reason chips)
 - "Source Evaluation" entry section added after Sources To Try (header + button + description)
 
 ---
@@ -169,3 +169,4 @@ during evaluation; normal installs and updates are unchanged.
 | `app/.../settings/RecommendationsSettingsScreen.kt` | MODIFIED (new section + when branches) |
 | `app/.../KmkRecsReleaseNotes.kt` | MODIFIED (v0.6.8) |
 | `i18n-kmk/.../base/strings.xml` | MODIFIED (evaluation strings) |
+

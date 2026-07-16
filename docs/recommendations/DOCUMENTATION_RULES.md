@@ -1,4 +1,4 @@
-# KMK Personal Recommendations Documentation Rules
+﻿# KMK Personal Recommendations Documentation Rules
 
 Date: 2026-06-14
 
@@ -60,3 +60,4 @@ Komikku-v1.13.6-kmk.3.2-release.apk
 ```
 
 Update `RECOMMENDATION_VERSIONING.md` whenever an APK is handed off.
+

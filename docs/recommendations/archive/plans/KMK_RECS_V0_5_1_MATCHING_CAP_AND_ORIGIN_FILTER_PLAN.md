@@ -1,4 +1,4 @@
-# KMK-Recs v0.5.1 Matching Cap And Origin Filter Plan
+﻿# KMK-Recs v0.5.1 Matching Cap And Origin Filter Plan
 
 Date: 2026-06-16
 
@@ -335,3 +335,4 @@ Implement KMK-Recs v0.5.1 as a small correction patch for the cross-extension ma
 - align `CURRENT_STATE.md`, `NEXT_WORK.md`, `README.md`, `RECOMMENDATION_VERSIONING.md`, release notes, tests, and APK naming.
 
 Do not implement favorite mode, link groups, backup changes, or unrelated recommendation features in this patch.
+

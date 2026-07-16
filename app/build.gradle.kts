@@ -28,7 +28,7 @@ android {
     defaultConfig {
         applicationId = "app.komikku"
 
-        versionCode = 88 // KMK-Recs v0.7.16
+        versionCode = 88 // Android package versionCode. KMK feature version is tracked separately in KmkRecsReleaseNotes.
         versionName = "1.13.6"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
@@ -97,6 +97,19 @@ android {
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
+        // KMK --> public test build line: separate applicationId (app.komikku.kmk) for community sharing
+        create("kmkPublicTest") {
+            initWith(release)
+
+            applicationIdSuffix = ".kmk"
+            isMinifyEnabled = false
+            isShrinkResources = false
+
+            signingConfig = debug.signingConfig
+
+            matchingFallbacks.addAll(commonMatchingFallbacks)
+        }
+        // KMK <--
     }
 
     sourceSets {

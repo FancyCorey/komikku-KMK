@@ -37,7 +37,21 @@ CREATE TABLE source_evaluation (
     -- KMK --> v0.7.4: extension version at evaluation time
     extension_version_name TEXT,
     extension_version_code INTEGER,
-    extension_apk_name TEXT
+    extension_apk_name TEXT,
+    -- KMK <--
+    -- KMK --> v0.7.42: catalogue-only metadata confidence (see migration 59)
+    catalogue_metadata_confidence TEXT NOT NULL DEFAULT 'unknown',
+    -- KMK <--
+    -- KMK --> v0.7.47: detail-enrichment + split evidence counters (see migration 61)
+    detail_enrichment_attempt_count INTEGER NOT NULL DEFAULT 0,
+    detail_enrichment_success_count INTEGER NOT NULL DEFAULT 0,
+    metadata_candidate_count INTEGER NOT NULL DEFAULT 0,
+    positive_candidate_count INTEGER NOT NULL DEFAULT 0,
+    negative_candidate_count INTEGER NOT NULL DEFAULT 0,
+    explicit_preferred_group_hit_count INTEGER NOT NULL DEFAULT 0,
+    learned_positive_group_hit_count INTEGER NOT NULL DEFAULT 0,
+    blocked_candidate_count INTEGER NOT NULL DEFAULT 0,
+    adult_signal_candidate_count INTEGER NOT NULL DEFAULT 0
     -- KMK <--
 );
 
@@ -90,7 +104,11 @@ INSERT INTO source_evaluation(
     ecchi_signal_count, error_count, quality_score, recommendation_fit_score,
     search_reliability_score, explicit_score, ecchi_score, verdict,
     sampled_titles_json, sampled_tags_json, error_message,
-    extension_version_name, extension_version_code, extension_apk_name
+    extension_version_name, extension_version_code, extension_apk_name,
+    catalogue_metadata_confidence,
+    detail_enrichment_attempt_count, detail_enrichment_success_count, metadata_candidate_count,
+    positive_candidate_count, negative_candidate_count, explicit_preferred_group_hit_count,
+    learned_positive_group_hit_count, blocked_candidate_count, adult_signal_candidate_count
 )
 VALUES (
     :evaluationKey, :sourceId, :extensionPkgName, :signatureHash, :extensionName,
@@ -101,7 +119,11 @@ VALUES (
     :ecchiSignalCount, :errorCount, :qualityScore, :recommendationFitScore,
     :searchReliabilityScore, :explicitScore, :ecchiScore, :verdict,
     :sampledTitlesJson, :sampledTagsJson, :errorMessage,
-    :extensionVersionName, :extensionVersionCode, :extensionApkName
+    :extensionVersionName, :extensionVersionCode, :extensionApkName,
+    :catalogueMetadataConfidence,
+    :detailEnrichmentAttemptCount, :detailEnrichmentSuccessCount, :metadataCandidateCount,
+    :positiveCandidateCount, :negativeCandidateCount, :explicitPreferredGroupHitCount,
+    :learnedPositiveGroupHitCount, :blockedCandidateCount, :adultSignalCandidateCount
 )
 ON CONFLICT(evaluation_key)
 DO UPDATE
@@ -139,7 +161,17 @@ SET
     error_message = :errorMessage,
     extension_version_name = :extensionVersionName,
     extension_version_code = :extensionVersionCode,
-    extension_apk_name = :extensionApkName
+    extension_apk_name = :extensionApkName,
+    catalogue_metadata_confidence = :catalogueMetadataConfidence,
+    detail_enrichment_attempt_count = :detailEnrichmentAttemptCount,
+    detail_enrichment_success_count = :detailEnrichmentSuccessCount,
+    metadata_candidate_count = :metadataCandidateCount,
+    positive_candidate_count = :positiveCandidateCount,
+    negative_candidate_count = :negativeCandidateCount,
+    explicit_preferred_group_hit_count = :explicitPreferredGroupHitCount,
+    learned_positive_group_hit_count = :learnedPositiveGroupHitCount,
+    blocked_candidate_count = :blockedCandidateCount,
+    adult_signal_candidate_count = :adultSignalCandidateCount
 WHERE evaluation_key = :evaluationKey;
 
 deleteByKey:

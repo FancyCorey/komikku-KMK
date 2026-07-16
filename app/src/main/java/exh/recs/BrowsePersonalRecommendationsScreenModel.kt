@@ -15,6 +15,12 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.isOnline
 import exh.recs.RecommendationCandidateEnricher.Companion.needsEnrichment
+import exh.recs.memory.RecommendationCandidateMemoryEntry
+import exh.recs.memory.RecommendationCandidateMemoryRanker
+import exh.recs.memory.RecommendationCandidateMemoryStore
+import exh.recs.memory.RecommendationDiscoveryPlanner
+import exh.recs.memory.RecommendationDiscoveryProgressStore
+import exh.recs.memory.RecommendationRetryClassifier
 import exh.recs.sources.GenreFilterMapper
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.PersistentMap
@@ -23,6 +29,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -32,6 +39,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.system.logcat
@@ -40,19 +48,26 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.taste.interactor.ClearRecommendationCache
-import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetChapterCountsByMangaIds
+import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetKnownRecommendationMangaIds
 import tachiyomi.domain.taste.interactor.GetMangaTaste
 import tachiyomi.domain.taste.interactor.GetRecommendationCache
+import tachiyomi.domain.taste.interactor.GetRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.GetRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.GetTagAliases
 import tachiyomi.domain.taste.interactor.GetTasteProfile
+import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.UpsertRecommendationCache
+import tachiyomi.domain.taste.interactor.UpsertRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.UpsertRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.RecommendationCacheEntry
+import tachiyomi.domain.taste.model.RecommendationDiscoveryProgress
 import tachiyomi.domain.taste.model.TasteProfile
+import tachiyomi.domain.taste.model.normalizeTag
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.security.MessageDigest
@@ -102,6 +117,34 @@ internal fun shouldHideForYou(
     }
 }
 
+// KMK --> v0.7.41 follow-up: shared pure filter seam for live page-one and extra-page discovery
+/**
+ * Filters [candidates] down to those [CandidateVisibility.VISIBLE] under the shared
+ * [RecommendationCandidateVisibilityPolicy]. Used by both the live page-one path and the extra-page
+ * discovery path so a known/rated/seen/favorited/below-min-chapter candidate is excluded before
+ * scoring, progress recording, or candidate-memory storage — not only at final merge time.
+ */
+internal fun filterVisibleCandidates(
+    candidates: List<Manga>,
+    tasteByKey: Map<MangaTasteKey, MangaTaste>,
+    visibility: RatedMangaVisibility,
+    seenKeys: Set<SeenMangaKey>,
+    knownIds: Set<Long>,
+    minChapterCount: Int,
+    chapterCounts: Map<Long, Long>,
+): List<Manga> = candidates.filter { manga ->
+    RecommendationCandidateVisibilityPolicy.evaluate(
+        manga = manga,
+        tasteByKey = tasteByKey,
+        visibility = visibility,
+        seenKeys = seenKeys,
+        knownIds = knownIds,
+        minChapterCount = minChapterCount,
+        chapterCounts = chapterCounts,
+    ) == CandidateVisibility.VISIBLE
+}
+// KMK <--
+
 private fun normalizedTitleKey(title: String): String =
     title.lowercase()
         .replace(Regex("""\([^)]*\)|\[[^\]]*\]"""), "")
@@ -128,11 +171,26 @@ class BrowsePersonalRecommendationsScreenModel(
     // KMK --> v0.7.26: chapter count lookup for minimum-chapter filter
     private val getChapterCounts: GetChapterCountsByMangaIds = Injekt.get(),
     // KMK <--
+    // KMK --> v0.7.38: For You candidate discovery memory
+    private val getMemory: GetRecommendationCandidateMemory = Injekt.get(),
+    private val upsertMemory: UpsertRecommendationCandidateMemory = Injekt.get(),
+    private val pruneMemory: PruneRecommendationCandidateMemory = Injekt.get(),
+    // KMK <--
+    // KMK --> v0.7.39: For You rolling discovery progress
+    private val getDiscoveryProgress: GetRecommendationDiscoveryProgress = Injekt.get(),
+    private val upsertDiscoveryProgress: UpsertRecommendationDiscoveryProgress = Injekt.get(),
+    // KMK <--
 ) : StateScreenModel<BrowsePersonalRecommendationsScreenModel.State>(State()) {
 
     private val coroutineDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(5)
     private var searchJob: Job? = null
     private val enricher = RecommendationCandidateEnricher(networkToLocalManga, coroutineDispatcher)
+    // KMK --> v0.7.38: candidate discovery memory helpers
+    private val memoryStore = RecommendationCandidateMemoryStore(getMemory, upsertMemory, pruneMemory)
+    // KMK <--
+    // KMK --> v0.7.39: rolling discovery progress helpers
+    private val progressStore = RecommendationDiscoveryProgressStore(getDiscoveryProgress, upsertDiscoveryProgress)
+    // KMK <--
 
     // Top Picks accumulator — guarded by accumulatorLock for concurrent source updates
     private val accumulatorLock = Any()
@@ -182,7 +240,12 @@ class BrowsePersonalRecommendationsScreenModel(
         val dislikedRaw = sourcePreferences.dislikedRecommendationSourceKeys().get()
         val dislikedInstalledIds = exh.recs.sourceprefs.RecommendationSourcePreferenceStore
             .installedSourceIds(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(dislikedRaw))
-        val effectiveDisabledIds = disabledSourceIds + dislikedInstalledIds
+        // KMK v0.8.1-fix4: source/library-quality dislikes also exclude installed sources from For You —
+        // a source marked poor/too-explicit as a whole should not keep feeding recommendation rows.
+        val qualityDislikedRaw = sourcePreferences.dislikedSourceQualityKeys().get()
+        val qualityDislikedInstalledIds = exh.recs.sourceprefs.RecommendationSourcePreferenceStore
+            .installedSourceIds(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(qualityDislikedRaw))
+        val effectiveDisabledIds = disabledSourceIds + dislikedInstalledIds + qualityDislikedInstalledIds
         // KMK <--
 
         val topTags = topSearchTags(profile)
@@ -194,16 +257,15 @@ class BrowsePersonalRecommendationsScreenModel(
         val aliasCandidates = buildAliasCandidates(topTags, groupToAliases)
 
         val recommendationLanguages = sourcePreferences.recommendationSourceLanguages().get()
-        val languageFilteredSources = RecommendationSourceFilter.filterForRecommendations(
+        val storedOrder = RecommendationSourceOrdering.parse(sourcePreferences.recommendationSourceOrder().get())
+        // KMK --> v0.7.40: use shared selector (language filter + ordering + disabled exclusion)
+        val orderedEnabledSources = RecommendationSourceSelector.select(
             sources = sourceManager.getVisibleCatalogueSources(),
             languages = recommendationLanguages,
-        )
-        val storedOrder = RecommendationSourceOrdering.parse(sourcePreferences.recommendationSourceOrder().get())
-        val orderedEnabledSources = RecommendationSourceOrdering.apply(
-            visibleSources = languageFilteredSources,
             storedOrder = storedOrder,
-            disabledSourceIds = effectiveDisabledIds,
+            effectiveDisabledIds = effectiveDisabledIds,
         )
+        // KMK <--
 
         // Boosted sources are fixed: always the top BOOSTED_SOURCE_COUNT eligible sources
         val boostedSourceIds = orderedEnabledSources.take(BOOSTED_SOURCE_COUNT).map { it.id }.toSet()
@@ -224,10 +286,19 @@ class BrowsePersonalRecommendationsScreenModel(
         )
         val seenMangaCount = seenKeys.size
         // KMK <--
+        // KMK --> v0.7.43: Not Interested (internal storage still "seen") becomes a mild negative
+        // signal — similar candidates are slightly deprioritized, much weaker than Dislike. Query
+        // tag selection above (topTags) intentionally still uses the raw, unadjusted profile; only
+        // scoring/ranking uses scoringProfile.
+        val scoringProfile = buildNotInterestedAdjustedProfile(profile, seenKeys, aliasMap)
+        // KMK <--
         // KMK --> v0.7.26: minimum locally-known chapter count filter (0 = off)
         val minChapterCount = sourcePreferences.recommendationMinChapterCount().get()
         // KMK <--
-        val fingerprint = profileFingerprint(topTags, profile, aliasMap, effectiveDisabledIds, storedOrder, recommendationLanguages, hideKnownManga, seenMangaCount, minChapterCount)
+        // KMK v0.8.2: visible-card budget per row; raw value, validated by ForYouResultBudgetPolicy
+        val resultBudget = sourcePreferences.recommendationResultBudget().get()
+        // KMK <--
+        val fingerprint = profileFingerprint(topTags, profile, aliasMap, effectiveDisabledIds, storedOrder, recommendationLanguages, hideKnownManga, seenMangaCount, minChapterCount, resultBudget)
         val queryKey = topTags.sorted().joinToString(",")
 
         val allTastes = getMangaTaste.awaitAll()
@@ -271,12 +342,15 @@ class BrowsePersonalRecommendationsScreenModel(
                 val outcomes = batch.map { source ->
                     async {
                         searchSource(
-                            source, queryKey, fingerprint, topTags, profile, aliasMap, aliasCandidates,
+                            source, queryKey, fingerprint, topTags, scoringProfile, aliasMap, aliasCandidates,
                             tasteByKey, visibility, hideKnownManga, seenKeys, forceRefresh,
                             source.id in boostedSourceIds,
                             lastStrategy = strategyMap[source.id],
                             // KMK --> v0.7.26
                             minChapterCount = minChapterCount,
+                            // KMK <--
+                            // KMK v0.8.2
+                            resultBudget = resultBudget,
                             // KMK <--
                         )
                     }
@@ -359,26 +433,66 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.7.26: minimum locally-known chapter count (0 = off)
         minChapterCount: Int = 0,
         // KMK <--
+        // KMK v0.8.2: user-configured visible-card budget (raw preference value; validated inside
+        // ForYouResultBudgetPolicy.resolve() below, never trusted directly).
+        resultBudget: Int = ForYouResultBudgetPolicy.DEFAULT,
     ): SourceSearchOutcome {
+        // KMK --> v0.7.38: load remembered candidates before cache check so they are available for merge
+        val remembered = runCatching { memoryStore.loadForSourceQuery(source.id, queryKey) }.getOrDefault(emptyList())
+        // KMK <--
+        // KMK --> v0.7.40: load full progress records so the planner can classify retryable failures
+        val progressRecords = runCatching { progressStore.progressRecords(source.id, queryKey) }.getOrDefault(emptyList())
+        // KMK <--
+
         if (!forceRefresh) {
-            val cached = loadFromCache(source.id, queryKey, fingerprint, tasteByKey, visibility, hideKnownManga, seenKeys)
+            val cached = loadFromCache(source.id, queryKey, fingerprint, tasteByKey, visibility, hideKnownManga, seenKeys, minChapterCount)
             if (cached != null) {
+                // KMK --> v0.7.38: merge cached page-1 results with remembered candidates from all pages
+                val displayLimit = ForYouResultBudgetPolicy.resolve(resultBudget, isBoosted) // KMK v0.8.2
+                val resolvedMemory = resolveMemoryEntries(remembered)
+                val knownIdsForFilter = if (hideKnownManga && (cached.isNotEmpty() || resolvedMemory.isNotEmpty())) {
+                    val allMangaIds = (cached.map { it.manga.id } + resolvedMemory.map { it.first.id }).distinct()
+                    runCatching { getKnownMangaIds.await(allMangaIds) }.getOrElse { emptySet() }
+                } else {
+                    emptySet()
+                }
+                // KMK --> v0.7.41: batch chapter counts across cached + memory so memory candidates
+                // are min-chapter filtered by the same shared policy as cached candidates.
+                val chapterCountsForFilter = if (minChapterCount > 0 && (cached.isNotEmpty() || resolvedMemory.isNotEmpty())) {
+                    val allMangaIds = (cached.map { it.manga.id } + resolvedMemory.map { it.first.id }).distinct()
+                    runCatching { getChapterCounts.await(allMangaIds) }.getOrElse { error ->
+                        logcat(LogPriority.WARN, error) { "Cached-merge chapter-count lookup failed, skipping min-chapter filter" }
+                        emptyMap()
+                    }
+                } else {
+                    emptyMap()
+                }
+                // KMK <--
+                // KMK --> v0.7.40 Deliverable A: always merge so cache and memory compete for slots
+                val merged = RecommendationCandidateMemoryRanker.merge(
+                    resolvedMemory, cached, profile, aliasMap,
+                    tasteByKey, visibility, seenKeys, knownIdsForFilter, displayLimit,
+                    // KMK --> v0.7.41: apply min-chapter policy in the merge too
+                    minChapterCount, chapterCountsForFilter,
+                    // KMK <--
+                )
+                // KMK <--
                 val status = RecommendationSourceRunStatus(
                     sourceId = source.id,
-                    status = if (cached.isNotEmpty()) RecommendationSourceStatus.Shown else RecommendationSourceStatus.NoMatches,
-                    visibleCount = cached.size,
+                    status = if (merged.isNotEmpty()) RecommendationSourceStatus.Shown else RecommendationSourceStatus.NoMatches,
+                    visibleCount = merged.size,
                 )
                 return SourceSearchOutcome(
                     source = source,
-                    result = PersonalRecommendationResult.Success(cached),
+                    result = PersonalRecommendationResult.Success(merged),
                     successfulStrategy = null,
                     status = status,
-                    isUseful = cached.isNotEmpty(),
+                    isUseful = merged.isNotEmpty(),
                 )
             }
         }
 
-        val displayLimit = if (isBoosted) BOOSTED_RESULTS_PER_SOURCE else NORMAL_RESULTS_PER_SOURCE
+        val displayLimit = ForYouResultBudgetPolicy.resolve(resultBudget, isBoosted) // KMK v0.8.2
         // KMK --> v0.7.34: enrichment cap is user-configurable; boosted sources always get 2×
         val normalEnrichCap = sourcePreferences.recommendationEnrichmentCap().get().coerceIn(1, 20)
         val enrichLimit = if (isBoosted) normalEnrichCap * 2 else normalEnrichCap
@@ -438,32 +552,21 @@ class BrowsePersonalRecommendationsScreenModel(
 
                 val smangaByUrl = rawSMangas.associateBy { it.url }
                 val raw = rawSMangas.map { it.toDomainManga(source.id) }
-                val localized = networkToLocalManga(raw)
-                    .filterNot { it.favorite || shouldHideForYou(it, tasteByKey, visibility) }
-                    // KMK --> v0.6.20: always exclude seen manga regardless of hideKnownManga
-                    .filterNot { SeenMangaKey(it.source, it.url) in seenKeys }
-                // KMK <--
-
-                // KMK --> v0.7.26: filter manga whose locally-known chapter count is below threshold
-                val chapterFiltered = if (minChapterCount > 0 && localized.isNotEmpty()) {
-                    val counts = runCatching {
-                        getChapterCounts.await(localized.map { it.id })
+                // KMK --> v0.7.40 Deliverable D: use shared visibility policy in live path
+                val rawLocalized = networkToLocalManga(raw)
+                val chapterCounts = if (minChapterCount > 0 && rawLocalized.isNotEmpty()) {
+                    runCatching {
+                        getChapterCounts.await(rawLocalized.map { it.id })
                     }.getOrElse { error ->
                         logcat(LogPriority.WARN, error) { "Chapter count lookup failed, skipping min-chapter filter" }
                         emptyMap()
                     }
-                    localized.filterNot { manga ->
-                        val count = counts[manga.id] ?: 0L
-                        count > 0L && count < minChapterCount  // known count and below threshold
-                    }
                 } else {
-                    localized
+                    emptyMap()
                 }
-                // KMK <--
-
-                val knownIds = if (hideKnownManga && chapterFiltered.isNotEmpty()) {
+                val knownIds = if (hideKnownManga && rawLocalized.isNotEmpty()) {
                     runCatching {
-                        getKnownMangaIds.await(chapterFiltered.map { it.id })
+                        getKnownMangaIds.await(rawLocalized.map { it.id })
                     }.getOrElse { error ->
                         logcat(LogPriority.WARN, error) { "Top Picks known-manga filter failed, keeping all candidates" }
                         emptySet()
@@ -471,7 +574,17 @@ class BrowsePersonalRecommendationsScreenModel(
                 } else {
                     emptySet()
                 }
-                val saved = if (knownIds.isEmpty()) chapterFiltered else chapterFiltered.filterNot { it.id in knownIds }
+                val saved = filterVisibleCandidates(
+                    rawLocalized,
+                    tasteByKey,
+                    visibility,
+                    seenKeys,
+                    knownIds,
+                    minChapterCount,
+                    chapterCounts,
+                )
+                val localized = saved // alias for enrichment below
+                // KMK <--
 
                 val enriched = enricher.enrich(source, saved, smangaByUrl, enrichLimit)
 
@@ -494,23 +607,126 @@ class BrowsePersonalRecommendationsScreenModel(
                     .distinct().take(MAX_REASON_TAGS).joinToString(", ").ifBlank { null }
                 saveToCache(source.id, queryKey, fingerprint, recommendations.map { it.manga }, recommendations.map { it.score }, reason)
 
+                // KMK --> v0.7.38: upsert page-1 results to memory + try additional page
+                runCatching {
+                    memoryStore.upsertBatch(
+                        sourceId = source.id,
+                        querySignature = queryKey,
+                        queryTags = topTags,
+                        queryStrategy = plan.type.name,
+                        page = 1,
+                        profileFingerprint = fingerprint,
+                        recommendations = recommendations,
+                    )
+                }
+                // KMK --> v0.7.39: record page-1 progress so the planner can advance to page 2
+                runCatching {
+                    progressStore.recordProgress(
+                        sourceId = source.id,
+                        querySignature = queryKey,
+                        queryTags = topTags,
+                        queryStrategy = plan.type.name,
+                        page = 1,
+                        profileFingerprint = fingerprint,
+                        rawCount = rawSMangas.size,
+                        localizedCount = localized.size,
+                        scoredCount = scored.size,
+                        visibleCount = recommendations.size,
+                        filteredCount = rawSMangas.size - localized.size,
+                        status = when {
+                            recommendations.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
+                            rawSMangas.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_FILTERED
+                            else -> RecommendationDiscoveryProgress.STATUS_EMPTY
+                        },
+                    )
+                }
+                // KMK <--
+
+                val additionalResults = discoverAdditionalPage(
+                    source = source,
+                    progressRecords = progressRecords,
+                    queryKey = queryKey,
+                    topTags = topTags,
+                    fingerprint = fingerprint,
+                    queryStrategy = plan.type.name,
+                    searchParams = searchParams,
+                    tasteByKey = tasteByKey,
+                    visibility = visibility,
+                    seenKeys = seenKeys,
+                    profile = profile,
+                    aliasMap = aliasMap,
+                    minChapterCount = minChapterCount,
+                    // KMK --> v0.7.41 follow-up
+                    hideKnownManga = hideKnownManga,
+                    // KMK <--
+                )
+                if (additionalResults.first.isNotEmpty()) {
+                    runCatching {
+                        memoryStore.upsertBatch(
+                            sourceId = source.id,
+                            querySignature = queryKey,
+                            queryTags = topTags,
+                            queryStrategy = plan.type.name,
+                            page = additionalResults.second,
+                            profileFingerprint = fingerprint,
+                            recommendations = additionalResults.first,
+                        )
+                    }
+                }
+                runCatching { memoryStore.pruneIfNeeded(source.id) }
+
+                val resolvedMemory = resolveMemoryEntries(remembered)
+                val allNew = recommendations + additionalResults.first
+                // KMK --> v0.7.41 follow-up: additionalResults.first is now already known-filtered
+                // inside discoverAdditionalPage (it uses the same hide-known context as page one), so
+                // a second known-id lookup over those candidates here would always be a no-op. knownIds
+                // (page-1) is sufficient for the merge; no redundant DB round-trip is needed.
+                val allKnownIds = knownIds
+                // KMK <--
+                // KMK --> v0.7.41: batch chapter counts across memory + all new candidates so remembered
+                // memory candidates obey the same min-chapter policy as freshly discovered ones.
+                val chapterCountsForMerge = if (minChapterCount > 0 && (allNew.isNotEmpty() || resolvedMemory.isNotEmpty())) {
+                    val allMangaIds = (allNew.map { it.manga.id } + resolvedMemory.map { it.first.id }).distinct()
+                    runCatching { getChapterCounts.await(allMangaIds) }.getOrElse { error ->
+                        logcat(LogPriority.WARN, error) { "Live-merge chapter-count lookup failed, skipping min-chapter filter" }
+                        emptyMap()
+                    }
+                } else {
+                    emptyMap()
+                }
+                // KMK <--
+                // Always merge so extra-page candidates compete for display even when memory is empty.
+                val mergedRecommendations = RecommendationCandidateMemoryRanker.merge(
+                    resolvedMemory, allNew, profile, aliasMap,
+                    tasteByKey, visibility, seenKeys, allKnownIds, displayLimit,
+                    // KMK --> v0.7.41: apply min-chapter policy in the merge too
+                    minChapterCount, chapterCountsForMerge,
+                    // KMK <--
+                )
+                // KMK <--
+
                 val status = RecommendationSourceRunStatus(
                     sourceId = source.id,
-                    status = if (recommendations.isNotEmpty()) {
+                    status = if (mergedRecommendations.isNotEmpty()) {
                         RecommendationSourceStatus.Shown
                     } else if (hadRawResults) {
                         RecommendationSourceStatus.FilteredOut
                     } else {
                         RecommendationSourceStatus.NoMatches
                     },
-                    visibleCount = recommendations.size,
+                    visibleCount = mergedRecommendations.size,
                 )
                 return SourceSearchOutcome(
                     source = source,
-                    result = PersonalRecommendationResult.Success(recommendations),
-                    successfulStrategy = plan.type,
+                    result = PersonalRecommendationResult.Success(mergedRecommendations),
+                    // KMK --> v0.7.44 Phase D.3: only persist this strategy as "successful" when it
+                    // actually produced a visible result. Previously this was set unconditionally
+                    // once the last plan in the chain was reached, so a source could get "locked"
+                    // onto a strategy that produced zero results just because it was tried last.
+                    successfulStrategy = plan.type.takeIf { mergedRecommendations.isNotEmpty() },
+                    // KMK <--
                     status = status,
-                    isUseful = recommendations.isNotEmpty(),
+                    isUseful = mergedRecommendations.isNotEmpty(),
                 )
             } catch (e: Exception) {
                 lastError = e
@@ -542,6 +758,9 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.6.20
         seenKeys: Set<SeenMangaKey> = emptySet(),
         // KMK <--
+        // KMK --> v0.7.41: min-chapter context so cached results obey the same policy as live results
+        minChapterCount: Int = 0,
+        // KMK <--
     ): List<PersonalRecommendation>? {
         val cacheKey = cacheKey(sourceId, queryKey)
         val entry = getRecommendationCache.await(cacheKey) ?: return null
@@ -556,16 +775,14 @@ class BrowsePersonalRecommendationsScreenModel(
         val scores = entry.resultScores?.split(",").orEmpty().mapNotNull { it.trim().toDoubleOrNull() }
         val cachedGroups = entry.resultReasons?.split(", ").orEmpty().filter { it.isNotBlank() }
 
+        // Resolve every cached manga first so known-id and chapter-count lookups can be batched.
         val resolved = ids.mapIndexedNotNull { index, id ->
             val manga = getMangaInteractor.await(id) ?: return@mapIndexedNotNull null
-            if (manga.favorite || shouldHideForYou(manga, tasteByKey, visibility)) return@mapIndexedNotNull null
-            // KMK --> v0.6.20: exclude seen manga
-            if (SeenMangaKey(manga.source, manga.url) in seenKeys) return@mapIndexedNotNull null
-            // KMK <--
             manga to scores.getOrElse(index) { 0.0 }
         }
+        if (resolved.isEmpty()) return emptyList()
 
-        val knownIds = if (hideKnownManga && resolved.isNotEmpty()) {
+        val knownIds = if (hideKnownManga) {
             runCatching {
                 getKnownMangaIds.await(resolved.map { it.first.id })
             }.getOrElse { error ->
@@ -576,9 +793,32 @@ class BrowsePersonalRecommendationsScreenModel(
             emptySet()
         }
 
-        return resolved
-            .filterNot { (manga, _) -> manga.id in knownIds }
-            .map { (manga, score) -> PersonalRecommendation(manga, score, cachedGroups) }
+        // KMK --> v0.7.41: batched chapter counts only when the minimum is active; fail open on error
+        val chapterCounts = if (minChapterCount > 0) {
+            runCatching {
+                getChapterCounts.await(resolved.map { it.first.id })
+            }.getOrElse { error ->
+                logcat(LogPriority.WARN, error) { "Cached chapter-count lookup failed, skipping min-chapter filter" }
+                emptyMap()
+            }
+        } else {
+            emptyMap()
+        }
+        // KMK <--
+
+        // Single shared visibility contract for cached candidates (favorite/rated/seen/known/min-chapter).
+        return resolved.mapNotNull { (manga, score) ->
+            val visible = RecommendationCandidateVisibilityPolicy.evaluate(
+                manga = manga,
+                tasteByKey = tasteByKey,
+                visibility = visibility,
+                seenKeys = seenKeys,
+                knownIds = knownIds,
+                minChapterCount = minChapterCount,
+                chapterCounts = chapterCounts,
+            ) == CandidateVisibility.VISIBLE
+            if (!visible) null else PersonalRecommendation(manga, score, cachedGroups)
+        }
     }
 
     private suspend fun saveToCache(
@@ -621,6 +861,11 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.7.26: invalidate cache when min chapter filter changes
         minChapterCount: Int = 0,
         // KMK <--
+        // KMK --> v0.8.2: invalidate cache when the visible-card budget changes — a cache saved
+        // under a smaller budget stores fewer rows than a larger budget needs, so it must never be
+        // treated as complete/reusable for a later, larger setting.
+        resultBudget: Int = ForYouResultBudgetPolicy.DEFAULT,
+        // KMK <--
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
         fun update(s: String) = digest.update(s.toByteArray())
@@ -641,6 +886,9 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.7.26
         update("minChapter:$minChapterCount")
         // KMK <--
+        // KMK --> v0.8.2
+        update("resultBudget:${ForYouResultBudgetPolicy.validate(resultBudget)}")
+        // KMK <--
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
@@ -657,6 +905,46 @@ class BrowsePersonalRecommendationsScreenModel(
             .map { it.key }
     }
 
+    // KMK --> v0.7.43: Not Interested mild-negative signal
+    /**
+     * Returns [profile] with a small negative adjustment applied to [TasteProfile.learnedTagWeights]
+     * for genre groups seen on manga the user marked Not Interested (internal storage: "seen").
+     *
+     * This is intentionally much weaker than a Dislike rating (-2.0 per genre occurrence, uncapped
+     * per-source contribution): Not Interested contributes [NOT_INTERESTED_WEIGHT] per genre
+     * occurrence and only affects in-memory scoring for this load — it never writes to the ratings
+     * table, so it does not count toward the reassessment rating threshold or taste-profile
+     * confidence. Only manga with an existing local DB row (already seen/localized once before)
+     * contribute; this never triggers a network lookup. Bounded by
+     * [NOT_INTERESTED_LOOKUP_CAP] to keep the cost predictable for large seen sets.
+     */
+    private suspend fun buildNotInterestedAdjustedProfile(
+        profile: TasteProfile,
+        seenKeys: Set<SeenMangaKey>,
+        aliasMap: Map<String, String>,
+    ): TasteProfile {
+        if (seenKeys.isEmpty()) return profile
+
+        val penalty = mutableMapOf<String, Double>()
+        for (key in seenKeys.take(NOT_INTERESTED_LOOKUP_CAP)) {
+            val manga = runCatching { getMangaInteractor.await(key.url, key.sourceId) }.getOrNull() ?: continue
+            val genres = manga.genre ?: continue
+            for (genre in genres) {
+                val normalized = genre.normalizeTag()
+                val group = aliasMap[normalized] ?: normalized
+                penalty[group] = (penalty[group] ?: 0.0) + NOT_INTERESTED_WEIGHT
+            }
+        }
+        if (penalty.isEmpty()) return profile
+
+        val adjustedWeights = profile.learnedTagWeights.toMutableMap()
+        for ((group, delta) in penalty) {
+            adjustedWeights[group] = ((adjustedWeights[group] ?: 0.0) + delta).coerceIn(-10.0, 10.0)
+        }
+        return profile.copy(learnedTagWeights = adjustedWeights)
+    }
+    // KMK <--
+
     private fun buildAliasCandidates(
         topTags: List<String>,
         groupToAliases: Map<String, List<String>>,
@@ -665,6 +953,213 @@ class BrowsePersonalRecommendationsScreenModel(
         val builtIn = GenreFilterMapper.BUILT_IN_SYNONYMS[tag].orEmpty()
         tag to (userAliases + builtIn).distinct()
     }
+
+    // KMK --> v0.7.38: candidate memory helpers
+
+    /** Resolve remembered memory entries to local Manga objects. Unresolvable entries are skipped. */
+    private suspend fun resolveMemoryEntries(
+        entries: List<RecommendationCandidateMemoryEntry>,
+    ): List<Pair<Manga, RecommendationCandidateMemoryEntry>> =
+        entries.mapNotNull { entry ->
+            val manga = if (entry.mangaId != null) {
+                runCatching { getMangaInteractor.await(entry.mangaId) }.getOrNull()
+            } else {
+                runCatching { getMangaInteractor.await(entry.url, entry.sourceId) }.getOrNull()
+            }
+            if (manga != null) manga to entry else null
+        }
+
+    /**
+     * Probe the next unevaluated page for [source] using [searchParams] from the page-1 plan.
+     * Returns (results, probed-page-number). Results may be empty if the page was empty/filtered.
+     * Records progress in the discovery progress table regardless of outcome.
+     * CancellationException is always rethrown.
+     *
+     * v0.7.39: uses full progress records from the progress table (not candidate memory
+     * knownPages), so empty/filtered/error pages are tracked and not retried.
+     * v0.7.41 follow-up: applies the same hide-known context ([hideKnownManga]) as live page-one,
+     * cache, memory, and group recommendations, so localizedCount/filteredCount/scoredCount/
+     * visibleCount/progressStatus/returned recommendations/candidate memory are all derived from
+     * the fully filtered result — a known-only page is never recorded as successful/visible.
+     */
+    private suspend fun discoverAdditionalPage(
+        source: CatalogueSource,
+        // KMK --> v0.7.40: full progress records replace Set<Int> so planner can classify failures
+        progressRecords: List<RecommendationDiscoveryProgress>,
+        // KMK <--
+        queryKey: String,
+        topTags: List<String>,
+        fingerprint: String,
+        queryStrategy: String?,
+        searchParams: GenreFilterMapper.SearchParams,
+        tasteByKey: Map<MangaTasteKey, MangaTaste>,
+        visibility: RatedMangaVisibility,
+        seenKeys: Set<SeenMangaKey>,
+        profile: TasteProfile,
+        aliasMap: Map<String, String>,
+        minChapterCount: Int,
+        // KMK --> v0.7.41 follow-up: hide-known context so extra-page candidates use the same
+        // shared visibility policy as live page-one, cache, memory, and group recommendations
+        hideKnownManga: Boolean,
+        // KMK <--
+    ): Pair<List<PersonalRecommendation>, Int> {
+        // KMK --> v0.7.40: planner now classifies retryable vs permanent failures
+        val nowMs = System.currentTimeMillis()
+        val nextPage = RecommendationDiscoveryPlanner.nextPageToProbe(progressRecords, nowMs)
+            ?: return emptyList<PersonalRecommendation>() to 0
+        // KMK <--
+        if (!currentCoroutineContext().isActive) return emptyList<PersonalRecommendation>() to nextPage
+
+        // KMK --> v0.7.40: carry forward attempt_count for the page being probed (for retry tracking)
+        val existingRecord = progressRecords.find { it.page == nextPage }
+        val baseAttemptCount = existingRecord?.attemptCount ?: 0
+        // KMK <--
+
+        var rawCount = 0
+        var localizedCount = 0
+        var scoredCount = 0
+        var visibleCount = 0
+        var filteredCount = 0
+        var progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
+        var errorMessage: String? = null
+        // KMK --> v0.7.40: retry metadata defaults
+        var failureKind: String? = null
+        var nextRetryAt: Long? = null
+        // KMK <--
+
+        // KMK --> v0.7.40: bounded timeout on additional-page search only (not page-1)
+        val result = runCatching {
+            val pageResult = withTimeoutOrNull(ADDITIONAL_PAGE_TIMEOUT_MS) {
+                withContext(coroutineDispatcher) {
+                    source.getSearchManga(nextPage, searchParams.textQuery, searchParams.filters)
+                }
+            } ?: run {
+                // Explicit local probe timeout — a transient, retryable failure.
+                progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
+                failureKind = RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE
+                errorMessage = "Additional-page search timed out after ${ADDITIONAL_PAGE_TIMEOUT_MS}ms"
+                return@runCatching emptyList<PersonalRecommendation>() to nextPage
+            }
+            // KMK <--
+            val rawSMangas = pageResult.mangas
+                .take(RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE)
+                .distinctBy { it.url }
+
+            rawCount = rawSMangas.size
+            if (rawSMangas.isEmpty()) {
+                progressStatus = RecommendationDiscoveryProgress.STATUS_EMPTY
+                return@runCatching emptyList<PersonalRecommendation>() to nextPage
+            }
+
+            val raw = rawSMangas.map { it.toDomainManga(source.id) }
+            // KMK --> v0.7.40 Deliverable D: use shared visibility policy in extra-page path
+            val allLocalized = networkToLocalManga(raw)
+            val chapterCounts = if (minChapterCount > 0 && allLocalized.isNotEmpty()) {
+                runCatching { getChapterCounts.await(allLocalized.map { it.id }) }.getOrDefault(emptyMap())
+            } else {
+                emptyMap()
+            }
+            // KMK --> v0.7.41 follow-up: batch-load known IDs for extra-page candidates so this
+            // page uses the same hide-known context as live page-one, cache, memory, and group
+            // recommendations. Fail open (log + emptySet()) rather than crash or blank the row.
+            val knownIds = if (hideKnownManga && allLocalized.isNotEmpty()) {
+                runCatching {
+                    getKnownMangaIds.await(allLocalized.map { it.id })
+                }.getOrElse { error ->
+                    logcat(LogPriority.WARN, error) { "Additional-page known-manga filter failed, keeping all candidates" }
+                    emptySet()
+                }
+            } else {
+                emptySet()
+            }
+            // KMK <--
+            val localized = filterVisibleCandidates(
+                allLocalized,
+                tasteByKey,
+                visibility,
+                seenKeys,
+                knownIds,
+                minChapterCount,
+                chapterCounts,
+            )
+            // KMK <--
+
+            localizedCount = localized.size
+            filteredCount = rawCount - localizedCount
+
+            val scored = PersonalRecommendationScorer.rankCandidates(
+                localized,
+                profile,
+                aliasMap,
+                RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE,
+            )
+            scoredCount = scored.size
+
+            val results = scored.map { PersonalRecommendation(it.manga, it.score, it.matchedGroups) }
+            visibleCount = results.size
+            progressStatus = when {
+                results.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
+                rawCount > 0 -> RecommendationDiscoveryProgress.STATUS_FILTERED
+                else -> RecommendationDiscoveryProgress.STATUS_EMPTY
+            }
+            results to nextPage
+        }.onFailure { e ->
+            // Cancellation is never recorded as a failed retry — rethrow before any progress write.
+            if (e is CancellationException) throw e
+            // KMK --> v0.7.40: classify failure kind for retry policy
+            progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
+            errorMessage = e.message?.take(200)
+            failureKind = RecommendationRetryClassifier.classify(e)
+            // KMK <--
+        }.getOrDefault(emptyList<PersonalRecommendation>() to nextPage)
+
+        // KMK --> v0.7.41: compute the terminal retry state after the probe resolves.
+        // A retryable failure that just used its final allowed attempt persists as STATUS_EXHAUSTED
+        // (terminal, retained diagnostic, nextRetryAt = null). Earlier retryable failures schedule a
+        // backoff; permanent failures never retry.
+        var attemptCount = baseAttemptCount
+        if (progressStatus == RecommendationDiscoveryProgress.STATUS_ERROR) {
+            attemptCount = (baseAttemptCount + 1).coerceAtMost(RecommendationRetryClassifier.MAX_ATTEMPTS)
+            if (failureKind == RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE) {
+                if (attemptCount >= RecommendationRetryClassifier.MAX_ATTEMPTS) {
+                    progressStatus = RecommendationDiscoveryProgress.STATUS_EXHAUSTED
+                    nextRetryAt = null
+                } else {
+                    nextRetryAt = RecommendationRetryClassifier.nextRetryAt(baseAttemptCount, nowMs)
+                }
+            } else {
+                // Permanent failure — no retry scheduled.
+                nextRetryAt = null
+            }
+        }
+
+        // Record progress with the resolved retry metadata.
+        runCatching {
+            progressStore.recordProgress(
+                sourceId = source.id,
+                querySignature = queryKey,
+                queryTags = topTags,
+                queryStrategy = queryStrategy,
+                page = nextPage,
+                profileFingerprint = fingerprint,
+                rawCount = rawCount,
+                localizedCount = localizedCount,
+                scoredCount = scoredCount,
+                visibleCount = visibleCount,
+                filteredCount = filteredCount,
+                status = progressStatus,
+                errorMessage = errorMessage,
+                attemptCount = attemptCount,
+                nextRetryAt = nextRetryAt,
+                failureKind = failureKind,
+            )
+        }
+        // KMK <--
+
+        return result
+    }
+
+    // KMK <--
 
     @Composable
     fun getManga(initialManga: Manga): androidx.compose.runtime.State<Manga> {
@@ -758,19 +1253,27 @@ class BrowsePersonalRecommendationsScreenModel(
         private const val MAX_SOURCE_ATTEMPTS = 40
         private const val BOOSTED_SOURCE_COUNT = 3
         private const val SOURCE_BATCH_SIZE = 5
-        private const val NORMAL_RESULTS_PER_SOURCE = 10
-        private const val BOOSTED_RESULTS_PER_SOURCE = 20
+        // KMK v0.8.2: replaced by ForYouResultBudgetPolicy.resolve(configuredValue, isBoosted) —
+        // the visible-card budget per row is now user-configurable (SourcePreferences
+        // .recommendationResultBudget()), with the boosted floor (formerly BOOSTED_RESULTS_PER_SOURCE
+        // = 20) preserved as ForYouResultBudgetPolicy.BOOSTED_MINIMUM.
         private const val NORMAL_ENRICHMENT_LIMIT = 5
         private const val BOOSTED_ENRICHMENT_LIMIT = 10
         private const val RAW_CANDIDATE_MULTIPLIER = 3
         private const val MAX_SEARCH_TAGS = 5
         private const val MAX_REASON_TAGS = 4
         private const val CACHE_TTL_MS = 24 * 60 * 60 * 1000L // 24 hours
+        // KMK --> v0.7.43: Not Interested mild-negative signal — much weaker than Dislike (-2.0)
+        private const val NOT_INTERESTED_WEIGHT = -0.3
+        private const val NOT_INTERESTED_LOOKUP_CAP = 150
+        // KMK <--
         // KMK -->
         /** Maximum recommendations shown in the inline Top Picks row. */
         private const val TOP_PICKS_ROW_CAP = 20
         /** Maximum recommendations shown in the Top Picks drill-down screen. */
         private const val TOP_PICKS_DETAIL_CAP = 50
+        // KMK --> v0.7.40: bounded timeout for additional-page discovery only
+        private const val ADDITIONAL_PAGE_TIMEOUT_MS = 20_000L
         // KMK <--
 
         /** Deterministic tie-break: higher score > more genres > lower manga id. */

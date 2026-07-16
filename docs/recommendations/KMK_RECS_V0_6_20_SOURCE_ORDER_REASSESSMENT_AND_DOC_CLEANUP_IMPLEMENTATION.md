@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.20 Implementation Notes
+﻿# KMK-Recs v0.6.20 Implementation Notes
 
 Date: 2026-06-20
 APK: `Komikku-v1.13.6-kmk.6.20-debug.apk`
@@ -20,17 +20,17 @@ All 7 parts of the plan were addressed. Part 4 (hidden-source state) was explici
 
 **Solution:**
 
-Created `SourceStatusDisplayOrder.kt` — a pure, tested object that computes display groups:
+Created `SourceStatusDisplayOrder.kt` â€” a pure, tested object that computes display groups:
 
-- `Group.HAS_MATCHES` (sort key 0) — `Shown` status
-- `Group.NO_MATCHES` (sort key 1) — any non-Shown, non-disliked status
+- `Group.HAS_MATCHES` (sort key 0) â€” `Shown` status
+- `Group.NO_MATCHES` (sort key 1) â€” any non-Shown, non-disliked status
 - `Group.DISLIKED` (sort key 2)
 
 Sort order: group first, then user's saved priority index, then sourceId as tie-breaker. Priority within each group is preserved.
 
 Applied in `RecommendationsSettingsScreen.kt`: a new non-draggable "Source Status" section below the priority drag list shows sources in group order with labeled group headers (With results / No results / Disliked).
 
-The drag-to-reorder priority list is unchanged — users still reorder sources by drag. The status section is read-only and reflects last For You run results.
+The drag-to-reorder priority list is unchanged â€” users still reorder sources by drag. The status section is read-only and reflects last For You run results.
 
 **Files changed:**
 - `app/src/main/java/exh/recs/SourceStatusDisplayOrder.kt` (new)
@@ -48,8 +48,8 @@ The drag-to-reorder priority list is unchanged — users still reorder sources b
 **Solution:**
 
 Added two new preferences in `SourcePreferences.kt`:
-- `sourceEvaluationLastReassessmentRatingCount()` — total rated manga count at the last baseline
-- `sourceEvaluationLastReassessmentAt()` — epoch-ms of the last baseline
+- `sourceEvaluationLastReassessmentRatingCount()` â€” total rated manga count at the last baseline
+- `sourceEvaluationLastReassessmentAt()` â€” epoch-ms of the last baseline
 
 `SourceEvaluationScreenModel` now:
 - Loads `currentRatedCount` from `GetMangaTaste.awaitAll().size` at screen open
@@ -62,7 +62,7 @@ Added two new preferences in `SourcePreferences.kt`:
 - A "Reassess sources" button (available always) that sets `skipAlreadyEvaluated = false` and starts evaluation
 - Button label changes to "Reassess using current tastes" when below the threshold
 
-Baseline update only happens on successful `Completed` status — cancelled/failed runs do not update it.
+Baseline update only happens on successful `Completed` status â€” cancelled/failed runs do not update it.
 
 **Files changed:**
 - `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt`
@@ -80,12 +80,12 @@ Baseline update only happens on successful `Completed` status — cancelled/fail
 **Solution:**
 
 Added two pure functions in `SourceEvaluationScreen.kt`:
-- `evidenceStrengthLabel(evaluation)` — returns "Strong evidence", "Moderate evidence", "Weak evidence", or "Low confidence" based on `preferredTagMatchCount`, `likedTitleMatchCount`, `searchCount`, `searchSuccessCount`, and `sampleCount`
-- `lastEvaluatedLabel(evaluatedAt)` — returns "Last evaluated today" or "Last evaluated N days ago"
+- `evidenceStrengthLabel(evaluation)` â€” returns "Strong evidence", "Moderate evidence", "Weak evidence", or "Low confidence" based on `preferredTagMatchCount`, `likedTitleMatchCount`, `searchCount`, `searchSuccessCount`, and `sampleCount`
+- `lastEvaluatedLabel(evaluatedAt)` â€” returns "Last evaluated today" or "Last evaluated N days ago"
 
-Both are appended to the existing `EvaluationResultRow` subtitle: `"ext • LANG • fit X% • search Y% • Evidence Strength • Last evaluated Z"`
+Both are appended to the existing `EvaluationResultRow` subtitle: `"ext â€¢ LANG â€¢ fit X% â€¢ search Y% â€¢ Evidence Strength â€¢ Last evaluated Z"`
 
-No new database fields needed — uses already-stored `SourceEvaluation` fields.
+No new database fields needed â€” uses already-stored `SourceEvaluation` fields.
 
 **Files changed:**
 - `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt`
@@ -120,9 +120,9 @@ Added a collapsible "Source management" section in `SourceEvaluationScreen` with
 
 | Action | What it clears |
 |---|---|
-| Reset disliked sources | `dislikedRecommendationSourceKeys` preference → empty |
-| Reset reassessment baseline | `sourceEvaluationLastReassessmentRatingCount` and `At` prefs → 0 |
-| Clear seen manga | `seenRecommendationMangaKeys` preference → empty |
+| Reset disliked sources | `dislikedRecommendationSourceKeys` preference â†’ empty |
+| Reset reassessment baseline | `sourceEvaluationLastReassessmentRatingCount` and `At` prefs â†’ 0 |
+| Clear seen manga | `seenRecommendationMangaKeys` preference â†’ empty |
 
 The section is collapsed by default (`showManagementSection = false`). Tapping the header expands it.
 
@@ -142,7 +142,7 @@ The section is collapsed by default (`showManagementSection = false`). Tapping t
 
 **Solution:**
 
-Created `SeenRecommendationMangaStore.kt` — a pure, tested object that:
+Created `SeenRecommendationMangaStore.kt` â€” a pure, tested object that:
 - Parses / serializes `Set<SeenMangaKey(sourceId, url)>` from semicolon-separated `"sourceId|url"` strings
 - Provides `parse`, `serialize`, `add`, `remove` helpers
 - Uses `indexOf('|')` so URLs containing pipes are parsed correctly
@@ -151,7 +151,7 @@ Added `seenRecommendationMangaKeys()` preference to `SourcePreferences.kt`.
 
 **For You filtering (`BrowsePersonalRecommendationsScreenModel`):**
 - Seen keys loaded at `load()` time
-- Filtered from search results (`localized.filterNot { SeenMangaKey(it.source, it.url) in seenKeys }`) — ALWAYS, regardless of `hideKnownManga`
+- Filtered from search results (`localized.filterNot { SeenMangaKey(it.source, it.url) in seenKeys }`) â€” ALWAYS, regardless of `hideKnownManga`
 - Filtered from cache results (same check in `loadFromCache`)
 - `seenMangaCount` added to `profileFingerprint()` so the recommendation cache is invalidated when the seen set changes
 
@@ -159,11 +159,11 @@ Added `seenRecommendationMangaKeys()` preference to `SourcePreferences.kt`.
 
 **MangaScreenModel:** Added `isSeen: Boolean = false` to `State.Success`. Added `markSeen()` and `clearSeen()` functions that read/write the preference and update state. Initial `isSeen` is read at screen load from the preference.
 
-**MangaScreen (ui and presentation):** Added `isSeen`, `onSeenClicked`, `onSeenOtherVersionsClicked` params threaded through `MangaScreen` → `MangaScreenSmallImpl` / `MangaScreenLargeImpl` → `MangaActionRow` / `MangaInfoHeader`.
+**MangaScreen (ui and presentation):** Added `isSeen`, `onSeenClicked`, `onSeenOtherVersionsClicked` params threaded through `MangaScreen` â†’ `MangaScreenSmallImpl` / `MangaScreenLargeImpl` â†’ `MangaActionRow` / `MangaInfoHeader`.
 
 **CrossExtensionMatchMode:** Added `MarkSeen` as a new sealed interface case. `CrossExtensionMatchScreen` handles it with new screen title / confirm label strings. `CrossExtensionMatchScreenModel.applyRating()` branches on mode:
-- `Rating(r)` → calls `SetMangaTasteBatch` (unchanged)
-- `MarkSeen` → reads the seen preference, adds all selected `SeenMangaKey` entries, writes back
+- `Rating(r)` â†’ calls `SetMangaTasteBatch` (unchanged)
+- `MarkSeen` â†’ reads the seen preference, adds all selected `SeenMangaKey` entries, writes back
 
 Seen records do NOT write taste rows. Tag weights are not changed. Seen does not count toward the 100-rating reassessment threshold.
 
@@ -206,7 +206,7 @@ Updated:
 | `rec_clear_seen` | `Clear seen` |
 | `rec_match_title_seen` | `Seen other versions` |
 | `rec_match_apply_seen` | `Mark %1$d version(s) as seen` |
-| `rec_match_applying_seen` | `Marking as seen…` |
+| `rec_match_applying_seen` | `Marking as seenâ€¦` |
 | `source_evaluation_reassessment_recommended` | `%1$d new ratings since last source evaluation. Reassessment is recommended.` |
 | `source_evaluation_reassess_button` | `Reassess sources` |
 | `source_evaluation_reassess_current_tastes` | `Reassess using current tastes` |
@@ -230,22 +230,22 @@ Updated:
 
 ## Test Results
 
-- `SourceStatusDisplayOrderTest` — 8 tests, all PASSED
-- `SeenRecommendationMangaStoreTest` — 11 tests, all PASSED
-- `SourceEvaluationCandidateFilterTest` (prior tests) — 25 tests, all PASSED
-- All other existing tests — PASSED
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `SourceStatusDisplayOrderTest` â€” 8 tests, all PASSED
+- `SeenRecommendationMangaStoreTest` â€” 11 tests, all PASSED
+- `SourceEvaluationCandidateFilterTest` (prior tests) â€” 25 tests, all PASSED
+- All other existing tests â€” PASSED
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ---
 
 ## Constraints Preserved
 
-- v0.6.18 `KnownUnsafeExtensionPackages` static guard and `ExtensionLoader` filter — unchanged.
-- Shizuku is not the default path — unchanged.
-- No unvetted repos added by default — unchanged.
-- Offline failures do not affect source quality scores — unchanged.
-- Disliked and quarantined/blocked concepts remain separate — no overloading.
-- No-match sources are not penalized in scoring — the sort is display-only.
+- v0.6.18 `KnownUnsafeExtensionPackages` static guard and `ExtensionLoader` filter â€” unchanged.
+- Shizuku is not the default path â€” unchanged.
+- No unvetted repos added by default â€” unchanged.
+- Offline failures do not affect source quality scores â€” unchanged.
+- Disliked and quarantined/blocked concepts remain separate â€” no overloading.
+- No-match sources are not penalized in scoring â€” the sort is display-only.
 - Seen manga does not affect taste weights or the 100-rating reassessment threshold.
 - Normal global search limits are unchanged.
 - The For You page layout is not redesigned.
@@ -258,3 +258,4 @@ Updated:
 - **Hidden-source state**: Deferred. Currently there is no "hide temporarily, don't dislike" concept separate from dislike. Documented in `NEXT_WORK.md`.
 - **Evidence strength labels**: Currently embedded as hardcoded strings in `SourceEvaluationScreen.kt` rather than extracted to `i18n-kmk/strings.xml`. The `source_evaluation_evidence_*` keys are in strings.xml but not yet hooked to the labels (they are prepared for future use). Current labels use the English values directly.
 - **Source evaluation reassessment tests**: The reassessment threshold logic (`ratingsSinceBaseline >= 100`) is computed in the Composable UI rather than in the ScreenModel as a pure function. Unit tests for this threshold are deferred; manual testing is sufficient for the first pass.
+

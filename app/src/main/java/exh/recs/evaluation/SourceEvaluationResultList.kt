@@ -2,6 +2,7 @@ package exh.recs.evaluation
 
 import tachiyomi.domain.taste.model.SourceEvaluation
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
+import tachiyomi.domain.taste.model.SourceRecommendationFit
 
 // KMK -->
 /**
@@ -15,7 +16,12 @@ object SourceEvaluationResultList {
         NEWEST,
         SOURCE_NAME,
         EXTENSION_NAME,
-        SEARCH_RELIABILITY,
+        // KMK --> v0.7.42-fix2: replaces SEARCH_RELIABILITY, which sorted a field
+        // (SourceEvaluation.searchReliabilityScore) that v0.7.42 intentionally always writes as 0.0.
+        // Sorts by the real For You search-compatibility state instead — see
+        // SourceRecommendationFitDisplayPolicy.
+        FOR_YOU_COMPATIBILITY,
+        // KMK <--
         EXPLICIT_RISK,
     }
 
@@ -36,16 +42,24 @@ object SourceEvaluationResultList {
     /**
      * Sort [evaluations] by [mode].
      * Results are stable (equal elements maintain their relative order).
+     *
+     * KMK --> v0.7.42-fix2: gained [fitsByEvalKey] and [now] so BEST_FIT's compatibility tie-break
+     * and FOR_YOU_COMPATIBILITY can resolve each row's [CompatibilityDisplayState] via
+     * [SourceRecommendationFitDisplayPolicy]. Capture [now] once per call (e.g. once per composition
+     * or action) — do not let comparators re-read the clock mid-sort.
+     * KMK <--
      */
     fun sort(
         evaluations: List<SourceEvaluation>,
+        fitsByEvalKey: Map<String, SourceRecommendationFit>,
         mode: SortMode,
+        now: Long = System.currentTimeMillis(),
     ): List<SourceEvaluation> = when (mode) {
-        SortMode.BEST_FIT -> evaluations.sortedWith(bestFitComparator)
+        SortMode.BEST_FIT -> evaluations.sortedWith(bestFitComparator(fitsByEvalKey, now))
         SortMode.NEWEST -> evaluations.sortedByDescending { it.evaluatedAt }
         SortMode.SOURCE_NAME -> evaluations.sortedWith(sourceNameComparator)
         SortMode.EXTENSION_NAME -> evaluations.sortedWith(extensionNameComparator)
-        SortMode.SEARCH_RELIABILITY -> evaluations.sortedWith(searchReliabilityComparator)
+        SortMode.FOR_YOU_COMPATIBILITY -> evaluations.sortedWith(forYouCompatibilityComparator(fitsByEvalKey, now))
         SortMode.EXPLICIT_RISK -> evaluations.sortedWith(explicitRiskComparator)
     }
 
@@ -65,9 +79,20 @@ object SourceEvaluationResultList {
 
     // --- Comparators ---
 
-    private val bestFitComparator: Comparator<SourceEvaluation> = Comparator { a, b ->
-        val verdict = verdictRank(a.verdict).compareTo(verdictRank(b.verdict))
+    // KMK --> v0.7.42-fix2: catalogue-first, with For You compatibility as a true tie-breaker only.
+    // Compatibility only distinguishes rows when BOTH are current outcomes (isCurrentOutcome) — an
+    // outdated/not-checked/ineligible row never wins or loses this step; it falls through neutrally
+    // to the newest-evaluation/name tie-breakers, exactly like two equal current rows would.
+    // Never reads searchReliabilityScore.
+    private fun bestFitComparator(
+        fitsByEvalKey: Map<String, SourceRecommendationFit>,
+        now: Long,
+    ): Comparator<SourceEvaluation> = Comparator { a, b ->
+        // KMK --> v0.7.47: a stale (outdated-version/expired) row must never outrank a current row,
+        // regardless of its own stored verdict — see SourceEvaluationDisplayPolicy.
+        val verdict = effectiveVerdictRank(a, now).compareTo(effectiveVerdictRank(b, now))
         if (verdict != 0) return@Comparator verdict
+        // KMK <--
 
         val fit = b.recommendationFitScore.compareTo(a.recommendationFitScore)
         if (fit != 0) return@Comparator fit
@@ -75,8 +100,15 @@ object SourceEvaluationResultList {
         val qual = b.qualityScore.compareTo(a.qualityScore)
         if (qual != 0) return@Comparator qual
 
-        val search = b.searchReliabilityScore.compareTo(a.searchReliabilityScore)
-        if (search != 0) return@Comparator search
+        val stateA = SourceRecommendationFitDisplayPolicy.resolve(a, fitsByEvalKey[a.evaluationKey], now)
+        val stateB = SourceRecommendationFitDisplayPolicy.resolve(b, fitsByEvalKey[b.evaluationKey], now)
+        val compat = if (stateA.isCurrentOutcome && stateB.isCurrentOutcome) {
+            SourceRecommendationFitDisplayPolicy.compatibilityRank(stateA)
+                .compareTo(SourceRecommendationFitDisplayPolicy.compatibilityRank(stateB))
+        } else {
+            0
+        }
+        if (compat != 0) return@Comparator compat
 
         val time = b.evaluatedAt.compareTo(a.evaluatedAt)
         if (time != 0) return@Comparator time
@@ -86,6 +118,7 @@ object SourceEvaluationResultList {
 
         String.CASE_INSENSITIVE_ORDER.compare(a.extensionName, b.extensionName)
     }
+    // KMK <--
 
     private val sourceNameComparator: Comparator<SourceEvaluation> = Comparator { a, b ->
         val src = String.CASE_INSENSITIVE_ORDER.compare(a.sourceName, b.sourceName)
@@ -97,15 +130,39 @@ object SourceEvaluationResultList {
         if (ext != 0) ext else String.CASE_INSENSITIVE_ORDER.compare(a.sourceName, b.sourceName)
     }
 
-    private val searchReliabilityComparator: Comparator<SourceEvaluation> = Comparator { a, b ->
-        val rel = b.searchReliabilityScore.compareTo(a.searchReliabilityScore)
-        if (rel != 0) return@Comparator rel
+    // KMK --> v0.7.42-fix2: replaces searchReliabilityComparator. Orders by
+    // SourceRecommendationFitDisplayPolicy's seven-bucket rank (current positive/weak/no-matches/
+    // error, then outdated, then not-checked, then ineligible last); within the current-positive
+    // bucket, higher recommendationQualityScore sorts first. Stale and unprobed rows are never
+    // treated as "weak" — they occupy their own distinct buckets below every current outcome.
+    private fun forYouCompatibilityComparator(
+        fitsByEvalKey: Map<String, SourceRecommendationFit>,
+        now: Long,
+    ): Comparator<SourceEvaluation> = Comparator { a, b ->
+        val fitA = fitsByEvalKey[a.evaluationKey]
+        val fitB = fitsByEvalKey[b.evaluationKey]
+        val stateA = SourceRecommendationFitDisplayPolicy.resolve(a, fitA, now)
+        val stateB = SourceRecommendationFitDisplayPolicy.resolve(b, fitB, now)
 
-        val fit = b.recommendationFitScore.compareTo(a.recommendationFitScore)
-        if (fit != 0) return@Comparator fit
+        val rank = SourceRecommendationFitDisplayPolicy.compatibilityRank(stateA)
+            .compareTo(SourceRecommendationFitDisplayPolicy.compatibilityRank(stateB))
+        if (rank != 0) return@Comparator rank
 
-        String.CASE_INSENSITIVE_ORDER.compare(a.sourceName, b.sourceName)
+        // Same bucket: current fit score (desc) where a current fit exists, then newest, then name.
+        if (stateA.isCurrentOutcome && stateB.isCurrentOutcome) {
+            val score = (fitB?.recommendationQualityScore ?: 0.0).compareTo(fitA?.recommendationQualityScore ?: 0.0)
+            if (score != 0) return@Comparator score
+        }
+
+        val time = b.evaluatedAt.compareTo(a.evaluatedAt)
+        if (time != 0) return@Comparator time
+
+        val src = String.CASE_INSENSITIVE_ORDER.compare(a.sourceName, b.sourceName)
+        if (src != 0) return@Comparator src
+
+        String.CASE_INSENSITIVE_ORDER.compare(a.extensionName, b.extensionName)
     }
+    // KMK <--
 
     private val explicitRiskComparator: Comparator<SourceEvaluation> = Comparator { a, b ->
         val exp = b.explicitScore.compareTo(a.explicitScore)
@@ -133,5 +190,14 @@ object SourceEvaluationResultList {
         SourceEvaluationVerdict.REJECTED -> 8
         SourceEvaluationVerdict.ERROR -> 9
     }
+
+    // KMK --> v0.7.47: stale (outdated-version/expired) rows are ranked strictly below every current
+    // row, regardless of their own stored verdict — an old STRONG_FIT must never outrank a current
+    // WORTH_TRYING. See SourceEvaluationDisplayPolicy.isStaleForRanking.
+    private fun effectiveVerdictRank(evaluation: SourceEvaluation, now: Long): Int {
+        val base = verdictRank(evaluation.verdict)
+        return if (SourceEvaluationDisplayPolicy.isStaleForRanking(evaluation, now)) base + 100 else base
+    }
+    // KMK <--
 }
 // KMK <--

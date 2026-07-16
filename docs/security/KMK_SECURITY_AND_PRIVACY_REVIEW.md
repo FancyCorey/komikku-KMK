@@ -2,7 +2,7 @@
 
 Date: 2026-06-28
 
-Status: Phase 4 review, reconciled against code after KMK-Recs v0.7.20. Several originally identified risks are now mitigated; remaining risks are noted below.
+Status: Phase 4 review, reconciled against code after KMK-Recs v0.7.20. Updated 2026-06-29 (v0.7.34 reconciliation pass: seen manga backup gap closed at proto 626 in v0.7.28; 54.sqm index guard deviation fixed; DB-09 documented). Updated 2026-07-09 (v0.7.38: `recommendation_candidate_memory` table added — local-only derived cache, confirmed NOT in backup/sync). Updated 2026-07-10 (v0.7.39: `recommendation_discovery_progress` table added — local-only derived cache, confirmed NOT in backup/sync; cleared together with candidate memory when user resets discovery history). Updated 2026-07-12 (v0.7.43: a second temporary-extension-installing background job, `SourceRecommendationQualityJob`, added alongside `SourceEvaluationJob` — see the new note under SEC-04/"Source Evaluation" below; no new persisted data). Updated 2026-07-12 (v0.7.45 final v0.7 closure pass: corrected the OCR row in "User-Facing Warning Requirements" — OCR is not a separate build line and the pre-index privacy notice was not actually missing, see that table; non-installed recommendation-quality probes now require the Private installer or are refused, closing the PromptRequired-cleanup public-safety gap noted under SEC-04). Several originally identified risks are now mitigated; remaining risks are noted below.
 
 Baseline: Komikku v1.13.6.
 
@@ -14,9 +14,9 @@ Related: `docs/community/KMK_PHASE_3_4_DATABASE_SECURITY_PRIVACY_AUDIT_PLAN.md`
 
 The KMK fork has a significantly higher security/privacy surface than stock Komikku. The three highest-risk areas are:
 
-1. **Source Evaluation** â€” installs, loads, and executes extension code from third-party repositories as part of a background job. Process death and Shizuku/current-mode cleanup remain security-sensitive, but v0.7.16 adds installer-mode consent reset, accurate prompt-required cleanup status, in-screen cleanup actions, and process-death leftover warnings.
+1. **Source Evaluation** -- installs, loads, and executes extension code from third-party repositories as part of a background job. Process death and Shizuku/current-mode cleanup remain security-sensitive, but v0.7.16 adds installer-mode consent reset, accurate prompt-required cleanup status, in-screen cleanup actions, and process-death leftover warnings.
 
-2. **OCR text storage** â€” recognized manga page text is stored in plaintext in the app's private SQLite database. v0.7.16 adds a pre-indexing privacy warning and structural tests confirming OCR text is excluded from backup/sync/export. The index can still grow large.
+2. **OCR text storage** -- recognized manga page text is stored in plaintext in the app's private SQLite database. v0.7.16 adds a pre-indexing privacy warning and structural tests confirming OCR text is excluded from backup/sync/export. The index can still grow large.
 
 3. **Recommendation bundle import** — JSON files from potentially untrusted sources are validated with explicit size/count limits. Import only writes library entries (not ratings or seen state). v0.7.16 adds a 200 ms delay between bulk add attempts to reduce network/source pressure. v0.7.17: ambiguous extension matches (multiple available extensions for the same package name) now surface as `AmbiguousSource` state — no silent first-pick. Missing-source extension install still uses the user's global installer preference.
 
@@ -24,7 +24,7 @@ All three areas are correctly marked experimental. Several gaps need addressing 
 
 ---
 
-## Source Evaluation â€” Installer And Lifecycle
+## Source Evaluation -- Installer And Lifecycle
 
 ### Installer Modes
 
@@ -33,7 +33,7 @@ Three modes in `SourceEvaluationInstallerPolicy.InstallerMode`:
 | Mode | Install | Uninstall | Max Batch | Cleanup Silent |
 |---|---|---|---|---|
 | `PRIVATE` | Into app's private storage directory | Silent via `extensionManager.uninstallExtension` | 100 | Yes |
-| `SHIZUKU` | As a system package via Shizuku | **Prompted** â€” Android system uninstall prompts | 50 | No (`cleanupIsSilent = false`) |
+| `SHIZUKU` | As a system package via Shizuku | **Prompted** -- Android system uninstall prompts | 50 | No (`cleanupIsSilent = false`) |
 | `CURRENT` | Delegates to user's global installer preference | If global = PRIVATE: silent. Otherwise: prompted per extension | 10 | Depends on global pref |
 
 The user's global installer preference is never mutated during evaluation. An `installerOverride` is passed to `ExtensionManager.installExtension` for the evaluation run only.
@@ -42,7 +42,7 @@ Only PRIVATE-installed extensions (`isShared = false`) are removed silently. SHI
 
 ### Evaluation Lifecycle
 
-Install â†’ probe â†’ uninstall are sequential coroutine steps with explicit delays (1500 ms between extensions, 500 ms between sources, 300 ms between search probes). The `finally` block in `evaluateExtension` always attempts `cleanupExtension` and clears the probe marker, so partial runs do trigger cleanup â€” unless the process is killed.
+Install -> probe -> uninstall are sequential coroutine steps with explicit delays (1500 ms between extensions, 500 ms between sources, 300 ms between search probes). The `finally` block in `evaluateExtension` always attempts `cleanupExtension` and clears the probe marker, so partial runs do trigger cleanup -- unless the process is killed.
 
 ### Process Death
 
@@ -50,10 +50,36 @@ The job runs as a foreground `CoroutineWorker` (`SourceEvaluationJob`). Candidat
 
 - The WorkManager task fails immediately on next `doWork()` call (candidates are null).
 - A `source_evaluation_state_lost_error` failure is written to the UI.
-- The `finally` block does NOT run â€” cleanup of any in-progress extension install does not happen.
+- The `finally` block does NOT run -- cleanup of any in-progress extension install does not happen.
 - An extension may be left installed if the kill occurred after install but before cleanup.
 
-This is partially mitigated by startup recovery: the probe marker written before risky operations is read at app startup by `SourceEvaluationStartupRecovery`, which quarantines the extension and writes it to the load-block table. However, this does not uninstall the extension â€” it only prevents it from loading.
+This is partially mitigated by startup recovery: the probe marker written before risky operations is read at app startup by `SourceEvaluationStartupRecovery`, which quarantines the extension and writes it to the load-block table. However, this does not uninstall the extension -- it only prevents it from loading.
+
+**v0.7.43 addendum:** the manual "For You search compatibility" check (missing/outdated/re-check all)
+now runs as its own foreground `CoroutineWorker`, `SourceRecommendationQualityJob`, with its own
+in-memory `SourceRecommendationQualityJobState` singleton -- deliberately not sharing
+`SourceEvaluationJob`'s unique work name, state object, or notification. It follows the exact same
+non-durable, process-scoped pattern and the exact same process-death behavior described above (state
+lost, job fails visibly, no silent success). It does **not** use the probe-marker/startup-recovery
+quarantine path that full Source Evaluation uses, because its per-source temporary install/cleanup is a
+much shorter-lived operation reusing the same `SourceEvaluationCleanupPolicy` cleanup logic as before
+(this behavior is unchanged from when the same loop ran in `screenModelScope` prior to v0.7.43 -- the
+crash-window risk is the same as it always was, only the execution context moved). A new
+`ScreenErrorKey.JobConflict` guard in `SourceEvaluationScreenModel` prevents Source Evaluation and this
+job from starting while the other is running, so the two jobs can never race over the same temporary
+extension install/uninstall.
+
+**v0.7.45 addendum (public-safety fix):** prior to this version, `SourceRecommendationQualityRunner`'s
+`cleanupExtension()` handled a `PromptRequired` cleanup decision (system-installed extension requiring
+an Android uninstall prompt) by logging and skipping -- unlike full Source Evaluation, it had no
+cleanup-status tracking, prompt-required count, visible cleanup action, or leftover warning, so a
+Shizuku/Current-mode temporary install could be left on the device with only a logcat line. Fixed by
+forcing non-installed (temporarily-installed) probes to the Private installer -- which uninstalls
+silently and reliably -- regardless of the user's chosen Source Evaluation installer mode; if Private
+is unavailable, those targets are refused entirely (a KMR-localized message and a
+`nonInstalledSkippedCount` are surfaced in the Source Evaluation screen) rather than risking a
+Shizuku/Current leftover. Installed-source compatibility checks are unaffected -- they never
+install/uninstall anything.
 
 ### Crash Recovery And Quarantine
 
@@ -73,7 +99,7 @@ If the user suspends their device mid-evaluation and resumes more than 24 hours 
 
 ---
 
-## Source Evaluation â€” Consent And Warnings
+## Source Evaluation -- Consent And Warnings
 
 ### Pre-Run Consent Dialog
 
@@ -81,7 +107,7 @@ Added in v0.7.11. `SourceEvaluationConsentPolicy.isConsentRequired(consentGiven)
 
 Check is applied in all three start paths: `startEvaluation`, `startReassessUpdated`, `continueEvaluation`. Evaluation cannot start until the user confirms. On confirmation, `sourceEvaluationConsentGiven = true` is stored in `SourcePreferences` (key: `"source_evaluation_consent_given"`, default `false`). The pending action (`pendingConsentAction`) is then executed.
 
-**Dialog title:** "Source Evaluation â€” Advanced Feature"
+**Dialog title:** "Source Evaluation -- Advanced Feature"
 
 **Dialog body:** "Source Evaluation temporarily installs extension packages, loads source definitions, runs network probes, scores results, and then attempts to uninstall them. Private mode (recommended): installs and removes silently. Current or Shizuku mode: Android may show install/uninstall prompts per extension. Only non-installed extensions are evaluated. Your library, ratings, and already-installed extensions are not changed unless you explicitly install a result. You can view this warning again from the Copy Diagnostics area."
 
@@ -106,19 +132,19 @@ As of v0.7.16, the prompt-required warning includes an in-screen cleanup action 
 
 ---
 
-## Source Evaluation â€” Security Risks
+## Source Evaluation -- Security Risks
 
 | ID | Risk | Severity | Current State |
 |---|---|---|---|
 | SEC-01 | Shizuku-installed extension left behind on process death | Critical | **Mitigated v0.7.16.** Probe marker triggers quarantine/load-blocking and records `sourceEvaluationLeftoverPkg` when the package is still installed; Source Evaluation shows a persistent uninstall action. |
 | SEC-02 | `promptHeavyCleanupAllowed = false` in standard paths | High | **Mitigated v0.7.16.** System prompts are still not launched mid-run, but cleanup status is recorded and the summary exposes an in-app action to trigger uninstall prompts afterward. |
 | SEC-03 | One-time consent does not re-trigger on installer mode change | Medium | **Mitigated v0.7.16.** Switching to SHIZUKU or CURRENT resets consent so the warning reappears. |
-| SEC-04 | `SourceEvaluationJobState` in-memory only | High | Candidates not serialized to WorkManager input data. Process restart between `start()` and `doWork()` causes immediate graceful failure. No silent state loss â€” failure is visible. |
+| SEC-04 | `SourceEvaluationJobState` in-memory only | High | Candidates not serialized to WorkManager input data. Process restart between `start()` and `doWork()` causes immediate graceful failure. No silent state loss -- failure is visible. |
 | SEC-05 | 24-hour stale marker threshold | Low | Device suspended > 24 hours mid-evaluation: crash marker cleared without quarantine. |
 
 ---
 
-## OCR â€” Storage And Privacy
+## OCR -- Storage And Privacy
 
 ### What Is Stored And Where
 
@@ -140,15 +166,25 @@ Yes. `OcrIndexRepository` exposes:
 - `deleteEmptyAndFailed()`
 - `deleteOldEngineRows(currentEngineVersion)`
 
-The OCR search screen has "Index all" and "Force re-index" confirm dialogs. Whether per-manga deletion is accessible from the manga detail or library UI was not confirmed in this audit.
+The OCR search screen has "Index all" and "Force re-index" confirm dialogs. As of v0.7.46, each OCR search result row also has an overflow menu with confirmed "Clear OCR for this chapter" and "Clear OCR for this manga" actions (see SEC-08 below), plus a "Clear empty/failed rows" action. These clear recognized text only -- they do not delete downloaded manga images. Per-manga/per-chapter deletion is not yet surfaced from the manga detail or library UI itself; it is reachable only from the OCR Search screen.
 
 ### Backup/Sync/Export Exclusion
 
 Confirmed: `ocr_indexed_page` does not appear in any `BackupCreator`, `TasteBackupCreator`, `SyncManager`, or `SyncService` backup path. No reference to OCR tables in `exh/recs/share/` (bundle export). OCR text is correctly local-only.
 
+## For You Discovery Memory (v0.7.38)
+
+`recommendation_candidate_memory` (migration 56) stores For You candidate manga discovered during source searches. Contents are derived from profile-preference-driven source queries and local scoring — no separate network call is made for this table beyond what For You already performs.
+
+Privacy classification: **local-only derived cache**. Not included in backup/sync. Clearable by the user via Recommendation Settings → Management → Reset For You discovery history.
+
+Data stored per candidate: source id, URL, manga id, title, thumbnail URL, score, matched groups, query tags, query strategy, page number, timestamps, profile fingerprint, filtered reason. All fields are local computations derived from the existing For You pipeline.
+
+Confirmed: `recommendation_candidate_memory` does not appear in `BackupCreator`, `TasteBackupCreator`, `SyncManager`, `SyncService`, or `exh/recs/share/` bundle export paths.
+
 ### OCR Logs
 
-Page-level errors are logged at `WARN` level including `manga.title`, `chapter.name`, and `pageIndex` â€” e.g., `"OCR: page error manga=${pageRef.manga.title} ch=${pageRef.chapter.name} page=${pageRef.pageIndex}"`. These appear in debug logcat only, not in the clipboard diagnostics export.
+**Fixed v0.7.46.** Page-level errors are logged at `WARN` level using only `manga.id`, `chapter.id`, and `pageIndex` -- e.g., `"OCR: page error mangaId=${pageRef.manga.id} chapterId=${pageRef.chapter.id} page=${pageRef.pageIndex}"`. Manga title and chapter name are no longer included in the log line. Stored per-page error text (in `ocr_indexed_page.error_message`) is also no longer raw exception text -- new failures store a stable `OcrErrorKey` (see `OcrErrorClassifier`), classified from the exception type rather than its message. Legacy rows written before v0.7.46 may still contain raw text and are displayed generically by the UI. These logs appear in debug logcat only, not in the clipboard diagnostics export.
 
 ### Privacy Gaps
 
@@ -156,7 +192,7 @@ Page-level errors are logged at `WARN` level including `manga.title`, `chapter.n
 |---|---|---|---|
 | SEC-06 | No pre-indexing privacy warning | Medium | **Mitigated v0.7.16.** The OCR index confirmation string now discloses that recognized text is stored locally and not sent to a server. |
 | SEC-07 | `raw_text` and `normalized_text` stored in plaintext | Low | Acceptable on unrooted devices (app sandbox). On rooted devices or with device compromise, the full recognized text of all indexed pages is accessible without decryption. No encryption is applied. |
-| SEC-08 | Per-manga deletion not confirmed accessible from library UI | Low | Deletion API exists in the repository but surface-level audit did not confirm a per-manga delete action from the manga detail or library screen. |
+| SEC-08 | Per-manga deletion not confirmed accessible from library UI | Low | **Fixed v0.7.46.** `OcrSearchScreen` result rows now have an overflow menu with "Clear OCR for this chapter"/"Clear OCR for this manga" (calling the existing `OcrIndexRepository.deleteByChapter`/`deleteByManga`), each with a confirmation dialog stating downloaded images are unaffected. Not surfaced from the library/manga-detail screen itself -- reachable from OCR Search, which is where OCR data is otherwise managed. |
 
 ---
 
@@ -189,11 +225,11 @@ Import does **not** write:
 - source evaluation records
 - any other KMK preference data
 
-Bundle items have a `score` field used for display only â€” not written to taste tables on import.
+Bundle items have a `score` field used for display only -- not written to taste tables on import.
 
 ### Missing-Source Install
 
-When a bundle item's source is not installed, the item is shown as `MissingSource` with an optional `Extension.Available` reference. The user taps an explicit install button within the import preview screen. This calls `extensionManager.installExtension(ext)` with no installer override â€” it uses the user's global installer preference. This is consistent with normal extension install behavior.
+When a bundle item's source is not installed, the item is shown as `MissingSource` with an optional `Extension.Available` reference. The user taps an explicit install button within the import preview screen. This calls `extensionManager.installExtension(ext)` with no installer override -- it uses the user's global installer preference. This is consistent with normal extension install behavior.
 
 ### Bundle Import Risks
 
@@ -234,7 +270,7 @@ The validator, limits, schema check, and preview-before-add flow provide a reaso
 
 ### Safety Assessment
 
-The installer override is correctly scoped â€” it does not modify the user's global preference. The load safety check is enforced at the extension loader level, which is the correct enforcement point. The safety policy is pure and testable.
+The installer override is correctly scoped -- it does not modify the user's global preference. The load safety check is enforced at the extension loader level, which is the correct enforcement point. The safety policy is pure and testable.
 
 The primary remaining Source Evaluation risk is no longer invisible cleanup: v0.7.16 exposes cleanup actions. The remaining risk is inherent to evaluating third-party extension code and to Android prompt-based cleanup for system-installed extensions.
 
@@ -301,11 +337,11 @@ For each risky workflow, confirmed requirements:
 
 | Feature | Pre-run Warning | Per-run Consent | Privacy Note | Cleanup Warning | Experimental Label | Status |
 |---|---|---|---|---|---|---|
-| Source Evaluation (all modes) | Yes | One-time (persists) | Partial â€” consent text mentions "installs extension packages" | Yes â€” post-batch cleanup count | Yes â€” "Experimental â€” Source Evaluation" label in settings | Mostly covered; consent not re-triggered on mode change |
-| Source Evaluation (Shizuku/Current mode) | Yes â€” prompt-heavy dialog | n/a | No | Yes | Yes | Prompt-heavy dialog exists for batch > 1 |
-| OCR indexing | No pre-index privacy notice | Confirm dialog (describes time/battery, not text storage) | **Missing** | n/a | Yes â€” OCR is separate build line | **Gap: no privacy notice before text is stored** |
-| Bundle import | Preview before add | n/a | Partial â€” public README warns not to import from untrusted sources | n/a | Not explicitly labeled in UI | Generally adequate; no explicit "experimental" label in import screen |
-| Best Version | User confirms candidates and migration/copy | Per-action confirmation | n/a | n/a | Not labeled | Correct â€” confirmation exists |
+| Source Evaluation (all modes) | Yes | One-time (persists) | Partial -- consent text mentions "installs extension packages" | Yes -- post-batch cleanup count | Yes -- "Experimental -- Source Evaluation" label in settings | Mostly covered; consent not re-triggered on mode change |
+| Source Evaluation (Shizuku/Current mode) | Yes -- prompt-heavy dialog | n/a | No | Yes | Yes | Prompt-heavy dialog exists for batch > 1 |
+| OCR indexing | Confirm dialog before batch indexing | Confirm dialog (`ocr_index_all_confirm_message`) | Present -- the confirm dialog explicitly states recognized text is stored in the local database, is searchable, and is not sent to any server | n/a | Experimental, documented in `docs/ocr/README.md` | **v0.7.45 correction:** this row previously said OCR is a separate build line and that the privacy notice was missing. Neither is accurate as of v0.7.45 -- OCR ships in the same build as KMK-Recs (`libs.mlkit.text.recognition` is an unconditional `app/build.gradle.kts` dependency, present in every build type including `kmkPublicTest`), and the existing per-run confirm dialog already discloses local-only text storage. |
+| Bundle import | Preview before add | n/a | Partial -- public README warns not to import from untrusted sources | n/a | Not explicitly labeled in UI | Generally adequate; no explicit "experimental" label in import screen |
+| Best Version | User confirms candidates and migration/copy | Per-action confirmation | n/a | n/a | Not labeled | Correct -- confirmation exists |
 | Cross-extension matching | User confirms each match | Per-action | n/a | n/a | Not labeled | Acceptable; false positive risk documented |
 
 ---
@@ -314,13 +350,13 @@ For each risky workflow, confirmed requirements:
 
 | Feature | Posture | Community-Ready? |
 |---|---|---|
-| For You recommendations | Low risk â€” local computation, installed sources only | After style/UX cleanup |
-| Source Evaluation | High risk â€” extension install/execute | Experimental only; needs cleanup gap fix before community |
-| OCR | High privacy risk â€” stores private text | Experimental only; needs privacy notice before community |
-| Bundle import | Medium risk â€” untrusted file boundary | After schema documentation; current limits are reasonable |
-| Best Version | Medium risk â€” migration/copy | After QA verification |
+| For You recommendations | Low risk -- local computation, installed sources only | After style/UX cleanup |
+| Source Evaluation | High risk -- extension install/execute | Experimental only; needs cleanup gap fix before community |
+| OCR | High privacy risk -- stores private text | Experimental only; needs privacy notice before community |
+| Bundle import | Medium risk -- untrusted file boundary | After schema documentation; current limits are reasonable |
+| Best Version | Medium risk -- migration/copy | After QA verification |
 | Cross-extension matching | Low-medium risk | After link management UI |
-| Explicit source filter | Low risk â€” imperfect but documented | With documented limitations |
+| Explicit source filter | Low risk -- imperfect but documented | With documented limitations |
 
 ---
 
@@ -335,6 +371,7 @@ For each risky workflow, confirmed requirements:
 | SEC-05 | 24-hour stale marker threshold | Low | Device suspended > 24h mid-evaluation: crash marker cleared without quarantine. | Consider reducing threshold or surfacing "evaluation interrupted" warning | Phase 5 |
 | SEC-06 | No pre-indexing OCR privacy warning | Medium | **Mitigated v0.7.16.** Confirmation text discloses local searchable text storage and no server upload. | Keep OCR docs aligned | Complete |
 | SEC-07 | OCR text stored in plaintext | Low | Acceptable on unrooted devices (app sandbox). Plaintext on rooted devices. | Document in OCR public docs; encryption is out of scope for this fork | Phase 9 |
-| SEC-08 | Per-manga OCR deletion UI not confirmed | Low | Deletion API exists; surface accessibility from library/manga detail not confirmed in audit. | Verify and add if missing | Phase 9 |
+| SEC-08 | Per-manga OCR deletion UI not confirmed | Low | **Fixed v0.7.46.** Reachable via a per-result overflow menu in `OcrSearchScreen` (clear chapter/clear manga, both confirmed). | None -- resolved | Complete |
 | SEC-09 | Bundle import network fetch: up to 500 items without rate limiting | Medium | **Partially mitigated v0.7.16.** 200 ms delay added between item adds. No user-facing warning yet. | Consider import-size/network warning | Phase 8 follow-up |
 | SEC-10 | Missing-source bundle install uses global installer preference | Low | Consistent with normal extension install UX; no installer override. Acceptable but note for Shizuku users who may see system prompts. | Document in bundle import UI | Phase 8 |
+

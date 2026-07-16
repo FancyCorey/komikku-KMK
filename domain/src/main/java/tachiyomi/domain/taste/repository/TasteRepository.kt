@@ -1,6 +1,7 @@
 package tachiyomi.domain.taste.repository
 
 import kotlinx.coroutines.flow.Flow
+import tachiyomi.domain.taste.model.CrossSourceGroupPrimary
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.TagAlias
@@ -70,6 +71,20 @@ interface TasteRepository {
     suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String)
 
     suspend fun deleteAllCrossSourceMangaLinks()
+
+    // KMK <--
+
+    // --- manga_cross_source_group_primary --- KMK --> v0.8.0
+
+    suspend fun getCrossSourceGroupPrimary(groupId: String): CrossSourceGroupPrimary?
+
+    suspend fun getAllCrossSourceGroupPrimaries(): List<CrossSourceGroupPrimary>
+
+    suspend fun upsertCrossSourceGroupPrimary(primary: CrossSourceGroupPrimary)
+
+    suspend fun deleteCrossSourceGroupPrimary(groupId: String)
+
+    suspend fun deleteAllCrossSourceGroupPrimaries()
 
     // KMK <--
 

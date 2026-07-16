@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.22 Source Evaluation Continuation And Recommendation Quality Plan
+﻿# KMK-Recs v0.6.22 Source Evaluation Continuation And Recommendation Quality Plan
 
 Date: 2026-06-22
 
@@ -737,3 +737,4 @@ The clean scope is:
 5. document and test all failure paths.
 
 This directly addresses current usability issues without turning evaluation into an unbounded crawler.
+

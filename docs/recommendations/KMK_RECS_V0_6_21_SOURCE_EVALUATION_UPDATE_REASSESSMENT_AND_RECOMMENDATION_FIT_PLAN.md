@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.21 Source Evaluation Update Reassessment And Recommendation Fit Plan
+﻿# KMK-Recs v0.6.21 Source Evaluation Update Reassessment And Recommendation Fit Plan
 
 Date: 2026-06-21
 
@@ -837,3 +837,4 @@ This plan is feasible, but it is bigger than a tiny bugfix. The core safe implem
 - documentation cleanup for stale deferred items.
 
 Repo failure surfacing, mid-run connectivity handling, and source priority suggestions are useful but can be trimmed if implementation becomes too large. The key rule is to keep the system bounded: first evaluate broadly but cheaply, then only perform recommendation-quality checks on sources that already have enough evidence to be worth trying.
+

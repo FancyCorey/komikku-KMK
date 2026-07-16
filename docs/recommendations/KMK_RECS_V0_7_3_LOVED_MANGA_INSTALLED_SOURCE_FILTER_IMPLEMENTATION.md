@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.3: Loved Manga Installed Source Filter — Implementation Report
+﻿# KMK-Recs v0.7.3: Loved Manga Installed Source Filter â€” Implementation Report
 
 Date: 2026-06-21
 
@@ -51,17 +51,17 @@ Behavior:
 
 ### Updated: `KmkRecsReleaseNotes.kt`
 
-- VERSION_CODE bumped 720 → 730.
-- VERSION_NAME → "KMK-Recs v0.7.3".
+- VERSION_CODE bumped 720 â†’ 730.
+- VERSION_NAME â†’ "KMK-Recs v0.7.3".
 - Added What's New entry: "Loved Manga now hides entries from sources that are no longer installed."
 
 ## Files Changed
 
 | File | Change |
 |---|---|
-| `exh/recs/loved/LovedMangaSourceFilter.kt` | New — pure filter helper |
+| `exh/recs/loved/LovedMangaSourceFilter.kt` | New â€” pure filter helper |
 | `exh/recs/loved/LovedMangaScreenModel.kt` | Inject `SourceManager`; apply filter before sort; remove unused `MangaRating` import |
-| `app/src/test/.../LovedMangaSourceFilterTest.kt` | New — 9 unit tests |
+| `app/src/test/.../LovedMangaSourceFilterTest.kt` | New â€” 9 unit tests |
 | `KmkRecsReleaseNotes.kt` | VERSION_CODE 730, VERSION_NAME v0.7.3, new What's New entry |
 | `docs/recommendations/CURRENT_STATE.md` | Version, Loved Manga section updated |
 | `docs/recommendations/NEXT_WORK.md` | v0.7.3 entry removed from planning queue |
@@ -81,7 +81,7 @@ Local Source (`id == 0L`) is excluded by `getVisibleCatalogueSources()` in this 
 ## Tests Run
 
 ```
-LovedMangaSourceFilterTest — 9 tests, all PASSED
+LovedMangaSourceFilterTest â€” 9 tests, all PASSED
 
   keeps LOVE entries whose source is installed                                     PASSED
   removes LOVE entries whose source is not installed                               PASSED
@@ -93,7 +93,7 @@ LovedMangaSourceFilterTest — 9 tests, all PASSED
   returned list is a different object from input                                   PASSED
   filtering before grouping means versionCount counts only installed entries       PASSED
 
-LovedMangaDuplicateGrouperTest — 38 tests, all PASSED
+LovedMangaDuplicateGrouperTest â€” 38 tests, all PASSED
 
 :app:testDebugUnitTest --tests "*LovedManga*"  BUILD SUCCESSFUL
 :app:testDebugUnitTest                          BUILD SUCCESSFUL
@@ -115,3 +115,4 @@ LovedMangaDuplicateGrouperTest — 38 tests, all PASSED
 ## Deviations from the Plan
 
 None. All plan sections were implemented as specified.
+

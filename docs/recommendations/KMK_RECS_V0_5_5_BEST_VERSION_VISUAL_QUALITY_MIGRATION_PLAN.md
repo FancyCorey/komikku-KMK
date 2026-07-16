@@ -1,4 +1,4 @@
-# KMK-Recs v0.5.5 Best Version / Visual Quality Migration Plan
+﻿# KMK-Recs v0.5.5 Best Version / Visual Quality Migration Plan
 
 Date: 2026-06-22
 
@@ -843,3 +843,4 @@ Recommended first implementation:
 10. Store a local quality signal for future use.
 
 Do not attempt fully automatic quality scoring across all sources in this pass.
+

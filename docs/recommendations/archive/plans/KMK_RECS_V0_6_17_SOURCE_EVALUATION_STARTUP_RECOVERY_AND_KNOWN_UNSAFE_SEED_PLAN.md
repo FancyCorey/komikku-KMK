@@ -442,3 +442,4 @@ KMK SourceEvaluation startup recovery:
 Implement v0.6.17 as a focused hotfix before continuing recommendation feature work.
 
 v0.6.16 created the right quarantine infrastructure, but recovery happens too late for the current crash loop. Moving recovery to startup and seeding the repeated DigitalComicMuseum crash suspect should prevent the app from repeatedly dying before the user can reach Source Evaluation.
+

@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.10: Source Evaluation DI Crash Fix Plan
+﻿# KMK-Recs v0.6.10: Source Evaluation DI Crash Fix Plan
 
 Date: 2026-06-19
 
@@ -432,3 +432,4 @@ This is a focused crash fix and hardening pass.
 Move forward with this fix before adding more Source Evaluation features.
 
 The feature is currently blocked by a startup crash in the Source Evaluation screen. The lowest-risk path is to register the missing helper in the app's dependency graph, normalize both consumers to use that registration, and add a local catch around candidate loading so that any future metadata/evaluation failure degrades safely instead of taking down the screen.
+

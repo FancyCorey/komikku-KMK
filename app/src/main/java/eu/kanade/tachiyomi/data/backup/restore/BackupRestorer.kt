@@ -5,16 +5,17 @@ import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
-import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
@@ -166,6 +167,9 @@ class BackupRestorer(
                     // KMK <--
                     // KMK --> v0.7.28: seen manga keys
                     backup.backupSeenMangaKeys,
+                    // KMK <--
+                    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+                    backup.backupCrossSourceGroupPrimaries,
                     // KMK <--
                     mangaJob,
                 )
@@ -333,6 +337,9 @@ class BackupRestorer(
         // KMK --> v0.7.28: seen manga keys
         backupSeenMangaKeys: List<BackupSeenMangaKey>,
         // KMK <--
+        // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+        backupCrossSourceGroupPrimaries: List<BackupCrossSourceGroupPrimary>,
+        // KMK <--
         mangaJob: Job?,
     ) = launch {
         // Manga tastes resolve by (url, source) — wait until library entries exist locally
@@ -345,6 +352,9 @@ class BackupRestorer(
             addAll(tasteRestorer.restoreDisabledRecommendationSources(backupDisabledSources))
             // KMK --> v0.7.0: Phase 4
             addAll(tasteRestorer.restoreCrossSourceMangaLinks(backupCrossSourceMangaLinks))
+            // KMK <--
+            // KMK --> v0.8.1-fix1: restored after links so the group already exists
+            addAll(tasteRestorer.restoreCrossSourceGroupPrimaries(backupCrossSourceGroupPrimaries))
             // KMK <--
             // KMK --> v0.7.16: Best Version quality signals
             addAll(tasteRestorer.restoreMangaSourceQualitySignals(backupMangaSourceQualitySignals))

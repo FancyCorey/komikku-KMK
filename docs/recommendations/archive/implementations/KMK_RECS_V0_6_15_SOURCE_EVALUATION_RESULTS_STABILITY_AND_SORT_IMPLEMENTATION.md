@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.15: Source Evaluation Results Stability and Sort Implementation
+﻿# KMK-Recs v0.6.15: Source Evaluation Results Stability and Sort Implementation
 
 Date: 2026-06-20
 
@@ -66,11 +66,11 @@ mutableState.update { it.copy(evaluations = SourceEvaluationResultList.sanitize(
 
 Replaced `clearAllEvaluations()` with:
 
-- `requestClearAllEvaluations()` — sets dialog visible
-- `dismissClearAllEvaluations()` — closes dialog
-- `confirmClearAllEvaluations()` — closes dialog and runs `clearSourceEvaluations.await()`
+- `requestClearAllEvaluations()` â€” sets dialog visible
+- `dismissClearAllEvaluations()` â€” closes dialog
+- `confirmClearAllEvaluations()` â€” closes dialog and runs `clearSourceEvaluations.await()`
 
-Added `setResultSortMode(mode)` — updates `resultSortMode` in state.
+Added `setResultSortMode(mode)` â€” updates `resultSortMode` in state.
 
 ### Modified: `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt`
 
@@ -108,10 +108,10 @@ Added under `<!-- KMK v0.6.15 -->`:
 
 ## v0.6.14 Behavior Preserved
 
-- `withTimeoutOrNull()` timeout resilience in `SourceEvaluationRunner` — unchanged.
-- `completedCount` in `finally` block — unchanged.
-- `requestResetSourceOrder()` / confirm / dismiss — unchanged.
-- All existing Source Evaluation probe, installer, and cleanup logic — unchanged.
+- `withTimeoutOrNull()` timeout resilience in `SourceEvaluationRunner` â€” unchanged.
+- `completedCount` in `finally` block â€” unchanged.
+- `requestResetSourceOrder()` / confirm / dismiss â€” unchanged.
+- All existing Source Evaluation probe, installer, and cleanup logic â€” unchanged.
 
 ## Files Changed
 
@@ -135,9 +135,9 @@ Added under `<!-- KMK v0.6.15 -->`:
 
 ## Tests
 
-- `exh.recs.evaluation.SourceEvaluationResultListTest` — 13 tests, all PASSED
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `exh.recs.evaluation.SourceEvaluationResultListTest` â€” 13 tests, all PASSED
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ## APK
 
@@ -152,10 +152,11 @@ On-device:
 1. Install v0.6.15 APK.
 2. Open Recommendation Settings > Source Evaluation.
 3. Confirm existing past results display correctly with compact subtitle (fit %, search %).
-4. Try each sort mode — confirm list reorders appropriately.
-5. Tap "Clear all" — confirm confirmation dialog appears. Tap Cancel — confirm results remain. Tap Clear — confirm list clears.
-6. Run a batch of 10–25 with Private installer.
+4. Try each sort mode â€” confirm list reorders appropriately.
+5. Tap "Clear all" â€” confirm confirmation dialog appears. Tap Cancel â€” confirm results remain. Tap Clear â€” confirm list clears.
+6. Run a batch of 10â€“25 with Private installer.
 7. Confirm batch completes and past results appear.
-8. Leave and re-open Source Evaluation — confirm no crash.
-9. Scroll through all past results — confirm no crash.
+8. Leave and re-open Source Evaluation â€” confirm no crash.
+9. Scroll through all past results â€” confirm no crash.
 10. Confirm v0.6.14 timeout behavior is unchanged: run with a known-slow source and verify batch completes (not Cancelled) with the slow source showing as Error.
+

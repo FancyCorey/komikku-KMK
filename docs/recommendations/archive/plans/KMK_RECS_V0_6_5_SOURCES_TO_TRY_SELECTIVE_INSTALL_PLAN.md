@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.5 Sources To Try Selective Install Plan
+﻿# KMK-Recs v0.6.5 Sources To Try Selective Install Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -352,3 +352,4 @@ This implementation is complete only when:
 - Existing tests pass or failures are documented clearly.
 - Documentation and release notes are updated to `KMK-Recs v0.6.5`.
 - A debug APK is produced using the current project versioning rules.
+

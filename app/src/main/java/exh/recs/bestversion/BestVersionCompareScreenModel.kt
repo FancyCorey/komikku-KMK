@@ -9,6 +9,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import exh.recs.RecommendationErrorClassifier
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.matching.SameMangaCandidateResult
 import exh.recs.matching.SameMangaCandidateSearcher
@@ -229,7 +230,8 @@ class BestVersionCompareScreenModel(
                                 CandidateChapterState.Unavailable
                             }
                         } catch (e: Exception) {
-                            key to CandidateChapterState.ChapterError(e.message ?: "Unknown error")
+                            // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
+                            key to CandidateChapterState.ChapterError(RecommendationErrorClassifier.classifyToStorageKey(e))
                         }
                     }
                 }
@@ -289,7 +291,8 @@ class BestVersionCompareScreenModel(
                         }
                         CandidatePreviewState.Loaded(sampledPages)
                     } catch (e: Exception) {
-                        CandidatePreviewState.PreviewError(e.message ?: "Preview failed")
+                        // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
+                        CandidatePreviewState.PreviewError(RecommendationErrorClassifier.classifyToStorageKey(e))
                     }
                     mutableState.update { current ->
                         current.copy(candidatePreviews = current.candidatePreviews.mutate { it[key] = result })
@@ -334,7 +337,8 @@ class BestVersionCompareScreenModel(
             } catch (e: Exception) {
                 mutableState.update {
                     it.copy(
-                        step = BestVersionStep.Error(e.message ?: "Migration failed"),
+                        // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
+                        step = BestVersionStep.Error(RecommendationErrorClassifier.classifyToStorageKey(e)),
                         isMigrating = false,
                     )
                 }

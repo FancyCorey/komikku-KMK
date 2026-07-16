@@ -5,6 +5,7 @@ import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
@@ -16,6 +17,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
+import eu.kanade.tachiyomi.data.backup.restore.restorers.CrossSourceGroupPrimaryRestorePolicy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
@@ -96,6 +98,12 @@ abstract class SyncService(
             remoteSyncData.backup?.backupCrossSourceMangaLinks,
         )
         // KMK <--
+        // KMK --> v0.8.1-fix1: merge user-selected primary versions; prefer newer updatedAt per groupId
+        val mergedCrossSourceGroupPrimaries = mergeCrossSourceGroupPrimaries(
+            localSyncData.backup?.backupCrossSourceGroupPrimaries,
+            remoteSyncData.backup?.backupCrossSourceGroupPrimaries,
+        )
+        // KMK <--
         // KMK <--
 
         // Create the merged Backup object
@@ -118,6 +126,9 @@ abstract class SyncService(
             backupDisabledRecommendationSources = mergedDisabledRecSources,
             // KMK --> v0.7.0: Phase 4
             backupCrossSourceMangaLinks = mergedCrossSourceLinks,
+            // KMK <--
+            // KMK --> v0.8.1-fix1
+            backupCrossSourceGroupPrimaries = mergedCrossSourceGroupPrimaries,
             // KMK <--
             // KMK <--
         )
@@ -658,5 +669,47 @@ abstract class SyncService(
         }
     }
     // KMK <--
+
+    // KMK --> v0.8.1-fix1: merge user-selected primary versions; prefer newer updatedAt per groupId.
+    // Mirrors mergeCrossSourceMangaLinks' key-by-and-prefer-newer shape above. Delegates to the
+    // companion object's pure implementation so it's directly unit-testable without instantiating
+    // this abstract class (see SyncServiceCrossSourceGroupPrimaryMergeTest).
+    private fun mergeCrossSourceGroupPrimaries(
+        localPrimaries: List<BackupCrossSourceGroupPrimary>?,
+        remotePrimaries: List<BackupCrossSourceGroupPrimary>?,
+    ): List<BackupCrossSourceGroupPrimary> = mergeCrossSourceGroupPrimariesPure(localPrimaries, remotePrimaries)
+    // KMK <--
+    // KMK <--
+
+    // KMK --> v0.8.1-fix2
+    companion object {
+        /**
+         * Invalid rows are filtered here using the same [CrossSourceGroupPrimaryRestorePolicy.isValid]
+         * rule restore uses (blank groupId, source == 0L, or blank url) — previously this only
+         * filtered blank groupId, which was looser than restore validation and let malformed rows
+         * (e.g. source == 0L) through to the merged sync payload.
+         */
+        internal fun mergeCrossSourceGroupPrimariesPure(
+            localPrimaries: List<BackupCrossSourceGroupPrimary>?,
+            remotePrimaries: List<BackupCrossSourceGroupPrimary>?,
+        ): List<BackupCrossSourceGroupPrimary> {
+            val localMap = localPrimaries.orEmpty()
+                .filter { CrossSourceGroupPrimaryRestorePolicy.isValid(it) }
+                .associateBy { it.groupId }
+            val remoteMap = remotePrimaries.orEmpty()
+                .filter { CrossSourceGroupPrimaryRestorePolicy.isValid(it) }
+                .associateBy { it.groupId }
+
+            return (localMap.keys + remoteMap.keys).distinct().map { key ->
+                val local = localMap[key]
+                val remote = remoteMap[key]
+                when {
+                    local == null -> remote!!
+                    remote == null -> local
+                    else -> if (local.updatedAt >= remote.updatedAt) local else remote
+                }
+            }
+        }
+    }
     // KMK <--
 }

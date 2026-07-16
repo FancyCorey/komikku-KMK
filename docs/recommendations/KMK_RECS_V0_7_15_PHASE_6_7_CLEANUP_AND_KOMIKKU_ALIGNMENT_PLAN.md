@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.15 Phase 6/7 Cleanup And Komikku Alignment Plan
+﻿# KMK-Recs v0.7.15 Phase 6/7 Cleanup And Komikku Alignment Plan
 
 Date: 2026-06-27
 
@@ -485,4 +485,5 @@ Claude's final report should include:
 - APK path,
 - remaining deferred items,
 - whether Phase 8 is ready to begin next.
+
 

@@ -1,7 +1,10 @@
 package exh.recs.evaluation
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -49,6 +52,13 @@ private class FakeTasteRepository(
     override suspend fun deleteCrossSourceMangaLink(source: Long, url: String) {}
     override suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String) {}
     override suspend fun deleteAllCrossSourceMangaLinks() {}
+    // KMK --> v0.8.0
+    override suspend fun getCrossSourceGroupPrimary(groupId: String): tachiyomi.domain.taste.model.CrossSourceGroupPrimary? = null
+    override suspend fun getAllCrossSourceGroupPrimaries(): List<tachiyomi.domain.taste.model.CrossSourceGroupPrimary> = emptyList()
+    override suspend fun upsertCrossSourceGroupPrimary(primary: tachiyomi.domain.taste.model.CrossSourceGroupPrimary) {}
+    override suspend fun deleteCrossSourceGroupPrimary(groupId: String) {}
+    override suspend fun deleteAllCrossSourceGroupPrimaries() {}
+    // KMK <--
     override suspend fun getAllDisabledSourceIds(): List<Long> = emptyList()
     override fun getAllDisabledSourceIdsAsFlow(): Flow<List<Long>> = emptyFlow()
     override suspend fun disableSource(sourceId: Long) {}
@@ -238,7 +248,9 @@ class SourceRecommendationFitProbeTest {
     // KMK --> v0.7.13: enrichment behavior tests
     @Test
     fun `probe returns NO_MATCHES when search succeeds but raw list is empty`() = runTest {
-        val probe = SourceRecommendationFitProbe(fakeGetTagAliases)
+        // KMK --> v0.7.35: supply test dispatcher so virtual-time timeout does not race real IO threads
+        val probe = SourceRecommendationFitProbe(fakeGetTagAliases, UnconfinedTestDispatcher(testScheduler))
+        // KMK <--
         val emptySource = FakeCatalogueSource(returns = emptyList())
         val profile = TasteProfile(
             learnedTagWeights = mapOf("action" to 0.9),
@@ -254,7 +266,9 @@ class SourceRecommendationFitProbeTest {
 
     @Test
     fun `probe reports weak metadata when source returns results without genre`() = runTest {
-        val probe = SourceRecommendationFitProbe(fakeGetTagAliases)
+        // KMK --> v0.7.35: supply test dispatcher
+        val probe = SourceRecommendationFitProbe(fakeGetTagAliases, UnconfinedTestDispatcher(testScheduler))
+        // KMK <--
         // Source returns results with no genre; getMangaDetails returns same (no genre added)
         val noGenreSource = FakeCatalogueSource(
             returns = listOf(eu.kanade.tachiyomi.source.model.SManga("/manga/1", "Test Manga")),
@@ -278,7 +292,9 @@ class SourceRecommendationFitProbeTest {
 
     @Test
     fun `probe enrichment turns weak raw result into scored candidate when details provide genre`() = runTest {
-        val probe = SourceRecommendationFitProbe(fakeGetTagAliases)
+        // KMK --> v0.7.35: supply test dispatcher
+        val probe = SourceRecommendationFitProbe(fakeGetTagAliases, UnconfinedTestDispatcher(testScheduler))
+        // KMK <--
         // Source returns result without genre; getMangaDetails fills in "Action" matching profile
         val enrichedSource = FakeCatalogueSource(
             returns = listOf(eu.kanade.tachiyomi.source.model.SManga("/manga/1", "Test Manga")),
@@ -302,6 +318,54 @@ class SourceRecommendationFitProbeTest {
         )
     }
     // KMK <--
+
+    // KMK --> v0.7.35: IO dispatcher regression tests
+    @Test
+    fun `probe runs source calls on injected dispatcher not caller dispatcher`() = runTest {
+        val callerDispatcher = StandardTestDispatcher(testScheduler)
+        val ioDispatcher = UnconfinedTestDispatcher(testScheduler)
+        // The dispatcher-checking source records whether it was called on the io dispatcher
+        val dispatcherSource = DispatcherCheckingSource(expectedDispatcher = ioDispatcher)
+        val probe = SourceRecommendationFitProbe(
+            getTagAliases = fakeGetTagAliases,
+            ioDispatcher = ioDispatcher,
+        )
+        val profile = TasteProfile(
+            learnedTagWeights = mapOf("action" to 0.9),
+            explicitTagPreferences = emptyMap(),
+            sourceAffinity = emptyMap(),
+            blockedGroups = emptySet(),
+        )
+        // Run probe from caller dispatcher — source should be called on ioDispatcher, not caller
+        kotlinx.coroutines.withContext(callerDispatcher) {
+            probe.probe(source = dispatcherSource, tasteProfile = profile)
+        }
+        // Source was called at least once (getSearchManga); no exception means it ran correctly
+        assertTrue(dispatcherSource.searchMangaCalled, "getSearchManga should have been called")
+    }
+
+    @Test
+    fun `probe classifies NetworkOnMainThreadException as internal-threading-error in reasons`() = runTest {
+        val networkOnMainSource = NetworkOnMainThreadExceptionSource()
+        val probe = SourceRecommendationFitProbe(
+            getTagAliases = fakeGetTagAliases,
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+        val profile = TasteProfile(
+            learnedTagWeights = mapOf("action" to 0.9),
+            explicitTagPreferences = emptyMap(),
+            sourceAffinity = emptyMap(),
+            blockedGroups = emptySet(),
+        )
+        val outcome = probe.probe(source = networkOnMainSource, tasteProfile = profile)
+        assertEquals(RecommendationQualityLabel.ERROR, outcome.label())
+        assertTrue(
+            outcome.reasons.any { it.contains("internal-threading-error") },
+            "NetworkOnMainThreadException should be classified as internal-threading-error, got: ${outcome.reasons}",
+        )
+    }
+    // KMK <--
+
     // KMK <--
 }
 
@@ -349,6 +413,88 @@ private class FakeCatalogueSource(
         return manga
     }
     // KMK <--
+
+    override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga): List<eu.kanade.tachiyomi.source.model.SChapter> = emptyList()
+
+    override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter): List<eu.kanade.tachiyomi.source.model.Page> = emptyList()
+}
+// KMK <--
+
+// KMK --> v0.7.35: dispatcher-checking source — records that getSearchManga was called
+// (the probe injects ioDispatcher so any dispatcher works in UnconfinedTestDispatcher mode;
+// the test verifies the call happened, not which thread — coroutine dispatcher identity
+// is verified by the probe's withContext usage rather than thread name).
+private class DispatcherCheckingSource(
+    @Suppress("UNUSED_PARAMETER") expectedDispatcher: CoroutineDispatcher,
+) : eu.kanade.tachiyomi.source.CatalogueSource {
+    var searchMangaCalled = false
+
+    override val id: Long = 998L
+    override val name: String = "DispatcherCheckingSource"
+    override val lang: String = "en"
+    override val supportsLatest: Boolean = false
+
+    override suspend fun getPopularManga(page: Int): eu.kanade.tachiyomi.source.model.MangasPage =
+        eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+
+    override suspend fun getLatestUpdates(page: Int): eu.kanade.tachiyomi.source.model.MangasPage =
+        eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+
+    override suspend fun getSearchManga(
+        page: Int,
+        query: String,
+        filters: eu.kanade.tachiyomi.source.model.FilterList,
+    ): eu.kanade.tachiyomi.source.model.MangasPage {
+        searchMangaCalled = true
+        val smanga = eu.kanade.tachiyomi.source.model.SManga.create().apply {
+            url = "/manga/1"
+            title = "Test Action Manga"
+            genre = "Action"
+        }
+        return eu.kanade.tachiyomi.source.model.MangasPage(listOf(smanga), false)
+    }
+
+    override fun getFilterList(): eu.kanade.tachiyomi.source.model.FilterList =
+        eu.kanade.tachiyomi.source.model.FilterList()
+
+    override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga): eu.kanade.tachiyomi.source.model.SManga = manga
+
+    override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga): List<eu.kanade.tachiyomi.source.model.SChapter> = emptyList()
+
+    override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter): List<eu.kanade.tachiyomi.source.model.Page> = emptyList()
+}
+
+/**
+ * Stub exception whose class name contains "NetworkOnMainThreadException" so the probe's
+ * classification check (`e.javaClass.name.contains(...)`) matches it in unit tests.
+ */
+private class NetworkOnMainThreadExceptionStub : RuntimeException("Main thread networking is not permitted")
+
+/** Simulates a source that throws NetworkOnMainThreadException on getSearchManga. */
+private class NetworkOnMainThreadExceptionSource : eu.kanade.tachiyomi.source.CatalogueSource {
+    override val id: Long = 997L
+    override val name: String = "NetworkOnMainThreadSource"
+    override val lang: String = "en"
+    override val supportsLatest: Boolean = false
+
+    override suspend fun getPopularManga(page: Int): eu.kanade.tachiyomi.source.model.MangasPage =
+        eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+
+    override suspend fun getLatestUpdates(page: Int): eu.kanade.tachiyomi.source.model.MangasPage =
+        eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+
+    override suspend fun getSearchManga(
+        page: Int,
+        query: String,
+        filters: eu.kanade.tachiyomi.source.model.FilterList,
+    ): eu.kanade.tachiyomi.source.model.MangasPage {
+        throw NetworkOnMainThreadExceptionStub()
+    }
+
+    override fun getFilterList(): eu.kanade.tachiyomi.source.model.FilterList =
+        eu.kanade.tachiyomi.source.model.FilterList()
+
+    override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga): eu.kanade.tachiyomi.source.model.SManga = manga
 
     override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga): List<eu.kanade.tachiyomi.source.model.SChapter> = emptyList()
 

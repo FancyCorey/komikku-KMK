@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.4 — Source Evaluation Update Reassessment and Recommendation Fit — Implementation Report
+﻿# KMK-Recs v0.7.4 â€” Source Evaluation Update Reassessment and Recommendation Fit â€” Implementation Report
 
 Date: 2026-06-21
 Version: KMK-Recs v0.7.4
@@ -11,24 +11,24 @@ Plan: `KMK_RECS_V0_6_21_SOURCE_EVALUATION_UPDATE_REASSESSMENT_AND_RECOMMENDATION
 
 v0.7.4 adds three layers of work:
 
-1. **Documentation audit** — corrected stale deferred labels for Favorite other versions and alternate-title cross-extension matching (both were fully implemented in v0.7.0; docs incorrectly said deferred).
-2. **Extension version metadata** — records which extension version was installed at evaluation time so the app can detect when an updated version is available for reassessment.
-3. **Pure helpers** — `SourceRecommendationFitEligibility` and `SourceRecommendationFitScorer` for future bounded rec-fit probing; actual probe execution deferred.
+1. **Documentation audit** â€” corrected stale deferred labels for Favorite other versions and alternate-title cross-extension matching (both were fully implemented in v0.7.0; docs incorrectly said deferred).
+2. **Extension version metadata** â€” records which extension version was installed at evaluation time so the app can detect when an updated version is available for reassessment.
+3. **Pure helpers** â€” `SourceRecommendationFitEligibility` and `SourceRecommendationFitScorer` for future bounded rec-fit probing; actual probe execution deferred.
 
 ---
 
-## Part 1 — Documentation Audit
+## Part 1 â€” Documentation Audit
 
 ### Files corrected
 
 **`docs/recommendations/NEXT_WORK.md`**
-- `### Future: Favorite mode for cross-extension matching` — corrected to state implemented in v0.7.0 (Phase 3). `CrossExtensionMatchMode.Favorite` is fully wired in `CrossExtensionMatchScreenModel` with add-to-library + link group write.
-- `### Staged settings and matching improvements` — corrected to state that alternate-title matching is fully implemented via `CrossExtensionMatchQueryPlanner.buildQueries()`. No remaining deferred work in this section.
+- `### Future: Favorite mode for cross-extension matching` â€” corrected to state implemented in v0.7.0 (Phase 3). `CrossExtensionMatchMode.Favorite` is fully wired in `CrossExtensionMatchScreenModel` with add-to-library + link group write.
+- `### Staged settings and matching improvements` â€” corrected to state that alternate-title matching is fully implemented via `CrossExtensionMatchQueryPlanner.buildQueries()`. No remaining deferred work in this section.
 - Added `### Source Evaluation update reassessment and recommendation fit` section documenting v0.7.4 scope and deferred items.
 
 ---
 
-## Part 2 — Extension Version Metadata
+## Part 2 â€” Extension Version Metadata
 
 ### Migration 51.sqm (NEW)
 
@@ -41,7 +41,7 @@ Adds three nullable columns to `source_evaluation`:
 
 These are nullable so existing rows from pre-v0.7.4 evaluations are preserved unchanged.
 
-### Domain model — `SourceEvaluation.kt` (UPDATED)
+### Domain model â€” `SourceEvaluation.kt` (UPDATED)
 
 `domain/src/main/java/tachiyomi/domain/taste/model/SourceEvaluation.kt`
 
@@ -54,7 +54,7 @@ val extensionApkName: String? = null,
 
 Using named-parameter Kotlin construction, no existing callsites break.
 
-### SQL schema — `source_evaluation.sq` (UPDATED)
+### SQL schema â€” `source_evaluation.sq` (UPDATED)
 
 `data/src/main/sqldelight/tachiyomi/data/source_evaluation.sq`
 
@@ -63,14 +63,14 @@ Added the three columns to:
 2. The `upsert` INSERT column list and VALUES.
 3. The `upsert` ON CONFLICT UPDATE SET clause.
 
-### Repository — `SourceEvaluationRepositoryImpl.kt` (UPDATED)
+### Repository â€” `SourceEvaluationRepositoryImpl.kt` (UPDATED)
 
 `data/src/main/java/tachiyomi/data/taste/SourceEvaluationRepositoryImpl.kt`
 
 - Mapper lambda: added three new column parameters and passes them to `SourceEvaluation(...)`.
 - `upsert()`: added three new keyword arguments from `evaluation.extensionVersion*` fields.
 
-### Scorer — `SourceEvaluationScorer.kt` (UPDATED)
+### Scorer â€” `SourceEvaluationScorer.kt` (UPDATED)
 
 `app/src/main/java/exh/recs/evaluation/SourceEvaluationScorer.kt`
 
@@ -82,7 +82,7 @@ extensionApkName: String? = null,
 ```
 Passed through to the returned `SourceEvaluation`.
 
-### Runner — `SourceEvaluationRunner.kt` (UPDATED)
+### Runner â€” `SourceEvaluationRunner.kt` (UPDATED)
 
 `app/src/main/java/exh/recs/evaluation/SourceEvaluationRunner.kt`
 
@@ -100,24 +100,24 @@ Pure stateless helper. No Android dependencies.
 - `UpdateStatus` enum: `UPDATED`, `NOT_UPDATED`, `UPDATE_UNKNOWN`, `NEVER_EVALUATED`
 - `EvaluationVersionSnapshot` data class: holds `extensionVersionCode`, `signatureHash`, `pkgName`
 - `AvailableExtensionSnapshot` data class: holds `versionCode`, `signatureHash`, `pkgName`
-- `fromEvaluation(eval: SourceEvaluation)` — convenience constructor
-- `detectUpdateStatus(evaluation, available)` — compares single snapshot pair
-- `detectForPool(evaluations, available)` — uses highest stored versionCode among all evals for the same extension key; returns `NEVER_EVALUATED` for empty list, `UPDATE_UNKNOWN` if all stored versionCodes are null
+- `fromEvaluation(eval: SourceEvaluation)` â€” convenience constructor
+- `detectUpdateStatus(evaluation, available)` â€” compares single snapshot pair
+- `detectForPool(evaluations, available)` â€” uses highest stored versionCode among all evals for the same extension key; returns `NEVER_EVALUATED` for empty list, `UPDATE_UNKNOWN` if all stored versionCodes are null
 
 ### SourceEvaluationUpdatePolicyTest.kt (NEW)
 
 `app/src/test/java/exh/recs/evaluation/SourceEvaluationUpdatePolicyTest.kt`
 
 9 tests (all passed):
-- Same versionCode → NOT_UPDATED
-- Higher available versionCode → UPDATED
-- Lower available than stored → NOT_UPDATED
-- Null stored versionCode → UPDATE_UNKNOWN
-- Empty evaluation list → NEVER_EVALUATED
-- Single UPDATED evaluation in pool → UPDATED
-- Single NOT_UPDATED evaluation in pool → NOT_UPDATED
+- Same versionCode â†’ NOT_UPDATED
+- Higher available versionCode â†’ UPDATED
+- Lower available than stored â†’ NOT_UPDATED
+- Null stored versionCode â†’ UPDATE_UNKNOWN
+- Empty evaluation list â†’ NEVER_EVALUATED
+- Single UPDATED evaluation in pool â†’ UPDATED
+- Single NOT_UPDATED evaluation in pool â†’ NOT_UPDATED
 - Pool uses best (highest) stored versionCode
-- Pool with all-null versionCodes → UPDATE_UNKNOWN
+- Pool with all-null versionCodes â†’ UPDATE_UNKNOWN
 
 ### SourceEvaluationOptions (UPDATED)
 
@@ -160,12 +160,12 @@ Both items are inserted before the existing `start_button` item.
 `i18n-kmk/src/commonMain/moko-resources/base/strings.xml`
 
 Added:
-- `source_evaluation_updated_extensions_notice` — "%1$d evaluated extension(s) have updates. You can reassess them to refresh their source quality scores."
-- `source_evaluation_reassess_updated_button` — "Reassess updated extensions"
+- `source_evaluation_updated_extensions_notice` â€” "%1$d evaluated extension(s) have updates. You can reassess them to refresh their source quality scores."
+- `source_evaluation_reassess_updated_button` â€” "Reassess updated extensions"
 
 ---
 
-## Part 3 — Recommendation Fit Pure Helpers
+## Part 3 â€” Recommendation Fit Pure Helpers
 
 ### SourceRecommendationFitEligibility.kt (NEW)
 
@@ -183,12 +183,12 @@ Pure stateless gate for whether a `SourceEvaluation` record is eligible for a bo
 `app/src/test/java/exh/recs/evaluation/SourceRecommendationFitEligibilityTest.kt`
 
 10 tests (all passed):
-- STRONG_FIT with sufficient samples → ELIGIBLE
-- WORTH_TRYING with sufficient samples → ELIGIBLE
-- REJECTED, ERROR, WEAK, NEUTRAL, EXPLICIT_HEAVY → INELIGIBLE_VERDICT
-- STRONG_FIT below MIN_SAMPLE_COUNT → INSUFFICIENT_EVIDENCE
-- WORTH_TRYING with zero samples → INSUFFICIENT_EVIDENCE
-- STRONG_FIT at exactly MIN_SAMPLE_COUNT → ELIGIBLE
+- STRONG_FIT with sufficient samples â†’ ELIGIBLE
+- WORTH_TRYING with sufficient samples â†’ ELIGIBLE
+- REJECTED, ERROR, WEAK, NEUTRAL, EXPLICIT_HEAVY â†’ INELIGIBLE_VERDICT
+- STRONG_FIT below MIN_SAMPLE_COUNT â†’ INSUFFICIENT_EVIDENCE
+- WORTH_TRYING with zero samples â†’ INSUFFICIENT_EVIDENCE
+- STRONG_FIT at exactly MIN_SAMPLE_COUNT â†’ ELIGIBLE
 
 ### SourceRecommendationFitScorer.kt (NEW)
 
@@ -207,17 +207,17 @@ Scoring logic:
 - Negative: no-matches penalty, filtered-out penalty, blocked-tag ratio penalty, error penalty
 - Result clamped to `[0.0, 1.0]`
 
-Error-only outcome (visibleCount = 0 and errorCount > 0) → returns 0.0 immediately.
+Error-only outcome (visibleCount = 0 and errorCount > 0) â†’ returns 0.0 immediately.
 
 ### SourceRecommendationFitScorerTest.kt (NEW)
 
 `app/src/test/java/exh/recs/evaluation/SourceRecommendationFitScorerTest.kt`
 
 10 tests (all passed):
-- Error-only → 0.0
-- Zero visible with no errors → 0.0
-- Strong outcome (12 visible, groups, top picks, high avg) → score > 0.7
-- Single visible candidate → score in (0, 0.5)
+- Error-only â†’ 0.0
+- Zero visible with no errors â†’ 0.0
+- Strong outcome (12 visible, groups, top picks, high avg) â†’ score > 0.7
+- Single visible candidate â†’ score in (0, 0.5)
 - Many no-matches reduce score
 - Blocked tag candidates reduce score
 - Matched groups boost score
@@ -227,7 +227,7 @@ Error-only outcome (visibleCount = 0 and errorCount > 0) → returns 0.0 immedia
 
 ---
 
-## Bug Fix — Pre-existing Test Compilation Error
+## Bug Fix â€” Pre-existing Test Compilation Error
 
 ### GetTasteProfileTest.kt (FIXED)
 
@@ -239,16 +239,16 @@ The anonymous `TasteRepository` stub was missing 7 abstract methods introduced i
 
 ## Release Notes
 
-KmkRecsReleaseNotes: VERSION_CODE `730 → 740`, VERSION_NAME `KMK-Recs v0.7.3 → KMK-Recs v0.7.4`
+KmkRecsReleaseNotes: VERSION_CODE `730 â†’ 740`, VERSION_NAME `KMK-Recs v0.7.3 â†’ KMK-Recs v0.7.4`
 
 ---
 
 ## What Was NOT Implemented (Deferred)
 
-- **Actual bounded rec-fit probe execution in SourceEvaluationRunner** — the pure helpers exist but wiring the probe into the evaluation loop requires careful integration with the connectivity handling and is not part of this pass.
-- **`rec_fit_probe_score` column in source_evaluation table** — depends on probe execution being implemented first.
-- **Evidence strings i18n** — `source_evaluation_evidence_*` keys still hardcoded English in SourceEvaluationScreen.
-- **`onlyUpdatedEvaluated` does not update the 100-rating reassessment baseline** — intentional; only a full global re-evaluation should update the baseline.
+- **Actual bounded rec-fit probe execution in SourceEvaluationRunner** â€” the pure helpers exist but wiring the probe into the evaluation loop requires careful integration with the connectivity handling and is not part of this pass.
+- **`rec_fit_probe_score` column in source_evaluation table** â€” depends on probe execution being implemented first.
+- **Evidence strings i18n** â€” `source_evaluation_evidence_*` keys still hardcoded English in SourceEvaluationScreen.
+- **`onlyUpdatedEvaluated` does not update the 100-rating reassessment baseline** â€” intentional; only a full global re-evaluation should update the baseline.
 
 ---
 
@@ -289,3 +289,4 @@ KmkRecsReleaseNotes: VERSION_CODE `730 → 740`, VERSION_NAME `KMK-Recs v0.7.3 �
 | `app/src/test/java/exh/taste/GetTasteProfileTest.kt` | Fixed missing CrossSourceMangaLink stubs |
 | `docs/recommendations/NEXT_WORK.md` | Doc audit: corrected Favorite + alternate-title, added v0.7.4 deferred items |
 | `docs/recommendations/KMK_RECS_V0_7_4_..._IMPLEMENTATION.md` | NEW (this file) |
+

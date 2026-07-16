@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.18 — Source Evaluation Robustness
+﻿# KMK-Recs v0.7.18 â€” Source Evaluation Robustness
 
 Date: 2026-06-28
 
@@ -9,20 +9,20 @@ Status: implemented and tested.
 Five features implemented in v0.7.18, all targeting Source Evaluation reliability and UX gaps identified as Phase 1 deferred items:
 
 1. **R-019 remainder**: `ScreenErrorKey` typed sealed interface replaces `screenErrorMessage: String?`
-2. **Phase 1 — Connectivity loss mid-run**: Runner detects offline state between extensions and stops cleanly
-3. **Phase 1 — Repo failure surfacing**: Zero-candidate warning when extension repo is unavailable
-4. **Phase 1 — Hidden suggestion management UI**: Clear dismissed/disliked suggestion buttons in management section
-5. **Phase 1 — Version-aware quarantine**: Newer-version hint in Blocked Packages dialog
+2. **Phase 1 â€” Connectivity loss mid-run**: Runner detects offline state between extensions and stops cleanly
+3. **Phase 1 â€” Repo failure surfacing**: Zero-candidate warning when extension repo is unavailable
+4. **Phase 1 â€” Hidden suggestion management UI**: Clear dismissed/disliked suggestion buttons in management section
+5. **Phase 1 â€” Version-aware quarantine**: Newer-version hint in Blocked Packages dialog
 
 ---
 
-## Task 1 — R-019 Remainder: ScreenErrorKey
+## Task 1 â€” R-019 Remainder: ScreenErrorKey
 
 ### Problem
 
 `SourceEvaluationScreenModel.State.screenErrorMessage: String?` stored resolved English strings:
-- `"Failed to load candidates: ${e.message}"` — hardcoded
-- `context.stringResource(KMR.strings.source_evaluation_offline_error)` — pre-resolved at set time
+- `"Failed to load candidates: ${e.message}"` â€” hardcoded
+- `context.stringResource(KMR.strings.source_evaluation_offline_error)` â€” pre-resolved at set time
 
 Both approaches are non-localizable in State.
 
@@ -38,7 +38,7 @@ sealed interface ScreenErrorKey {
 }
 ```
 
-Changed `State.screenErrorMessage: String?` → `State.screenError: ScreenErrorKey?`.
+Changed `State.screenErrorMessage: String?` â†’ `State.screenError: ScreenErrorKey?`.
 
 Added `@Composable fun ScreenErrorKey.toLocalString()` in `SourceEvaluationScreen.kt` mapping each variant to a KMR string.
 
@@ -48,16 +48,16 @@ Added `@Composable fun ScreenErrorKey.toLocalString()` in `SourceEvaluationScree
 
 `source_evaluation_offline_error` and `source_evaluation_crash_recovery_marked_unsafe` already existed.
 
-**Impact:** removed `tachiyomi.core.common.i18n.stringResource` and `tachiyomi.i18n.kmk.KMR` imports from `SourceEvaluationScreenModel.kt` — it no longer resolves strings.
+**Impact:** removed `tachiyomi.core.common.i18n.stringResource` and `tachiyomi.i18n.kmk.KMR` imports from `SourceEvaluationScreenModel.kt` â€” it no longer resolves strings.
 
 ### Files Changed
 
-- `SourceEvaluationScreenModel.kt` — added `ScreenErrorKey`, changed 6 setters, removed 2 imports
-- `SourceEvaluationScreen.kt` — added `toLocalString()`, updated display
+- `SourceEvaluationScreenModel.kt` â€” added `ScreenErrorKey`, changed 6 setters, removed 2 imports
+- `SourceEvaluationScreen.kt` â€” added `toLocalString()`, updated display
 
 ---
 
-## Task 2 — Connectivity Loss Mid-Run
+## Task 2 â€” Connectivity Loss Mid-Run
 
 ### Problem
 
@@ -89,24 +89,24 @@ Added `ConnectivityLost` to `isIdle` and `isTerminal` computed properties so:
 - Options section re-appears (user can retry)
 - Summary card shows with error icon and "Connection lost" text
 
-The `SourceEvaluationJob` already handles non-`Completed` terminal states by dismissing the notification — no job changes needed.
+The `SourceEvaluationJob` already handles non-`Completed` terminal states by dismissing the notification â€” no job changes needed.
 
 **KMR string added (1):**
 - `source_evaluation_connectivity_lost` = "Connection lost mid-run. Completed extensions are saved. Retry when online."
 
 ### Files Changed
 
-- `SourceEvaluationQueueState.kt` — added `ConnectivityLost`, updated `isIdle`/`isTerminal`
-- `SourceEvaluationRunner.kt` — added `import isOnline`, connectivity check, guarded `Completed` update
-- `SourceEvaluationScreen.kt` — added `ConnectivityLost` case to summary card icon and text
+- `SourceEvaluationQueueState.kt` â€” added `ConnectivityLost`, updated `isIdle`/`isTerminal`
+- `SourceEvaluationRunner.kt` â€” added `import isOnline`, connectivity check, guarded `Completed` update
+- `SourceEvaluationScreen.kt` â€” added `ConnectivityLost` case to summary card icon and text
 
 ---
 
-## Task 3 — Repo Failure Surfacing
+## Task 3 â€” Repo Failure Surfacing
 
 ### Problem
 
-When extension repositories are unavailable, `extensionManager.availableExtensionsFlow` is empty. `GetSourceEvaluationCandidates` returns an empty pool — the user sees "No candidates" with no indication of why. The underlying cause (extension repo unreachable) is invisible.
+When extension repositories are unavailable, `extensionManager.availableExtensionsFlow` is empty. `GetSourceEvaluationCandidates` returns an empty pool â€” the user sees "No candidates" with no indication of why. The underlying cause (extension repo unreachable) is invisible.
 
 ### Solution
 
@@ -125,7 +125,7 @@ repoUnavailableWarning = repoUnavailable && s.screenError == null,
 In `SourceEvaluationScreen`, shows a non-blocking `InfoCard` (not error) above the progress section when `state.repoUnavailableWarning`:
 
 ```
-Extension list unavailable. Check your internet connection or verify extension repositories are configured in Browse → Extensions.
+Extension list unavailable. Check your internet connection or verify extension repositories are configured in Browse â†’ Extensions.
 ```
 
 **KMR string added (1):**
@@ -133,12 +133,12 @@ Extension list unavailable. Check your internet connection or verify extension r
 
 ### Files Changed
 
-- `SourceEvaluationScreenModel.kt` — added `repoUnavailableWarning` to State, set in `applyOptionsAndUpdateState()`
-- `SourceEvaluationScreen.kt` — added repo warning InfoCard
+- `SourceEvaluationScreenModel.kt` â€” added `repoUnavailableWarning` to State, set in `applyOptionsAndUpdateState()`
+- `SourceEvaluationScreen.kt` â€” added repo warning InfoCard
 
 ---
 
-## Task 4 — Hidden Suggestion Management UI
+## Task 4 â€” Hidden Suggestion Management UI
 
 ### Problem
 
@@ -162,8 +162,8 @@ Added `CLEAR_DISMISSED_SUGGESTIONS` and `CLEAR_DISLIKED_SUGGESTIONS` to `Managem
 In `confirmManagementAction()`, new cases clear the preferences and reset the counts to 0 in State.
 
 In `SourceEvaluationScreen`, the management section shows conditional `TextButton` items when counts > 0:
-- "Clear N dismissed suggestion(s)" → `CLEAR_DISMISSED_SUGGESTIONS`
-- "Clear N disliked suggestion source(s)" → `CLEAR_DISLIKED_SUGGESTIONS`
+- "Clear N dismissed suggestion(s)" â†’ `CLEAR_DISMISSED_SUGGESTIONS`
+- "Clear N disliked suggestion source(s)" â†’ `CLEAR_DISLIKED_SUGGESTIONS`
 
 Both go through the same confirm dialog as existing management actions.
 
@@ -173,12 +173,12 @@ Both go through the same confirm dialog as existing management actions.
 
 ### Files Changed
 
-- `SourceEvaluationScreenModel.kt` — new State fields, new ManagementAction cases, init loading
-- `SourceEvaluationScreen.kt` — 2 new conditional management section items
+- `SourceEvaluationScreenModel.kt` â€” new State fields, new ManagementAction cases, init loading
+- `SourceEvaluationScreen.kt` â€” 2 new conditional management section items
 
 ---
 
-## Task 5 — Version-Aware Quarantine
+## Task 5 â€” Version-Aware Quarantine
 
 ### Problem
 
@@ -198,17 +198,17 @@ mutableState.update { it.copy(blockedPackages = blocked, blockedPackagesWithNewe
 
 In `BlockedPackageRow`, added a `hasNewerAvailable: Boolean = false` parameter. When true, shows a `Text` in `colorScheme.primary`:
 
-> Newer version available — remove block to test
+> Newer version available â€” remove block to test
 
 The existing "Allow" (remove block) button already handles the re-test action.
 
 **KMR string added (1):**
-- `source_evaluation_blocked_package_newer_available` = "Newer version available — remove block to test"
+- `source_evaluation_blocked_package_newer_available` = "Newer version available â€” remove block to test"
 
 ### Files Changed
 
-- `SourceEvaluationScreenModel.kt` — new State field, updated blocked packages observer
-- `SourceEvaluationScreen.kt` — updated `BlockedPackageRow` signature and call site
+- `SourceEvaluationScreenModel.kt` â€” new State field, updated blocked packages observer
+- `SourceEvaluationScreen.kt` â€” updated `BlockedPackageRow` signature and call site
 
 ---
 
@@ -216,8 +216,8 @@ The existing "Allow" (remove block) button already handles the re-test action.
 
 ```
 BUILD SUCCESSFUL
-:app:testDebugUnitTest — all existing tests PASSED
-:app:assembleDebug — BUILD SUCCESSFUL
+:app:testDebugUnitTest â€” all existing tests PASSED
+:app:assembleDebug â€” BUILD SUCCESSFUL
 ```
 
 No new unit tests in this pass (all 5 features involve UI/state logic or external IO with no pure seams amenable to unit testing without Android mocks).
@@ -226,3 +226,4 @@ No new unit tests in this pass (all 5 features involve UI/state logic or externa
 
 After `assembleDebug`, copy output to:
 `Komikku-v1.13.6-kmk.7.18-debug.apk`
+

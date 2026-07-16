@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.8: Best Version / Chapter Quality Implementation
+﻿# KMK-Recs v0.7.8: Best Version / Chapter Quality Implementation
 
 Date: 2026-06-22
 
@@ -32,9 +32,9 @@ Added to `SourcePreferences.kt` in a new KMK v0.7.8 block:
 Recommendation Settings gains a "Same manga matching" section above the Source Evaluation section. It contains four items:
 
 - Results per source: list preference, valid values `[1, 2, 5, 10]`.
-- Preselect results: switch — whether all same-manga candidates are selected by default.
+- Preselect results: switch â€” whether all same-manga candidates are selected by default.
 - Preview sample size: list preference, valid values `[2, 5, 10]`.
-- Avoid first pages: switch — skip cover / title pages when sampling.
+- Avoid first pages: switch â€” skip cover / title pages when sampling.
 
 ### SameMangaMatchSettings (new pure data class)
 
@@ -56,16 +56,16 @@ Also holds `SameMangaSourceResult(source, result)` for per-source packaging.
 
 Encapsulates the multi-query, per-source, bounded, parallel search logic that was previously inline in `CrossExtensionMatchScreenModel`. Key responsibilities:
 
-- `getMatchingSources()` — language filter, source order, disabled-source exclusion.
-- `search(queries, settings, originManga, sources, onResult)` — parallel coroutine fan-out using `coroutineScope { ... .map { async { ... } }.awaitAll() }`.
-- `searchOneSource(source, queries, cap, originManga)` — private; runs queries in sequence, stops when cap is reached after filtering out the origin manga.
+- `getMatchingSources()` â€” language filter, source order, disabled-source exclusion.
+- `search(queries, settings, originManga, sources, onResult)` â€” parallel coroutine fan-out using `coroutineScope { ... .map { async { ... } }.awaitAll() }`.
+- `searchOneSource(source, queries, cap, originManga)` â€” private; runs queries in sequence, stops when cap is reached after filtering out the origin manga.
 
 ### CrossExtensionMatchScreenModel (updated)
 
 Two changes to use the new settings:
 
 1. `search()` reads cap from preferences via `SameMangaMatchSettings.clampResultCap(sourcePreferences.sameMangaMatchResultsPerSource().get())`.
-2. `updateItem()` respects preselect preference — only auto-selects all candidates when `sameMangaMatchPreselectResults().get()` is `true`.
+2. `updateItem()` respects preselect preference â€” only auto-selects all candidates when `sameMangaMatchPreselectResults().get()` is `true`.
 
 ### MangaInfoHeader (updated)
 
@@ -95,15 +95,15 @@ sample(totalPages, sampleSize, avoidFirstPages): List<Int>
 
 Algorithm:
 - Returns empty for zero pages or zero sample size.
-- Returns all pages (0-indexed) for tiny chapters (totalPages ≤ sampleSize).
-- Otherwise samples evenly from a 30–75% window. When `avoidFirstPages=true`, skips pages 0 and 1. Never includes the last page. Returns distinct 0-based indexes.
+- Returns all pages (0-indexed) for tiny chapters (totalPages â‰¤ sampleSize).
+- Otherwise samples evenly from a 30â€“75% window. When `avoidFirstPages=true`, skips pages 0 and 1. Never includes the last page. Returns distinct 0-based indexes.
 
 ### BestVersionChapterMatcher (new pure object)
 
 `app/src/main/java/exh/recs/bestversion/BestVersionChapterMatcher.kt`
 
-- `findMatch(targetChapterNumber: Double, candidates: List<SChapter>): SChapter?` — returns the candidate whose `chapter_number` is within ±1.0 of target; `null` if none qualify.
-- `selectDefaultChapter(chapters: List<Chapter>): Chapter?` — priority: in-progress (lastPageRead > 0 and not read) > latest read > latest by chapterNumber.
+- `findMatch(targetChapterNumber: Double, candidates: List<SChapter>): SChapter?` â€” returns the candidate whose `chapter_number` is within Â±1.0 of target; `null` if none qualify.
+- `selectDefaultChapter(chapters: List<Chapter>): Chapter?` â€” priority: in-progress (lastPageRead > 0 and not read) > latest read > latest by chapterNumber.
 
 ### BestVersionCompareScreen + BestVersionCompareScreenModel (new)
 
@@ -132,19 +132,19 @@ Algorithm:
 **Key state fields:** step, originManga, candidates map, selectedKeys, selectedChapterNumber, originChapters, candidateChapters map, candidatePreviews map, sampleSize, avoidFirstPages, selectedBestKey, isMigrating, migrationComplete.
 
 **Key actions:**
-- `toggleSelection(key)` — toggles candidate selection, ignores origin key.
-- `confirmCandidates()` → sets step to `LoadingChapters`, fans out chapter fetches per candidate.
-- `startPreview()` → sets step to `LoadingPreview`, samples pages, resolves image URLs via `HttpSource.getImageUrl(page)`.
-- `selectBestVersion(key)` → sets `selectedBestKey`, opens migration confirm dialog.
-- `confirmMigration(replace: Boolean)` → calls `migrateMangaUseCase(current, target, replace)`, then `saveQualitySignal()`, then step → `Done`.
+- `toggleSelection(key)` â€” toggles candidate selection, ignores origin key.
+- `confirmCandidates()` â†’ sets step to `LoadingChapters`, fans out chapter fetches per candidate.
+- `startPreview()` â†’ sets step to `LoadingPreview`, samples pages, resolves image URLs via `HttpSource.getImageUrl(page)`.
+- `selectBestVersion(key)` â†’ sets `selectedBestKey`, opens migration confirm dialog.
+- `confirmMigration(replace: Boolean)` â†’ calls `migrateMangaUseCase(current, target, replace)`, then `saveQualitySignal()`, then step â†’ `Done`.
 
-**Screen (Voyager):** `class BestVersionCompareScreen(private val originMangaId: Long)` — primitive constructor for Voyager state-save safety.
+**Screen (Voyager):** `class BestVersionCompareScreen(private val originMangaId: Long)` â€” primitive constructor for Voyager state-save safety.
 
 UI switches on `state.step` and renders:
-- `ConfirmCandidatesContent` — candidate list with ElevatedCards, checkmarks, Confirm button.
-- `SelectChapterContent` — per-candidate chapter state display.
-- `ComparePreviewContent` — page thumbnail LazyRow per candidate, OutlinedButton to select best.
-- `MigrationConfirmDialog` — AlertDialog with Migrate / Copy / Cancel.
+- `ConfirmCandidatesContent` â€” candidate list with ElevatedCards, checkmarks, Confirm button.
+- `SelectChapterContent` â€” per-candidate chapter state display.
+- `ComparePreviewContent` â€” page thumbnail LazyRow per candidate, OutlinedButton to select best.
+- `MigrationConfirmDialog` â€” AlertDialog with Migrate / Copy / Cancel.
 
 ### SQL Domain/Data Layer: manga_source_quality_signal (new)
 
@@ -161,10 +161,10 @@ Queries: `getByOrigin`, `getBySelectedSource`, `getAll`, `insert`, `deleteById`,
 **Repository interface** (`domain/src/main/java/tachiyomi/domain/taste/repository/MangaSourceQualitySignalRepository.kt`): `getAll()`, `getByOrigin(sourceId, url)`, `getBySelectedSource(sourceId)`, `insert(signal)`, `deleteById(id)`, `deleteAll()`.
 
 **Interactors:**
-- `GetMangaSourceQualitySignals` — wraps `getAll()`, `getByOrigin()`, `getBySelectedSource()`.
-- `UpsertMangaSourceQualitySignal` — wraps `insert(signal)`.
+- `GetMangaSourceQualitySignals` â€” wraps `getAll()`, `getByOrigin()`, `getBySelectedSource()`.
+- `UpsertMangaSourceQualitySignal` â€” wraps `insert(signal)`.
 
-**Impl** (`data/src/main/java/tachiyomi/data/taste/MangaSourceQualitySignalRepositoryImpl.kt`): `DatabaseHandler`-based with `signalMapper` private val for row → domain mapping.
+**Impl** (`data/src/main/java/tachiyomi/data/taste/MangaSourceQualitySignalRepositoryImpl.kt`): `DatabaseHandler`-based with `signalMapper` private val for row â†’ domain mapping.
 
 **DI** (`KMKDomainModule.kt`): registered `MangaSourceQualitySignalRepository`, `GetMangaSourceQualitySignals`, `UpsertMangaSourceQualitySignal`.
 
@@ -191,8 +191,8 @@ Screen strings: `best_version_find_action`, `best_version_screen_title`, `best_v
 | `app/src/main/java/exh/recs/matching/SameMangaMatchSettings.kt` | Pure data class for same-manga matching settings with clamp helpers |
 | `app/src/main/java/exh/recs/matching/SameMangaCandidateResult.kt` | Sealed interface for per-source search results |
 | `app/src/main/java/exh/recs/matching/SameMangaCandidateSearcher.kt` | Extracted parallel bounded search logic |
-| `app/src/main/java/exh/recs/bestversion/BestVersionPageSampler.kt` | Pure sampling algorithm (30–75% window) |
-| `app/src/main/java/exh/recs/bestversion/BestVersionChapterMatcher.kt` | Chapter matching by closest chapter_number within ±1.0 |
+| `app/src/main/java/exh/recs/bestversion/BestVersionPageSampler.kt` | Pure sampling algorithm (30â€“75% window) |
+| `app/src/main/java/exh/recs/bestversion/BestVersionChapterMatcher.kt` | Chapter matching by closest chapter_number within Â±1.0 |
 | `app/src/main/java/exh/recs/bestversion/BestVersionCompareScreenModel.kt` | StateScreenModel with full state machine (10 steps) |
 | `app/src/main/java/exh/recs/bestversion/BestVersionCompareScreen.kt` | Voyager screen (primitive Long constructor) |
 | `data/src/main/sqldelight/tachiyomi/data/manga_source_quality_signal.sq` | SQLDelight schema + queries for quality signal table |
@@ -215,7 +215,7 @@ Screen strings: `best_version_find_action`, `best_version_screen_title`, `best_v
 | `app/src/main/java/exh/recs/matching/CrossExtensionMatchScreenModel.kt` | Read cap from preferences; respect preselect preference |
 | `app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt` | +onFindBestVersionClicked parameter and dropdown item |
 | `app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt` | Thread onFindBestVersionClicked through 3 function signatures |
-| `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreen.kt` | Wire onFindBestVersionClicked → BestVersionCompareScreen |
+| `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreen.kt` | Wire onFindBestVersionClicked â†’ BestVersionCompareScreen |
 | `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` | +4 action methods, +4 state fields, init from preferences |
 | `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` | +"Same manga matching" section with 4 preference items |
 | `app/src/main/java/eu/kanade/domain/KMKDomainModule.kt` | Register quality signal repository and interactors |
@@ -227,18 +227,18 @@ Screen strings: `best_version_find_action`, `best_version_screen_title`, `best_v
 
 | Test File | Count | Coverage |
 | --- | --- | --- |
-| `SameMangaMatchSettingsTest` | 18 | Default values, valid caps (1/2/5/10), invalid caps → default, valid sample sizes, invalid → default |
+| `SameMangaMatchSettingsTest` | 18 | Default values, valid caps (1/2/5/10), invalid caps â†’ default, valid sample sizes, invalid â†’ default |
 | `BestVersionPageSamplerTest` | 11 | Empty chapter, zero sample size, tiny chapter all-pages, sample size respected, avoidFirstPages skips page 0, indexes in range, no duplicates, 30-page/5-sample example |
 | `BestVersionChapterMatcherTest` | 11 | findMatch: empty, exact, within tolerance, outside tolerance, single; selectDefaultChapter: empty, in-progress, latest-read, fallback-to-latest, single |
 
 ### Test Results
 
 ```
-SameMangaMatchSettingsTest     — 18 tests, all PASSED
-BestVersionPageSamplerTest     — 11 tests, all PASSED
-BestVersionChapterMatcherTest  — 11 tests, all PASSED
-:app:testDebugUnitTest (full)  — BUILD SUCCESSFUL
-:app:assembleDebug             — BUILD SUCCESSFUL in 2m 4s
+SameMangaMatchSettingsTest     â€” 18 tests, all PASSED
+BestVersionPageSamplerTest     â€” 11 tests, all PASSED
+BestVersionChapterMatcherTest  â€” 11 tests, all PASSED
+:app:testDebugUnitTest (full)  â€” BUILD SUCCESSFUL
+:app:assembleDebug             â€” BUILD SUCCESSFUL in 2m 4s
 ```
 
 ## APK
@@ -262,3 +262,4 @@ VERSION_NAME = KMK-Recs v0.7.8
 - **MangaScreen.kt parameter threading**: the `onFindBestVersionClicked` parameter was threaded through three overloaded composables (`MangaScreen`, `MangaScreenSmallImpl`, `MangaScreenLargeImpl`). A compile error occurred during implementation because `MangaScreenLargeImpl` starts its body with a different statement from `MangaScreenSmallImpl`; a targeted fix was needed. If upstream adds more screen variants, the parameter must be threaded manually again.
 - **Migration 53**: if an existing install skips a migration (common when multiple migrations land between installs), the `manga_source_quality_signal` table may be absent. The `insert` path should be wrapped in a `.catch` if quality signals become load-bearing. Currently they are write-on-confirm only, so absence is non-fatal.
 - **Voyager state save**: `BestVersionCompareScreen` uses a primitive `Long` constructor per the established pattern. Any future addition of non-primitive constructor params will require the route-mode extraction pattern from v0.7.1.
+

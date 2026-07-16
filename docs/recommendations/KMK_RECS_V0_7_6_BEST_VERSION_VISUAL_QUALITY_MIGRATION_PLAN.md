@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.6 Best Version / Visual Quality Migration Plan
+﻿# KMK-Recs v0.7.6 Best Version / Visual Quality Migration Plan
 
 Date: 2026-06-22
 
@@ -442,3 +442,4 @@ If an APK is produced, update local KMK-Recs What's New with only user-facing ch
 - visual page sample comparison
 
 Do not include markdown/doc updates in What's New.
+

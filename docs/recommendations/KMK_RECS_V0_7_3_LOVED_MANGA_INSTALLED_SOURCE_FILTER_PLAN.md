@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.3: Loved Manga Installed Source Filter Plan
+﻿# KMK-Recs v0.7.3: Loved Manga Installed Source Filter Plan
 
 Date: 2026-06-21
 
@@ -293,4 +293,5 @@ Do not mention internal source IDs, repository internals, or documentation work 
 ## Recommendation
 
 Proceed as a small v0.7.3 pass after approval. This is low-risk and should be implemented before adding more Loved Manga sorting or management features, because it keeps the list aligned with what the user can actually open/use on the device.
+
 

@@ -39,13 +39,18 @@ import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 
-class LinkGroupManagementScreen : Screen() {
+// KMK --> v0.8.0: optional focusedGroupId scopes the manager to a single group ("Manage Group"
+// action from Rated Manga), instead of duplicating this screen as a separate global manager.
+class LinkGroupManagementScreen(private val focusedGroupId: String? = null) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val screenModel = rememberScreenModel { LinkGroupManagementScreenModel() }
+        val screenModel = rememberScreenModel(tag = "link_group_management_${focusedGroupId.orEmpty()}") {
+            LinkGroupManagementScreenModel(focusedGroupId = focusedGroupId)
+        }
         val state by screenModel.state.collectAsState()
+        // KMK <--
 
         Scaffold(
             topBar = { scrollBehavior ->

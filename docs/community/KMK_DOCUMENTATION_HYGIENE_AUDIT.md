@@ -1,4 +1,4 @@
-# KMK Documentation Hygiene Audit
+﻿# KMK Documentation Hygiene Audit
 
 Date: 2026-06-27
 
@@ -128,7 +128,7 @@ Recommendation:
 
 Observed:
 
-- `Komikku-v1.13.6-kmk.4.3-debug.apk` — stale, untracked at root. Current version is `Komikku-v1.13.6-kmk.7.15-debug.apk`.
+- `Komikku-v1.13.6-kmk.4.3-debug.apk` â€” stale, untracked at root. Current version is `Komikku-v1.13.6-kmk.7.15-debug.apk`.
 
 Classification:
 
@@ -145,9 +145,9 @@ Recommendation:
 
 | File | Issue | Suggested action |
 |---|---|---|
-| `docs/community/KMK_COMMUNITY_CONSOLIDATION_PHASES.md` | malformed markdown index line from failed shell escaping | **RESOLVED 2026-06-27** — blank line inserted before "Purpose:" paragraph |
-| `docs/recommendations/CURRENT_STATE.md` | test status says v0.7.9 while feature version is v0.7.10 | **RESOLVED 2026-06-27** — CURRENT_STATE.md updated to v0.7.15; 267+ unit tests passing per current docs |
-| `docs/recommendations/CURRENT_STATE.md` | mojibake in punctuation sequences | **RESOLVED 2026-06-27** — confirmed no mojibake sequences remain after v0.7.15 doc update (rg scan clean) |
+| `docs/community/KMK_COMMUNITY_CONSOLIDATION_PHASES.md` | malformed markdown index line from failed shell escaping | **RESOLVED 2026-06-27** â€” blank line inserted before "Purpose:" paragraph |
+| `docs/recommendations/CURRENT_STATE.md` | test status says v0.7.9 while feature version is v0.7.10 | **RESOLVED 2026-06-27** â€” CURRENT_STATE.md updated to v0.7.15; 267+ unit tests passing per current docs |
+| `docs/recommendations/CURRENT_STATE.md` | mojibake in punctuation sequences | **RESOLVED 2026-06-27** â€” confirmed no mojibake sequences remain after v0.7.15 doc update (rg scan clean) |
 | root-level recommendation docs | older handoff/planning files outside docs tree | Archive later after uniqueness check |
 | OCR docs | v0.1.1 status should be reconciled with actual implementation/build state | Update after OCR audit |
 
@@ -155,18 +155,18 @@ Recommendation:
 
 Known affected area:
 
-- `docs/recommendations/CURRENT_STATE.md` — **RESOLVED 2026-06-27**
+- `docs/recommendations/CURRENT_STATE.md` â€” **RESOLVED 2026-06-27**
 
 Scan run on 2026-06-27:
 
 ```text
-rg "â|Â|Ã" docs/recommendations/CURRENT_STATE.md
-rg "â€|â†|Ã—|Â·" docs/
+rg "Ã¢|Ã‚|Ãƒ" docs/recommendations/CURRENT_STATE.md
+rg "Ã¢â‚¬|Ã¢â€ |Ãƒâ€”|Ã‚Â·" docs/
 ```
 
-No mojibake sequences found in CURRENT_STATE.md. The v0.7.15 doc update (2026-06-27) rewrote the affected sections. Only 3 non-ASCII matches remain in CURRENT_STATE.md — all legitimate Unicode: `·` (middle dot separator), `±` (plus-minus), `×` (multiply sign). These are correct.
+No mojibake sequences found in CURRENT_STATE.md. The v0.7.15 doc update (2026-06-27) rewrote the affected sections. Only 3 non-ASCII matches remain in CURRENT_STATE.md â€” all legitimate Unicode: `Â·` (middle dot separator), `Â±` (plus-minus), `Ã—` (multiply sign). These are correct.
 
-The pattern `rg "â|Â|Ã"` found mojibake only inside `KMK_COMMUNITY_READINESS_AUDIT.md` and `KMK_OCR_V0_1_1_TEXT_INDEX_QUALITY_AND_SEARCH_HARDENING_PLAN.md`, where they appear as quoted examples inside code blocks — not as actual mojibake in the text. No action needed.
+The pattern `rg "Ã¢|Ã‚|Ãƒ"` found mojibake only inside `KMK_COMMUNITY_READINESS_AUDIT.md` and `KMK_OCR_V0_1_1_TEXT_INDEX_QUALITY_AND_SEARCH_HARDENING_PLAN.md`, where they appear as quoted examples inside code blocks â€” not as actual mojibake in the text. No action needed.
 
 ## Public Documentation Readiness
 
@@ -198,10 +198,11 @@ From the feature matrix and snapshot:
 
 ## Recommended Next Actions
 
-1. ~~Create `KMK_PUBLIC_README_DRAFT.md`.~~ **DONE** — `docs/community/KMK_PUBLIC_README_DRAFT.md` now exists; version updated to v0.7.15.
-2. ~~Create database/security audits (Phase 3/4 outputs: `docs/database/KMK_DATABASE_BACKUP_SYNC_AUDIT.md`, `docs/security/KMK_SECURITY_AND_PRIVACY_REVIEW.md`).~~ **DONE** — both files fully written from source code audit 2026-06-27.
+1. ~~Create `KMK_PUBLIC_README_DRAFT.md`.~~ **DONE** â€” `docs/community/KMK_PUBLIC_README_DRAFT.md` now exists; version updated to v0.7.15.
+2. ~~Create database/security audits (Phase 3/4 outputs: `docs/database/KMK_DATABASE_BACKUP_SYNC_AUDIT.md`, `docs/security/KMK_SECURITY_AND_PRIVACY_REVIEW.md`).~~ **DONE** â€” both files fully written from source code audit 2026-06-27.
 3. Create required risk register (Phase 3/4 output: `docs/community/KMK_PHASE_3_4_RISK_REGISTER.md` already exists).
-4. ~~Repair malformed index line in `KMK_COMMUNITY_CONSOLIDATION_PHASES.md`.~~ **DONE** — blank line added before "Purpose:" section.
-5. ~~Apply proposed `.gitignore` additions after user approval (`*.apk`, `/memory/`).~~ **DONE** — `*.apk` and `/memory/` added to `.gitignore`.
-6. ~~After user approval, delete or move stale `Komikku-v1.13.6-kmk.4.3-debug.apk` from source root.~~ **DONE** — file deleted.
+4. ~~Repair malformed index line in `KMK_COMMUNITY_CONSOLIDATION_PHASES.md`.~~ **DONE** â€” blank line added before "Purpose:" section.
+5. ~~Apply proposed `.gitignore` additions after user approval (`*.apk`, `/memory/`).~~ **DONE** â€” `*.apk` and `/memory/` added to `.gitignore`.
+6. ~~After user approval, delete or move stale `Komikku-v1.13.6-kmk.4.3-debug.apk` from source root.~~ **DONE** â€” file deleted.
 7. Later, propose doc archive moves for root-level historical docs but do not move files until approved.
+

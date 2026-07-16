@@ -52,9 +52,23 @@ data class SourceRecommendationFit(
     val verdict: RecommendationQualityVerdict,
     val reasonsJson: String,
     val errorMessage: String?,
+    // KMK --> v0.7.42: staleness parity with SourceEvaluation (evaluationVersion/expiresAt)
+    /** Monotonically increasing version to invalidate stale fit records when probe logic changes. */
+    val evaluationVersion: Int = CURRENT_VERSION,
+    val expiresAt: Long? = null,
+    // KMK <--
 ) {
     companion object {
         fun fitKeyFor(evaluationKey: String): String = "$evaluationKey::rec_fit"
+
+        // KMK --> v0.7.42
+        /**
+         * Current fit-record scoring version. Existing rows written before this field existed are
+         * migrated to version 0 (migration 60), which is automatically below this constant, so they
+         * are correctly treated as needing reassessment without a manual backfill.
+         */
+        const val CURRENT_VERSION = 1
+        // KMK <--
     }
 }
 // KMK <--

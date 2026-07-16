@@ -364,6 +364,56 @@ class SourceEvaluationCandidateFilterTest {
 
     // KMK <--
 
+    // KMK v0.8.1-fix4: source/library-quality dislike axis is separate from dislikedKeys
+    // (recommendation-behavior dislike) in buildPool()
+
+    @Test
+    fun `source-quality disliked extension is excluded from pool and counted separately`() {
+        val ext = makeExt(signatureHash = "sig1", pkgName = "eu.kanade.tachiyomi.extension.en.poor")
+        val qualityKey = "a|sig1|eu.kanade.tachiyomi.extension.en.poor"
+        val pool = SourceEvaluationCandidateFilter.buildPool(
+            available = listOf(ext),
+            installedPkgNames = emptySet(),
+            untrustedPkgNames = emptySet(),
+            recLanguages = setOf("en"),
+            nsfwEnabled = true,
+            blockExplicit = false,
+            dislikedKeys = emptySet(),
+            evaluations = emptyList(),
+            qualityDislikedKeys = setOf(qualityKey),
+        )
+        assertTrue(pool.allEligible.isEmpty())
+        assertEquals(1, pool.sourceQualityHiddenCount)
+        assertEquals(0, pool.dislikedHiddenCount)
+    }
+
+    @Test
+    fun `recommendation-disliked and source-quality-disliked counts are tracked independently`() {
+        val extA = makeExt(signatureHash = "siga", pkgName = "eu.kanade.tachiyomi.extension.en.a")
+        val extB = makeExt(signatureHash = "sigb", pkgName = "eu.kanade.tachiyomi.extension.en.b")
+        val pool = SourceEvaluationCandidateFilter.buildPool(
+            available = listOf(extA, extB),
+            installedPkgNames = emptySet(),
+            untrustedPkgNames = emptySet(),
+            recLanguages = setOf("en"),
+            nsfwEnabled = true,
+            blockExplicit = false,
+            dislikedKeys = setOf("a|siga|eu.kanade.tachiyomi.extension.en.a"),
+            evaluations = emptyList(),
+            qualityDislikedKeys = setOf("a|sigb|eu.kanade.tachiyomi.extension.en.b"),
+        )
+        assertTrue(pool.allEligible.isEmpty())
+        assertEquals(1, pool.dislikedHiddenCount)
+        assertEquals(1, pool.sourceQualityHiddenCount)
+    }
+
+    @Test
+    fun `sourceQualityHiddenCount is zero when no source-quality dislikes present`() {
+        val ext = makeExt()
+        val pool = buildPool(available = listOf(ext))
+        assertEquals(0, pool.sourceQualityHiddenCount)
+    }
+
     // KMK <--
 }
 // KMK <--

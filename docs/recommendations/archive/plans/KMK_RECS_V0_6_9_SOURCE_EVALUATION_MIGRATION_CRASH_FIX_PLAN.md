@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.9 Source Evaluation Migration Crash Fix Plan
+﻿# KMK-Recs v0.6.9 Source Evaluation Migration Crash Fix Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -202,12 +202,12 @@ Do not add default rows. The table should start empty on upgrade.
 
 ### Step 2: Verify SQLDelight Migration Numbering
 
-Before finalizing, Claude must verify SQLDelight’s expected version/migration behavior in this project.
+Before finalizing, Claude must verify SQLDelightâ€™s expected version/migration behavior in this project.
 
 Checklist:
 
 - Confirm `47.sqm` is the correct next migration number.
-- Run the project’s SQLDelight verification task if available.
+- Run the projectâ€™s SQLDelight verification task if available.
 - If SQLDelight expects a different migration number due schema version generation, adjust accordingly.
 
 Useful commands to investigate:
@@ -350,4 +350,5 @@ This hotfix is complete only when:
 Proceed with this as a small urgent hotfix before adding more source-evaluation features.
 
 The user should not need to uninstall/reinstall. A normal APK update should migrate the existing database safely.
+
 

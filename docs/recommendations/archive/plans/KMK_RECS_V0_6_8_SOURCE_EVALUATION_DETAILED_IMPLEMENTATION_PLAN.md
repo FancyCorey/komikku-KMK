@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.8 Source Evaluation Detailed Implementation Plan
+﻿# KMK-Recs v0.6.8 Source Evaluation Detailed Implementation Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -904,4 +904,5 @@ Best first implementation:
 6. Use evaluated records to improve Sources To Try and explicit-heavy filtering.
 
 Do not attempt a universal 500/1000-source auditor in the first release.
+
 

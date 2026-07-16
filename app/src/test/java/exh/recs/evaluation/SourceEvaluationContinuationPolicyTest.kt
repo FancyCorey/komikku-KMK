@@ -291,5 +291,104 @@ class SourceEvaluationContinuationPolicyTest {
         val k = SourceEvaluationContinuationPolicy.candidateKey(c)
         assertEquals("deadbeef|eu.kanade.tachiyomi.extension.manga.source", k)
     }
+
+    // KMK --> v0.8.1-fix3: stale-reassessment queue uses a "|queue=stale" fingerprint suffix
+    // (built in SourceEvaluationScreenModel) so it never shares a cursor slot with the unassessed
+    // queue's fingerprint, even when the underlying option booleans happen to coincide.
+
+    @Test
+    fun `stale queue fingerprint suffix separates it from unassessed queue fingerprint`() {
+        val unassessedFp = SourceEvaluationContinuationPolicy.buildFilterFingerprint(
+            languages = setOf("en"),
+            includeExplicit = false,
+            skipAlreadyEvaluated = false,
+            reEvaluateStale = true,
+            onlyUpdatedEvaluated = false,
+            blockExplicit = false,
+        )
+        val staleFp = unassessedFp + "|queue=stale"
+        assertTrue(unassessedFp != staleFp)
+    }
+
+    @Test
+    fun `cursor advanced under the unassessed fingerprint does not canContinue under the stale fingerprint`() {
+        val candidates = listOf(candidate("s1", "eu.kanade.tachiyomi.extension.en.a"))
+        val unassessedFp = fp
+        val staleFp = fp + "|queue=stale"
+
+        val cursor = SourceEvaluationContinuationPolicy.advanceCursor(
+            current = null,
+            completedKeys = setOf(key("s1", "eu.kanade.tachiyomi.extension.en.a")),
+            allCandidates = candidates,
+            currentFingerprint = unassessedFp,
+            now = now,
+        )
+
+        assertFalse(SourceEvaluationContinuationPolicy.canContinue(candidates, cursor, staleFp, now))
+    }
+
+    @Test
+    fun `batch size change does not invalidate the stale queue cursor, mirroring the unassessed queue`() {
+        val staleFp = fp + "|queue=stale"
+        val candidates = (1..5).map { candidate("s$it", "eu.kanade.tachiyomi.extension.en.c$it") }
+
+        val firstSlice = SourceEvaluationContinuationPolicy.sliceForRun(candidates, batchSize = 2, cursor = null, currentFingerprint = staleFp, now = now)
+        assertEquals(2, firstSlice.size)
+
+        val cursor = SourceEvaluationContinuationPolicy.advanceCursor(
+            current = null,
+            completedKeys = firstSlice.map { SourceEvaluationContinuationPolicy.candidateKey(it) }.toSet(),
+            allCandidates = candidates,
+            currentFingerprint = staleFp,
+            now = now,
+        )
+
+        // Continuing with a larger batch size must pick up where it left off, not restart.
+        val nextSlice = SourceEvaluationContinuationPolicy.sliceForRun(candidates, batchSize = 4, cursor = cursor, currentFingerprint = staleFp, now = now)
+        assertEquals(3, nextSlice.size)
+        assertTrue(nextSlice.none { SourceEvaluationContinuationPolicy.candidateKey(it) in cursor.completedCandidateKeys })
+    }
+
+    // KMK v0.8.1-fix4: stale queue completion state -- once every stale candidate is completed,
+    // remainingCount reaches zero and canContinue turns false, which is what the UI uses to show
+    // "Outdated reassessment complete" instead of the continue button.
+    @Test
+    fun `stale queue reports zero remaining and canContinue false once every candidate is completed`() {
+        val staleFp = fp + "|queue=stale"
+        val candidates = listOf(candidate("s1", "eu.kanade.tachiyomi.extension.en.a"), candidate("s2", "eu.kanade.tachiyomi.extension.en.b"))
+
+        val cursor = SourceEvaluationContinuationPolicy.advanceCursor(
+            current = null,
+            completedKeys = candidates.map { SourceEvaluationContinuationPolicy.candidateKey(it) }.toSet(),
+            allCandidates = candidates,
+            currentFingerprint = staleFp,
+            now = now,
+        )
+
+        assertEquals(0, SourceEvaluationContinuationPolicy.remainingCount(candidates, cursor, staleFp, now))
+        assertFalse(SourceEvaluationContinuationPolicy.canContinue(candidates, cursor, staleFp, now))
+    }
+
+    // KMK v0.8.1-fix4: failed/attempted candidates still advance the stale cursor -- advanceCursor()
+    // only needs the completed-key set (which the runner populates unconditionally on handoff,
+    // regardless of success/failure), so a failing candidate cannot trap the stale queue.
+    @Test
+    fun `stale cursor advances past a failed candidate the same as a successful one`() {
+        val staleFp = fp + "|queue=stale"
+        val candidates = listOf(candidate("s1", "eu.kanade.tachiyomi.extension.en.failed"), candidate("s2", "eu.kanade.tachiyomi.extension.en.ok"))
+
+        // Simulates the runner handing off both candidates -- one errors, one succeeds -- both keys
+        // still land in completedCandidateKeys (SourceEvaluationRunner records this before outcome).
+        val cursor = SourceEvaluationContinuationPolicy.advanceCursor(
+            current = null,
+            completedKeys = setOf(key("s1", "eu.kanade.tachiyomi.extension.en.failed"), key("s2", "eu.kanade.tachiyomi.extension.en.ok")),
+            allCandidates = candidates,
+            currentFingerprint = staleFp,
+            now = now,
+        )
+
+        assertEquals(0, SourceEvaluationContinuationPolicy.remainingCount(candidates, cursor, staleFp, now))
+    }
+    // KMK <--
 }
 // KMK <--

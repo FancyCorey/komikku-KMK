@@ -1,4 +1,4 @@
-# KMK Consolidation Snapshot
+﻿# KMK Consolidation Snapshot
 
 Date: 2026-06-26
 
@@ -247,3 +247,4 @@ The next Phase 0-1 output is:
 ```text
 docs/community/KMK_FEATURE_CLASSIFICATION_MATRIX.md
 ```
+

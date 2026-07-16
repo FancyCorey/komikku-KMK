@@ -1,4 +1,4 @@
-# KMK-Recs v0.5.1 Matching Cap And Origin Filter Implementation
+﻿# KMK-Recs v0.5.1 Matching Cap And Origin Filter Implementation
 
 Date: 2026-06-16
 
@@ -52,18 +52,18 @@ Added a second bullet to the v0.5.1 What's New entry:
 
 Added two new tests (10 total, up from 8):
 
-- `origin manga is filtered before cap - source returns origin plus two others` — verifies `[origin, A, B, C]` with cap=2 produces `[A, B]`.
-- `toggleSelection defensively ignores origin key` — verifies the guard prevents origin from being added to the selected set.
+- `origin manga is filtered before cap - source returns origin plus two others` â€” verifies `[origin, A, B, C]` with cap=2 produces `[A, B]`.
+- `toggleSelection defensively ignores origin key` â€” verifies the guard prevents origin from being added to the selected set.
 
 ## Acceptance Criteria Check
 
 | Criterion | Status |
 | --- | --- |
-| Origin manga never appears as a displayed candidate | Fixed — filtered before `MatchItemResult.Success` is stored |
-| Origin manga never counts toward "Selected N of M" | Fixed — not in result list, not auto-selected |
-| Origin manga cannot be selected manually | Fixed — defensive guard in `toggleSelection()` |
-| Source returning `[origin, A, B]` shows both A and B | Fixed — filter before cap |
-| Normal global search uncapped | Unchanged — `SearchScreenModel.perSourceResultLimit` still defaults to `null` |
+| Origin manga never appears as a displayed candidate | Fixed â€” filtered before `MatchItemResult.Success` is stored |
+| Origin manga never counts toward "Selected N of M" | Fixed â€” not in result list, not auto-selected |
+| Origin manga cannot be selected manually | Fixed â€” defensive guard in `toggleSelection()` |
+| Source returning `[origin, A, B]` shows both A and B | Fixed â€” filter before cap |
+| Normal global search uncapped | Unchanged â€” `SearchScreenModel.perSourceResultLimit` still defaults to `null` |
 
 ## Files Changed
 
@@ -77,9 +77,9 @@ Added two new tests (10 total, up from 8):
 
 ## Tests Run
 
-- `exh.recs.matching.CrossExtensionMatchSelectionTest` — 10 tests, all PASSED
-- `:app:testDebugUnitTest` — BUILD SUCCESSFUL
-- `:app:assembleDebug` — BUILD SUCCESSFUL
+- `exh.recs.matching.CrossExtensionMatchSelectionTest` â€” 10 tests, all PASSED
+- `:app:testDebugUnitTest` â€” BUILD SUCCESSFUL
+- `:app:assembleDebug` â€” BUILD SUCCESSFUL
 
 ## APK
 
@@ -87,4 +87,5 @@ Added two new tests (10 total, up from 8):
 
 ## Deferred
 
-Favorite mode, cross-source link groups, backup/restore for link groups — all remain deferred to a future version.
+Favorite mode, cross-source link groups, backup/restore for link groups â€” all remain deferred to a future version.
+

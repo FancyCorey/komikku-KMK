@@ -182,3 +182,4 @@ At the end, summarize:
 - what official Komikku patterns still need verification,
 - what Phase 2 should do next.
 ```
+

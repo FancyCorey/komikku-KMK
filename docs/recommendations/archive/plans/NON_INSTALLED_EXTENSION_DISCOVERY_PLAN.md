@@ -1,4 +1,4 @@
-# Non-Installed Extension Discovery Implementation Plan
+﻿# Non-Installed Extension Discovery Implementation Plan
 
 Date: 2026-06-16
 
@@ -470,7 +470,7 @@ Each row:
 
 ```text
 Source Name
-EN · Repo Name · Potential fit
+EN Â· Repo Name Â· Potential fit
 Reason: Similar to sources that work well for you
 [Install]
 ```
@@ -773,4 +773,5 @@ automatic best extension finder
 ```
 
 The most responsible path is to implement Installed Source Fit first, then use it to make non-installed suggestions smarter. If the user wants non-installed suggestions immediately, build a conservative metadata-only version and clearly label it as "Sources To Try."
+
 

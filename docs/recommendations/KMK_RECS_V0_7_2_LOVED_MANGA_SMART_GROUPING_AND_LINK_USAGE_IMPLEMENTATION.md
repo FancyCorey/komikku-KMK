@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.2: Loved Manga Smart Grouping And Link Usage — Implementation Report
+﻿# KMK-Recs v0.7.2: Loved Manga Smart Grouping And Link Usage â€” Implementation Report
 
 Date: 2026-06-20
 
@@ -48,15 +48,15 @@ Verified implementation:
 | 1 | Confirmed cross-source link group | same `group_id` in `manga_cross_source_link` |
 | 2 | Exact normalized title + same non-blank author | exact string match |
 | 3 | Exact normalized title + same non-blank artist | exact string match |
-| 4 | Exact normalized title + exact same description | both ≥ 50 chars |
-| 5 | Exact normalized title + similar long description | Jaccard ≥ 0.85, both ≥ 80 chars |
-| 6 | Similar title + same non-blank author | title Jaccard ≥ 0.80 |
-| 7 | Similar title + same non-blank artist | title Jaccard ≥ 0.80 |
-| — | No match | standalone entry (never groups by title alone) |
+| 4 | Exact normalized title + exact same description | both â‰¥ 50 chars |
+| 5 | Exact normalized title + similar long description | Jaccard â‰¥ 0.85, both â‰¥ 80 chars |
+| 6 | Similar title + same non-blank author | title Jaccard â‰¥ 0.80 |
+| 7 | Similar title + same non-blank artist | title Jaccard â‰¥ 0.80 |
+| â€” | No match | standalone entry (never groups by title alone) |
 
 **Never groups by title alone.** Blank/weak metadata is always standalone.
 
-**Romanized/translated titles** (e.g., "Solo Leveling" vs "Only I Level Up") only group when a cross-source link group or strong matching metadata exists. Without those, they remain separate — which is correct for unknown same-manga pairs.
+**Romanized/translated titles** (e.g., "Solo Leveling" vs "Only I Level Up") only group when a cross-source link group or strong matching metadata exists. Without those, they remain separate â€” which is correct for unknown same-manga pairs.
 
 ## Implementation Details
 
@@ -65,8 +65,8 @@ Verified implementation:
 - Added `LovedMangaGroupReason` enum: `LINK_GROUP`, `TITLE_AND_AUTHOR`, `TITLE_AND_ARTIST`, `TITLE_AND_SIMILAR_DESCRIPTION`, `SIMILAR_TITLE_AND_AUTHOR`, `SIMILAR_TITLE_AND_ARTIST`, `STANDALONE`.
 - Added `reason: LovedMangaGroupReason` field to `GroupResult`.
 - Expanded `GroupInput` to include `source: Long`, `url: String`, `author: String?`, `artist: String?`, `linkGroupId: String?`. All new fields default to null/0 for backward compatibility.
-- Tiers 1–4 use `HashMap` fast-path lookups. Tiers 5–7 use an in-order scan list (`unlinkedSlotMeta`) — O(n²) but appropriate for Loved Manga list sizes (typically < 100 entries).
-- `normalizeTitle` improved: strips punctuation separators (`-`, `–`, `—`, `:`, `·`, `…`) before collapsing whitespace.
+- Tiers 1â€“4 use `HashMap` fast-path lookups. Tiers 5â€“7 use an in-order scan list (`unlinkedSlotMeta`) â€” O(nÂ²) but appropriate for Loved Manga list sizes (typically < 100 entries).
+- `normalizeTitle` improved: strips punctuation separators (`-`, `â€“`, `â€”`, `:`, `Â·`, `â€¦`) before collapsing whitespace.
 - Added `tokenJaccardSimilarity(a, b)` using word-set intersection/union ratio.
 
 ### `LovedMangaScreenModel.kt` (updated)
@@ -80,7 +80,7 @@ Verified implementation:
 
 | File | Change |
 |---|---|
-| `exh/recs/loved/LovedMangaDuplicateGrouper.kt` | Rewritten — tiered grouping, `LovedMangaGroupReason`, `tokenJaccardSimilarity`, expanded `GroupInput` |
+| `exh/recs/loved/LovedMangaDuplicateGrouper.kt` | Rewritten â€” tiered grouping, `LovedMangaGroupReason`, `tokenJaccardSimilarity`, expanded `GroupInput` |
 | `exh/recs/loved/LovedMangaScreenModel.kt` | Inject `GetCrossSourceMangaLinks`, pass `linkGroupId` to grouper, add `linkGroupByKey` to `State.Success` |
 | `app/src/test/.../LovedMangaDuplicateGrouperTest.kt` | Updated helper, added 22 new tests (34 total) |
 | `KmkRecsReleaseNotes.kt` | VERSION_CODE 720, VERSION_NAME v0.7.2, new What's New entries |
@@ -92,7 +92,7 @@ Verified implementation:
 ## Tests Run
 
 ```
-LovedMangaDuplicateGrouperTest — 34 tests, all PASSED
+LovedMangaDuplicateGrouperTest â€” 34 tests, all PASSED
 
 Tests added in v0.7.2 (22 new):
   same link group groups entries even with different titles           PASSED
@@ -140,8 +140,9 @@ Tests added in v0.7.2 (22 new):
 - **No grouping management UI**: users cannot view, inspect, or delete individual cross-source link groups from any screen. Link groups are created automatically and persist silently. A future management screen is documented in `NEXT_WORK.md`.
 - **Loved Manga loads once on open**: live grouping updates while the screen is open are still deferred.
 - **Backup/restore for grouping toggle state**: still deferred.
-- The O(n²) scan in tiers 5–7 is fine for typical loved manga counts but would degrade with very large lists (1000+). Not a concern in practice.
+- The O(nÂ²) scan in tiers 5â€“7 is fine for typical loved manga counts but would degrade with very large lists (1000+). Not a concern in practice.
 
 ## Deviations from the Plan
 
 None. All plan sections were implemented as specified. The `GroupResult.reason` field is stored but not yet exposed in the UI, as the plan noted this as "optional and acceptable."
+

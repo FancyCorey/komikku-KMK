@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.12: Source Evaluation Candidate Pool And Shizuku UX Plan
+﻿# KMK-Recs v0.6.12: Source Evaluation Candidate Pool And Shizuku UX Plan
 
 Date: 2026-06-19
 
@@ -613,3 +613,4 @@ Do not implement:
 Proceed with this fix before adding more source-evaluation features.
 
 The current behavior prevents Source Evaluation from doing its main job: discovering sources beyond the already-suggested list. Separating the broad evaluation candidate pool from the selective Sources To Try recommendation pool is the cleanest and most maintainable correction.
+

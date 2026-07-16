@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.7 Source Evaluation Follow-Up And Best Version Addendum
+﻿# KMK-Recs v0.7.7 Source Evaluation Follow-Up And Best Version Addendum
 
 Date: 2026-06-22
 
@@ -113,8 +113,8 @@ or:
 
 ```text
 Promising sources needing recommendation check
-- Source A · Strong Fit · [Check recommendations]
-- Source B · Worth Trying · [Check recommendations]
+- Source A Â· Strong Fit Â· [Check recommendations]
+- Source B Â· Worth Trying Â· [Check recommendations]
 ```
 
 Minimum acceptable UX:
@@ -280,3 +280,4 @@ What's New should mention only user-facing changes:
 - recommendation-quality results are easier to see.
 
 Do not mention markdown/documentation cleanup in What's New.
+

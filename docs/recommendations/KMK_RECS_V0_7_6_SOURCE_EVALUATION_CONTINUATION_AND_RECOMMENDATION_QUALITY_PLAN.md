@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.6 Source Evaluation Continuation And Recommendation Quality Plan
+﻿# KMK-Recs v0.7.6 Source Evaluation Continuation And Recommendation Quality Plan
 
 Date: 2026-06-22
 
@@ -490,3 +490,4 @@ Keep these out of v0.7.6:
 - broad source-quality learning from long-term For You history if not needed for the bounded probe.
 
 Those belong to the later best-version/image-quality work, currently planned as `KMK-Recs v0.7.7`.
+

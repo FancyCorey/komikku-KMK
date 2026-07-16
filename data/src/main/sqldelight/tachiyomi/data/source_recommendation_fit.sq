@@ -23,7 +23,11 @@ CREATE TABLE IF NOT EXISTS source_recommendation_fit (
     recommendation_quality_score REAL NOT NULL DEFAULT 0.0,
     verdict TEXT NOT NULL,
     reasons_json TEXT NOT NULL DEFAULT '[]',
-    error_message TEXT
+    error_message TEXT,
+    -- KMK --> v0.7.42: staleness parity with source_evaluation (see migration 60)
+    evaluation_version INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER
+    -- KMK <--
 );
 
 CREATE INDEX source_recommendation_fit_evaluation_key_index ON source_recommendation_fit(evaluation_key);
@@ -51,7 +55,7 @@ INSERT INTO source_recommendation_fit(
     query_success_count, raw_result_count, visible_candidate_count, filtered_out_count,
     blocked_tag_candidate_count, matched_group_count, top_picks_contribution,
     no_matches_count, error_count, avg_candidate_score, recommendation_quality_score,
-    verdict, reasons_json, error_message
+    verdict, reasons_json, error_message, evaluation_version, expires_at
 )
 VALUES (
     :fitKey, :evaluationKey, :sourceId, :extensionPkgName, :signatureHash,
@@ -59,7 +63,7 @@ VALUES (
     :querySuccessCount, :rawResultCount, :visibleCandidateCount, :filteredOutCount,
     :blockedTagCandidateCount, :matchedGroupCount, :topPicksContribution,
     :noMatchesCount, :errorCount, :avgCandidateScore, :recommendationQualityScore,
-    :verdict, :reasonsJson, :errorMessage
+    :verdict, :reasonsJson, :errorMessage, :evaluationVersion, :expiresAt
 )
 ON CONFLICT(fit_key)
 DO UPDATE
@@ -84,7 +88,9 @@ SET
     recommendation_quality_score = :recommendationQualityScore,
     verdict = :verdict,
     reasons_json = :reasonsJson,
-    error_message = :errorMessage;
+    error_message = :errorMessage,
+    evaluation_version = :evaluationVersion,
+    expires_at = :expiresAt;
 
 deleteByKey:
 DELETE FROM source_recommendation_fit

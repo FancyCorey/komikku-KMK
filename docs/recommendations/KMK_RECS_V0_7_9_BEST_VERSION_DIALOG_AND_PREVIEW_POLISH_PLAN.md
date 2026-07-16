@@ -602,3 +602,4 @@ The implementation is successful when:
 - Normal global search remains unchanged.
 - Targeted Best Version / Same Manga tests pass.
 - Debug APK builds and can update over v0.7.8.
+

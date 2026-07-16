@@ -1,4 +1,4 @@
-# KMK-OCR v0.1.0 — Downloaded Text Search: Implementation Notes
+﻿# KMK-OCR v0.1.0 â€” Downloaded Text Search: Implementation Notes
 
 > Branch/APK line: **KMK-OCR** (separate from KMK-Recs)
 > APK: `Komikku-v1.13.6-kmk-ocr.0.1-debug.apk`
@@ -8,7 +8,7 @@
 
 ## What this is
 
-Adds a local, on-device OCR feature that lets the user index and search the text content of already-downloaded manga chapters. Accessed via **More → Search Downloads (OCR)**.
+Adds a local, on-device OCR feature that lets the user index and search the text content of already-downloaded manga chapters. Accessed via **More â†’ Search Downloads (OCR)**.
 
 Key constraints:
 - Local/on-device only. No network OCR, no telemetry.
@@ -42,11 +42,11 @@ Google ML Kit Text Recognition v2, bundled Latin model.
 | `OcrDownloadPageProvider.kt` | Enumerates downloaded pages; handles both directory and `.cbz` archive chapters |
 | `OcrIndexRepository.kt` | DB read/write via `DatabaseHandler` + SQLDelight |
 | `OcrIndexService.kt` | Core indexing loop with skip-unchanged logic |
-| `OcrIndexWorker.kt` | `CoroutineWorker` — runs indexing as a foreground WorkManager job |
+| `OcrIndexWorker.kt` | `CoroutineWorker` â€” runs indexing as a foreground WorkManager job |
 | `OcrJobState.kt` | Singleton `StateFlow` for live progress (shared between Worker and Screen) |
 | `OcrNotifier.kt` | Progress and completion notifications on `CHANNEL_OCR_INDEXING` |
 | `OcrSearchScreenModel.kt` | `StateScreenModel` for the search UI |
-| `OcrSearchScreen.kt` | Voyager screen — search field, stats, progress, action buttons, results |
+| `OcrSearchScreen.kt` | Voyager screen â€” search field, stats, progress, action buttons, results |
 
 ### Database
 
@@ -54,13 +54,13 @@ Migration: `data/src/main/sqldelight/tachiyomi/migrations/54.sqm`
 Table + queries: `data/src/main/sqldelight/tachiyomi/data/ocr_indexed_page.sq`
 
 Table `ocr_indexed_page` stores one row per indexed page. Key columns:
-- `manga_id`, `chapter_id`, `page_index` — location
-- `page_identity` — URI or archive-path string; used to detect unchanged pages
-- `engine_key`, `engine_version` — OCR engine identity
-- `raw_text`, `normalized_text` — OCR output; normalized is lowercased with punctuation removed
-- `error_message` — non-null when the page failed; excluded from search results
+- `manga_id`, `chapter_id`, `page_index` â€” location
+- `page_identity` â€” URI or archive-path string; used to detect unchanged pages
+- `engine_key`, `engine_version` â€” OCR engine identity
+- `raw_text`, `normalized_text` â€” OCR output; normalized is lowercased with punctuation removed
+- `error_message` â€” non-null when the page failed; excluded from search results
 
-Unique constraint: `(chapter_id, page_index, page_identity, engine_key, engine_version)` — `upsertPage` uses `ON CONFLICT … DO UPDATE`.
+Unique constraint: `(chapter_id, page_index, page_identity, engine_key, engine_version)` â€” `upsertPage` uses `ON CONFLICT â€¦ DO UPDATE`.
 
 Search query: `WHERE normalized_text LIKE '%' || :query || '%' AND error_message IS NULL`
 
@@ -81,14 +81,14 @@ There is no cancel button in the notification. Cancel is available from the Sear
 
 ### Deep link
 
-`Constants.OPEN_OCR_SEARCH = "eu.kanade.tachiyomi.OPEN_OCR_SEARCH"` — handled in `MainActivity`, opens `OcrSearchScreen`.
+`Constants.OPEN_OCR_SEARCH = "eu.kanade.tachiyomi.OPEN_OCR_SEARCH"` â€” handled in `MainActivity`, opens `OcrSearchScreen`.
 
 ---
 
 ## Entry points
 
-- **More screen**: `MoreScreen.kt` — "Search Downloads (OCR)" item with `Icons.Outlined.Search`
-- **MoreTab**: `MoreTab.kt` — routes to `OcrSearchScreen()`
+- **More screen**: `MoreScreen.kt` â€” "Search Downloads (OCR)" item with `Icons.Outlined.Search`
+- **MoreTab**: `MoreTab.kt` â€” routes to `OcrSearchScreen()`
 - **MainActivity deep link**: handles `OPEN_OCR_SEARCH` action from the completion notification
 
 ---
@@ -106,14 +106,14 @@ addSingletonFactory { OcrIndexRepository(get()) }
 
 ## Tests
 
-`app/src/test/java/exh/ocr/OcrSearchQueryNormalizerTest.kt` — 8 unit tests covering `normalize()` and `buildSnippet()`.
+`app/src/test/java/exh/ocr/OcrSearchQueryNormalizerTest.kt` â€” 8 unit tests covering `normalize()` and `buildSnippet()`.
 
 ---
 
 ## Build notes
 
 - versionCode `80` (must be > 79, the previous KMK-Recs build)
-- `gradle.properties` has `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` in `org.gradle.jvmargs` — required for the bundled JDK17 to trust Google/Maven certificate roots on Windows
+- `gradle.properties` has `-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT` in `org.gradle.jvmargs` â€” required for the bundled JDK17 to trust Google/Maven certificate roots on Windows
 
 ---
 
@@ -124,3 +124,4 @@ addSingletonFactory { OcrIndexRepository(get()) }
 - No indexing of chapters that aren't downloaded
 - No support for CJK, Arabic, Cyrillic, or other non-Latin scripts (ML Kit Latin model only)
 - No full-text export or sync
+

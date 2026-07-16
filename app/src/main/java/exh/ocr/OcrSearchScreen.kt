@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
@@ -219,6 +220,15 @@ class OcrSearchScreen : Screen() {
                         ) {
                             Text(stringResource(KMR.strings.ocr_clear_index))
                         }
+                        // KMK v0.7.46 Phase 3: compact way to clear empty/failed rows without a full wipe
+                        if (stats.emptyPages > 0 || stats.failedPages > 0) {
+                            OutlinedButton(
+                                onClick = screenModel::clearEmptyAndFailed,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text(stringResource(KMR.strings.ocr_clear_empty_and_failed))
+                            }
+                        }
                     }
                 }
 
@@ -248,20 +258,75 @@ class OcrSearchScreen : Screen() {
                         modifier = Modifier.padding(vertical = MaterialTheme.padding.medium),
                     )
                 } else {
+                    // KMK v0.7.46 Phase 3: per-row clear-chapter/clear-manga confirm state
+                    var pendingClearChapterId by remember { mutableStateOf<Long?>(null) }
+                    var pendingClearMangaId by remember { mutableStateOf<Long?>(null) }
+
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
                     ) {
                         items(state.results) { result ->
-                            OcrResultCard(result) {
-                                val intent = ReaderActivity.newIntent(
-                                    context,
-                                    result.mangaId,
-                                    result.chapterId,
-                                    result.pageIndex,
-                                )
-                                context.startActivity(intent)
-                            }
+                            OcrResultCard(
+                                result = result,
+                                onClick = {
+                                    val intent = ReaderActivity.newIntent(
+                                        context,
+                                        result.mangaId,
+                                        result.chapterId,
+                                        result.pageIndex,
+                                    )
+                                    context.startActivity(intent)
+                                },
+                                onClearChapter = { pendingClearChapterId = result.chapterId },
+                                onClearManga = { pendingClearMangaId = result.mangaId },
+                            )
                         }
+                    }
+
+                    pendingClearChapterId?.let { chapterId ->
+                        AlertDialog(
+                            onDismissRequest = { pendingClearChapterId = null },
+                            title = { Text(stringResource(KMR.strings.ocr_clear_chapter_confirm_title)) },
+                            text = { Text(stringResource(KMR.strings.ocr_clear_chapter_confirm_message)) },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        screenModel.deleteOcrForChapter(chapterId)
+                                        pendingClearChapterId = null
+                                    },
+                                ) {
+                                    Text(stringResource(KMR.strings.ocr_clear_index_confirm))
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { pendingClearChapterId = null }) {
+                                    Text(stringResource(tachiyomi.i18n.MR.strings.action_cancel))
+                                }
+                            },
+                        )
+                    }
+
+                    pendingClearMangaId?.let { mangaId ->
+                        AlertDialog(
+                            onDismissRequest = { pendingClearMangaId = null },
+                            title = { Text(stringResource(KMR.strings.ocr_clear_manga_confirm_title)) },
+                            text = { Text(stringResource(KMR.strings.ocr_clear_manga_confirm_message)) },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        screenModel.deleteOcrForManga(mangaId)
+                                        pendingClearMangaId = null
+                                    },
+                                ) {
+                                    Text(stringResource(KMR.strings.ocr_clear_index_confirm))
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { pendingClearMangaId = null }) {
+                                    Text(stringResource(tachiyomi.i18n.MR.strings.action_cancel))
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -324,8 +389,8 @@ class OcrSearchScreen : Screen() {
             )
         }
 
-        // Error snackbar
-        state.errorMessage?.let { error ->
+        // Error snackbar — KMK v0.7.46: typed key mapped to a KMR string, never raw exception text
+        state.errorKey?.let { key ->
             Snackbar(
                 action = {
                     TextButton(onClick = screenModel::clearError) {
@@ -333,7 +398,7 @@ class OcrSearchScreen : Screen() {
                     }
                 },
             ) {
-                Text(error)
+                Text(stringResource(ocrErrorMessageRes(key)))
             }
         }
     }
@@ -377,20 +442,65 @@ private fun MaxPagesRow(currentLimit: Int, onSelect: (Int) -> Unit) {
     }
 }
 
+// KMK v0.7.46: maps a typed OcrErrorKey to its KMR string, including a generic fallback for legacy
+// stored rows whose error_message predates this classification and holds raw exception text.
+private fun ocrErrorMessageRes(key: OcrErrorKey) = when (key) {
+    OcrErrorKey.Storage -> KMR.strings.ocr_error_storage
+    OcrErrorKey.ImageDecode -> KMR.strings.ocr_error_image_decode
+    OcrErrorKey.NoDownloadedPages -> KMR.strings.ocr_error_no_downloaded_pages
+    OcrErrorKey.Cancelled -> KMR.strings.ocr_error_cancelled
+    OcrErrorKey.PermissionOrFileAccess -> KMR.strings.ocr_error_file_access
+    OcrErrorKey.Internal -> KMR.strings.ocr_error_internal
+}
+
 @Composable
-private fun OcrResultCard(result: OcrSearchResult, onClick: () -> Unit) {
+private fun OcrResultCard(
+    result: OcrSearchResult,
+    onClick: () -> Unit,
+    onClearChapter: () -> Unit,
+    onClearManga: () -> Unit,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
     ) {
         Column(modifier = Modifier.padding(MaterialTheme.padding.medium)) {
-            Text(
-                text = result.mangaTitle,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = result.mangaTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                // KMK v0.7.46 Phase 3: compact overflow menu for per-chapter/per-manga OCR clearing
+                var menuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }, modifier = Modifier.height(24.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(KMR.strings.ocr_result_actions),
+                        )
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.ocr_clear_chapter)) },
+                            onClick = {
+                                menuExpanded = false
+                                onClearChapter()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.ocr_clear_manga)) },
+                            onClick = {
+                                menuExpanded = false
+                                onClearManga()
+                            },
+                        )
+                    }
+                }
+            }
             if (result.sourceName != null) {
                 Text(
                     text = result.sourceName,

@@ -1,4 +1,4 @@
-# KMK-Recs Staged Settings And Matching Improvements Plan
+﻿# KMK-Recs Staged Settings And Matching Improvements Plan
 
 Date: 2026-06-18
 
@@ -1362,3 +1362,4 @@ This plan recommends:
 - **Yes** to ordering verification, with tests/manual checks before rewriting the drag implementation.
 - **Yes** to a Loved Manga view, but as a separate v0.7.0 feature with conservative display-only duplicate grouping.
 - **Yes** to improving other-version matching, but as a v0.5.2 patch that adds a bounded alternate-query planner instead of blindly expanding every source search.
+

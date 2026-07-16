@@ -5,12 +5,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.AlertDialog
@@ -34,6 +37,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -62,6 +67,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
 import tachiyomi.domain.taste.model.SourceEvaluation
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 import tachiyomi.domain.taste.model.SourceEvaluationUnsafeSource
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 import tachiyomi.domain.taste.model.SourceRecommendationFit
@@ -92,6 +98,16 @@ private fun ScreenErrorKey.toLocalString(): String = when (this) {
         extensionName,
         phase,
     )
+    // KMK --> v0.7.43
+    is ScreenErrorKey.JobConflict -> when (activeJob) {
+        ScreenErrorKey.ActiveJobKind.SOURCE_EVALUATION -> stringResource(
+            KMR.strings.source_evaluation_job_conflict_evaluation_running,
+        )
+        ScreenErrorKey.ActiveJobKind.RECOMMENDATION_QUALITY -> stringResource(
+            KMR.strings.source_evaluation_job_conflict_quality_running,
+        )
+    }
+    // KMK <--
 }
 // KMK <--
 
@@ -118,16 +134,21 @@ class SourceEvaluationScreen : Screen() {
         }
         // KMK <--
 
+        // KMK --> v0.7.42-fix2: one `now` shared by the queue, sort, and row rendering below, so they
+        // can never disagree about which fits are current vs. outdated within one composition pass.
+        val now = remember(state.evaluations, state.recommendationFitsByEvalKey) { System.currentTimeMillis() }
+        // KMK <--
+
         // KMK --> v0.6.15: sort evaluated results in memory (sanitization already done in ScreenModel)
         // KMK --> v0.7.6: sort from filteredEvaluations (display filter applied by screen model)
-        val sortedEvaluations = remember(state.filteredEvaluations, state.resultSortMode) {
-            SourceEvaluationResultList.sort(state.filteredEvaluations, state.resultSortMode)
+        val sortedEvaluations = remember(state.filteredEvaluations, state.recommendationFitsByEvalKey, state.resultSortMode, now) {
+            SourceEvaluationResultList.sort(state.filteredEvaluations, state.recommendationFitsByEvalKey, state.resultSortMode, now)
         }
         // KMK <--
         // KMK <--
         // KMK --> v0.7.7: rec-quality queue computed outside LazyColumn (remember is @Composable)
-        val recQualityQueue = remember(state.evaluations, state.recommendationFitsByEvalKey) {
-            SourceRecommendationQualityQueue.compute(state.evaluations, state.recommendationFitsByEvalKey)
+        val recQualityQueue = remember(state.evaluations, state.recommendationFitsByEvalKey, now) {
+            SourceRecommendationQualityQueue.compute(state.evaluations, state.recommendationFitsByEvalKey, now)
         }
         // KMK <--
 
@@ -678,6 +699,94 @@ class SourceEvaluationScreen : Screen() {
                     }
                     // KMK <--
 
+                    // KMK v0.8.1-fix4: state-derived completion feedback -- shown only once a stale
+                    // reassessment run has actually happened (continuationCursorStale != null) and
+                    // nothing remains, so it naturally disappears again once new stale work appears.
+                    if (state.staleCandidates.isEmpty() && state.continuationCursorStale != null && !state.queueState.isRunning) {
+                        item(key = "stale_reassess_complete") {
+                            InfoCard(
+                                message = stringResource(KMR.strings.source_evaluation_stale_reassess_complete),
+                                isError = false,
+                                modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
+                            )
+                        }
+                    }
+                    // KMK <--
+
+                    // KMK v0.8.8: root-cause fix — explain, rather than silently show nothing, when
+                    // rows visible as "Outdated — reassess needed" in the results list below are not
+                    // (or not all) reachable by "Continue reassessing outdated" this run. This is the
+                    // exact bug: the row label only reflects evaluation staleness, while the
+                    // reassessment queue also requires current candidate-pool eligibility (not
+                    // installed, language-matching, not disliked/quarantined) — a source can satisfy
+                    // the first and fail the second. See SourceEvaluationOutdatedReconciliation.
+                    if (state.outdatedReconciliation.unreachableOutdatedCount > 0 && !state.queueState.isRunning) {
+                        item(key = "outdated_unreachable_note") {
+                            InfoCard(
+                                message = if (state.outdatedReconciliation.allOutdatedAreUnreachable) {
+                                    stringResource(
+                                        KMR.strings.source_evaluation_outdated_all_unreachable,
+                                        state.outdatedReconciliation.totalOutdatedCount,
+                                    )
+                                } else {
+                                    stringResource(
+                                        KMR.strings.source_evaluation_outdated_some_unreachable,
+                                        state.outdatedReconciliation.unreachableOutdatedCount,
+                                        state.outdatedReconciliation.totalOutdatedCount,
+                                    )
+                                },
+                                isError = false,
+                                modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
+                            )
+                        }
+                    }
+                    // KMK <--
+
+                    // KMK --> v0.8.1-fix3: stale/outdated reassessment queue — a first-class,
+                    // independently continuable action, distinct from the unassessed queue's
+                    // start/continue buttons above. Only shown when there is something to do.
+                    if (state.staleCandidates.isNotEmpty() && !state.queueState.isRunning) {
+                        item(key = "stale_reassess_button") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = MaterialTheme.padding.medium),
+                                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                            ) {
+                                val ready = state.installerPolicy?.readiness ==
+                                    SourceEvaluationInstallerPolicy.InstallerReadiness.READY
+                                OutlinedButton(
+                                    onClick = screenModel::startOrContinueStaleReassessment,
+                                    enabled = ready,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(
+                                        if (state.canContinueStale) {
+                                            stringResource(
+                                                KMR.strings.source_evaluation_stale_reassess_continue,
+                                                state.remainingStaleCandidateCount,
+                                            )
+                                        } else {
+                                            stringResource(
+                                                KMR.strings.source_evaluation_stale_reassess_start,
+                                                state.staleCandidates.size,
+                                            )
+                                        },
+                                    )
+                                }
+                                if (state.canContinueStale) {
+                                    TextButton(onClick = screenModel::restartStaleReassessment, enabled = ready) {
+                                        Text(
+                                            stringResource(KMR.strings.source_evaluation_stale_reassess_restart),
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // KMK <--
+
                     // KMK --> v0.6.16: copy diagnostics button
                     item(key = "copy_diagnostics") {
                         Row(
@@ -864,6 +973,41 @@ class SourceEvaluationScreen : Screen() {
                     // KMK <-- v0.7.7
                     // KMK <-- v0.7.6
 
+                    // KMK v0.8.1-fix4: show/hide source-quality-disliked rows toggle + hidden count
+                    if (state.hiddenSourceQualityCount > 0 || state.showSourceQualityDisliked) {
+                        item(key = "show_quality_disliked_row") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.extraSmall),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                            ) {
+                                FilterChip(
+                                    selected = state.showSourceQualityDisliked,
+                                    onClick = { screenModel.setShowSourceQualityDisliked(!state.showSourceQualityDisliked) },
+                                    label = {
+                                        Text(
+                                            if (state.showSourceQualityDisliked) {
+                                                stringResource(KMR.strings.source_quality_hide_disliked_sources)
+                                            } else {
+                                                stringResource(KMR.strings.source_quality_show_disliked_sources)
+                                            },
+                                        )
+                                    },
+                                )
+                                if (state.hiddenSourceQualityCount > 0 && !state.showSourceQualityDisliked) {
+                                    Text(
+                                        text = stringResource(KMR.strings.source_quality_hidden_mark_count, state.hiddenSourceQualityCount),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // KMK <--
+
                     // KMK --> v0.7.7: recommendation quality workflow section
                     if (recQualityQueue.totalPromising > 0) {
                         item(key = "rec_quality_section") {
@@ -878,7 +1022,23 @@ class SourceEvaluationScreen : Screen() {
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                 )
+                                // KMK --> v0.7.45: public-safety cleanup fix — non-installed probes
+                                // are refused (not silently temp-installed via Shizuku/Current) when
+                                // Private is unavailable; make that visible instead of only showing
+                                // per-source errors.
+                                if (state.recQualityNonInstalledSkippedCount > 0) {
+                                    Text(
+                                        text = stringResource(
+                                            KMR.strings.source_evaluation_rec_quality_private_required_message,
+                                            state.recQualityNonInstalledSkippedCount,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                                // KMK <--
                                 if (state.recQualityRunning) {
+                                    // KMK --> v0.7.43: background job — keep running after leaving screen
                                     Text(
                                         text = stringResource(
                                             KMR.strings.source_evaluation_rec_quality_running,
@@ -888,7 +1048,19 @@ class SourceEvaluationScreen : Screen() {
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                    state.recQualityCurrentSourceName?.let { name ->
+                                        Text(
+                                            text = name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    OutlinedButton(onClick = { screenModel.cancelRecommendationQualityCheck() }) {
+                                        Text(stringResource(KMR.strings.source_evaluation_rec_quality_cancel))
+                                    }
+                                    // KMK <--
                                 } else {
+                                    // KMK --> v0.7.42-fix2: show missing and outdated counts separately
                                     if (recQualityQueue.missingCount > 0) {
                                         Text(
                                             text = stringResource(
@@ -899,12 +1071,33 @@ class SourceEvaluationScreen : Screen() {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small)) {
+                                    if (recQualityQueue.outdatedCount > 0) {
+                                        Text(
+                                            text = stringResource(
+                                                KMR.strings.source_evaluation_rec_quality_outdated_count,
+                                                recQualityQueue.outdatedCount,
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    // KMK v0.7.44 Phase G.2: FlowRow so up to 3 buttons wrap on narrow phones
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+                                    ) {
                                         if (recQualityQueue.missingCount > 0) {
                                             OutlinedButton(
                                                 onClick = { screenModel.evaluateRecommendationQualityForPromising(reCheckAll = false) },
                                             ) {
                                                 Text(stringResource(KMR.strings.source_evaluation_rec_quality_evaluate))
+                                            }
+                                        }
+                                        if (recQualityQueue.outdatedCount > 0) {
+                                            OutlinedButton(
+                                                onClick = { screenModel.recheckOutdatedRecommendationQuality() },
+                                            ) {
+                                                Text(stringResource(KMR.strings.source_evaluation_rec_quality_recheck_outdated))
                                             }
                                         }
                                         if (recQualityQueue.checkedPromising.isNotEmpty()) {
@@ -918,6 +1111,7 @@ class SourceEvaluationScreen : Screen() {
                                             }
                                         }
                                     }
+                                    // KMK <--
                                     // KMK --> v0.7.13: compact diagnostics summary after checks run
                                     val diag = state.recQualityDiagnostics
                                     if (diag != null && diag.hasAnyResults) {
@@ -965,7 +1159,7 @@ class SourceEvaluationScreen : Screen() {
                                             SourceEvaluationResultList.SortMode.NEWEST -> stringResource(KMR.strings.source_evaluation_sort_newest)
                                             SourceEvaluationResultList.SortMode.SOURCE_NAME -> stringResource(KMR.strings.source_evaluation_sort_source_name)
                                             SourceEvaluationResultList.SortMode.EXTENSION_NAME -> stringResource(KMR.strings.source_evaluation_sort_extension_name)
-                                            SourceEvaluationResultList.SortMode.SEARCH_RELIABILITY -> stringResource(KMR.strings.source_evaluation_sort_search_reliability)
+                                            SourceEvaluationResultList.SortMode.FOR_YOU_COMPATIBILITY -> stringResource(KMR.strings.source_evaluation_sort_for_you_compatibility)
                                             SourceEvaluationResultList.SortMode.EXPLICIT_RISK -> stringResource(KMR.strings.source_evaluation_sort_explicit_risk)
                                         },
                                     )
@@ -984,7 +1178,7 @@ class SourceEvaluationScreen : Screen() {
                                                         SourceEvaluationResultList.SortMode.NEWEST -> stringResource(KMR.strings.source_evaluation_sort_newest)
                                                         SourceEvaluationResultList.SortMode.SOURCE_NAME -> stringResource(KMR.strings.source_evaluation_sort_source_name)
                                                         SourceEvaluationResultList.SortMode.EXTENSION_NAME -> stringResource(KMR.strings.source_evaluation_sort_extension_name)
-                                                        SourceEvaluationResultList.SortMode.SEARCH_RELIABILITY -> stringResource(KMR.strings.source_evaluation_sort_search_reliability)
+                                                        SourceEvaluationResultList.SortMode.FOR_YOU_COMPATIBILITY -> stringResource(KMR.strings.source_evaluation_sort_for_you_compatibility)
                                                         SourceEvaluationResultList.SortMode.EXPLICIT_RISK -> stringResource(KMR.strings.source_evaluation_sort_explicit_risk)
                                                     },
                                                 )
@@ -1007,9 +1201,19 @@ class SourceEvaluationScreen : Screen() {
                         key = { index, evaluation -> SourceEvaluationResultList.stableUiKey(evaluation, index) },
                     ) { _, evaluation ->
                         // KMK --> v0.7.6: pass rec-quality fit for display
+                        // KMK v0.8.1-fix4: source/library-quality key is extension-level ("a|sig|pkg")
+                        val evalQualityKey = "a|${evaluation.extensionKey}"
                         EvaluationResultRow(
                             evaluation = evaluation,
                             recFit = state.recommendationFitsByEvalKey[evaluation.evaluationKey],
+                            // KMK --> v0.7.42-fix2: shared `now` so row labels agree with the queue/sort
+                            now = now,
+                            // KMK <--
+                            isQualityDisliked = evalQualityKey in state.qualityDislikedSourceKeys,
+                            isQualityExplicit = evalQualityKey in state.qualityExplicitSourceKeys,
+                            onMarkQualityPoor = { screenModel.markSourceQualityPoor(evaluation) },
+                            onMarkQualityExplicit = { screenModel.markSourceQualityExplicit(evaluation) },
+                            onClearQualityMark = { screenModel.clearSourceQualityMark(evaluation) },
                         )
                         // KMK <--
                     }
@@ -1528,7 +1732,7 @@ private fun SafetyDiagnosticsRow(
         }
         // KMK --> v0.7.29
         if (expanded) {
-        // KMK <--
+            // KMK <--
             Row(
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1551,7 +1755,7 @@ private fun SafetyDiagnosticsRow(
                     }
                 }
             }
-        // KMK --> v0.7.29
+            // KMK --> v0.7.29
         }
         // KMK <--
     }
@@ -1685,18 +1889,49 @@ private fun lastEvaluatedDaysAgo(evaluatedAt: Long): Int {
 private fun EvaluationResultRow(
     evaluation: SourceEvaluation,
     recFit: SourceRecommendationFit? = null,
+    // KMK --> v0.7.42-fix2: shared `now` — see call site
+    now: Long = System.currentTimeMillis(),
+    // KMK <--
+    // KMK v0.8.1-fix4: source/library-quality axis
+    isQualityDisliked: Boolean = false,
+    isQualityExplicit: Boolean = false,
+    onMarkQualityPoor: () -> Unit = {},
+    onMarkQualityExplicit: () -> Unit = {},
+    onClearQualityMark: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val displaySource = evaluation.sourceName.ifBlank { "Unknown source" }
-    val displayExt = evaluation.extensionName.ifBlank { "Unknown extension" }
+    val displaySource = evaluation.sourceName.ifBlank { stringResource(KMR.strings.source_evaluation_unknown_source) }
+    val displayExt = evaluation.extensionName.ifBlank { stringResource(KMR.strings.source_evaluation_unknown_extension) }
     val isError = evaluation.verdict == SourceEvaluationVerdict.ERROR
-    val subtitle = if (isError && !evaluation.errorMessage.isNullOrBlank()) {
-        val rawMsg = evaluation.errorMessage ?: ""
-        val msg = if (rawMsg.length > 60) rawMsg.take(60) + "…" else rawMsg
-        "$displayExt • Error: $msg"
+    // KMK --> v0.7.47: a row scored under an older SourceEvaluationKeys.CURRENT_VERSION (or expired)
+    // must never read as a current verdict — it shows "Outdated - reassess needed" instead of its
+    // stored fit/confidence numbers, which were computed under different scoring rules.
+    val catalogueDisplayState = SourceEvaluationDisplayPolicy.state(evaluation, now)
+    val isOutdatedCatalogueRow = catalogueDisplayState == SourceEvaluationDisplayPolicy.SourceEvaluationDisplayState.OUTDATED_VERSION ||
+        catalogueDisplayState == SourceEvaluationDisplayPolicy.SourceEvaluationDisplayState.EXPIRED
+    val subtitle = if (isOutdatedCatalogueRow) {
+        stringResource(KMR.strings.source_evaluation_outdated_reassess_needed, displayExt)
+    } else if (isError && !evaluation.errorMessage.isNullOrBlank()) {
+        // KMK v0.7.45: errorMessage is a classified storage key for rows written after this fix
+        // (SourceEvaluationProbeErrorClassifier); older rows may still hold pre-v0.7.45 raw text —
+        // shown truncated as before for backward compatibility, since it's already a stored fact.
+        val kind = SourceEvaluationProbeErrorKind.fromStorageKey(evaluation.errorMessage)
+        val msg = if (kind != null) {
+            stringResource(
+                when (kind) {
+                    SourceEvaluationProbeErrorKind.NETWORK_UNAVAILABLE -> KMR.strings.source_evaluation_probe_error_network
+                    SourceEvaluationProbeErrorKind.TIMEOUT -> KMR.strings.source_evaluation_probe_error_timeout
+                    SourceEvaluationProbeErrorKind.UNSUPPORTED -> KMR.strings.source_evaluation_probe_error_unsupported
+                    SourceEvaluationProbeErrorKind.INTERNAL -> KMR.strings.source_evaluation_probe_error_internal
+                },
+            )
+        } else {
+            val rawMsg = evaluation.errorMessage ?: ""
+            if (rawMsg.length > 60) rawMsg.take(60) + "…" else rawMsg
+        }
+        stringResource(KMR.strings.source_evaluation_row_error_prefix, displayExt, msg)
     } else {
         val fit = (evaluation.recommendationFitScore.coerceIn(0.0, 1.0) * 100).roundToInt()
-        val search = (evaluation.searchReliabilityScore.coerceIn(0.0, 1.0) * 100).roundToInt()
         // KMK --> v0.6.20: add evidence strength + last evaluated
         // KMK --> v0.7.15: use enum classifier + KMR strings instead of hardcoded labels
         val evidenceStr = stringResource(
@@ -1714,35 +1949,64 @@ private fun EvaluationResultRow(
             stringResource(KMR.strings.source_evaluation_last_evaluated_days, daysAgo)
         }
         // KMK <-- v0.7.15
-        "$displayExt • ${evaluation.lang.uppercase()} • fit $fit% • search $search% • $evidenceStr • $lastEvalStr"
+        // KMK --> v0.7.42-fix1: replaced the misleading "search %" segment — SourceEvaluation.
+        // searchReliabilityScore is intentionally always 0.0 as of v0.7.42 (search compatibility is
+        // measured separately by SourceRecommendationFit / the "For You search: ..." label below).
+        // Shows catalogue metadata confidence instead, so sparse Popular/Latest tags read as
+        // "inconclusive evidence" rather than a fabricated 0% search score.
+        val confidenceStr = stringResource(
+            when (evaluation.catalogueMetadataConfidence) {
+                SourceEvaluationMetadataConfidence.HIGH -> KMR.strings.source_evaluation_metadata_confidence_high
+                SourceEvaluationMetadataConfidence.MODERATE -> KMR.strings.source_evaluation_metadata_confidence_moderate
+                SourceEvaluationMetadataConfidence.LOW -> KMR.strings.source_evaluation_metadata_confidence_low
+                SourceEvaluationMetadataConfidence.UNKNOWN -> KMR.strings.source_evaluation_metadata_confidence_unknown
+            },
+        )
+        stringResource(
+            KMR.strings.source_evaluation_catalogue_row_subtitle,
+            displayExt,
+            evaluation.lang.uppercase(),
+            fit,
+            confidenceStr,
+            evidenceStr,
+            lastEvalStr,
+        )
         // KMK <--
     }
     // KMK --> v0.7.6: map verdict to display label
     // KMK --> v0.7.7: also show "Not checked" for promising rows with no result yet
-    val isPromising = evaluation.verdict == SourceEvaluationVerdict.STRONG_FIT ||
-        evaluation.verdict == SourceEvaluationVerdict.WORTH_TRYING
-    val recQualityLabel = if (recFit != null) {
-        stringResource(
-            KMR.strings.source_evaluation_rec_quality_label,
-            stringResource(
-                when (recFit.verdict) {
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.GREAT -> KMR.strings.source_evaluation_rec_quality_great
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.GOOD -> KMR.strings.source_evaluation_rec_quality_good
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.MIXED -> KMR.strings.source_evaluation_rec_quality_mixed
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.WEAK -> KMR.strings.source_evaluation_rec_quality_weak
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.NO_MATCHES -> KMR.strings.source_evaluation_rec_quality_no_matches
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.ERROR -> KMR.strings.source_evaluation_rec_quality_error
-                    tachiyomi.domain.taste.model.RecommendationQualityVerdict.TOO_LITTLE_EVIDENCE -> KMR.strings.source_evaluation_rec_quality_too_little_evidence
-                },
-            ),
-        )
-    } else if (isPromising) {
-        stringResource(
+    // KMK --> v0.7.42-fix2: resolved through the shared SourceRecommendationFitDisplayPolicy instead
+    // of a local STRONG_FIT/WORTH_TRYING check + bare `recFit != null` — a stale/expired fit can no
+    // longer display as a current Great/Good/Mixed/Weak/No matches/Error result; it now truthfully
+    // shows "Outdated - recheck". Ineligible rows show no compatibility label at all.
+    val compatState = SourceRecommendationFitDisplayPolicy.resolve(evaluation, recFit, now)
+    val recQualityLabel = when (compatState) {
+        CompatibilityDisplayState.INELIGIBLE -> null
+        CompatibilityDisplayState.NOT_CHECKED -> stringResource(
             KMR.strings.source_evaluation_rec_quality_label,
             stringResource(KMR.strings.source_evaluation_rec_quality_not_checked),
         )
-    } else {
-        null
+        CompatibilityDisplayState.OUTDATED -> stringResource(
+            KMR.strings.source_evaluation_rec_quality_label,
+            stringResource(KMR.strings.source_evaluation_rec_quality_outdated),
+        )
+        else -> stringResource(
+            KMR.strings.source_evaluation_rec_quality_label,
+            stringResource(
+                when (compatState) {
+                    CompatibilityDisplayState.GREAT -> KMR.strings.source_evaluation_rec_quality_great
+                    CompatibilityDisplayState.GOOD -> KMR.strings.source_evaluation_rec_quality_good
+                    CompatibilityDisplayState.MIXED -> KMR.strings.source_evaluation_rec_quality_mixed
+                    CompatibilityDisplayState.WEAK -> KMR.strings.source_evaluation_rec_quality_weak
+                    CompatibilityDisplayState.NO_MATCHES -> KMR.strings.source_evaluation_rec_quality_no_matches
+                    CompatibilityDisplayState.ERROR -> KMR.strings.source_evaluation_rec_quality_error
+                    CompatibilityDisplayState.NOT_CHECKED,
+                    CompatibilityDisplayState.OUTDATED,
+                    CompatibilityDisplayState.INELIGIBLE,
+                    -> KMR.strings.source_evaluation_rec_quality_too_little_evidence // unreachable: handled by the branches above
+                },
+            ),
+        )
     }
     // KMK <-- v0.7.7
     // KMK <-- v0.7.6
@@ -1779,27 +2043,55 @@ private fun EvaluationResultRow(
                 )
             }
             // KMK --> v0.7.31: C1 — error category badge for rec-quality ERROR verdict
-            if (recFit != null && recFit.verdict == tachiyomi.domain.taste.model.RecommendationQualityVerdict.ERROR) {
-                val failureKind = SourceRecommendationFitFailureClassifier.classify(recFit.errorMessage)
-                if (failureKind != SourceRecommendationProbeFailureKind.NONE &&
-                    failureKind != SourceRecommendationProbeFailureKind.UNKNOWN
-                ) {
-                    val kindLabel = when (failureKind) {
-                        SourceRecommendationProbeFailureKind.NO_TASTE_EVIDENCE -> "No taste evidence"
-                        SourceRecommendationProbeFailureKind.AVAILABLE_EXTENSION_LIST_EMPTY -> "Ext list unavailable"
-                        SourceRecommendationProbeFailureKind.EXTENSION_NOT_FOUND -> "Ext not found"
-                        SourceRecommendationProbeFailureKind.EXTENSION_MATCH_AMBIGUOUS -> "Ext ambiguous"
-                        SourceRecommendationProbeFailureKind.INSTALL_FAILED_OR_TIMED_OUT -> "Install failed/timed out"
-                        SourceRecommendationProbeFailureKind.INSTALLED_EXTENSION_DID_NOT_LOAD -> "Ext did not load"
-                        SourceRecommendationProbeFailureKind.SOURCE_NOT_FOUND -> "Source not found"
-                        SourceRecommendationProbeFailureKind.SOURCE_MATCH_AMBIGUOUS -> "Source ambiguous"
-                        SourceRecommendationProbeFailureKind.SEARCH_ERROR -> "Search error"
-                        SourceRecommendationProbeFailureKind.SEARCH_TIMED_OUT -> "Search timed out"
-                        SourceRecommendationProbeFailureKind.RAW_RESULTS_EMPTY -> "No results"
-                        SourceRecommendationProbeFailureKind.RESULTS_NO_METADATA -> "No genre metadata"
-                        SourceRecommendationProbeFailureKind.ALL_RESULTS_BLOCKED -> "All results blocked"
-                        else -> null
+            // KMK --> v0.7.42-fix2: gated on the current-outcome ERROR state, not a bare recFit check
+            // — a stale ERROR fit displays as Outdated above and must not also show error-kind detail.
+            // KMK --> v0.7.44 Phase G.1: kindLabel now resolves to a KMR string (was hardcoded
+            // English); the badge + reason-hint block below are collapsed by default on a per-row
+            // basis so a screen full of error rows doesn't turn into raw exception spam.
+            val failureKind = if (compatState == CompatibilityDisplayState.ERROR && recFit != null) {
+                SourceRecommendationFitFailureClassifier.classify(recFit.errorMessage)
+            } else {
+                null
+            }
+            val kindLabel = failureKindLabel(failureKind)
+            val recFitErrorMessage = recFit?.errorMessage
+            val hasReasonHint = compatState.isCurrentOutcome && !recFitErrorMessage.isNullOrBlank()
+            val hasDetails = kindLabel != null || hasReasonHint
+            if (hasDetails) {
+                var expanded by rememberSaveable(evaluation.evaluationKey) { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Compact collapsed status — reuses the already-short, KMR-driven quality label
+                    // above; this row only adds the toggle. Expanding reveals the full diagnostic.
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.size(20.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = stringResource(
+                                if (expanded) {
+                                    KMR.strings.source_evaluation_row_hide_details
+                                } else {
+                                    KMR.strings.source_evaluation_row_show_details
+                                },
+                            ),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
+                    Text(
+                        text = stringResource(
+                            if (expanded) {
+                                KMR.strings.source_evaluation_row_hide_details
+                            } else {
+                                KMR.strings.source_evaluation_row_show_details
+                            },
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (expanded) {
                     if (kindLabel != null) {
                         Text(
                             text = stringResource(KMR.strings.source_evaluation_rec_error_kind, kindLabel),
@@ -1809,32 +2101,196 @@ private fun EvaluationResultRow(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    // KMK --> v0.7.12: show error/reason detail below the quality label
+                    // KMK --> v0.7.13: also show subdued reason text for NO_MATCHES and WEAK verdicts
+                    if (hasReasonHint) {
+                        val isError = compatState == CompatibilityDisplayState.ERROR
+                        Text(
+                            text = stringResource(KMR.strings.source_evaluation_rec_quality_error_hint, recFitErrorMessage.orEmpty()),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    // KMK <--
                 }
             }
             // KMK <--
-            // KMK --> v0.7.12: show error/reason detail below the quality label
-            // KMK --> v0.7.13: also show subdued reason text for NO_MATCHES and WEAK verdicts
-            val recFitErrorMessage = recFit?.errorMessage
-            if (!recFitErrorMessage.isNullOrBlank() && recFit != null) {
-                val isError = recFit.verdict == tachiyomi.domain.taste.model.RecommendationQualityVerdict.ERROR
+
+            // KMK --> v0.8.1-fix1: compact expandable catalogue-evidence details, separate from the
+            // rec-quality (For You search) details block above — this one explains the *catalogue
+            // fit* verdict (enrichment/positive/negative/blocked/adult-risk counts), which v0.7.47
+            // computed and persisted but never surfaced. Hidden entirely for outdated/error/
+            // zero-sample rows via SourceEvaluationEvidenceSummaryPolicy (their counters are stale
+            // or nonexistent, not current evidence).
+            val evidence = SourceEvaluationEvidenceSummaryPolicy.evidenceFor(evaluation, catalogueDisplayState)
+            if (evidence != null) {
+                var evidenceExpanded by rememberSaveable(evaluation.evaluationKey) { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { evidenceExpanded = !evidenceExpanded },
+                        modifier = Modifier.size(20.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (evidenceExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = stringResource(
+                                if (evidenceExpanded) {
+                                    KMR.strings.source_evaluation_details_hide
+                                } else {
+                                    KMR.strings.source_evaluation_details_toggle
+                                },
+                            ),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        text = stringResource(
+                            if (evidenceExpanded) {
+                                KMR.strings.source_evaluation_details_hide
+                            } else {
+                                KMR.strings.source_evaluation_details_toggle
+                            },
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (evidenceExpanded) {
+                    Text(
+                        text = stringResource(
+                            KMR.strings.source_evaluation_detail_enriched_count,
+                            evidence.detailEnrichmentSuccessCount,
+                            evidence.detailEnrichmentAttemptCount,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (evidence.detailEnrichmentFailedCount > 0) {
+                        Text(
+                            text = stringResource(
+                                KMR.strings.source_evaluation_detail_enrichment_failed_count,
+                                evidence.detailEnrichmentFailedCount,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        text = stringResource(
+                            KMR.strings.source_evaluation_metadata_sample_count,
+                            evidence.metadataCandidateCount,
+                            evidence.sampleCount,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(
+                            KMR.strings.source_evaluation_positive_negative_summary,
+                            evidence.positiveCandidateCount,
+                            evidence.negativeCandidateCount,
+                            evidence.blockedCandidateCount,
+                            evidence.adultSignalCandidateCount,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (evidence.isManualReview) {
+                        Text(
+                            text = stringResource(KMR.strings.source_evaluation_verdict_review_explanation),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            // KMK <--
+            // KMK v0.8.1-fix4: source/library-quality badge -- shown only when the row is currently
+            // marked, so it does not clutter the common case.
+            if (isQualityDisliked) {
                 Text(
-                    text = stringResource(KMR.strings.source_evaluation_rec_quality_error_hint, recFitErrorMessage),
+                    text = stringResource(
+                        if (isQualityExplicit) KMR.strings.source_quality_badge_explicit else KMR.strings.source_quality_badge_poor,
+                    ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isError) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
             // KMK <--
-            // KMK <--
-            // KMK <--
         }
         VerdictBadge(verdict = evaluation.verdict)
+        // KMK v0.8.1-fix4: source/library-quality overflow menu -- kept out of the always-visible
+        // row content so phone UI stays compact.
+        var showQualityMenu by rememberSaveable(evaluation.evaluationKey) { mutableStateOf(false) }
+        Box {
+            IconButton(onClick = { showQualityMenu = true }, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Outlined.MoreVert,
+                    contentDescription = stringResource(KMR.strings.source_quality_mark_poor),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(expanded = showQualityMenu, onDismissRequest = { showQualityMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(KMR.strings.source_quality_mark_poor)) },
+                    onClick = {
+                        onMarkQualityPoor()
+                        showQualityMenu = false
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(KMR.strings.source_quality_mark_explicit)) },
+                    onClick = {
+                        onMarkQualityExplicit()
+                        showQualityMenu = false
+                    },
+                )
+                if (isQualityDisliked) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.source_quality_clear_mark)) },
+                        onClick = {
+                            onClearQualityMark()
+                            showQualityMenu = false
+                        },
+                    )
+                }
+            }
+        }
+        // KMK <--
     }
+}
+
+// KMK --> v0.7.44 Phase G.1: KMR-backed failure-kind label, replacing the hardcoded English map
+// that used to live inline in EvaluationResultRow.
+@Composable
+private fun failureKindLabel(failureKind: SourceRecommendationProbeFailureKind?): String? {
+    val resource = when (failureKind) {
+        null, SourceRecommendationProbeFailureKind.NONE, SourceRecommendationProbeFailureKind.UNKNOWN -> null
+        SourceRecommendationProbeFailureKind.NO_TASTE_EVIDENCE -> KMR.strings.source_evaluation_rec_error_kind_no_taste_evidence
+        SourceRecommendationProbeFailureKind.AVAILABLE_EXTENSION_LIST_EMPTY -> KMR.strings.source_evaluation_rec_error_kind_ext_list_unavailable
+        SourceRecommendationProbeFailureKind.EXTENSION_NOT_FOUND -> KMR.strings.source_evaluation_rec_error_kind_ext_not_found
+        SourceRecommendationProbeFailureKind.EXTENSION_MATCH_AMBIGUOUS -> KMR.strings.source_evaluation_rec_error_kind_ext_ambiguous
+        SourceRecommendationProbeFailureKind.INSTALL_FAILED_OR_TIMED_OUT -> KMR.strings.source_evaluation_rec_error_kind_install_failed
+        SourceRecommendationProbeFailureKind.INSTALLED_EXTENSION_DID_NOT_LOAD -> KMR.strings.source_evaluation_rec_error_kind_ext_did_not_load
+        SourceRecommendationProbeFailureKind.SOURCE_NOT_FOUND -> KMR.strings.source_evaluation_rec_error_kind_source_not_found
+        SourceRecommendationProbeFailureKind.SOURCE_MATCH_AMBIGUOUS -> KMR.strings.source_evaluation_rec_error_kind_source_ambiguous
+        SourceRecommendationProbeFailureKind.SEARCH_ERROR -> KMR.strings.source_evaluation_rec_error_kind_search_error
+        SourceRecommendationProbeFailureKind.SEARCH_TIMED_OUT -> KMR.strings.source_evaluation_rec_error_kind_search_timed_out
+        SourceRecommendationProbeFailureKind.RAW_RESULTS_EMPTY -> KMR.strings.source_evaluation_rec_error_kind_no_results
+        SourceRecommendationProbeFailureKind.RESULTS_NO_METADATA -> KMR.strings.source_evaluation_rec_error_kind_no_genre_metadata
+        SourceRecommendationProbeFailureKind.ALL_RESULTS_BLOCKED -> KMR.strings.source_evaluation_rec_error_kind_all_results_blocked
+        SourceRecommendationProbeFailureKind.PRIVATE_INSTALLER_REQUIRED -> KMR.strings.source_evaluation_rec_error_kind_private_required
+    }
+    return resource?.let { stringResource(it) }
 }
 // KMK <--
 // KMK <-- v0.7.6 EvaluationResultRow
@@ -1897,8 +2353,12 @@ private fun ShizukuSetupCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Row(
+            // KMK --> v0.7.44 Phase G.2: FlowRow instead of Row so this can grow to 5 TextButtons
+            // (Open, Stop using/Use for run, Use Private, Uninstall, Refresh) without overflowing
+            // or crowding on a narrow phone — buttons wrap to the next line instead.
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (!shizukuState.installed) {
@@ -1943,6 +2403,7 @@ private fun ShizukuSetupCard(
                 }
                 // KMK <--
             }
+            // KMK <--
 
             Text(
                 text = stringResource(KMR.strings.shizuku_safety_note),

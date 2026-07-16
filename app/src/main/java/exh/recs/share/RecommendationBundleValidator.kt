@@ -31,7 +31,10 @@ object RecommendationBundleValidator {
         val bundle = try {
             lenientJson.decodeFromString<RecommendationBundle>(jsonString)
         } catch (e: Exception) {
-            return ValidationResult.MalformedJson(e.message ?: "Unknown JSON error")
+            // KMK v0.7.46: no raw exception text — a JSON parse exception's message is not a stable,
+            // user-facing string. RecommendationBundleImportScreen already falls back to a generic
+            // "malformed JSON" message when no detail is present.
+            return ValidationResult.MalformedJson("")
         }
 
         if (bundle.schema != RecommendationBundle.SCHEMA_ID) {

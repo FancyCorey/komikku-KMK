@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.13 Source Evaluation Recommendation Quality Functional Fix Plan
+﻿# KMK-Recs v0.7.13 Source Evaluation Recommendation Quality Functional Fix Plan
 
 Date: 2026-06-27
 
@@ -398,4 +398,5 @@ After installing the APK:
 7. Confirm Source Evaluation remains usable after a failed source.
 8. Confirm For You page still works normally.
 9. Confirm normal global search is unchanged and uncapped.
+
 

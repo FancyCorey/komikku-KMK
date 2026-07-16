@@ -2,6 +2,10 @@ package exh.recs.share
 
 import android.content.Context
 import android.net.Uri
+import exh.recs.RecommendationErrorClassifier
+import exh.recs.recommendationErrorMessageRes
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.kmk.KMR
 
 // KMK -->
 
@@ -16,12 +20,18 @@ object RecommendationBundleImporter {
         val bytes = try {
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: return ImportReadResult(
-                    RecommendationBundleValidator.ValidationResult.MalformedJson("Could not open file"),
+                    // KMK v0.7.46: already a KMR string, not raw text
+                    RecommendationBundleValidator.ValidationResult.MalformedJson(
+                        context.stringResource(KMR.strings.rec_bundle_load_error_file_open_failed),
+                    ),
                     0,
                 )
         } catch (e: Exception) {
+            // KMK v0.7.46: classified + localized, not raw exception text
             return ImportReadResult(
-                RecommendationBundleValidator.ValidationResult.MalformedJson(e.message ?: "IO error"),
+                RecommendationBundleValidator.ValidationResult.MalformedJson(
+                    context.stringResource(recommendationErrorMessageRes(RecommendationErrorClassifier.classify(e))),
+                ),
                 0,
             )
         }

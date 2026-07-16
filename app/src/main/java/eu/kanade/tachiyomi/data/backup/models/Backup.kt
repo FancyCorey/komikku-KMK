@@ -32,5 +32,8 @@ data class Backup(
     // KMK --> v0.7.28: seen manga keys for For You dismissals (proto 626)
     @ProtoNumber(626) var backupSeenMangaKeys: List<BackupSeenMangaKey> = emptyList(),
     // KMK <--
+    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed cross-source link group (proto 627)
+    @ProtoNumber(627) var backupCrossSourceGroupPrimaries: List<BackupCrossSourceGroupPrimary> = emptyList(),
+    // KMK <--
     // KMK <--
 )

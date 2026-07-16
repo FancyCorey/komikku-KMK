@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.8 Source Evaluation Queue Plan
+﻿# KMK-Recs v0.6.8 Source Evaluation Queue Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -688,4 +688,5 @@ This feature is ready only when:
 - Failures do not crash the queue.
 - Documentation and release notes are updated to `KMK-Recs v0.6.8`.
 - A debug APK is produced using current versioning rules.
+
 

@@ -1,4 +1,4 @@
-# Cross-Extension Identity Feasibility Research
+﻿# Cross-Extension Identity Feasibility Research
 
 Date: 2026-06-16
 
@@ -459,4 +459,5 @@ Minimum scope:
 - Mihon `Source` API: https://raw.githubusercontent.com/mihonapp/mihon/main/source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/Source.kt
 - Mihon `SManga` model: https://raw.githubusercontent.com/mihonapp/mihon/main/source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/SManga.kt
 - Neko README: https://github.com/nekomangaorg/Neko
+
 

@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.5 Sources To Try Selective Install Implementation
+﻿# KMK-Recs v0.6.5 Sources To Try Selective Install Implementation
 
 Date: 2026-06-19
 
@@ -25,13 +25,13 @@ val selectedSuggestionKeys: ImmutableSet<String> = persistentSetOf()
 
 ### Screen model actions (`RecommendationsSettingsScreenModel`)
 
-**`enterSuggestionSelectionMode()`** — sets `isSuggestionSelectionMode = true`.
+**`enterSuggestionSelectionMode()`** â€” sets `isSuggestionSelectionMode = true`.
 
-**`exitSuggestionSelectionMode()`** — clears `isSuggestionSelectionMode` and `selectedSuggestionKeys`.
+**`exitSuggestionSelectionMode()`** â€” clears `isSuggestionSelectionMode` and `selectedSuggestionKeys`.
 
-**`toggleSuggestionSelected(suggestion)`** — toggles `suggestion.dismissalKey` in `selectedSuggestionKeys`.
+**`toggleSuggestionSelected(suggestion)`** â€” toggles `suggestion.dismissalKey` in `selectedSuggestionKeys`.
 
-**`installSelectedSuggestions(visibleSuggestions)`** — filters visible suggestions to those whose `dismissalKey` is in `selectedSuggestionKeys` and not already in `installingSuggestionKeys`, then calls `exitSuggestionSelectionMode()` and `installSuggestions(toInstall)`. Returns early if nothing to install.
+**`installSelectedSuggestions(visibleSuggestions)`** â€” filters visible suggestions to those whose `dismissalKey` is in `selectedSuggestionKeys` and not already in `installingSuggestionKeys`, then calls `exitSuggestionSelectionMode()` and `installSuggestions(toInstall)`. Returns early if nothing to install.
 
 ### `SourceSuggestionItem` changes
 
@@ -53,10 +53,10 @@ Normal mode:
 - `Select` TextButton (disabled when no visible suggestions or bulk install running).
 
 Selection mode:
-- `Install selected (N)` Button — enabled only when N > 0 and no bulk install running.
-- `Cancel` OutlinedButton — calls `exitSuggestionSelectionMode()`.
+- `Install selected (N)` Button â€” enabled only when N > 0 and no bulk install running.
+- `Cancel` OutlinedButton â€” calls `exitSuggestionSelectionMode()`.
 
-### String resources added (7 → 3 new)
+### String resources added (7 â†’ 3 new)
 
 ```xml
 <string name="rec_suggestion_select">Select</string>
@@ -81,34 +81,35 @@ Selection mode:
 
 ## What Was Not Changed
 
-- Sources To Try scoring, suggestion generation, source like/dislike, source dismissal — unchanged.
-- Source priority ordering, For You generation — unchanged.
-- Normal Extensions tab install behavior — unchanged.
-- `Install visible suggestions` button — unchanged.
-- Single-row `installSuggestion()` — unchanged.
+- Sources To Try scoring, suggestion generation, source like/dislike, source dismissal â€” unchanged.
+- Source priority ordering, For You generation â€” unchanged.
+- Normal Extensions tab install behavior â€” unchanged.
+- `Install visible suggestions` button â€” unchanged.
+- Single-row `installSuggestion()` â€” unchanged.
 
 ## Tests
 
 No new unit tests added. `RecommendationsSettingsScreenModel` depends on Injekt DI and coroutines, making pure unit testing of the new actions impractical without a test harness. The pure logic in `installSelectedSuggestions` is simple enough (filter + delegate) that it is adequately covered by the existing string/scoring/preference tests as a regression baseline.
 
 Existing test suite run:
-- `:app:testDebugUnitTest --offline` → BUILD SUCCESSFUL, all tests PASSED.
+- `:app:testDebugUnitTest --offline` â†’ BUILD SUCCESSFUL, all tests PASSED.
 
 ## Files Changed
 
-- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` — new state fields; `enterSuggestionSelectionMode`, `exitSuggestionSelectionMode`, `toggleSuggestionSelected`, `installSelectedSuggestions`
-- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` — `SourceSuggestionItem` restructured with checkbox/selection support; controls row updated with Select/Cancel/Install selected; imports added
-- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` — 3 new strings
-- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` — VERSION_CODE=605
+- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt` â€” new state fields; `enterSuggestionSelectionMode`, `exitSuggestionSelectionMode`, `toggleSuggestionSelected`, `installSelectedSuggestions`
+- `app/src/main/java/exh/recs/settings/RecommendationsSettingsScreen.kt` â€” `SourceSuggestionItem` restructured with checkbox/selection support; controls row updated with Select/Cancel/Install selected; imports added
+- `i18n-kmk/src/commonMain/moko-resources/base/strings.xml` â€” 3 new strings
+- `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` â€” VERSION_CODE=605
 
 ## Commands Run
 
 ```text
-./gradlew :app:compileDebugKotlin --offline → BUILD SUCCESSFUL
-./gradlew :app:testDebugUnitTest --offline → BUILD SUCCESSFUL, all tests PASSED
-./gradlew :app:assembleDebug --offline → BUILD SUCCESSFUL
+./gradlew :app:compileDebugKotlin --offline â†’ BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest --offline â†’ BUILD SUCCESSFUL, all tests PASSED
+./gradlew :app:assembleDebug --offline â†’ BUILD SUCCESSFUL
 ```
 
 ## APK
 
 `Komikku-v1.13.6-kmk.6.5-debug.apk`
+

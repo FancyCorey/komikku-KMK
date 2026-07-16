@@ -29,10 +29,14 @@ class RecommendationQueryPlannerTest {
     }
 
     @Test
-    fun `TOP_TAGS_FILTER fallback is TAG_PAIR when tags available`() {
+    fun `TOP_TAGS_FILTER fallback chain is TAG_PAIR then TEXT_ONLY when tags available`() {
+        // KMK v0.7.44: MAX_STRATEGIES_PER_SOURCE widened to 3, so the chain now continues past
+        // the first fallback instead of stopping at TAG_PAIR.
         val plans = RecommendationQueryPlanner.buildPlans(tags)
-        assertEquals(2, plans.size)
+        assertEquals(3, plans.size)
+        assertEquals(RecommendationQueryStrategyType.TOP_TAGS_FILTER, plans[0].type)
         assertEquals(RecommendationQueryStrategyType.TAG_PAIR, plans[1].type)
+        assertEquals(RecommendationQueryStrategyType.TEXT_ONLY_TOP_TAGS, plans[2].type)
     }
 
     @Test

@@ -1,4 +1,4 @@
-# KMK-Recs v0.7.7: Source Evaluation Follow-Up and Best-Version Implementation
+﻿# KMK-Recs v0.7.7: Source Evaluation Follow-Up and Best-Version Implementation
 
 Date: 2026-06-22
 
@@ -12,19 +12,19 @@ v0.7.7 is a follow-up pass on the Source Evaluation screen, fixing five issues f
 
 v0.7.6 shipped three features on the Source Evaluation screen:
 
-1. **Batch continuation** — "Continue next batch (N remaining)" button appears after a completed batch so the user can evaluate the next slice without restarting.
-2. **Hide/Show installed toggle** — Past evaluation results hide extensions whose package is currently installed by default. "Show installed" reveals them. "Hidden installed: N" shows the count.
-3. **Second-stage recommendation-quality probe** — After a source evaluation batch, `SourceRecommendationFitProbe` runs a bounded 2-query probe for STRONG_FIT and WORTH_TRYING sources only. Results are scored by `SourceRecommendationFitScorer` and stored in the `source_recommendation_fit` table via `UpsertSourceRecommendationFit`. Each past result row shows a third line: "Recommendations: Great", "Recommendations: Mixed", etc.
+1. **Batch continuation** â€” "Continue next batch (N remaining)" button appears after a completed batch so the user can evaluate the next slice without restarting.
+2. **Hide/Show installed toggle** â€” Past evaluation results hide extensions whose package is currently installed by default. "Show installed" reveals them. "Hidden installed: N" shows the count.
+3. **Second-stage recommendation-quality probe** â€” After a source evaluation batch, `SourceRecommendationFitProbe` runs a bounded 2-query probe for STRONG_FIT and WORTH_TRYING sources only. Results are scored by `SourceRecommendationFitScorer` and stored in the `source_recommendation_fit` table via `UpsertSourceRecommendationFit`. Each past result row shows a third line: "Recommendations: Great", "Recommendations: Mixed", etc.
 
 Key new files added in v0.7.6:
 
-- `exh/recs/evaluation/SourceEvaluationDisplayFilter.kt` — pure display-only filter returning `visible: List<SourceEvaluation>` and `hiddenInstalledCount: Int`
-- `exh/recs/evaluation/SourceRecommendationFitProbe.kt` — bounded probe with 30s timeout per plan
-- `tachiyomi/domain/taste/model/SourceRecommendationFit.kt` — domain model
-- `tachiyomi/domain/taste/model/RecommendationQualityVerdict.kt` — enum: GREAT, GOOD, MIXED, WEAK, NO_MATCHES, ERROR, TOO_LITTLE_EVIDENCE
+- `exh/recs/evaluation/SourceEvaluationDisplayFilter.kt` â€” pure display-only filter returning `visible: List<SourceEvaluation>` and `hiddenInstalledCount: Int`
+- `exh/recs/evaluation/SourceRecommendationFitProbe.kt` â€” bounded probe with 30s timeout per plan
+- `tachiyomi/domain/taste/model/SourceRecommendationFit.kt` â€” domain model
+- `tachiyomi/domain/taste/model/RecommendationQualityVerdict.kt` â€” enum: GREAT, GOOD, MIXED, WEAK, NO_MATCHES, ERROR, TOO_LITTLE_EVIDENCE
 - `tachiyomi/domain/taste/interactor/GetSourceRecommendationFit.kt`
 - `tachiyomi/domain/taste/interactor/UpsertSourceRecommendationFit.kt`
-- `exh/recs/evaluation/SourceEvaluationDisplayFilterTest.kt` — 7 tests (plus 3 new tests added in v0.7.7)
+- `exh/recs/evaluation/SourceEvaluationDisplayFilterTest.kt` â€” 7 tests (plus 3 new tests added in v0.7.7)
 
 Pre-existing helpers reused by v0.7.6's probe:
 
@@ -80,7 +80,7 @@ New string added to `i18n-kmk/strings.xml`: `source_evaluation_hide_installed` =
 Section content:
 
 - Title: "Recommendation Quality" (bold `titleSmall`)
-- When running: "Checking recommendation quality… (N/M)" progress text
+- When running: "Checking recommendation qualityâ€¦ (N/M)" progress text
 - When idle with missing sources: "N promising source(s) not yet checked" + "Evaluate recommendations" `OutlinedButton`
 - When idle with already-checked sources: "Re-check all" `TextButton`
 
@@ -90,7 +90,7 @@ New strings added to `i18n-kmk/strings.xml`:
 - `source_evaluation_rec_quality_missing` = "%1$d promising source(s) not yet checked"
 - `source_evaluation_rec_quality_evaluate` = "Evaluate recommendations"
 - `source_evaluation_rec_quality_recheck_all` = "Re-check all"
-- `source_evaluation_rec_quality_running` = "Checking recommendation quality… (%1$d/%2$d)"
+- `source_evaluation_rec_quality_running` = "Checking recommendation qualityâ€¦ (%1$d/%2$d)"
 
 ### Fix 3: Source Fit Score and Recommendation Quality Stay Separate
 
@@ -136,11 +136,11 @@ Non-promising rows (REJECTED, EXPLICIT_HEAVY, WEAK, etc.) still show nothing on 
 
 The `evaluateRecommendationQualityForPromising` action in `SourceEvaluationScreenModel` reuses all existing infrastructure:
 
-- `SourceRecommendationFitEligibility` — gates STRONG_FIT/WORTH_TRYING + MIN_SAMPLE_COUNT check
-- `SourceRecommendationFitProbe` — runs the bounded 2-plan probe with 30s timeout per plan
-- `SourceRecommendationFitScorer` — scores the probe `Outcome` to `[0.0, 1.0]`
-- `GetSourceRecommendationFit` — read path for loading existing fits into screen state
-- `UpsertSourceRecommendationFit` — write path for storing new probe results
+- `SourceRecommendationFitEligibility` â€” gates STRONG_FIT/WORTH_TRYING + MIN_SAMPLE_COUNT check
+- `SourceRecommendationFitProbe` â€” runs the bounded 2-plan probe with 30s timeout per plan
+- `SourceRecommendationFitScorer` â€” scores the probe `Outcome` to `[0.0, 1.0]`
+- `GetSourceRecommendationFit` â€” read path for loading existing fits into screen state
+- `UpsertSourceRecommendationFit` â€” write path for storing new probe results
 
 No new interactors. No new DB tables. No schema changes.
 
@@ -178,8 +178,8 @@ Rules:
 
 The screen model computes `evaluateRecommendationQualityForPromising(reCheckAll: Boolean)`:
 
-- `reCheckAll = false` → targets `missingPromising` only.
-- `reCheckAll = true` → targets `missingPromising + checkedPromising`.
+- `reCheckAll = false` â†’ targets `missingPromising` only.
+- `reCheckAll = true` â†’ targets `missingPromising + checkedPromising`.
 
 ## ScreenModel Changes
 
@@ -238,7 +238,7 @@ LazyColumn {
 
 | File | Description |
 | --- | --- |
-| `app/src/main/java/exh/recs/evaluation/SourceRecommendationQualityQueue.kt` | Pure queue helper — partitions evaluations into missing/checked/ineligible |
+| `app/src/main/java/exh/recs/evaluation/SourceRecommendationQualityQueue.kt` | Pure queue helper â€” partitions evaluations into missing/checked/ineligible |
 | `app/src/test/java/exh/recs/evaluation/SourceRecommendationQualityQueueTest.kt` | 8 unit tests for queue computation |
 
 ### Modified Files
@@ -253,7 +253,7 @@ LazyColumn {
 
 ## Tests
 
-### New Tests (SourceRecommendationQualityQueueTest — 8 tests)
+### New Tests (SourceRecommendationQualityQueueTest â€” 8 tests)
 
 1. `promising sources without fit are counted as missing`
 2. `promising sources with fit are not counted as missing`
@@ -264,7 +264,7 @@ LazyColumn {
 7. `empty evaluations returns empty result`
 8. `mixed evaluations partitioned correctly`
 
-### Added to Existing Test File (SourceEvaluationDisplayFilterTest — 3 new tests in v0.7.7 section)
+### Added to Existing Test File (SourceEvaluationDisplayFilterTest â€” 3 new tests in v0.7.7 section)
 
 1. `toggling showInstalled true then false hides installed rows immediately`
 2. `hiddenInstalledCount is zero when showInstalled is true`
@@ -273,10 +273,10 @@ LazyColumn {
 ### Test Results
 
 ```
-SourceRecommendationQualityQueueTest — 8 tests, all PASSED
-SourceEvaluationDisplayFilterTest — 10 tests, all PASSED
-:app:testDebugUnitTest — BUILD SUCCESSFUL
-:app:assembleDebug — BUILD SUCCESSFUL
+SourceRecommendationQualityQueueTest â€” 8 tests, all PASSED
+SourceEvaluationDisplayFilterTest â€” 10 tests, all PASSED
+:app:testDebugUnitTest â€” BUILD SUCCESSFUL
+:app:assembleDebug â€” BUILD SUCCESSFUL
 ```
 
 ## APK
@@ -290,7 +290,8 @@ VERSION_NAME = KMK-Recs v0.7.7
 ## What Was Not Changed
 
 - No new database tables or migrations.
-- `SourceRecommendationFitEligibility`, `SourceRecommendationFitScorer`, `SourceRecommendationFitProbe`, `GetSourceRecommendationFit`, `UpsertSourceRecommendationFit` — unchanged; reused as-is.
-- Batch continuation behavior from v0.7.6 — unchanged.
-- `SourceEvaluationDisplayFilter` pure helper — unchanged; the bug was in the screen's condition that controlled chip visibility, not in the filter itself.
-- v0.7.6 rec-quality probe logic running after a batch — unchanged; v0.7.7 adds an additional on-demand trigger from the screen.
+- `SourceRecommendationFitEligibility`, `SourceRecommendationFitScorer`, `SourceRecommendationFitProbe`, `GetSourceRecommendationFit`, `UpsertSourceRecommendationFit` â€” unchanged; reused as-is.
+- Batch continuation behavior from v0.7.6 â€” unchanged.
+- `SourceEvaluationDisplayFilter` pure helper â€” unchanged; the bug was in the screen's condition that controlled chip visibility, not in the filter itself.
+- v0.7.6 rec-quality probe logic running after a batch â€” unchanged; v0.7.7 adds an additional on-demand trigger from the screen.
+

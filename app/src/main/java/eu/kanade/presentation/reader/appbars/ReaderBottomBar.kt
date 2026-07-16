@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +49,8 @@ fun ReaderBottomBar(
     onClickPageLayout: () -> Unit,
     onClickShiftPage: () -> Unit,
     // SY <--
+    // KMK v0.8.4
+    onClickReadingTimer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // KMK -->
@@ -177,6 +180,15 @@ fun ReaderBottomBar(
                     // KMK <--
                 )
             }
+        }
+
+        // KMK v0.8.4: reading timer entry point — always visible, mirroring Settings below.
+        IconButton(onClick = onClickReadingTimer) {
+            Icon(
+                imageVector = Icons.Outlined.Timer,
+                contentDescription = stringResource(tachiyomi.i18n.kmk.KMR.strings.reading_timer_action),
+                tint = iconColor,
+            )
         }
 
         IconButton(onClick = onClickSettings) {

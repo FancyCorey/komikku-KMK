@@ -6,13 +6,34 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.taste.model.RecommendationQualityVerdict
 import tachiyomi.domain.taste.model.SourceEvaluation
+import tachiyomi.domain.taste.model.SourceEvaluationKeys
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 import tachiyomi.domain.taste.model.SourceRecommendationFit
 
 // KMK -->
+/**
+ * Tests for [SourceRecommendationQualityDiagnostics.compute].
+ *
+ * v0.7.42-fix1: diagnostics now delegate eligibility/staleness to the same
+ * [SourceRecommendationFitEligibility] contract [SourceRecommendationQualityQueue] uses, instead of
+ * a separately hardcoded STRONG_FIT/WORTH_TRYING filter.
+ *
+ * v0.7.42-fix2: routed through [SourceRecommendationFitDisplayPolicy.resolve] (same call path as the
+ * queue and row labels). `Summary` still intentionally folds missing+outdated into `notCheckedCount`
+ * — the queue is the source of truth for the missing/outdated split used by the action UI.
+ */
 class SourceRecommendationQualityDiagnosticsTest {
 
-    private fun makeEval(key: String, verdict: SourceEvaluationVerdict) = SourceEvaluation(
+    private val now = 10_000_000L
+
+    private fun makeEval(
+        key: String,
+        verdict: SourceEvaluationVerdict,
+        // KMK --> v0.7.42-fix1: HIGH default = "confidently evaluated" for tests not about confidence itself
+        confidence: SourceEvaluationMetadataConfidence = SourceEvaluationMetadataConfidence.HIGH,
+        // KMK <--
+    ) = SourceEvaluation(
         evaluationKey = key,
         sourceId = key.hashCode().toLong(),
         extensionPkgName = "eu.kanade.tachiyomi.extension.$key",
@@ -24,7 +45,7 @@ class SourceRecommendationQualityDiagnosticsTest {
         repoName = null,
         sourceCount = 1,
         isNsfw = false,
-        evaluationVersion = 1,
+        evaluationVersion = SourceEvaluationKeys.CURRENT_VERSION,
         evaluatedAt = 0L,
         expiresAt = null,
         sampleCount = 10,
@@ -47,12 +68,15 @@ class SourceRecommendationQualityDiagnosticsTest {
         sampledTitlesJson = null,
         sampledTagsJson = null,
         errorMessage = null,
+        catalogueMetadataConfidence = confidence,
     )
 
     private fun makeFit(
         evalKey: String,
         verdict: RecommendationQualityVerdict,
         errorMessage: String? = null,
+        evaluationVersion: Int = SourceRecommendationFit.CURRENT_VERSION,
+        expiresAt: Long? = null,
     ) = SourceRecommendationFit(
         fitKey = SourceRecommendationFit.fitKeyFor(evalKey),
         evaluationKey = evalKey,
@@ -78,11 +102,18 @@ class SourceRecommendationQualityDiagnosticsTest {
         verdict = verdict,
         reasonsJson = "[]",
         errorMessage = errorMessage,
+        evaluationVersion = evaluationVersion,
+        expiresAt = expiresAt,
     )
+
+    private fun compute(
+        evaluations: List<SourceEvaluation>,
+        fits: Map<String, SourceRecommendationFit> = emptyMap(),
+    ) = SourceRecommendationQualityDiagnostics.compute(evaluations, fits, now)
 
     @Test
     fun `compute returns empty summary when no evaluations`() {
-        val summary = SourceRecommendationQualityDiagnostics.compute(emptyList(), emptyMap())
+        val summary = compute(emptyList())
         assertFalse(summary.hasAnyResults)
         assertEquals(0, summary.checkedCount)
         assertEquals(0, summary.notCheckedCount)
@@ -95,7 +126,7 @@ class SourceRecommendationQualityDiagnosticsTest {
             makeEval("e1", SourceEvaluationVerdict.POOR_SEARCH),
             makeEval("e2", SourceEvaluationVerdict.REJECTED),
         )
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, emptyMap())
+        val summary = compute(evals)
         assertEquals(0, summary.totalPromisingCount)
         assertFalse(summary.hasAnyResults)
     }
@@ -106,7 +137,7 @@ class SourceRecommendationQualityDiagnosticsTest {
             makeEval("e1", SourceEvaluationVerdict.STRONG_FIT),
             makeEval("e2", SourceEvaluationVerdict.WORTH_TRYING),
         )
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, emptyMap())
+        val summary = compute(evals)
         assertEquals(2, summary.totalPromisingCount)
         assertEquals(0, summary.checkedCount)
         assertEquals(2, summary.notCheckedCount)
@@ -117,7 +148,7 @@ class SourceRecommendationQualityDiagnosticsTest {
     fun `good verdict increments goodCount`() {
         val evals = listOf(makeEval("e1", SourceEvaluationVerdict.STRONG_FIT))
         val fits = mapOf("e1" to makeFit("e1", RecommendationQualityVerdict.GREAT))
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(1, summary.checkedCount)
         assertEquals(1, summary.goodCount)
         assertEquals(0, summary.weakCount)
@@ -130,7 +161,7 @@ class SourceRecommendationQualityDiagnosticsTest {
     fun `WEAK verdict increments weakCount`() {
         val evals = listOf(makeEval("e1", SourceEvaluationVerdict.WORTH_TRYING))
         val fits = mapOf("e1" to makeFit("e1", RecommendationQualityVerdict.WEAK))
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(1, summary.weakCount)
         assertEquals(0, summary.goodCount)
     }
@@ -139,7 +170,7 @@ class SourceRecommendationQualityDiagnosticsTest {
     fun `NO_MATCHES verdict increments noResultsCount`() {
         val evals = listOf(makeEval("e1", SourceEvaluationVerdict.STRONG_FIT))
         val fits = mapOf("e1" to makeFit("e1", RecommendationQualityVerdict.NO_MATCHES))
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(1, summary.noResultsCount)
         assertEquals(0, summary.searchErrorCount)
     }
@@ -148,7 +179,7 @@ class SourceRecommendationQualityDiagnosticsTest {
     fun `TOO_LITTLE_EVIDENCE verdict increments noResultsCount`() {
         val evals = listOf(makeEval("e1", SourceEvaluationVerdict.STRONG_FIT))
         val fits = mapOf("e1" to makeFit("e1", RecommendationQualityVerdict.TOO_LITTLE_EVIDENCE))
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(1, summary.noResultsCount)
     }
 
@@ -158,7 +189,7 @@ class SourceRecommendationQualityDiagnosticsTest {
         val fits = mapOf(
             "e1" to makeFit("e1", RecommendationQualityVerdict.ERROR, "Extension not found in available sources"),
         )
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(1, summary.installLoadIssueCount)
         assertEquals(0, summary.searchErrorCount)
     }
@@ -169,7 +200,7 @@ class SourceRecommendationQualityDiagnosticsTest {
         val fits = mapOf(
             "e1" to makeFit("e1", RecommendationQualityVerdict.ERROR, "Plan TOP_TAGS_FILTER: error — UnknownHostException"),
         )
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(1, summary.searchErrorCount)
         assertEquals(0, summary.installLoadIssueCount)
     }
@@ -191,7 +222,7 @@ class SourceRecommendationQualityDiagnosticsTest {
             "e4" to makeFit("e4", RecommendationQualityVerdict.ERROR, "Extension not found in available sources"),
             // e5 has no fit → notChecked
         )
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(5, summary.totalPromisingCount)
         assertEquals(4, summary.checkedCount)
         assertEquals(1, summary.notCheckedCount)
@@ -213,9 +244,103 @@ class SourceRecommendationQualityDiagnosticsTest {
             "e1" to makeFit("e1", RecommendationQualityVerdict.GOOD),
             "e2" to makeFit("e2", RecommendationQualityVerdict.MIXED),
         )
-        val summary = SourceRecommendationQualityDiagnostics.compute(evals, fits)
+        val summary = compute(evals, fits)
         assertEquals(2, summary.goodCount)
         assertEquals(0, summary.weakCount)
+    }
+
+    // --- v0.7.42-fix1: shares eligibility with the queue (F3) ---
+
+    @Test
+    fun `low-confidence WEAK row without fit counts as promising and not checked, matching the queue`() {
+        val evals = listOf(makeEval("e1", SourceEvaluationVerdict.WEAK, confidence = SourceEvaluationMetadataConfidence.LOW))
+        val summary = compute(evals)
+        assertEquals(1, summary.totalPromisingCount)
+        assertEquals(0, summary.checkedCount)
+        assertEquals(1, summary.notCheckedCount)
+
+        val queueResult = SourceRecommendationQualityQueue.compute(evals, emptyMap(), now)
+        assertEquals(1, queueResult.missingCount)
+    }
+
+    @Test
+    fun `confidently WEAK row (MODERATE confidence) is excluded, matching the queue`() {
+        val evals = listOf(makeEval("e1", SourceEvaluationVerdict.WEAK, confidence = SourceEvaluationMetadataConfidence.MODERATE))
+        val summary = compute(evals)
+        assertEquals(0, summary.totalPromisingCount)
+
+        val queueResult = SourceRecommendationQualityQueue.compute(evals, emptyMap(), now)
+        assertEquals(1, queueResult.ineligible.size)
+    }
+
+    @Test
+    fun `stale fit (older evaluationVersion) counts as not checked, not as a scored outcome`() {
+        val evals = listOf(makeEval("e1", SourceEvaluationVerdict.STRONG_FIT))
+        val fits = mapOf(
+            "e1" to makeFit("e1", RecommendationQualityVerdict.GREAT, evaluationVersion = SourceRecommendationFit.CURRENT_VERSION - 1),
+        )
+        val summary = compute(evals, fits)
+        assertEquals(0, summary.checkedCount)
+        assertEquals(1, summary.notCheckedCount)
+        assertEquals(0, summary.goodCount)
+        assertFalse(summary.hasAnyResults)
+    }
+
+    @Test
+    fun `expired fit counts as not checked, not as a scored outcome`() {
+        val evals = listOf(makeEval("e1", SourceEvaluationVerdict.STRONG_FIT))
+        val fits = mapOf(
+            "e1" to makeFit("e1", RecommendationQualityVerdict.WEAK, expiresAt = now - 1),
+        )
+        val summary = compute(evals, fits)
+        assertEquals(0, summary.checkedCount)
+        assertEquals(1, summary.notCheckedCount)
+        assertEquals(0, summary.weakCount)
+    }
+
+    @Test
+    fun `EXPLICIT_HEAVY row is excluded from diagnostics regardless of confidence`() {
+        val evals = listOf(makeEval("e1", SourceEvaluationVerdict.EXPLICIT_HEAVY, confidence = SourceEvaluationMetadataConfidence.LOW))
+        val summary = compute(evals)
+        assertEquals(0, summary.totalPromisingCount)
+    }
+
+    // --- v0.7.42-fix2: diagnostics notCheckedCount agrees with the queue's missing+outdated split ---
+
+    @Test
+    fun `notCheckedCount equals queue missingCount plus outdatedCount for a mix of missing and outdated rows`() {
+        val missing = makeEval("missing", SourceEvaluationVerdict.STRONG_FIT)
+        val outdated = makeEval("outdated", SourceEvaluationVerdict.STRONG_FIT)
+        val checked = makeEval("checked", SourceEvaluationVerdict.STRONG_FIT)
+        val evals = listOf(missing, outdated, checked)
+        val fits = mapOf(
+            "outdated" to makeFit("outdated", RecommendationQualityVerdict.GOOD, evaluationVersion = SourceRecommendationFit.CURRENT_VERSION - 1),
+            "checked" to makeFit("checked", RecommendationQualityVerdict.GOOD),
+        )
+
+        val summary = compute(evals, fits)
+        val queueResult = SourceRecommendationQualityQueue.compute(evals, fits, now)
+
+        assertEquals(queueResult.missingCount + queueResult.outdatedCount, summary.notCheckedCount)
+        assertEquals(queueResult.checkedPromising.size, summary.checkedCount)
+    }
+
+    @Test
+    fun `an outdated ERROR fit is not checked, not counted as installLoadIssue or searchError`() {
+        val evals = listOf(makeEval("e1", SourceEvaluationVerdict.STRONG_FIT))
+        val fits = mapOf(
+            "e1" to makeFit(
+                "e1",
+                RecommendationQualityVerdict.ERROR,
+                errorMessage = "Extension not found in available sources",
+                evaluationVersion = SourceRecommendationFit.CURRENT_VERSION - 1,
+            ),
+        )
+        val summary = compute(evals, fits)
+        assertEquals(0, summary.checkedCount)
+        assertEquals(1, summary.notCheckedCount)
+        assertEquals(0, summary.installLoadIssueCount)
+        assertEquals(0, summary.searchErrorCount)
     }
 }
 // KMK <--

@@ -7,6 +7,9 @@ import exh.recs.PersonalRecommendationScorer
 import exh.recs.RecommendationQueryPlanner
 import exh.recs.sources.GenreFilterMapper
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.manga.model.Manga
@@ -25,6 +28,12 @@ import uy.kohesive.injekt.api.get
  * genre/tag metadata; without enrichment the scorer sees empty genres and produces low/zero
  * scores even for perfectly good sources. The enrichment cap keeps network work bounded.
  *
+ * v0.7.35: All source/extension calls (getFilterList, getSearchManga, getMangaDetails) now run
+ * on [ioDispatcher] (default Dispatchers.IO). This prevents NetworkOnMainThreadException that
+ * was causing mass-fail in the recommendation-quality probe rows. NetworkOnMainThreadException
+ * now only occurs if it somehow reaches the error handler; it is classified as an internal probe
+ * execution error and does not influence source quality scoring.
+ *
  * Constraints (all enforced here, no caller setup needed):
  * - At most [RecommendationQueryPlanner.MAX_STRATEGIES_PER_SOURCE] query plans (2).
  * - Page 1 only — no pagination, no chapter list fetch, no image fetch.
@@ -38,6 +47,9 @@ import uy.kohesive.injekt.api.get
  */
 class SourceRecommendationFitProbe(
     private val getTagAliases: GetTagAliases = Injekt.get(),
+    // KMK --> v0.7.35: injectable dispatcher so tests can supply a test dispatcher
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    // KMK <--
 ) {
 
     companion object {
@@ -94,11 +106,13 @@ class SourceRecommendationFitProbe(
 
         for (plan in plans) {
             try {
+                // KMK --> v0.7.35: force IO dispatcher — getFilterList can hit disk/network
                 val filterList = try {
-                    source.getFilterList()
+                    withContext(ioDispatcher) { source.getFilterList() }
                 } catch (_: Exception) {
                     FilterList()
                 }
+                // KMK <--
                 val searchParams = GenreFilterMapper.buildSearch(
                     filterList,
                     plan.tags,
@@ -108,9 +122,13 @@ class SourceRecommendationFitProbe(
                 )
 
                 queryCount++
+                // KMK --> v0.7.35: force IO dispatcher — getSearchManga performs network I/O
                 val page = withTimeoutOrNull(PLAN_TIMEOUT_MS) {
-                    source.getSearchManga(1, searchParams.textQuery, searchParams.filters)
+                    withContext(ioDispatcher) {
+                        source.getSearchManga(1, searchParams.textQuery, searchParams.filters)
+                    }
                 }
+                // KMK <--
 
                 if (page == null) {
                     reasons.add("Plan ${plan.type.name}: timed out")
@@ -140,12 +158,16 @@ class SourceRecommendationFitProbe(
                     if (planEnrichedCount < ENRICH_CAP_PER_PLAN && manga.needsProbeEnrichment()) {
                         val smanga = smangaByUrl[manga.url]
                         if (smanga != null) {
+                            // KMK --> v0.7.35: force IO dispatcher — getMangaDetails performs network I/O
                             val enriched = runCatching {
                                 withTimeoutOrNull(ENRICH_TIMEOUT_MS) {
-                                    val details = source.getMangaDetails(smanga)
-                                    details.toDomainManga(source.id)
+                                    withContext(ioDispatcher) {
+                                        val details = source.getMangaDetails(smanga)
+                                        details.toDomainManga(source.id)
+                                    }
                                 }
                             }.getOrNull()
+                            // KMK <--
                             if (enriched != null) {
                                 planEnrichedCount++
                                 return@map enriched
@@ -197,7 +219,15 @@ class SourceRecommendationFitProbe(
                 throw e
             } catch (e: Exception) {
                 errorCount++
-                reasons.add("Plan ${plan.type.name}: error — ${e.message?.take(60)}")
+                // KMK --> v0.7.35: classify NetworkOnMainThreadException as an internal probe
+                // threading bug so it is visible in diagnostics but does not lower source quality.
+                val errorLabel = if (e.javaClass.name.contains("NetworkOnMainThreadException")) {
+                    "internal-threading-error"
+                } else {
+                    e.message?.take(60) ?: e.javaClass.simpleName
+                }
+                reasons.add("Plan ${plan.type.name}: error — $errorLabel")
+                // KMK <--
             }
         }
 

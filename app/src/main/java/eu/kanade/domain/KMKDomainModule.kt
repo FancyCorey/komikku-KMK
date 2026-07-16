@@ -8,6 +8,8 @@ import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorWithRelationsReposito
 import tachiyomi.data.libraryUpdateErrorMessage.LibraryUpdateErrorMessageRepositoryImpl
 import tachiyomi.data.taste.MangaSourceQualitySignalRepositoryImpl
 import tachiyomi.data.taste.RecommendationCacheRepositoryImpl
+import tachiyomi.data.taste.RecommendationCandidateMemoryRepositoryImpl
+import tachiyomi.data.taste.RecommendationDiscoveryProgressRepositoryImpl
 import tachiyomi.data.taste.SourceEvaluationRepositoryImpl
 import tachiyomi.data.taste.SourceEvaluationSafetyRepositoryImpl
 import tachiyomi.data.taste.SourceRecommendationFitRepositoryImpl
@@ -23,25 +25,32 @@ import tachiyomi.domain.libraryUpdateErrorMessage.interactor.DeleteLibraryUpdate
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.GetLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.InsertLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.repository.LibraryUpdateErrorMessageRepository
+import tachiyomi.domain.taste.interactor.ClearCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.ClearMangaTaste
 import tachiyomi.domain.taste.interactor.ClearRecommendationCache
+import tachiyomi.domain.taste.interactor.ClearRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.ClearRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.ClearSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.ClearSourceEvaluationUnsafe
 import tachiyomi.domain.taste.interactor.ClearSourceEvaluations
 import tachiyomi.domain.taste.interactor.ClearTagTaste
 import tachiyomi.domain.taste.interactor.ClearUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.DeleteCrossSourceMangaLink
+import tachiyomi.domain.taste.interactor.DeleteMangaSourceQualitySignal
+import tachiyomi.domain.taste.interactor.DeleteRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.DeleteSourceEvaluation
 import tachiyomi.domain.taste.interactor.DeleteSourceEvaluationUnsafe
 import tachiyomi.domain.taste.interactor.DeleteUnsafeExtensionPackage
+import tachiyomi.domain.taste.interactor.GetChapterCountsByMangaIds
+import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
-import tachiyomi.domain.taste.interactor.GetChapterCountsByMangaIds
 import tachiyomi.domain.taste.interactor.GetKnownRecommendationMangaIds
-import tachiyomi.domain.taste.interactor.DeleteMangaSourceQualitySignal
 import tachiyomi.domain.taste.interactor.GetMangaSourceQualitySignals
 import tachiyomi.domain.taste.interactor.GetMangaTaste
 import tachiyomi.domain.taste.interactor.GetRecommendationCache
+import tachiyomi.domain.taste.interactor.GetRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.GetRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.GetSourceEvaluation
 import tachiyomi.domain.taste.interactor.GetSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.GetSourceEvaluationUnsafeSources
@@ -52,6 +61,8 @@ import tachiyomi.domain.taste.interactor.GetTagTaste
 import tachiyomi.domain.taste.interactor.GetTasteProfile
 import tachiyomi.domain.taste.interactor.GetUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.MarkSourceEvaluationUnsafe
+import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.SetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.SetMangaTaste
 import tachiyomi.domain.taste.interactor.SetMangaTasteBatch
 import tachiyomi.domain.taste.interactor.SetRecommendationSourceEnabled
@@ -59,6 +70,8 @@ import tachiyomi.domain.taste.interactor.SetTagTaste
 import tachiyomi.domain.taste.interactor.UpsertCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.UpsertMangaSourceQualitySignal
 import tachiyomi.domain.taste.interactor.UpsertRecommendationCache
+import tachiyomi.domain.taste.interactor.UpsertRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.UpsertRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.UpsertSourceEvaluation
 import tachiyomi.domain.taste.interactor.UpsertSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.UpsertSourceRecommendationFit
@@ -66,6 +79,8 @@ import tachiyomi.domain.taste.interactor.UpsertTagAlias
 import tachiyomi.domain.taste.interactor.UpsertUnsafeExtensionPackage
 import tachiyomi.domain.taste.repository.MangaSourceQualitySignalRepository
 import tachiyomi.domain.taste.repository.RecommendationCacheRepository
+import tachiyomi.domain.taste.repository.RecommendationCandidateMemoryRepository
+import tachiyomi.domain.taste.repository.RecommendationDiscoveryProgressRepository
 import tachiyomi.domain.taste.repository.SourceEvaluationRepository
 import tachiyomi.domain.taste.repository.SourceEvaluationSafetyRepository
 import tachiyomi.domain.taste.repository.SourceRecommendationFitRepository
@@ -118,6 +133,16 @@ class KMKDomainModule : InjektModule {
         addFactory { UpsertCrossSourceMangaLinks(get()) }
         addFactory { DeleteCrossSourceMangaLink(get()) }
         // KMK <--
+        // KMK --> v0.8.1-fix2: user-selected primary version per confirmed link group (v0.8.0).
+        // These were introduced in v0.8.0 but never registered here, causing an Injekt
+        // InjektionException crash ("No registered instance or factory for type class
+        // tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary") whenever
+        // LovedMangaScreenModel, LinkedVersionListScreenModel, TasteBackupCreator, or
+        // TasteRestorer requested any of these three interactors.
+        addFactory { GetCrossSourceGroupPrimary(get()) }
+        addFactory { SetCrossSourceGroupPrimary(get()) }
+        addFactory { ClearCrossSourceGroupPrimary(get()) }
+        // KMK <--
         // KMK --> v0.7.8: user-confirmed source quality signals
         addSingletonFactory<MangaSourceQualitySignalRepository> { MangaSourceQualitySignalRepositoryImpl(get()) }
         addFactory { GetMangaSourceQualitySignals(get()) }
@@ -131,6 +156,20 @@ class KMKDomainModule : InjektModule {
         addFactory { GetRecommendationCache(get()) }
         addFactory { UpsertRecommendationCache(get()) }
         addFactory { ClearRecommendationCache(get()) }
+        // KMK --> v0.7.38: For You candidate discovery memory (local-only, not in backup/sync)
+        addSingletonFactory<RecommendationCandidateMemoryRepository> { RecommendationCandidateMemoryRepositoryImpl(get()) }
+        addFactory { GetRecommendationCandidateMemory(get()) }
+        addFactory { UpsertRecommendationCandidateMemory(get()) }
+        addFactory { DeleteRecommendationCandidateMemory(get()) }
+        addFactory { PruneRecommendationCandidateMemory(get()) }
+        addFactory { ClearRecommendationCandidateMemory(get()) }
+        // KMK <--
+        // KMK --> v0.7.39: For You rolling discovery progress (local-only, not in backup/sync)
+        addSingletonFactory<RecommendationDiscoveryProgressRepository> { RecommendationDiscoveryProgressRepositoryImpl(get()) }
+        addFactory { GetRecommendationDiscoveryProgress(get()) }
+        addFactory { UpsertRecommendationDiscoveryProgress(get()) }
+        addFactory { ClearRecommendationDiscoveryProgress(get()) }
+        // KMK <--
 
         addSingletonFactory<SourceEvaluationRepository> { SourceEvaluationRepositoryImpl(get()) }
         addFactory { GetSourceEvaluations(get()) }

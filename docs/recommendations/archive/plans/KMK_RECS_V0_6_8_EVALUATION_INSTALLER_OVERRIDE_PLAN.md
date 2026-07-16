@@ -1,4 +1,4 @@
-# KMK-Recs v0.6.8 Evaluation Installer Override Plan
+﻿# KMK-Recs v0.6.8 Evaluation Installer Override Plan
 
 Status: planning. Do not implement until the user explicitly approves or provides this plan to Claude for implementation.
 
@@ -407,4 +407,5 @@ This installer override work is complete only when:
 - prompt-heavy installer modes warn and restrict large batches;
 - documentation clearly distinguishes "stop using Shizuku" from "stop/revoke Shizuku itself";
 - normal extension install/update behavior remains unchanged.
+
 

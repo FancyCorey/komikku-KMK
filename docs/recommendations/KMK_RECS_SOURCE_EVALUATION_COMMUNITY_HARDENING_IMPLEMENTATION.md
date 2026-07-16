@@ -1,10 +1,10 @@
-# KMK-Recs Source Evaluation Community Hardening Implementation
+﻿# KMK-Recs Source Evaluation Community Hardening Implementation
 
 Date: 2026-06-26
 
 Status: SUPERSEDED. This document covers the initial Phase 5 work. The versioning was corrected to KMK-Recs v0.7.11 (versionCode 83, APK `Komikku-v1.13.6-kmk.7.11-debug.apk`) in a follow-up session. The consent flow also had bugs that were fixed in the same follow-up. See `KMK_RECS_V0_7_11_SOURCE_EVALUATION_HARDENING_CORRECTION_IMPLEMENTATION.md` for the corrective implementation.
 
-This document covers Phase 5: Source Evaluation Hardening (initial implementation — strings, cleanup warnings, KMR string migration).
+This document covers Phase 5: Source Evaluation Hardening (initial implementation â€” strings, cleanup warnings, KMR string migration).
 
 ---
 
@@ -14,20 +14,20 @@ This document covers Phase 5: Source Evaluation Hardening (initial implementatio
 
 Before any evaluation can start, the user must acknowledge a one-time warning. On first tap of "Start evaluation", a dialog is shown:
 
-- **Title**: "Source Evaluation — Advanced Feature"
+- **Title**: "Source Evaluation â€” Advanced Feature"
 - **Body**: Explains install/probe/cleanup/mode behavior; notes Private mode is recommended; notes library and already-installed extensions are not changed; notes the warning is accessible again from the Copy Diagnostics area.
 - **"I understand, continue"**: persists consent (`source_evaluation_consent_given` = true) and proceeds.
 - **Cancel**: dismisses without starting.
 
 Once acknowledged, consent is persisted. The dialog never blocks again unless the preference is cleared.
 
-The same dialog is shown when tapping **"View evaluation warning"** — a new TextButton added to the diagnostics row so the user can re-read the warning at any time.
+The same dialog is shown when tapping **"View evaluation warning"** â€” a new TextButton added to the diagnostics row so the user can re-read the warning at any time.
 
 Consent is also checked in `startReassessUpdated()` (reassess-updated-only evaluation start), so the first run of either path shows the dialog.
 
 **Files:** `SourceEvaluationConsentPolicy.kt` (new pure helper), `SourcePreferences.kt` (+preference), `SourceEvaluationScreenModel.kt` (consent state + actions), `SourceEvaluationScreen.kt` (dialog + "View warning" button).
 
-**Test:** `SourceEvaluationConsentPolicyTest.kt` — 3 tests.
+**Test:** `SourceEvaluationConsentPolicyTest.kt` â€” 3 tests.
 
 ---
 
@@ -64,8 +64,8 @@ Four separate hardcoded "No internet connection..." strings replaced with `KMR.s
 
 `EvaluationSummaryCard` (shown after completed/failed/cancelled runs) now shows:
 
-- **"N extension(s) require a manual uninstall prompt. Open Browse > Extensions to complete cleanup."** — shown in `MaterialTheme.colorScheme.error` when `promptRequiredCleanupCount > 0`.
-- **"N extension(s) cleanup failed. Check Browse > Extensions."** — shown in `MaterialTheme.colorScheme.error` when `cleanupFailedCount > 0`.
+- **"N extension(s) require a manual uninstall prompt. Open Browse > Extensions to complete cleanup."** â€” shown in `MaterialTheme.colorScheme.error` when `promptRequiredCleanupCount > 0`.
+- **"N extension(s) cleanup failed. Check Browse > Extensions."** â€” shown in `MaterialTheme.colorScheme.error` when `cleanupFailedCount > 0`.
 
 `cleanupFailedCount` computed property added to `SourceEvaluationQueueState`.
 
@@ -105,7 +105,7 @@ Three pre-existing ktlint violations blocked `spotlessApply`. Fixed as part of t
 | `app/src/main/java/exh/recs/evaluation/SourceEvaluationCandidateFilter.kt` | Import ordering fix (lint) |
 | `app/src/test/java/exh/ocr/OcrSkipLogicTest.kt` | Property naming fix (lint) |
 | `app/src/test/java/exh/recs/evaluation/SourceEvaluationStartupRecoveryTest.kt` | Property naming fix (lint) |
-| `app/build.gradle.kts` | versionCode 81 → 82 |
+| `app/build.gradle.kts` | versionCode 81 â†’ 82 |
 
 ---
 
@@ -113,7 +113,7 @@ Three pre-existing ktlint violations blocked `spotlessApply`. Fixed as part of t
 
 ```xml
 <!-- KMK v0.8.0: source evaluation hardening -->
-<string name="source_evaluation_consent_title">Source Evaluation — Advanced Feature</string>
+<string name="source_evaluation_consent_title">Source Evaluation â€” Advanced Feature</string>
 <string name="source_evaluation_consent_message">...</string>
 <string name="source_evaluation_consent_confirm">I understand, continue</string>
 <string name="source_evaluation_view_warning">View evaluation warning</string>
@@ -128,10 +128,10 @@ Three pre-existing ktlint violations blocked `spotlessApply`. Fixed as part of t
 ## Build Results
 
 ```
-.\gradlew.bat spotlessApply     → BUILD SUCCESSFUL
-.\gradlew.bat spotlessCheck     → (implied by spotlessApply success)
-.\gradlew.bat :app:testDebugUnitTest → BUILD SUCCESSFUL (267 tasks)
-.\gradlew.bat assembleDebug     → BUILD SUCCESSFUL
+.\gradlew.bat spotlessApply     â†’ BUILD SUCCESSFUL
+.\gradlew.bat spotlessCheck     â†’ (implied by spotlessApply success)
+.\gradlew.bat :app:testDebugUnitTest â†’ BUILD SUCCESSFUL (267 tasks)
+.\gradlew.bat assembleDebug     â†’ BUILD SUCCESSFUL
 ```
 
 Output APK: `Komikku-v1.13.6-kmk.8.0-debug.apk` (162.4 MB)
@@ -158,3 +158,4 @@ The following items were discussed in the Phase 5 specification but are explicit
 - Network-loss retry/refresh UI (mid-run connectivity detection beyond per-extension timeout).
 - Quarantine collapsed-by-default count chip expansion.
 - `startReassessUpdated()` consent check: currently checks consent before starting, which is correct; no special bypass needed.
+

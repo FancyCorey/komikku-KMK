@@ -23,10 +23,14 @@ data class LinkGroup(
         get() = links.firstOrNull()?.title ?: groupId
 }
 
+// KMK --> v0.8.0: optional focusedGroupId scopes results to a single group ("Manage Group" action
+// from Rated Manga), instead of duplicating this screen as a separate global manager.
 class LinkGroupManagementScreenModel(
+    private val focusedGroupId: String? = null,
     private val getCrossSourceMangaLinks: GetCrossSourceMangaLinks = Injekt.get(),
     private val deleteCrossSourceMangaLink: DeleteCrossSourceMangaLink = Injekt.get(),
 ) : StateScreenModel<LinkGroupManagementScreenModel.State>(State.Loading) {
+    // KMK <--
 
     init {
         screenModelScope.launch { load() }
@@ -34,7 +38,11 @@ class LinkGroupManagementScreenModel(
 
     private suspend fun load() {
         runCatching {
-            val links = getCrossSourceMangaLinks.awaitAll()
+            val links = if (focusedGroupId != null) {
+                getCrossSourceMangaLinks.awaitByGroupId(focusedGroupId)
+            } else {
+                getCrossSourceMangaLinks.awaitAll()
+            }
             val groups = links
                 .groupBy { it.groupId }
                 .map { (groupId, members) -> LinkGroup(groupId, members) }
