@@ -3,6 +3,7 @@ package exh.recs.settings
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -10,6 +11,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -32,13 +34,27 @@ import tachiyomi.presentation.core.i18n.stringResource
  * would be redundant navigation, not a preserved behavior. Every other control, `screenModel`
  * method, and preference read/write is byte-for-byte identical to before.
  */
-class RecommendationDiagnosticsSettingsScreen : Screen() {
+class RecommendationDiagnosticsSettingsScreen(
+    // KMK v0.8.10: see RecommendationForYouSettingsScreen.anchor.
+    val anchor: String? = null,
+) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
+        val lazyListState = rememberLazyListState()
+        val itemKeysInOrder = remember {
+            listOf(
+                "management_header",
+                "quality_signal_history_entry",
+                "discovery_cache_header",
+                "enrichment_cap",
+                "clear_discovery_history",
+            )
+        }
+        ScrollToAnchorEffect(lazyListState, itemKeysInOrder, anchor)
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -49,7 +65,7 @@ class RecommendationDiagnosticsSettingsScreen : Screen() {
                 )
             },
         ) { contentPadding ->
-            LazyColumn(contentPadding = contentPadding) {
+            LazyColumn(state = lazyListState, contentPadding = contentPadding) {
                 item(key = "management_header") {
                     SectionHeader(stringResource(KMR.strings.rec_settings_management_header))
                 }

@@ -42,7 +42,10 @@ import tachiyomi.presentation.core.i18n.stringResource
  * Matching and Best Version preview settings. Pure move: every control, `screenModel` method, and
  * preference read/write is byte-for-byte identical to before.
  */
-class RecommendationSourcePrioritySettingsScreen : Screen() {
+class RecommendationSourcePrioritySettingsScreen(
+    // KMK v0.8.10: see RecommendationForYouSettingsScreen.anchor.
+    val anchor: String? = null,
+) : Screen() {
 
     @Composable
     override fun Content() {
@@ -61,6 +64,30 @@ class RecommendationSourcePrioritySettingsScreen : Screen() {
         ) { contentPadding ->
             val lazyListState = rememberLazyListState()
             val sourcesState = remember { state.orderedSources.toMutableStateList() }
+            // KMK v0.8.10: mirrors the LazyColumn's item order below, including its conditional
+            // sections and the dynamic per-source row count, so a static control key placed after
+            // the reorderable source list still resolves to the correct scroll index. The dynamic
+            // source rows and the status-breakdown section (last, nothing anchors past it) use
+            // placeholder keys -- only the static control keys below are ever used as search anchors.
+            val itemKeysInOrder = remember(sourcesState.size, state.suggestFitOrderAvailable) {
+                buildList {
+                    add("source_header")
+                    add("source_summary")
+                    add("source_status_note")
+                    repeat(sourcesState.size) { add("source_row_$it") }
+                    add("source_reset_button")
+                    if (state.suggestFitOrderAvailable) {
+                        add("source_suggest_order_button")
+                        add("source_suggest_order_note")
+                    }
+                    add("same_manga_header")
+                    add("same_manga_results_per_source")
+                    add("same_manga_preselect")
+                    add("best_version_sample_size")
+                    add("best_version_avoid_first_pages")
+                }
+            }
+            ScrollToAnchorEffect(lazyListState, itemKeysInOrder, anchor)
             val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
                 val fromSourceId = from.key as? Long ?: return@rememberReorderableLazyListState
                 val toSourceId = to.key as? Long ?: return@rememberReorderableLazyListState

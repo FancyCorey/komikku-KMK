@@ -2,11 +2,13 @@ package exh.recs.settings
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -27,13 +29,32 @@ import tachiyomi.presentation.core.i18n.stringResource
  * `screenModel` method, and preference read/write is byte-for-byte identical to before; only the
  * screen boundary is new.
  */
-class RecommendationForYouSettingsScreen : Screen() {
+class RecommendationForYouSettingsScreen(
+    // KMK v0.8.10: optional stable item key to scroll to on open, set when this screen is opened
+    // from a Recommendation Settings search result (RecommendationSettingsSearchIndex.Entry.anchor).
+    val anchor: String? = null,
+) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
+        val lazyListState = rememberLazyListState()
+        val itemKeysInOrder = remember {
+            listOf(
+                "lang_header",
+                "lang_content",
+                "rated_header",
+                "rated_content",
+                "hide_known_manga",
+                "min_chapter_count",
+                "result_budget",
+                "group_preview_budget",
+                "refresh_hint",
+            )
+        }
+        ScrollToAnchorEffect(lazyListState, itemKeysInOrder, anchor)
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -44,7 +65,7 @@ class RecommendationForYouSettingsScreen : Screen() {
                 )
             },
         ) { contentPadding ->
-            LazyColumn(contentPadding = contentPadding) {
+            LazyColumn(state = lazyListState, contentPadding = contentPadding) {
                 item(key = "lang_header") {
                     SectionHeader(
                         stringResource(KMR.strings.rec_settings_daily_recs_header),

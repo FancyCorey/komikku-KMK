@@ -45,6 +45,11 @@ object RecommendationSettingsSearchIndex {
         val destination: Screen,
         /** True when this setting is currently reachable. A false entry is still shown (per plan section "truthful unavailable state"), never silently hidden. */
         val available: Boolean = true,
+        // KMK v0.8.10: stable in-screen scroll target -- one of the destination screen's own
+        // LazyColumn item(key = ...) identifiers, never a fragile positional index. Null means this
+        // entry only opens the destination screen (category-level fallback); the destination screen
+        // may also simply not support anchor scrolling yet ("when that screen supports it").
+        val anchor: String? = null,
     )
 
     /**

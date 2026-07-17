@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -13,6 +14,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -29,13 +31,50 @@ import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK v0.8.8 -->
 /** "Sources To Try" (non-installed discovery) detail screen — extracted verbatim. Pure move, zero preference-behavior change. */
-class RecommendationNonInstalledDiscoverySettingsScreen : Screen() {
+class RecommendationNonInstalledDiscoverySettingsScreen(
+    // KMK v0.8.10: see RecommendationForYouSettingsScreen.anchor.
+    val anchor: String? = null,
+) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
+        val lazyListState = rememberLazyListState()
+        // KMK v0.8.10: mirrors the LazyColumn's item order below, including its conditional
+        // sections and the dynamic suggestion-row count, so a static control key placed after the
+        // suggestion list still resolves to the correct scroll index. Individual suggestion rows
+        // use placeholder keys -- only the static control keys are ever used as search anchors.
+        val visibleSuggestionCount = if (state.nonInstalledSuggestions.isEmpty()) {
+            0
+        } else if (state.suggestionsExpanded) {
+            state.nonInstalledSuggestions.size
+        } else {
+            state.nonInstalledSuggestions.take(5).size
+        }
+        val itemKeysInOrder = remember(
+            state.nonInstalledSuggestions.isEmpty(),
+            visibleSuggestionCount,
+            state.nonInstalledSuggestions.size,
+            state.dismissedSuggestionCount,
+            state.qualityDislikedSourceKeys.size,
+        ) {
+            buildList {
+                add("sources_to_try_header")
+                if (state.nonInstalledSuggestions.isEmpty()) {
+                    add("sources_to_try_empty")
+                } else {
+                    repeat(visibleSuggestionCount) { add("suggestion_row_$it") }
+                    if (state.nonInstalledSuggestions.size > 5) add("suggestions_expand_toggle")
+                    add("suggestions_bulk_install")
+                    add("suggestions_scope_note")
+                    if (state.dismissedSuggestionCount > 0) add("suggestions_clear_dismissed")
+                    if (state.qualityDislikedSourceKeys.isNotEmpty()) add("quality_marks_clear")
+                }
+            }
+        }
+        ScrollToAnchorEffect(lazyListState, itemKeysInOrder, anchor)
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -46,7 +85,7 @@ class RecommendationNonInstalledDiscoverySettingsScreen : Screen() {
                 )
             },
         ) { contentPadding ->
-            LazyColumn(contentPadding = contentPadding) {
+            LazyColumn(state = lazyListState, contentPadding = contentPadding) {
                 item(key = "sources_to_try_header") {
                     SectionHeader(
                         stringResource(KMR.strings.rec_sources_to_try_header),
