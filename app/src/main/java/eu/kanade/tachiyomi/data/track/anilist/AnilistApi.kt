@@ -14,7 +14,7 @@ import eu.kanade.tachiyomi.data.track.anilist.dto.ALUserListMangaQueryResult
 import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.network.jsonMime
 import eu.kanade.tachiyomi.network.parseAs
@@ -25,6 +25,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -46,8 +47,35 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
         .build()
 
     // KMK -->
+    private suspend fun Call.awaitALSuccess(): Response {
+        val callStack = Exception().stackTrace.run { copyOfRange(1, size) }
+        val response = try {
+            await()
+        } catch (e: java.io.IOException) {
+            e.stackTrace = callStack
+            throw e
+        }
+        try {
+            response.parseALError()
+        } catch (e: Exception) {
+            response.close()
+            e.stackTrace = callStack
+            throw e
+        }
+        if (!response.isSuccessful) {
+            val code = response.code
+            response.close()
+            throw eu.kanade.tachiyomi.network.HttpException(code).apply { stackTrace = callStack }
+        }
+        return response
+    }
+
     private fun Response.parseALError() {
-        val bodyString = peekBody(1024 * 1024).string()
+        val bodyString = try {
+            peekBody(1024 * 1024).string()
+        } catch (_: Exception) {
+            return
+        }
         val errorObj = try {
             json.decodeFromString<ALError>(bodyString)
         } catch (_: Exception) {
@@ -91,10 +119,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
-                    .awaitSuccess()
-                    // KMK -->
-                    .also { it.parseALError() }
-                    // KMK <--
+                    .awaitALSuccess()
                     .parseAs<ALAddMangaResult>()
                     .let {
                         track.library_id = it.data.entry.id
@@ -135,9 +160,9 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                 }
             }
             authClient.newCall(POST(API_URL, body = payload.toString().toRequestBody(jsonMime)))
-                .awaitSuccess()
                 // KMK -->
-                .use { it.parseALError() }
+                .awaitALSuccess()
+                .close()
             // KMK <--
             track
         }
@@ -160,9 +185,9 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                 }
             }
             authClient.newCall(POST(API_URL, body = payload.toString().toRequestBody(jsonMime)))
-                .awaitSuccess()
                 // KMK -->
-                .use { it.parseALError() }
+                .awaitALSuccess()
+                .close()
             // KMK <--
         }
     }
@@ -221,10 +246,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
-                    .awaitSuccess()
-                    // KMK -->
-                    .also { it.parseALError() }
-                    // KMK <--
+                    .awaitALSuccess()
                     .parseAs<ALSearchResult>()
                     .data.page.media
                     .map { it.toALManga().toTrack() }
@@ -303,10 +325,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
-                    .awaitSuccess()
-                    // KMK -->
-                    .also { it.parseALError() }
-                    // KMK <--
+                    .awaitALSuccess()
                     .parseAs<ALUserListMangaQueryResult>()
                     .data.page.mediaList
                     .map { it.toALUserManga() }
@@ -347,10 +366,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
-                    .awaitSuccess()
-                    // KMK -->
-                    .also { it.parseALError() }
-                    // KMK <--
+                    .awaitALSuccess()
                     .parseAs<ALCurrentUserResult>()
                     .let {
                         val viewer = it.data.viewer
@@ -403,10 +419,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
-                    .awaitSuccess()
-                    // KMK -->
-                    .also { it.parseALError() }
-                    // KMK <--
+                    .awaitALSuccess()
                     .parseAs<ALMangaMetadata>()
                     .let { metadata ->
                         val media = metadata.data.media
@@ -471,10 +484,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
-                    .awaitSuccess()
-                    // KMK -->
-                    .also { it.parseALError() }
-                    // KMK <--
+                    .awaitALSuccess()
                     .parseAs<ALIdSearchResult>()
                     .data.media
                     .toALManga()
