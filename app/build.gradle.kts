@@ -28,8 +28,8 @@ android {
     defaultConfig {
         applicationId = "app.komikku"
 
-        versionCode = 88 // Android package versionCode. KMK feature version is tracked separately in KmkRecsReleaseNotes.
-        versionName = "1.13.6"
+        versionCode = 89 // Android package versionCode. KMK feature version is tracked separately in KmkRecsReleaseNotes.
+        versionName = "1.14.0"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
