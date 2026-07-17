@@ -854,6 +854,23 @@ class SourceEvaluationScreenModel(
         mutableState.update { it.copy(queueState = SourceEvaluationQueueState()) }
     }
 
+    // KMK v0.8.10 -->
+    /**
+     * Called when the Source Evaluation screen is left (Composable dispose). If the run reached a
+     * terminal status, this clears it exactly like [resetEvaluation] so the "Evaluation completed"
+     * summary card does not persist stale across future visits -- see
+     * [SourceEvaluationCompletionLifecyclePolicy]'s class doc. A still-Running/Cancelling job is left
+     * completely untouched: it keeps reporting progress via the same background-job singleton as
+     * before, exactly as v0.6.19 intended.
+     */
+    fun clearCompletionOnLeave() {
+        val status = SourceEvaluationJobState.activeQueueState.value?.status ?: return
+        if (SourceEvaluationCompletionLifecyclePolicy.shouldClearOnLeave(status)) {
+            resetEvaluation()
+        }
+    }
+    // KMK <--
+
     // KMK --> v0.6.15: three-step clear (request → confirm/dismiss) to prevent accidental deletion
     fun requestClearAllEvaluations() {
         mutableState.update { it.copy(showClearEvaluationsDialog = true) }

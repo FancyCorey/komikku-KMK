@@ -134,6 +134,14 @@ class SourceEvaluationScreen : Screen() {
         }
         // KMK <--
 
+        // KMK v0.8.10: clear a stale "Evaluation completed"/Cancelled/Failed/ConnectivityLost
+        // summary when leaving the screen -- see SourceEvaluationCompletionLifecyclePolicy. A
+        // still-running background job is untouched (the policy only clears terminal states).
+        DisposableEffect(Unit) {
+            onDispose { screenModel.clearCompletionOnLeave() }
+        }
+        // KMK <--
+
         // KMK --> v0.7.42-fix2: one `now` shared by the queue, sort, and row rendering below, so they
         // can never disagree about which fits are current vs. outdated within one composition pass.
         val now = remember(state.evaluations, state.recommendationFitsByEvalKey) { System.currentTimeMillis() }
