@@ -189,7 +189,7 @@ class BackupCreator(
     }
 
     suspend fun backupExtensionStores(options: BackupOptions): List<BackupExtensionStore> {
-        if (!options.extensionRepoSettings) return emptyList()
+        if (!options.extensionStores) return emptyList()
 
         return extensionStoresBackupCreator()
     }

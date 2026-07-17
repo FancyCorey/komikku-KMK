@@ -88,7 +88,7 @@ class SyncManager(
             chapters = syncOptions.chapters,
             tracking = syncOptions.tracking,
             history = syncOptions.history,
-            extensionRepoSettings = syncOptions.extensionRepoSettings,
+            extensionStores = syncOptions.extensionStores,
             appSettings = syncOptions.appSettings,
             sourceSettings = syncOptions.sourceSettings,
             privateSettings = syncOptions.privateSettings,
@@ -235,7 +235,7 @@ class SyncManager(
                     appSettings = true,
                     sourceSettings = true,
                     libraryEntries = true,
-                    extensionRepoSettings = true,
+                    extensionStores = true,
                 ),
             )
 

@@ -112,7 +112,7 @@ class BackupRestorer(
         if (options.appSettings) {
             restoreAmount += 1
         }
-        if (options.extensionRepoSettings) {
+        if (options.extensionStores) {
             restoreAmount += backup.backupExtensionStores.size
         }
         if (options.sourceSettings) {
@@ -149,7 +149,7 @@ class BackupRestorer(
                     null
                     // KMK <--
                 }
-            if (options.extensionRepoSettings) {
+            if (options.extensionStores) {
                 restoreExtensionStores(backup.backupExtensionStores)
             }
             // KMK -->
@@ -310,7 +310,7 @@ class BackupRestorer(
                 restoreProgress += 1
                 with(notifier) {
                     showRestoreProgress(
-                        context.stringResource(MR.strings.extensionRepo_settings),
+                        context.stringResource(MR.strings.extensionStores),
                         restoreProgress,
                         restoreAmount,
                         isSync,
