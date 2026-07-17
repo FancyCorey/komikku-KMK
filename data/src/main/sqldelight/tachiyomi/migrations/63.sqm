@@ -6,9 +6,12 @@ import kotlinx.serialization.json.JsonObject;
 --
 -- Official upstream 1.14.0 shipped this as its own migrations 45 and 46. The performance-index
 -- half of upstream's 45 was already present in KMK's own 45.sqm (verified byte-identical during
--- the 1.14.0 reconciliation audit), so it is intentionally NOT repeated here. This migration only
--- ports the remaining, not-yet-applied part of upstream 1.14.0: the extension_repos -> extension_store
--- conversion, and the mangas.memo / chapters.memo columns.
+-- the 1.14.0 reconciliation audit), so it is intentionally NOT repeated here. This migration ports
+-- only the remaining part of upstream 1.14.0 that KMK's own migration history did not already
+-- cover: the extension_repos -> extension_store conversion, and the mangas.memo / chapters.memo
+-- columns. (This migration is part of the completed 1.14.0 reconciliation and ships as-is; an
+-- earlier draft of this comment described the ported part as "not-yet-applied," which read as if
+-- this migration itself were still pending -- it is not.)
 
 -- extension_repos -> extension_store: same conversion upstream performs, run against KMK's actual
 -- extension_repos schema (verified identical to official 1.13.6's extension_repos schema, so the

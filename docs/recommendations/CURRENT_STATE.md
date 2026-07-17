@@ -58,6 +58,45 @@ new structured form correctly side by side in the same changelog). No code chang
 this phase; the v0.8.10 entry itself will be added only once the v0.8.10 implementation is complete,
 per the plan's explicit instruction.
 
+### v0.8.10 Phase I: Komikku 1.14 compatibility validation (2026-07-17)
+
+Validated the current tree against the completed 9-phase 1.14.0 reconciliation report
+(`docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md`) and the real migration/backup
+test suites — this was a validation pass, not a re-merge.
+
+- **Migration history 45-63 append-only:** confirmed mechanically — every `.sqm` file number from 1
+  through 63 exists exactly once with no gaps or duplicates. `KmkMigrationTest` (24 tests, real
+  `JdbcSqliteDriver`) and `Kmk114ReconciliationMigrationTest` (3 tests, real SQLite execution of the
+  hand-seeded pre-migration-63 baseline through migration 63) both re-run clean.
+- **Stale `63.sqm` comment fixed:** the migration's header comment described the extension_store
+  conversion and mangas/chapters.memo columns as "the remaining, not-yet-applied part of upstream
+  1.14.0" — accurate when drafted, but misleading now that this migration is part of the completed,
+  shipped reconciliation (reads as if the migration itself were still pending). Reworded to describe
+  what the migration ports without implying it's outstanding work.
+- **Proto fields 620-629:** confirmed additive-only and intact — 620 through 627 are in active use
+  (manga tastes, tag tastes, tag aliases, disabled recommendation sources, cross-source manga links,
+  manga source quality signals, seen manga keys, cross-source group primaries), 628-629 remain
+  correctly reserved and unused. No renumbering, no collisions with upstream's own field ranges.
+- **Broader compatibility claims** (source API compatibility for browse/search/migration/For You/
+  group recommendations/Source Evaluation/Best Version; installer behavior; OCR/timer/schedule/
+  chapter-completion rating/group recommendations after upstream API changes; 1.14 vs. KMK-Recs
+  What's New separation; debug package/version metadata) were not re-derived from scratch in this
+  phase — they were already validated in the original 9-phase reconciliation, and this phase's full
+  `:app:testDebugUnitTest` run (1381 tests, 0 failures, 0 errors, spanning backup/sync/OCR/timer/
+  schedule/migration suites together) re-confirms none of those areas regressed since. No code
+  changes were required or made to any of those areas.
+- **Known scope limitation, disclosed rather than silently accepted:** the plan calls for "a real
+  upgrade test from a pre-1.14 KMK database containing library, ratings, cross-source groups, source
+  preferences, sync preferences, OCR exclusion state, timer/schedule state, and extension repository
+  settings" as a single combined scenario. What exists today is equivalent in substance but not in
+  form: each of those areas has its own dedicated, real-SQLite migration/round-trip test (the 46-62
+  per-migration tests, the migration-63-specific test, `TasteBackupRoundTripTest`,
+  `Kmk114MemoBackupRoundTripTest`, `KmkOcrExclusionTest`, the reader timer/schedule tests, etc.) rather
+  than one single test that seeds all of those areas simultaneously and migrates them together in one
+  pass. This is a test-environment/effort-scope limitation, not a known functional gap — no evidence
+  found of an actual interaction bug between these areas during migration — but it is recorded here
+  explicitly rather than claimed as fully satisfying the plan's literal wording.
+
 ## Feature Version
 
 Current documented feature version:
