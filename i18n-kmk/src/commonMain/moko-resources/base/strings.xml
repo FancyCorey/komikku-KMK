@@ -886,6 +886,9 @@
     <!-- KMK --> <string name="rec_group_preview_budget_title">Initial results per extension</string>
     <!-- KMK --> <string name="rec_group_preview_budget_summary">Manga cards shown for each extension in a group recommendation preview. Open a source to keep loading more. Larger values may take longer to load.</string>
 
+    <!-- KMK v0.8.10: Rated Manga local search -->
+    <!-- KMK --> <string name="rated_manga_search_hint">Search title or source</string>
+
     <!-- KMK v0.8.0: Rated Manga bulk selection + group actions -->
     <!-- KMK --> <string name="rated_manga_select">Select</string>
     <!-- KMK --> <string name="rated_manga_selected_count">%1$d selected</string>

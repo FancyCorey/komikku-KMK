@@ -57,6 +57,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.components.MangaItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
+import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
@@ -72,12 +73,15 @@ import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.manga.model.asMangaCover
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Full-featured rated manga collection screen for LIKE and DISLIKE rating tiers.
@@ -178,6 +182,22 @@ internal fun RatedMangaCollectionContent(
     val selectionMode = successState?.selectionMode == true
     val selectedCount = successState?.selectedKeys?.size ?: 0
     // KMK <--
+
+    // KMK v0.8.10 -->
+    // Local search over the already-loaded display items -- never a network search. `null` means
+    // the search field isn't shown at all (matches SearchToolbar's own null-means-inactive
+    // contract); "" means the field is open but empty (shows every item, same as no search).
+    // rememberSaveable so the query survives recomposition/rotation; it naturally clears when this
+    // screen leaves composition (navigating away), matching the plan's clear-on-navigation policy.
+    var searchQuery by rememberSaveable { mutableStateOf<String?>(null) }
+    val sourceManager = remember { Injekt.get<SourceManager>() }
+    val sourceNameById = remember(successState?.entries) {
+        successState?.entries.orEmpty()
+            .map { it.taste.source }
+            .distinct()
+            .associateWith { sourceId -> runCatching { sourceManager.getOrStub(sourceId).name }.getOrNull() }
+    }
+    // KMK <--
     // KMK v0.8.7: Snackbar-based Undo for Clear Rating and Mark Not Interested — the two bulk
     // actions cheap/safe to restore exactly (re-apply the previous MangaTaste rows, or remove
     // exactly the "not interested" keys that were just added). Merge/Remove From Group/Ungroup are
@@ -200,8 +220,15 @@ internal fun RatedMangaCollectionContent(
                 )
                 // KMK <--
             } else {
-                AppBar(
-                    title = stringResource(titleRes),
+                // KMK v0.8.10: SearchToolbar is the same search affordance the Library tab and
+                // other collection screens already use (search icon -> inline field -> reset/close
+                // icon), reused here rather than building a bespoke search bar. searchQuery == null
+                // shows the normal title + actions row; non-null shows the search field in its place.
+                SearchToolbar(
+                    titleContent = { Text(stringResource(titleRes)) },
+                    searchQuery = searchQuery,
+                    onChangeSearchQuery = { searchQuery = it },
+                    placeholderText = stringResource(KMR.strings.rated_manga_search_hint),
                     navigateUp = navigator::pop,
                     scrollBehavior = scrollBehavior,
                     actions = {
@@ -311,7 +338,15 @@ internal fun RatedMangaCollectionContent(
             }
 
             is LovedMangaScreenModel.State.Success -> {
-                val items = s.displayItems
+                // KMK v0.8.10: local, in-memory filter only -- never a network search, never
+                // changes s.displayItems itself (sort/grouping/selection/bulk actions/export/group
+                // management all keep operating on the full underlying state regardless of the
+                // active query).
+                val items = RatedMangaSearchFilter.filter(
+                    items = s.displayItems,
+                    query = searchQuery.orEmpty(),
+                    sourceNameOf = { sourceId -> sourceNameById[sourceId] },
+                )
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(96.dp + MaterialTheme.padding.small),
                     contentPadding = contentPadding,
@@ -335,6 +370,19 @@ internal fun RatedMangaCollectionContent(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                    // KMK v0.8.10: a search that matches nothing is distinct from "no rated manga at
+                    // all" (State.Empty, a different branch entirely) -- shown only when a non-blank
+                    // query is active and every loaded item was filtered out by it.
+                    if (!searchQuery.isNullOrBlank() && items.isEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(
+                                text = stringResource(MR.strings.no_results_found),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(MaterialTheme.padding.medium),
                             )
                         }
                     }
