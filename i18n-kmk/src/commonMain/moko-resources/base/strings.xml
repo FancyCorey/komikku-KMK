@@ -363,6 +363,13 @@
     <!-- KMK --> <string name="source_evaluation_ecchi_count">%1$d ecchi-heavy source(s) identified</string>
     <!-- KMK --> <string name="rec_suggestion_reason_evaluated_strong_fit">Evaluated: strong fit for your taste</string>
     <!-- KMK --> <string name="rec_suggestion_reason_evaluated_worth_trying">Evaluated: worth trying</string>
+    <!-- KMK v0.8.10 --> <string name="rec_suggestion_reason_evaluated_explicit_heavy">Evaluated: heavy explicit content</string>
+    <!-- KMK v0.8.10 --> <string name="rec_suggestion_reason_evaluated_ecchi_heavy">Evaluated: heavy ecchi/mature content</string>
+    <!-- KMK v0.8.10 --> <string name="rec_suggestion_insufficient_evidence">Not enough evidence yet to explain this suggestion</string>
+    <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_search_hint">Search name, language, or repository</string>
+    <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_sort_best_fit">Best fit</string>
+    <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_sort_name">Name</string>
+    <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_sort_language">Language</string>
     <!-- KMK v0.6.11 Shizuku setup -->
     <!-- KMK --> <string name="shizuku_setup_title">Shizuku</string>
     <!-- KMK --> <string name="shizuku_status_not_installed">Not installed</string>

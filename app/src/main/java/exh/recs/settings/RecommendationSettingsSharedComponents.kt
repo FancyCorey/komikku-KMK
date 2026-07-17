@@ -10,6 +10,7 @@ package exh.recs.settings
 // them without duplication.
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -57,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceRunStatus
 import exh.recs.RecommendationSourceStatus
@@ -64,6 +67,7 @@ import exh.recs.SourceFitLabel
 import exh.recs.SourceFitStats
 import exh.recs.discovery.NonInstalledSourceSuggestion
 import exh.recs.discovery.NonInstalledSuggestionReason
+import exh.recs.discovery.SourcesToTrySortMode
 import exh.recs.discovery.SuggestionConfidence
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
@@ -588,6 +592,37 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
     }
 }
 
+// KMK v0.8.10 -->
+/** Sort-mode chip row for Sources To Try, mirroring RatedMangaScreen's RatedSortRow pattern. */
+@Composable
+internal fun SourcesToTrySortRow(
+    current: SourcesToTrySortMode,
+    onSelect: (SourcesToTrySortMode) -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            SourcesToTrySortMode.BEST_FIT to KMR.strings.rec_sources_to_try_sort_best_fit,
+            SourcesToTrySortMode.NAME_AZ to KMR.strings.rec_sources_to_try_sort_name,
+            SourcesToTrySortMode.LANGUAGE to KMR.strings.rec_sources_to_try_sort_language,
+        ).forEach { (mode, labelRes) ->
+            FilterChip(
+                selected = current == mode,
+                onClick = { onSelect(mode) },
+                label = { Text(stringResource(labelRes)) },
+            )
+        }
+    }
+}
+// KMK <--
+
 @Composable
 internal fun SourceSuggestionItem(
     suggestion: NonInstalledSourceSuggestion,
@@ -652,6 +687,12 @@ internal fun SourceSuggestionItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // KMK v0.8.10: every reason now renders real text -- EvaluatedExplicitHeavy/
+                // EvaluatedEcchiHeavy previously mapped to null (silently hidden) even though a
+                // suggestion carrying one of these reasons can still surface (blockExplicit only
+                // filters EXPLICIT_HEAVY; ECCHI_HEAVY is unaffected by that toggle) -- explaining why
+                // it was flagged is exactly the "actual contributing signals" transparency the search/
+                // explanation completion pass requires, not something to hide.
                 val reasonTexts = suggestion.reasons.mapNotNull { reason ->
                     when (reason) {
                         is NonInstalledSuggestionReason.LanguageMatch -> stringResource(KMR.strings.rec_suggestion_reason_language_match)
@@ -661,18 +702,21 @@ internal fun SourceSuggestionItem(
                         NonInstalledSuggestionReason.UserLikedSource -> stringResource(KMR.strings.rec_suggestion_reason_user_liked)
                         NonInstalledSuggestionReason.EvaluatedStrongFit -> stringResource(KMR.strings.rec_suggestion_reason_evaluated_strong_fit)
                         NonInstalledSuggestionReason.EvaluatedWorthTrying -> stringResource(KMR.strings.rec_suggestion_reason_evaluated_worth_trying)
-                        NonInstalledSuggestionReason.EvaluatedExplicitHeavy -> null
-                        NonInstalledSuggestionReason.EvaluatedEcchiHeavy -> null
+                        NonInstalledSuggestionReason.EvaluatedExplicitHeavy -> stringResource(KMR.strings.rec_suggestion_reason_evaluated_explicit_heavy)
+                        NonInstalledSuggestionReason.EvaluatedEcchiHeavy -> stringResource(KMR.strings.rec_suggestion_reason_evaluated_ecchi_heavy)
                     }
                 }.distinct()
-                if (reasonTexts.isNotEmpty()) {
-                    Text(
-                        text = reasonTexts.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
-                    )
-                }
+                // KMK v0.8.10: an empty reason list is shown explicitly as "not enough evidence"
+                // rather than silently rendering nothing, matching the plan's "including 'not enough
+                // evidence' rather than inventing certainty" requirement.
+                Text(
+                    text = reasonTexts.takeIf { it.isNotEmpty() }
+                        ?.joinToString(" · ")
+                        ?: stringResource(KMR.strings.rec_suggestion_insufficient_evidence),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+                )
                 FlowRow(
                     modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
                     verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),

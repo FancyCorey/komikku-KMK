@@ -14,16 +14,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.presentation.util.Screen
+import exh.recs.discovery.SourcesToTrySearchAndSort
+import exh.recs.discovery.SourcesToTrySortMode
 import exh.recs.sourceprefs.RecommendationSourcePreference
 import exh.recs.sourceprefs.RecommendationSourcePreferenceStore
+import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
@@ -42,20 +48,35 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
         val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
         val lazyListState = rememberLazyListState()
+
+        // KMK v0.8.10: local search + sort over the already-loaded, already-scored suggestion
+        // list -- never re-queries or re-scores anything. A non-blank query bypasses the
+        // show-5-then-expand cap entirely (a filtered result set shouldn't be truncated further);
+        // sort mode applies regardless of whether a search is active.
+        var searchQuery by rememberSaveable { mutableStateOf<String?>(null) }
+        var sortMode by rememberSaveable { mutableStateOf(SourcesToTrySortMode.BEST_FIT) }
+        val isSearching = !searchQuery.isNullOrBlank()
+        val filteredSuggestions = remember(state.nonInstalledSuggestions, searchQuery, sortMode) {
+            SourcesToTrySearchAndSort.sort(
+                SourcesToTrySearchAndSort.search(state.nonInstalledSuggestions, searchQuery.orEmpty()),
+                sortMode,
+            )
+        }
+        val visibleSuggestions = when {
+            filteredSuggestions.isEmpty() -> filteredSuggestions
+            isSearching || state.suggestionsExpanded -> filteredSuggestions
+            else -> filteredSuggestions.take(5)
+        }
+
         // KMK v0.8.10: mirrors the LazyColumn's item order below, including its conditional
         // sections and the dynamic suggestion-row count, so a static control key placed after the
         // suggestion list still resolves to the correct scroll index. Individual suggestion rows
         // use placeholder keys -- only the static control keys are ever used as search anchors.
-        val visibleSuggestionCount = if (state.nonInstalledSuggestions.isEmpty()) {
-            0
-        } else if (state.suggestionsExpanded) {
-            state.nonInstalledSuggestions.size
-        } else {
-            state.nonInstalledSuggestions.take(5).size
-        }
         val itemKeysInOrder = remember(
             state.nonInstalledSuggestions.isEmpty(),
-            visibleSuggestionCount,
+            visibleSuggestions.size,
+            isSearching,
+            filteredSuggestions.isEmpty(),
             state.nonInstalledSuggestions.size,
             state.dismissedSuggestionCount,
             state.qualityDislikedSourceKeys.size,
@@ -65,12 +86,17 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                 if (state.nonInstalledSuggestions.isEmpty()) {
                     add("sources_to_try_empty")
                 } else {
-                    repeat(visibleSuggestionCount) { add("suggestion_row_$it") }
-                    if (state.nonInstalledSuggestions.size > 5) add("suggestions_expand_toggle")
-                    add("suggestions_bulk_install")
-                    add("suggestions_scope_note")
-                    if (state.dismissedSuggestionCount > 0) add("suggestions_clear_dismissed")
-                    if (state.qualityDislikedSourceKeys.isNotEmpty()) add("quality_marks_clear")
+                    add("sources_to_try_sort")
+                    if (isSearching && filteredSuggestions.isEmpty()) {
+                        add("sources_to_try_search_empty")
+                    } else {
+                        repeat(visibleSuggestions.size) { add("suggestion_row_$it") }
+                        if (!isSearching && state.nonInstalledSuggestions.size > 5) add("suggestions_expand_toggle")
+                        add("suggestions_bulk_install")
+                        add("suggestions_scope_note")
+                        if (state.dismissedSuggestionCount > 0) add("suggestions_clear_dismissed")
+                        if (state.qualityDislikedSourceKeys.isNotEmpty()) add("quality_marks_clear")
+                    }
                 }
             }
         }
@@ -78,8 +104,13 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
 
         Scaffold(
             topBar = { scrollBehavior ->
-                AppBar(
-                    title = stringResource(KMR.strings.rec_settings_index_discovery),
+                // KMK v0.8.10: SearchToolbar -- same reusable search affordance used by
+                // RatedMangaScreen (Phase C) and the Library tab, not a bespoke search bar.
+                SearchToolbar(
+                    titleContent = { Text(stringResource(KMR.strings.rec_settings_index_discovery)) },
+                    searchQuery = searchQuery,
+                    onChangeSearchQuery = { searchQuery = it },
+                    placeholderText = stringResource(KMR.strings.rec_sources_to_try_search_hint),
                     navigateUp = navigator::pop,
                     scrollBehavior = scrollBehavior,
                 )
@@ -105,10 +136,24 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                         )
                     }
                 } else {
-                    val visibleSuggestions = if (state.suggestionsExpanded) {
-                        state.nonInstalledSuggestions
-                    } else {
-                        state.nonInstalledSuggestions.take(5)
+                    item(key = "sources_to_try_sort") {
+                        SourcesToTrySortRow(current = sortMode, onSelect = { sortMode = it })
+                    }
+                    // KMK v0.8.10: a search that matches nothing is distinct from "no suggestions
+                    // exist at all" (the sources_to_try_empty branch above).
+                    if (isSearching && filteredSuggestions.isEmpty()) {
+                        item(key = "sources_to_try_search_empty") {
+                            Text(
+                                text = stringResource(MR.strings.no_results_found),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    horizontal = MaterialTheme.padding.medium,
+                                    vertical = MaterialTheme.padding.extraSmall,
+                                ),
+                            )
+                        }
+                        return@LazyColumn
                     }
                     items(
                         count = visibleSuggestions.size,
@@ -154,7 +199,7 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                             modifier = Modifier.animateItem(),
                         )
                     }
-                    if (state.nonInstalledSuggestions.size > 5) {
+                    if (!isSearching && state.nonInstalledSuggestions.size > 5) {
                         item(key = "suggestions_expand_toggle") {
                             TextButton(
                                 onClick = screenModel::toggleExpandSuggestions,
