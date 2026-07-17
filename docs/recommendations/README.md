@@ -78,6 +78,14 @@ This folder is the stable starting point for Codex, Claude Code, or a human revi
 
 ## Latest Implementation Reports Kept At Top Level
 
+Note: `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` (outside this folder)
+covers the 9-phase reconciliation of the whole KMK fork against the official Komikku v1.14.0 tag
+(app `versionName` 1.13.6 → 1.14.0, `versionCode` 88 → 89). It is not a KMK-Recs feature release —
+no new recommendation capability was added, so the KMK-Recs feature label below stays at v0.8.9 —
+but it verified that this recommendation system's v0.8.9 state (What's New renderer, all 76+
+historical entries, Recommendation Settings search) survived the reconciliation intact. See that
+report for the full file-by-file account.
+
 | File | Purpose | Status |
 | --- | --- | --- |
 | `KMK_RECS_V0_8_9_WHATS_NEW_AND_RECOMMENDATION_SETTINGS_SEARCH_IMPLEMENTATION.md` | v0.8.9 implementation report: confirmed the existing What's New renderer already supports the official Komikku New/Improve/Fix changelog structure (no renderer changes needed), added the v0.8.9 entry in that structure while preserving all 76 historical entries individually; built a new parallel, ranked, read-only Recommendation Settings search index + screen (7 category-level destinations) since Recommendation Settings screens aren't built on the official Preference/SearchableSettings DSL the main Settings search reuses. 25 new tests. No migration. | Implemented and verified — see report for documented scope decisions and manual-QA list |

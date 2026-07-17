@@ -36,7 +36,7 @@ Do not assume a feature exists because it appears in a plan. Verify in this orde
 | Security and privacy | `docs/security/KMK_SECURITY_AND_PRIVACY_REVIEW.md` | Relevant feature docs and community risk register |
 | Community/public sharing readiness | `docs/community/KMK_V0_7_46_PUBLIC_POLISH_CLOSEOUT_PLAN.md` (current closeout pass, v0.7.46) | `KMK_V0_7_46_PUBLIC_POLISH_CLOSEOUT_IMPLEMENTATION.md`; foundation docs: `KMK_V0_7_FINAL_PUBLIC_RELEASE_READINESS_PLAN.md` + `_AMENDMENT.md` + `_IMPLEMENTATION.md` (v0.7.45), public README draft, public test build line docs, `docs/community/KMK_COMMUNITY_CONSOLIDATION_PHASES.md` for earlier history |
 | Official Komikku alignment | `AGENTS.md`, `CONTRIBUTING.md`, `README.md` | Phase 10/11 architecture/style/test/release docs |
-| Official Komikku 1.14.0 reconciliation | `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_AUDIT.md` | `docs/community/KMK_UPSTREAM_1_14_DETAILED_RECONCILIATION_PLAN.md`, official git tags `v1.13.6` and `v1.14.0`, current source code |
+| Official Komikku 1.14.0 reconciliation | `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` (complete, 9/9 phases) | `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_AUDIT.md`, `docs/community/KMK_UPSTREAM_1_14_DETAILED_RECONCILIATION_PLAN.md`, official git tags `v1.13.6` and `v1.14.0`, current source code |
 | Historical rationale | `docs/recommendations/archive/` | Prefer active docs first; archive files explain earlier decisions |
 
 ## Current Source Of Truth Files
@@ -53,8 +53,9 @@ Do not assume a feature exists because it appears in a plan. Verify in this orde
 | `docs/security/KMK_SECURITY_AND_PRIVACY_REVIEW.md` | Security/privacy review for recommendation, source evaluation, OCR, bundle sharing, and related data. |
 | `docs/community/KMK_COMMUNITY_CONSOLIDATION_PHASES.md` | Phased community-readiness roadmap and consolidation status. |
 | `docs/community/KMK_PUBLIC_README_DRAFT.md` | Draft public-facing readme for sharing the fork/build. |
-| `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_AUDIT.md` | Read-only evidence and release blockers found while comparing the current KMK tree with official Komikku 1.14.0. |
-| `docs/community/KMK_UPSTREAM_1_14_DETAILED_RECONCILIATION_PLAN.md` | Code-level reconciliation sequence, exact file areas, migration bridge, compatibility checks, and required tests for moving the KMK fork onto official 1.14.0. |
+| `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_AUDIT.md` | Read-only evidence and release blockers found while comparing the current KMK tree with official Komikku 1.14.0. Historical — see the implementation report below for final status. |
+| `docs/community/KMK_UPSTREAM_1_14_DETAILED_RECONCILIATION_PLAN.md` | Code-level reconciliation sequence, exact file areas, migration bridge, compatibility checks, and required tests for moving the KMK fork onto official 1.14.0. Historical — see the implementation report below for final status. |
+| `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` | **Current status.** Full 9-phase implementation report: every file changed, DB/preferences/proto changes, tests run, deviations from plan, follow-up work. App `versionName`/`versionCode` now 1.14.0/89; KMK-Recs feature label unchanged at v0.8.9. |
 | `docs/ocr/README.md` | OCR feature index and branch-specific OCR documentation entry point. |
 
 ## Constant Procedures

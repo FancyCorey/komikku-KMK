@@ -2149,6 +2149,26 @@ from silently going stale:
 
 APK for this version: `Komikku-v1.13.6-kmk.8.9-debug.apk`.
 
+### Upstream Komikku 1.14.0 Reconciliation (2026-07-17) — not a KMK-Recs feature version
+
+The whole fork was reconciled against the official Komikku v1.14.0 tag across 9 phases (source
+API, backup/restore/sync/proto, library/manga/migration/reader, trackers/notifications). This is
+an **upstream app-version sync**, not a new recommendation feature or a corrective follow-up to
+one — per this file's own stated boundary ("[a]pstream app versioning still lives in
+`app/build.gradle.kts`... [the KMK-Recs feature version] does not need to change Android
+install/update behavior by itself"), it does not get its own `KMK-Recs vX.Y.Z` entry or a
+`KmkRecsReleaseNotes.VERSION_CODE` bump/What's New entry. The recommendation system's own state is
+unchanged and was directly verified intact post-reconciliation (see
+`docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md`).
+
+What did change, per this file's own convention (upstream Komikku app version, tracked separately
+from the feature label):
+
+- `app/build.gradle.kts`: `versionName` `"1.13.6"` → `"1.14.0"`, `versionCode` `88` → `89`.
+- `KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME`: unchanged (`759` / `"KMK-Recs v0.8.9"`).
+- APK for this milestone: `Komikku-v1.14.0-kmk.8.9-debug.apk` — same recs feature suffix as the
+  entry above, new upstream-version prefix.
+
 ## APK Naming Recommendation
 
 For local handoff builds, use filenames like:

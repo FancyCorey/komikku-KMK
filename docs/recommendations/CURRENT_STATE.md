@@ -1,6 +1,10 @@
 ﻿# KMK Personal Recommendations Current State
 
-Date: 2026-07-09 (updated: 2026-07-16 -- v0.8.9 implementation complete in code, manual-QA pending)
+Date: 2026-07-09 (updated: 2026-07-17 -- KMK upstream 1.14.0 reconciliation complete; app
+`versionName`/`versionCode` bumped to 1.14.0/89; KMK-Recs feature state unchanged at v0.8.9 and
+confirmed intact post-reconciliation. See
+`docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` for the full 9-phase report.
+Previously updated: 2026-07-16 -- v0.8.9 implementation complete in code, manual-QA pending)
 
 Status: Updated through KMK-Recs v0.8.9 (official-style What's New entry structure going forward,
 Recommendation Settings search — see below). Previously: v0.8.8 (schedule enforcement fix,

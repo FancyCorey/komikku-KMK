@@ -11,6 +11,27 @@ entire v0.8.x line is private-only â€” no public release. Open items only. 
 
 ---
 
+## KMK Upstream 1.14.0 Reconciliation (2026-07-17)
+
+**Status:** Complete, verified, not a KMK-Recs feature release. App `versionName`/`versionCode`
+bumped to 1.14.0/89 in `app/build.gradle.kts`; KMK-Recs feature label unchanged at v0.8.9. See
+`docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` for the full report.
+
+Reconciled the whole fork against the official Komikku v1.14.0 tag across 9 phases. Directly
+relevant to this recommendation system: confirmed (not assumed) that the What's New renderer, all
+historical entries plus v0.8.9, the Recommendation Settings search index's 7 category
+destinations, ranked-matching/synonym/punctuation-normalization behavior, and the entire
+`exh/recs/**` pipeline all survived untouched except for a single mechanical
+`CatalogueSource`→`Source` type-widening pass (source-API contract change, no behavior change).
+
+**One real follow-up surfaced, not part of the recommendation system:** `BackupDecoder.decode()`
+crashes (uncaught `IndexOutOfBoundsException`) on a truncated-but-well-formed backup file instead
+of showing the "invalid backup file" message. Confirmed pre-existing (byte-identical between
+v1.13.6 and v1.14.0), not caused by this reconciliation. Flagged as a separate background task,
+not fixed here.
+
+---
+
 ## v0.8.9 — OFFICIAL-STYLE WHAT'S NEW STRUCTURE, RECOMMENDATION SETTINGS SEARCH
 
 **Status:** Both features implemented and tested (2026-07-16); no physical device QA performed. See
