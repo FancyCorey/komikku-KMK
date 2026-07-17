@@ -270,14 +270,17 @@ private fun DetailsHeader(
 
                         if (extension is Extension.Installed) {
                             append("\n\n")
-                            append(
+                            appendLine(
                                 """
                                 Update available: ${extension.hasUpdate}
-                                Obsolete: ${extension.isObsolete}
+                                Orphaned: ${extension.isObsolete}
                                 Shared: ${extension.isShared}
-                                Repository: ${extension.store?.indexUrl}
                                 """.trimIndent(),
                             )
+                            val store = extension.store
+                            if (store != null) {
+                                append("Repository: ${store.indexUrl}")
+                            }
                         }
                     }
                     context.copyToClipboard("Extension Debug information", extDebugInfo)
