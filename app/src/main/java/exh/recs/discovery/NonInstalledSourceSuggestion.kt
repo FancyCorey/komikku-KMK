@@ -39,7 +39,7 @@ data class NonInstalledSourceSuggestion(
     val displayName: String = source?.name ?: extension.name
     val displayLang: String = source?.lang ?: extension.lang
     val displayBaseUrl: String = source?.baseUrl ?: ""
-    val displayRepoName: String = extension.repoName
+    val displayRepoName: String = extension.storeName
 }
 
 /** Stable per-suggestion key for dismissal persistence. */

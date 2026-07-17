@@ -381,7 +381,7 @@ private class FakeCatalogueSource(
     private val throws: Boolean = false,
     private val returns: List<eu.kanade.tachiyomi.source.model.SManga> = emptyList(),
     private val detailsGenre: String? = null,
-) : eu.kanade.tachiyomi.source.CatalogueSource {
+) : eu.kanade.tachiyomi.source.Source {
 // KMK <--
 
     override val id: Long = 999L
@@ -408,13 +408,16 @@ private class FakeCatalogueSource(
         eu.kanade.tachiyomi.source.model.FilterList()
 
     // KMK --> v0.7.13: optionally add genre on detail fetch for enrichment tests
-    override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga): eu.kanade.tachiyomi.source.model.SManga {
+    override suspend fun getMangaUpdate(
+        manga: eu.kanade.tachiyomi.source.model.SManga,
+        chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
         if (detailsGenre != null) manga.genre = detailsGenre
-        return manga
+        return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
     }
     // KMK <--
-
-    override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga): List<eu.kanade.tachiyomi.source.model.SChapter> = emptyList()
 
     override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter): List<eu.kanade.tachiyomi.source.model.Page> = emptyList()
 }
@@ -426,7 +429,7 @@ private class FakeCatalogueSource(
 // is verified by the probe's withContext usage rather than thread name).
 private class DispatcherCheckingSource(
     @Suppress("UNUSED_PARAMETER") expectedDispatcher: CoroutineDispatcher,
-) : eu.kanade.tachiyomi.source.CatalogueSource {
+) : eu.kanade.tachiyomi.source.Source {
     var searchMangaCalled = false
 
     override val id: Long = 998L
@@ -457,9 +460,12 @@ private class DispatcherCheckingSource(
     override fun getFilterList(): eu.kanade.tachiyomi.source.model.FilterList =
         eu.kanade.tachiyomi.source.model.FilterList()
 
-    override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga): eu.kanade.tachiyomi.source.model.SManga = manga
-
-    override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga): List<eu.kanade.tachiyomi.source.model.SChapter> = emptyList()
+    override suspend fun getMangaUpdate(
+        manga: eu.kanade.tachiyomi.source.model.SManga,
+        chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
 
     override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter): List<eu.kanade.tachiyomi.source.model.Page> = emptyList()
 }
@@ -471,7 +477,7 @@ private class DispatcherCheckingSource(
 private class NetworkOnMainThreadExceptionStub : RuntimeException("Main thread networking is not permitted")
 
 /** Simulates a source that throws NetworkOnMainThreadException on getSearchManga. */
-private class NetworkOnMainThreadExceptionSource : eu.kanade.tachiyomi.source.CatalogueSource {
+private class NetworkOnMainThreadExceptionSource : eu.kanade.tachiyomi.source.Source {
     override val id: Long = 997L
     override val name: String = "NetworkOnMainThreadSource"
     override val lang: String = "en"
@@ -494,9 +500,12 @@ private class NetworkOnMainThreadExceptionSource : eu.kanade.tachiyomi.source.Ca
     override fun getFilterList(): eu.kanade.tachiyomi.source.model.FilterList =
         eu.kanade.tachiyomi.source.model.FilterList()
 
-    override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga): eu.kanade.tachiyomi.source.model.SManga = manga
-
-    override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga): List<eu.kanade.tachiyomi.source.model.SChapter> = emptyList()
+    override suspend fun getMangaUpdate(
+        manga: eu.kanade.tachiyomi.source.model.SManga,
+        chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
 
     override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter): List<eu.kanade.tachiyomi.source.model.Page> = emptyList()
 }

@@ -8,7 +8,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import kotlinx.collections.immutable.PersistentMap
@@ -119,7 +119,7 @@ class CrossExtensionMatchScreenModel(
         }
     }
 
-    private fun getMatchingSources(): List<CatalogueSource> {
+    private fun getMatchingSources(): List<Source> {
         val recLanguages = RecommendationSourceFilter.normalizeLanguages(
             sourcePreferences.recommendationSourceLanguages().get(),
         )
@@ -128,7 +128,7 @@ class CrossExtensionMatchScreenModel(
         )
         val disabledSourceIds = sourcePreferences.disabledSources().get()
             .mapNotNull { it.toLongOrNull() }.toSet()
-        val all = sourceManager.getVisibleCatalogueSources()
+        val all = sourceManager.getVisibleSources()
         val filtered = RecommendationSourceFilter.filterForRecommendations(all, recLanguages)
         return RecommendationSourceOrdering.apply(filtered, storedOrder, disabledSourceIds)
     }
@@ -190,13 +190,13 @@ class CrossExtensionMatchScreenModel(
     // KMK <--
     // KMK <--
 
-    private fun updateItem(source: CatalogueSource, result: MatchItemResult) {
+    private fun updateItem(source: Source, result: MatchItemResult) {
         val origin = originManga
         // KMK --> v0.7.8: respect sameMangaMatchPreselectResults preference
         val preselect = sourcePreferences.sameMangaMatchPreselectResults().get()
         // KMK <--
         mutableState.update { current ->
-            val newItems: PersistentMap<CatalogueSource, MatchItemResult> = current.items.mutate { it[source] = result }
+            val newItems: PersistentMap<Source, MatchItemResult> = current.items.mutate { it[source] = result }
             val newSelected = if (result is MatchItemResult.Success && preselect) {
                 val newKeys = result.result.mapNotNull { manga ->
                     val key = MangaIdentityKey(manga.source, manga.url)
@@ -323,7 +323,7 @@ class CrossExtensionMatchScreenModel(
 
     data class State(
         val searchQuery: String = "",
-        val items: PersistentMap<CatalogueSource, MatchItemResult> = persistentMapOf(),
+        val items: PersistentMap<Source, MatchItemResult> = persistentMapOf(),
         val selectedKeys: Set<MangaIdentityKey> = emptySet(),
         val manuallyDeselectedKeys: Set<MangaIdentityKey> = emptySet(),
         val isApplying: Boolean = false,

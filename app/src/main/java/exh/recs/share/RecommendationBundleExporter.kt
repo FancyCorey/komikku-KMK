@@ -100,7 +100,7 @@ class RecommendationBundleExporter(
             extensionPkgName = ext?.pkgName,
             extensionName = ext?.name,
             extensionSignatureHash = ext?.signatureHash,
-            repoName = ext?.repoName,
+            repoName = ext?.storeName,
             thumbnailUrl = manga.thumbnailUrl?.takeIf { it.isNotBlank() },
             author = manga.author?.takeIf { it.isNotBlank() },
             artist = manga.artist?.takeIf { it.isNotBlank() },

@@ -1,6 +1,6 @@
 package exh.recs.evaluation
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import exh.recs.PersonalRecommendationScorer
@@ -67,7 +67,7 @@ class SourceRecommendationFitProbe(
      * Never throws — errors become [SourceRecommendationFitProbeOutcome.errorCount] entries.
      */
     suspend fun probe(
-        source: CatalogueSource,
+        source: Source,
         tasteProfile: TasteProfile,
     ): SourceRecommendationFitProbeOutcome {
         val topTags = topTags(tasteProfile)
@@ -162,7 +162,12 @@ class SourceRecommendationFitProbe(
                             val enriched = runCatching {
                                 withTimeoutOrNull(ENRICH_TIMEOUT_MS) {
                                     withContext(ioDispatcher) {
-                                        val details = source.getMangaDetails(smanga)
+                                        val details = source.getMangaUpdate(
+                                            manga = smanga,
+                                            chapters = emptyList(),
+                                            fetchDetails = true,
+                                            fetchChapters = false,
+                                        ).manga
                                         details.toDomainManga(source.id)
                                     }
                                 }

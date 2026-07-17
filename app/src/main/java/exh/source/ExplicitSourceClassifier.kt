@@ -1,7 +1,7 @@
 package exh.source
 
 import eu.kanade.tachiyomi.extension.model.Extension
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 
 // KMK -->
 /**
@@ -46,7 +46,7 @@ object ExplicitSourceClassifier {
     fun isExplicitExtension(extension: Extension): Boolean =
         isExplicitName(extension.name) || isExplicitPackageName(extension.pkgName)
 
-    fun isExplicitCatalogueSource(source: CatalogueSource): Boolean =
+    fun isExplicitCatalogueSource(source: Source): Boolean =
         isExplicitSourceId(source.id) || isExplicitName(source.name)
 }
 // KMK <--

@@ -68,7 +68,7 @@ import eu.kanade.presentation.more.settings.screen.about.AboutScreen.Companion.g
 import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewDialog
 import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewPolicy
 import eu.kanade.presentation.more.settings.screen.about.WhatsNewDialog
-import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
+import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.DefaultNavigatorScreenTransition
@@ -767,7 +767,7 @@ class MainActivity : BaseActivity() {
                 else if (intent.scheme == "tachiyomi" && intent.data?.host == "add-repo") {
                     intent.data?.getQueryParameter("url")?.let { repoUrl ->
                         navigator.popUntilRoot()
-                        navigator.push(ExtensionReposScreen(repoUrl))
+                        navigator.push(ExtensionStoresScreen(repoUrl))
                     }
                 }
                 null

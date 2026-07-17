@@ -1,7 +1,7 @@
 package exh.recs
 
 // KMK -->
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 
 /**
  * Manages manual priority ordering of recommendation sources.
@@ -28,10 +28,10 @@ internal object RecommendationSourceOrdering {
      * appended at the end. Disabled source ids are excluded.
      */
     fun apply(
-        visibleSources: List<CatalogueSource>,
+        visibleSources: List<Source>,
         storedOrder: List<Long>,
         disabledSourceIds: Set<Long>,
-    ): List<CatalogueSource> {
+    ): List<Source> {
         val visibleById = visibleSources.associateBy { it.id }
         val enabledSources = visibleSources.filter { it.id !in disabledSourceIds }
         if (storedOrder.isEmpty()) return enabledSources
@@ -48,9 +48,9 @@ internal object RecommendationSourceOrdering {
      * the priority settings screen.
      */
     fun applyAll(
-        visibleSources: List<CatalogueSource>,
+        visibleSources: List<Source>,
         storedOrder: List<Long>,
-    ): List<CatalogueSource> {
+    ): List<Source> {
         if (storedOrder.isEmpty()) return visibleSources
         val visibleById = visibleSources.associateBy { it.id }
         val ordered = storedOrder.mapNotNull { visibleById[it] }
@@ -60,7 +60,7 @@ internal object RecommendationSourceOrdering {
     }
 
     /** Returns the ids of the first [BOOSTED_SOURCE_COUNT] sources (the boosted set). */
-    fun boostedSourceIds(orderedEnabledSources: List<CatalogueSource>): Set<Long> =
+    fun boostedSourceIds(orderedEnabledSources: List<Source>): Set<Long> =
         orderedEnabledSources.take(BOOSTED_SOURCE_COUNT).map { it.id }.toSet()
 
     /**

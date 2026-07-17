@@ -412,6 +412,8 @@ Authoritative guide: docs/IMPLEMENTATION_PLAN_STANDARD.md
 
 Use this file for every future implementation plan. It defines the required repository research, current-behavior mapping, exact file and symbol planning, phase sizing, UI/lifecycle/performance review, persistence and migration analysis, security/privacy review, exception handling, test matrix, documentation, and Claude execution contract.
 
+Every plan must include a phase-specific Claude model and effort assignment. Use Sonnet high for ordinary implementation, Sonnet medium only for tightly specified throughput-oriented work, Opus high/xhigh for migrations, lifecycle, security, concurrency, architecture, and difficult audits, and Fable high/xhigh only for unusually large autonomous phases. Use `opusplan` for a plan-first/execute-second workflow. Record the reason, token tradeoff, escalation rule, actual model/effort used, and required verification. The authoritative decision matrix is section 3A of `docs/IMPLEMENTATION_PLAN_STANDARD.md`.
+
 Current detailed examples:
 
 - docs/recommendations/KMK_RECS_V0_8_2_TO_V0_8_5_MASTER_IMPLEMENTATION_PLAN.md
@@ -421,4 +423,6 @@ Current detailed examples:
 - docs/recommendations/KMK_RECS_V0_8_5_READING_SCHEDULE_IMPLEMENTATION_PLAN.md
 
 The standard is living documentation. When later work establishes a repeatable planning, testing, security, documentation, or handoff practice, update the standard and this encyclopedia entry instead of leaving that practice implicit.
+
+
 

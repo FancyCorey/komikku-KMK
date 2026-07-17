@@ -1,5 +1,8 @@
 package tachiyomi.domain.chapter.model
 
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
+
 data class Chapter(
     val id: Long,
     val mangaId: Long,
@@ -15,6 +18,10 @@ data class Chapter(
     val scanlator: String?,
     val lastModifiedAt: Long,
     val version: Long,
+    // KMK --> 1.14.0 reconciliation: official chapters.memo column, vacant/forward-compatible
+    // storage; not yet read or written by any KMK or official feature in this pass.
+    val memo: JsonObject,
+    // KMK <--
 ) {
     val isRecognizedNumber: Boolean
         get() = chapterNumber >= 0f
@@ -45,6 +52,7 @@ data class Chapter(
             scanlator = null,
             lastModifiedAt = 0,
             version = 1,
+            memo = JsonObject.EMPTY,
         )
     }
 }

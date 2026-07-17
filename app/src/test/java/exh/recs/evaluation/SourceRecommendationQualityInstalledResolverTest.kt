@@ -24,7 +24,7 @@ class SourceRecommendationQualityInstalledResolverTest {
         lang = lang,
         isNsfw = false,
         signatureHash = sig,
-        repoName = "test-repo",
+        storeName = "test-repo",
         pkgFactory = null,
         sources = emptyList(),
         icon = null,

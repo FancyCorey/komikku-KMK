@@ -51,7 +51,7 @@ import eu.kanade.presentation.browse.components.BaseBrowseItem
 import eu.kanade.presentation.browse.components.ExtensionIcon
 import eu.kanade.presentation.components.WarningBanner
 import eu.kanade.presentation.manga.components.DotSeparatorNoSpaceText
-import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
+import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
 import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.rememberRequestPackageInstallsPermissionState
 import eu.kanade.tachiyomi.extension.model.Extension
@@ -120,7 +120,7 @@ fun ExtensionScreen(
                         EmptyScreenAction(
                             stringRes = MR.strings.label_extension_repos,
                             icon = Icons.Outlined.Settings,
-                            onClick = { navigator.push(ExtensionReposScreen()) },
+                            onClick = { navigator.push(ExtensionStoresScreen()) },
                         ),
                     ),
                 )
@@ -219,7 +219,7 @@ private fun ExtensionContent(
                                 // KMK -->
                                 KMR.strings.extensions_page_more -> {
                                     {
-                                        Button(onClick = { navigator?.push(ExtensionReposScreen()) }) {
+                                        Button(onClick = { navigator?.push(ExtensionStoresScreen()) }) {
                                             Text(
                                                 text = stringResource(MR.strings.action_add_repo),
                                                 style = LocalTextStyle.current.copy(
@@ -507,7 +507,7 @@ private fun ExtensionItemContent(
                 }
 
                 // KMK -->
-                Text(text = extension.repoName?.let { "@$it" } ?: "(?)")
+                Text(text = extension.storeName?.let { "@$it" } ?: "(?)")
                 // KMK <--
 
                 val warning = when {
@@ -701,6 +701,15 @@ private fun ExtensionTrustDialog(
 @Preview
 @Composable
 private fun ExtensionItemContentPreview() {
+    val previewStore = mihon.domain.extension.model.ExtensionStore(
+        indexUrl = "",
+        name = "Repository",
+        badgeLabel = "Repository",
+        signingKey = "900000",
+        contact = mihon.domain.extension.model.ExtensionStore.Contact(website = "", discord = null),
+        isLegacy = false,
+        extensionListUrl = null,
+    )
     val extAvail = Extension.Available(
         name = "Tachiyomi",
         pkgName = "com.tachiyomi.test",
@@ -710,11 +719,11 @@ private fun ExtensionItemContentPreview() {
         libVersion = 1.0,
         isNsfw = true,
         signatureHash = "900000",
-        repoName = "Repository",
+        storeName = "Repository",
         sources = emptyList(),
-        apkName = "Test",
+        apkUrl = "",
         iconUrl = "",
-        repoUrl = "",
+        store = previewStore,
     )
     val extInstalled = Extension.Installed(
         name = "Tachiyomi",
@@ -725,9 +734,9 @@ private fun ExtensionItemContentPreview() {
         libVersion = 1.0,
         isNsfw = true,
         signatureHash = "900000",
-        repoName = "Repository",
+        storeName = "Repository",
         sources = emptyList(),
-        repoUrl = "",
+        store = previewStore,
         pkgFactory = null,
         icon = null,
         hasUpdate = false,
@@ -744,12 +753,12 @@ private fun ExtensionItemContentPreview() {
         libVersion = 1.0,
         isNsfw = true,
         signatureHash = "900000",
-        repoName = "Repository",
+        storeName = "Repository",
     )
     Column {
         ExtensionItemContent(
             extension = extAvail.copy(
-                repoName = "Repository extensions minion multiple languages various sources",
+                storeName = "Repository extensions minion multiple languages various sources",
             ),
             installStep = InstallStep.Idle,
         )

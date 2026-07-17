@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.library.model.LibraryManga
@@ -186,6 +187,9 @@ class MangaRepositoryImpl(
                     version = value.version,
                     isSyncing = 0,
                     notes = value.notes,
+                    // KMK -->
+                    memo = value.memo?.let(MemoColumnAdapter::encode),
+                    // KMK <--
                 )
             }
         }

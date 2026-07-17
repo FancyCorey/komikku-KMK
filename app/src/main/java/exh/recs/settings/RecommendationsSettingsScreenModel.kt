@@ -7,7 +7,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.InstallStep
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import exh.recs.ForYouResultBudgetPolicy
 import exh.recs.GroupPreviewBudgetPolicy
 import exh.recs.RecommendationSourceFilter
@@ -96,7 +96,7 @@ class RecommendationsSettingsScreenModel(
     init {
         val languages = RecommendationSourceFilter.normalizeLanguages(languagesPref.get())
         // KMK --> v0.7.7 follow-up: read fresh at init time; refreshed reactively on extension changes
-        val initSources = sourceManager.getVisibleCatalogueSources()
+        val initSources = sourceManager.getVisibleSources()
         // KMK <--
         val filteredSources = RecommendationSourceFilter.filterForRecommendations(initSources, languages)
         val storedOrder = RecommendationSourceOrdering.parse(sourceOrderPref.get())
@@ -299,7 +299,7 @@ class RecommendationsSettingsScreenModel(
     }
 
     private fun recomputeSourcesForLanguages(languages: Set<String>) {
-        val filteredSources = RecommendationSourceFilter.filterForRecommendations(sourceManager.getVisibleCatalogueSources(), languages)
+        val filteredSources = RecommendationSourceFilter.filterForRecommendations(sourceManager.getVisibleSources(), languages)
         val storedOrder = RecommendationSourceOrdering.parse(sourceOrderPref.get())
         val allInOrder = RecommendationSourceOrdering.applyAll(filteredSources, storedOrder)
         val disabledIds = state.value.disabledSourceIds
@@ -349,7 +349,7 @@ class RecommendationsSettingsScreenModel(
         mutableState.update { it.copy(showResetSourceOrderDialog = false) }
         sourceOrderPref.set("")
         val languages = state.value.recommendationLanguages
-        val filteredSources = RecommendationSourceFilter.filterForRecommendations(sourceManager.getVisibleCatalogueSources(), languages.toSet())
+        val filteredSources = RecommendationSourceFilter.filterForRecommendations(sourceManager.getVisibleSources(), languages.toSet())
         val fresh = filteredSources.toImmutableList()
         val disabledIds = state.value.disabledSourceIds
         val enabledOrdered = fresh.filter { it.id !in disabledIds }
@@ -647,7 +647,7 @@ class RecommendationsSettingsScreenModel(
             (fitStats[it.id]?.runCount ?: 0) >= SourceFitStats.MIN_RUNS_FOR_LABEL
         }
         val sortedWithData = withData.sortedWith(
-            compareByDescending<CatalogueSource> {
+            compareByDescending<Source> {
                 fitStats[it.id]?.fitLabel?.fitScore ?: -1
             }.thenBy { sources.indexOf(it) },
         )
@@ -658,7 +658,7 @@ class RecommendationsSettingsScreenModel(
     // KMK --> v0.7.7 follow-up: called whenever installed extensions change so orderedSources and
     // availableLanguages reflect the current source list without requiring a screen restart.
     private fun refreshVisibleSources() {
-        val freshSources = sourceManager.getVisibleCatalogueSources()
+        val freshSources = sourceManager.getVisibleSources()
         val languages = state.value.recommendationLanguages.toSet()
         val filteredSources = RecommendationSourceFilter.filterForRecommendations(freshSources, languages)
         val storedOrder = RecommendationSourceOrdering.parse(sourceOrderPref.get())
@@ -682,7 +682,7 @@ class RecommendationsSettingsScreenModel(
     @Immutable
     data class State(
         val tagPreferences: ImmutableList<TagTaste> = persistentListOf(),
-        val orderedSources: ImmutableList<CatalogueSource> = persistentListOf(),
+        val orderedSources: ImmutableList<Source> = persistentListOf(),
         val disabledSourceIds: ImmutableSet<Long> = persistentSetOf(),
         val boostedSourceIds: ImmutableSet<Long> = persistentSetOf(),
         val ratedMangaVisibility: RatedMangaVisibility = RatedMangaVisibility.HIDE_DISLIKED_ONLY,

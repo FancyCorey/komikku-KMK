@@ -169,7 +169,7 @@ open class RecommendsScreenModel(
                     dislikedSourceRaw = dislikedRaw
                     qualityDislikedSourceRaw = qualityDislikedRaw
                     val eligibleSources = RecommendationSourceSelector.select(
-                        sources = sourceManager.getVisibleCatalogueSources(),
+                        sources = sourceManager.getVisibleSources(),
                         languages = recommendationLanguages,
                         storedOrder = storedOrder,
                         effectiveDisabledIds = effectiveDisabledIds,

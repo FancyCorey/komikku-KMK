@@ -2,6 +2,7 @@ package exh.recs.discovery
 
 import eu.kanade.tachiyomi.extension.model.Extension
 import exh.recs.sourceprefs.RecommendationSourcePreferenceStore
+import mihon.domain.extension.model.ExtensionStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -29,11 +30,19 @@ class NonInstalledSourceSuggestionScorerTest {
         lang = lang,
         isNsfw = isNsfw,
         signatureHash = signatureHash,
-        repoName = repoName,
+        storeName = repoName,
         sources = sources,
-        apkName = "$pkgName.apk",
+        apkUrl = "https://repo.example.com/apk/$pkgName.apk",
         iconUrl = "",
-        repoUrl = "https://repo.example.com",
+        store = ExtensionStore(
+            indexUrl = "https://repo.example.com",
+            name = repoName,
+            badgeLabel = repoName,
+            signingKey = signatureHash,
+            contact = ExtensionStore.Contact(website = "", discord = null),
+            isLegacy = false,
+            extensionListUrl = null,
+        ),
     )
 
     private fun availableSource(

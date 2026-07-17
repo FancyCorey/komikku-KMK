@@ -174,7 +174,90 @@ Each phase document must be independently executable and must state:
 - what later phases depend on it.
 
 The master plan must define ordering, shared contracts, one-final-build behavior, and final verification.
+## 3A. Claude model and effort assignment
 
+Every implementation plan and every Claude handoff prompt must declare the recommended Claude Code model and effort level for that specific plan. Do not use a fixed model by habit. The assignment must match the plan's risk, reasoning depth, expected tool use, and the user's Pro usage budget.
+
+The assignment is a planning requirement, not an application feature. Do not expose model names, effort levels, or development-channel terminology in the app UI, release notes, or user-facing strings.
+
+### Decision factors
+
+Classify the plan against reasoning sensitivity, change surface, autonomy horizon, verification burden, token pressure, and rework cost. A low-effort first pass can cost more overall if it creates architectural, lifecycle, migration, or security mistakes that require repair.
+
+### Model roles
+
+Use the actual model names available in Claude Code's `/model` picker:
+
+| Work type | Recommended model | Effort |
+| --- | --- | --- |
+| Mechanical formatting, localized wording, documentation indexing, small isolated edits | Sonnet | low or medium |
+| Normal feature implementation, focused bug fix, Compose/UI work, tests, and ordinary refactoring | Sonnet | high |
+| Token-constrained, well-specified implementation with narrow scope and strong tests | Sonnet | medium |
+| Database migration, backup/sync, Android lifecycle, installer/service, security/privacy, concurrency, or cross-module contracts | Opus | high or xhigh |
+| Full repository audit, upstream reconciliation, release-readiness review, or difficult debugging after Sonnet has struggled | Opus | high or xhigh |
+| Large autonomous multi-phase implementation with few check-ins | Fable, if available | high or xhigh |
+| Plan-first then ordinary implementation in one workflow | `opusplan` | Opus planning, Sonnet execution |
+
+This is a risk-based assignment, not a claim that one model is universally superior. The live Claude Code model picker is authoritative if names or availability differ.
+
+### Effort rules
+
+- **Low:** short, mechanical, intelligence-insensitive work only. Never default to it for migrations, persistence, security, lifecycle, recommendation ranking, or crash fixes.
+- **Medium:** bounded work with a validated plan, low ambiguity, and strong focused tests. This is the throughput setting, not the quality default for this repository.
+- **High:** default for normal KMK implementation and the minimum for intelligence-sensitive work.
+- **Xhigh:** complex audits, architecture, concurrency, migration compatibility, or multi-stage verification.
+- **Max:** session-only, exceptionally difficult debugging or final reasoning; do not assign it automatically because it can overthink and consume the allowance rapidly.
+
+If a selected model does not support the requested effort level, Claude Code may fall back to the highest supported level below it. Record the effort actually used.
+
+### Required plan fields
+
+Every plan must include a **Claude execution assignment** section:
+
+```text
+Recommended model: Sonnet | Opus | Fable | opusplan
+Recommended effort: low | medium | high | xhigh | max
+Why this assignment fits this plan:
+Token/throughput tradeoff:
+When to escalate to a stronger model or effort:
+When to reduce effort safely:
+Required verification before continuing:
+```
+
+Assign model and effort separately to each phase. Do not assign Opus or Fable to every phase merely because one phase is difficult. Use Sonnet for bounded execution after architecture and contracts are settled.
+
+### Required Claude prompt syntax
+
+Begin the prompt with an actionable assignment, for example:
+
+```text
+/model Sonnet
+/effort high
+```
+
+or:
+
+```text
+/model opusplan
+```
+
+Repeat the assignment in prose and tell Claude to verify the active model and effort with `/status` or the visible model indicator before editing. Do not switch models repeatedly in one long session without a reason; model switching can invalidate prompt caching and force context to be reread. Prefer phase boundaries or separate sessions when changing roles.
+
+### Evidence and review requirement
+
+The implementation report must record the requested and actual model/effort, any capability fallback, whether a hybrid workflow was used, whether token pressure changed the assignment, any escalation after failures or review findings, and whether the assignment was adequate for the next phase.
+
+Do not call a model "best" without stating the objective: quality, first-pass correctness, throughput, latency, or total work before a usage limit. For this project, default to **Sonnet high** for ordinary implementation, **Opus high/xhigh** for high-risk reasoning, and **Sonnet medium** only when the plan is exceptionally precise and throughput is the primary constraint.
+
+### Research basis
+
+This policy is based on the current official Claude guidance, not an assumption that the heaviest model is always best:
+
+- [Claude Code model configuration](https://code.claude.com/docs/en/model-config): model selection, `opusplan`, effort levels, supported effort behavior, and prompt-caching implications of switching models.
+- [Choosing the right Claude model](https://claude.com/resources/tutorials/choosing-the-right-claude-model): Sonnet as the coding/general default, Opus for deep reasoning, and Fable for the largest long-horizon projects.
+- [Claude Pro usage limits](https://support.claude.com/en/articles/8325606-what-is-the-pro-plan): session and weekly limits vary with message length, model, and feature use.
+
+These sources describe model roles and tradeoffs, not a controlled benchmark on this repository. Therefore each plan must state its objective and may revise the assignment after verification results.
 ## 4. Exact file planning
 
 Every production change should identify one of:
@@ -378,5 +461,7 @@ Claude must:
 10. provide a final changed-file summary, test results, deviations, and APK path.
 
 If the code disproves a plan assumption, Claude must stop that phase, document the discrepancy, and correct the plan before implementing rather than guessing.
+
+
 
 

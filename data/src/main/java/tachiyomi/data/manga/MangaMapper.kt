@@ -1,6 +1,7 @@
 package tachiyomi.data.manga
 
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.serialization.json.JsonObject
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
@@ -37,6 +38,9 @@ object MangaMapper {
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
         notes: String,
+        // KMK --> 1.14.0 reconciliation: mangas.memo column
+        memo: JsonObject,
+        // KMK <--
     ): Manga = Manga(
         id = id,
         source = source,
@@ -64,6 +68,9 @@ object MangaMapper {
         favoriteModifiedAt = favoriteModifiedAt,
         version = version,
         notes = notes,
+        // KMK -->
+        memo = memo,
+        // KMK <--
     )
 
     fun mapLibraryManga(
@@ -95,6 +102,9 @@ object MangaMapper {
         version: Long,
         isSyncing: Long,
         notes: String,
+        // KMK --> 1.14.0 reconciliation: mangas.memo column
+        memo: JsonObject,
+        // KMK <--
         totalCount: Long,
         readCount: Double,
         latestUpload: Long,
@@ -135,6 +145,9 @@ object MangaMapper {
             version,
             isSyncing,
             notes,
+            // KMK -->
+            memo,
+            // KMK <--
         ),
         categories = categories.split(",").map { it.toLong() },
         totalChapters = totalCount,
@@ -178,6 +191,9 @@ object MangaMapper {
         version: Long,
         isSyncing: Long,
         notes: String,
+        // KMK --> 1.14.0 reconciliation: mangas.memo column
+        memo: JsonObject,
+        // KMK <--
         totalCount: Long,
     ): MangaWithChapterCount = MangaWithChapterCount(
         manga = mapManga(
@@ -209,6 +225,9 @@ object MangaMapper {
             version,
             isSyncing,
             notes,
+            // KMK -->
+            memo,
+            // KMK <--
         ),
         chapterCount = totalCount,
     )

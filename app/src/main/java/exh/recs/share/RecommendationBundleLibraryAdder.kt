@@ -1,10 +1,9 @@
 package exh.recs.share
 
 import eu.kanade.domain.manga.interactor.UpdateManga
-import eu.kanade.domain.manga.model.toSManga
-import eu.kanade.tachiyomi.data.cache.CoverCache
 import kotlinx.coroutines.flow.firstOrNull
 import logcat.LogPriority
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -25,8 +24,8 @@ class RecommendationBundleLibraryAdder(
     private val getCategories: GetCategories = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
-    private val coverCache: CoverCache = Injekt.get(),
 ) {
 
     sealed interface Outcome {
@@ -62,9 +61,12 @@ class RecommendationBundleLibraryAdder(
             if (libraryPreferences.fetchMetadataOnAdd().get()) {
                 runCatching {
                     val source = sourceManager.getOrStub(manga.source)
-                    val sManga = manga.toSManga()
-                    val details = source.getMangaDetails(sManga)
-                    updateManga.awaitUpdateFromSource(manga, details, false, coverCache)
+                    updateMangaFromRemote(
+                        source = source,
+                        manga = manga,
+                        fetchDetails = true,
+                        fetchChapters = false,
+                    ).getOrThrow()
                 }.onFailure { e ->
                     logcat(LogPriority.WARN, e) { "Metadata fetch failed for imported manga: ${manga.title}" }
                 }

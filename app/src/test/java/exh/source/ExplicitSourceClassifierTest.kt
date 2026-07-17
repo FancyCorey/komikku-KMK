@@ -1,6 +1,7 @@
 package exh.source
 
 import eu.kanade.tachiyomi.extension.model.Extension
+import mihon.domain.extension.model.ExtensionStore
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -126,11 +127,19 @@ class ExplicitSourceClassifierTest {
         lang = "en",
         isNsfw = true,
         signatureHash = "abc",
-        repoName = "TestRepo",
+        storeName = "TestRepo",
         sources = emptyList(),
-        apkName = "$pkgName.apk",
+        apkUrl = "https://example.com/apk/$pkgName.apk",
         iconUrl = "",
-        repoUrl = "https://example.com",
+        store = ExtensionStore(
+            indexUrl = "https://example.com",
+            name = "TestRepo",
+            badgeLabel = "TestRepo",
+            signingKey = "abc",
+            contact = ExtensionStore.Contact(website = "", discord = null),
+            isLegacy = false,
+            extensionListUrl = null,
+        ),
     )
 
     @Test

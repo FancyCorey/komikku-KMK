@@ -2,7 +2,6 @@ package exh.recs.group
 
 // KMK -->
 import eu.kanade.domain.manga.model.toSManga
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -120,7 +119,7 @@ class GroupRecommendationSeedBuilder(
                         if (enrichCount >= MAX_ENRICH_MEMBERS) break
 
                         val source = runCatching {
-                            sourceManager.get(src) as? CatalogueSource
+                            sourceManager.get(src)
                         }.getOrNull() ?: continue
 
                         // Build SManga for the API call — use local data if available, else URL-only
@@ -130,7 +129,14 @@ class GroupRecommendationSeedBuilder(
 
                         val enrichedManga = withTimeoutOrNull(ENRICH_MEMBER_TIMEOUT_MS) {
                             runCatching {
-                                val details = withContext(Dispatchers.IO) { source.getMangaDetails(smanga) }
+                                val details = withContext(Dispatchers.IO) {
+                                    source.getMangaUpdate(
+                                        manga = smanga,
+                                        chapters = emptyList(),
+                                        fetchDetails = true,
+                                        fetchChapters = false,
+                                    ).manga
+                                }
                                 networkToLocalManga(listOf(details.toDomainManga(src))).firstOrNull()
                             }.onFailure { e ->
                                 if (e is CancellationException) throw e

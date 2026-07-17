@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.backup.models
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.protobuf.ProtoNumber
 import tachiyomi.domain.chapter.model.Chapter
 
@@ -57,6 +58,9 @@ val backupChapterMapper = {
         lastModifiedAt: Long,
         version: Long,
         _: Long,
+        // KMK --> 1.14.0 reconciliation: chapters.memo column; not yet backed up (vacant in this pass)
+        _: JsonObject,
+    // KMK <--
     ->
     BackupChapter(
         url = url,

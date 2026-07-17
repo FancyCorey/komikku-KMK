@@ -1,7 +1,7 @@
 package exh.recs
 
 // KMK -->
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -21,7 +21,7 @@ internal class RecommendationCandidateEnricher(
     private val coroutineDispatcher: CoroutineDispatcher,
 ) {
     suspend fun enrich(
-        source: CatalogueSource,
+        source: Source,
         candidates: List<Manga>,
         smangaByUrl: Map<String, SManga>,
         limit: Int,
@@ -37,7 +37,14 @@ internal class RecommendationCandidateEnricher(
             val smanga = smangaByUrl[manga.url] ?: continue
 
             runCatching {
-                val details = withContext(coroutineDispatcher) { source.getMangaDetails(smanga) }
+                val details = withContext(coroutineDispatcher) {
+                    source.getMangaUpdate(
+                        manga = smanga,
+                        chapters = emptyList(),
+                        fetchDetails = true,
+                        fetchChapters = false,
+                    ).manga
+                }
                 networkToLocalManga(listOf(details.toDomainManga(source.id))).firstOrNull()
             }.getOrNull()?.let { enriched ->
                 enrichedByUrl[manga.url] = enriched

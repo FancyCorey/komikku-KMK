@@ -19,7 +19,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceStatus
 import exh.recs.SourceDisplayOrderInput
 import exh.recs.SourceStatusDisplayOrder
@@ -253,7 +253,7 @@ class RecommendationSourcePrioritySettingsScreen : Screen() {
                     }
                     val sortedInputs = SourceStatusDisplayOrder.sort(displayInputs)
 
-                    val groupedRows: List<Pair<SourceStatusDisplayOrder.Group?, CatalogueSource?>> = buildList {
+                    val groupedRows: List<Pair<SourceStatusDisplayOrder.Group?, Source?>> = buildList {
                         var lastGroup: SourceStatusDisplayOrder.Group? = null
                         for (input in sortedInputs) {
                             val group = SourceStatusDisplayOrder.group(input)

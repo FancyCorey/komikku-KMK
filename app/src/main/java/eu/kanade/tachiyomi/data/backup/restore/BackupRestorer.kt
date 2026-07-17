@@ -8,7 +8,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
-import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
@@ -20,7 +20,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
-import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionRepoRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.FeedRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
@@ -48,7 +48,7 @@ class BackupRestorer(
 
     private val categoriesRestorer: CategoriesRestorer = CategoriesRestorer(),
     private val preferenceRestorer: PreferenceRestorer = PreferenceRestorer(context),
-    private val extensionRepoRestorer: ExtensionRepoRestorer = ExtensionRepoRestorer(),
+    private val extensionStoreRestorer: ExtensionStoreRestorer = ExtensionStoreRestorer(),
     private val mangaRestorer: MangaRestorer = MangaRestorer(isSync),
     // SY -->
     private val savedSearchRestorer: SavedSearchRestorer = SavedSearchRestorer(),
@@ -113,7 +113,7 @@ class BackupRestorer(
             restoreAmount += 1
         }
         if (options.extensionRepoSettings) {
-            restoreAmount += backup.backupExtensionRepo.size
+            restoreAmount += backup.backupExtensionStores.size
         }
         if (options.sourceSettings) {
             restoreAmount += 1
@@ -150,7 +150,7 @@ class BackupRestorer(
                     // KMK <--
                 }
             if (options.extensionRepoSettings) {
-                restoreExtensionRepos(backup.backupExtensionRepo)
+                restoreExtensionStores(backup.backupExtensionStores)
             }
             // KMK -->
             if (options.tasteProfile) {
@@ -294,15 +294,15 @@ class BackupRestorer(
         }
     }
 
-    private fun CoroutineScope.restoreExtensionRepos(
-        backupExtensionRepo: List<BackupExtensionRepos>,
+    private fun CoroutineScope.restoreExtensionStores(
+        backupExtensionStores: List<BackupExtensionStore>,
     ) = launch {
-        backupExtensionRepo
+        backupExtensionStores
             .forEach {
                 ensureActive()
 
                 try {
-                    extensionRepoRestorer(it)
+                    extensionStoreRestorer(it)
                 } catch (e: Exception) {
                     errors.add(Date() to "Error Adding Repo: ${it.name} : ${e.message}")
                 }

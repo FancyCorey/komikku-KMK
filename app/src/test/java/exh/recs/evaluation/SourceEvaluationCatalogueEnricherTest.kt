@@ -1,6 +1,6 @@
 package exh.recs.evaluation
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -33,7 +33,7 @@ class SourceEvaluationCatalogueEnricherTest {
     /** Fake source whose getMangaDetails() behavior is fully controlled per test. */
     private class FakeCatalogueSource(
         private val detailsByUrl: Map<String, () -> SManga>,
-    ) : CatalogueSource {
+    ) : Source {
         override val id: Long = 1L
         override val lang: String = "en"
         override val name: String = "Fake Source"
@@ -46,7 +46,6 @@ class SourceEvaluationCatalogueEnricherTest {
             throw UnsupportedOperationException()
         override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
         override fun getFilterList(): FilterList = FilterList()
-        override suspend fun getChapterList(manga: SManga) = throw UnsupportedOperationException()
         override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter) = throw UnsupportedOperationException()
         override suspend fun getRelatedMangaList(
             manga: SManga,
@@ -54,9 +53,15 @@ class SourceEvaluationCatalogueEnricherTest {
             pushResults: suspend (relatedManga: Pair<String, List<SManga>>, completed: Boolean) -> Unit,
         ) = throw UnsupportedOperationException()
 
-        override suspend fun getMangaDetails(manga: SManga): SManga {
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
             detailCallCount++
-            return detailsByUrl[manga.url]?.invoke() ?: manga
+            val details = detailsByUrl[manga.url]?.invoke() ?: manga
+            return eu.kanade.tachiyomi.source.model.SMangaUpdate(details, emptyList())
         }
     }
 
@@ -146,7 +151,7 @@ class SourceEvaluationCatalogueEnricherTest {
     @Test
     fun `cancellation propagates`() {
         val raw = listOf(sManga("/m/1", genres = null))
-        class CancellingSource : CatalogueSource {
+        class CancellingSource : Source {
             override val id: Long = 1L
             override val lang: String = "en"
             override val name: String = "Cancelling Source"
@@ -156,7 +161,6 @@ class SourceEvaluationCatalogueEnricherTest {
                 throw UnsupportedOperationException()
             override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
             override fun getFilterList(): FilterList = FilterList()
-            override suspend fun getChapterList(manga: SManga) = throw UnsupportedOperationException()
             override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter) = throw UnsupportedOperationException()
             override suspend fun getRelatedMangaList(
                 manga: SManga,
@@ -164,7 +168,12 @@ class SourceEvaluationCatalogueEnricherTest {
                 pushResults: suspend (relatedManga: Pair<String, List<SManga>>, completed: Boolean) -> Unit,
             ) = throw UnsupportedOperationException()
 
-            override suspend fun getMangaDetails(manga: SManga): SManga {
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
                 delay(1)
                 throw CancellationException("cancelled")
             }

@@ -1,7 +1,7 @@
 package exh.recs
 
 // KMK --> v0.7.40: shared source selection policy for For You and group-seeded recommendations
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 
 /**
  * Composes [RecommendationSourceFilter] and [RecommendationSourceOrdering] into a single
@@ -16,19 +16,19 @@ internal object RecommendationSourceSelector {
     /**
      * Returns the ordered, filtered source list for a personalized recommendation workflow.
      *
-     * @param sources All visible catalogue sources (from SourceManager.getVisibleCatalogueSources()).
+     * @param sources All visible catalogue sources (from SourceManager.getVisibleSources()).
      * @param languages User-selected recommendation languages (raw, not normalized).
      * @param storedOrder Parsed source priority order (from RecommendationSourceOrdering.parse).
      * @param effectiveDisabledIds Combined disabled + disliked installed source IDs.
      * @param maxSources Maximum number of sources to return (0 = unlimited).
      */
     fun select(
-        sources: List<CatalogueSource>,
+        sources: List<Source>,
         languages: Set<String>,
         storedOrder: List<Long>,
         effectiveDisabledIds: Set<Long>,
         maxSources: Int = 0,
-    ): List<CatalogueSource> {
+    ): List<Source> {
         val languageFiltered = RecommendationSourceFilter.filterForRecommendations(
             sources = sources,
             languages = languages,

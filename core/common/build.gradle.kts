@@ -39,6 +39,14 @@ dependencies {
     implementation(libs.unifile)
     implementation(libs.libarchive)
 
+    // KMK --> 1.14.0 reconciliation: align :core:common's own compile classpath to the same
+    // coroutines version the rest of the app resolves to (matches the platform() pattern already
+    // used by :domain, :app, :source-api) -- without this, this module alone resolves an old
+    // transitive coroutines-core via some other dependency in this fork's graph, which breaks
+    // the coroutines 1.11.0 `resume(value, onCancellation)` 3-arg overload OkHttpExtensions.kt
+    // (which lives in this module) now uses.
+    implementation(platform(kotlinx.coroutines.bom))
+    // KMK <--
     api(kotlinx.coroutines.core)
     api(kotlinx.serialization.json)
     api(kotlinx.serialization.json.okio)

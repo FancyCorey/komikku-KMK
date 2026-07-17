@@ -1,5 +1,6 @@
 package tachiyomi.data.chapter
 
+import kotlinx.serialization.json.JsonObject
 import tachiyomi.domain.chapter.model.Chapter
 
 object ChapterMapper {
@@ -20,6 +21,9 @@ object ChapterMapper {
         version: Long,
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
+        // KMK --> 1.14.0 reconciliation: chapters.memo column
+        memo: JsonObject,
+        // KMK <--
     ): Chapter = Chapter(
         id = id,
         mangaId = mangaId,
@@ -35,5 +39,8 @@ object ChapterMapper {
         scanlator = scanlator,
         lastModifiedAt = lastModifiedAt,
         version = version,
+        // KMK -->
+        memo = memo,
+        // KMK <--
     )
 }

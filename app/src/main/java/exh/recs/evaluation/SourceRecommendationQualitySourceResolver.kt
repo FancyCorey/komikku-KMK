@@ -1,12 +1,12 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.extension.model.Extension
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import tachiyomi.domain.taste.model.SourceEvaluation
 
 // KMK --> v0.7.10
 /**
- * Resolves a [CatalogueSource] within an installed extension for a given [SourceEvaluation].
+ * Resolves a [Source] within an installed extension for a given [SourceEvaluation].
  * Used after an extension is confirmed installed to locate the intended source to probe.
  *
  * Resolution steps (in order, stops at first match):
@@ -22,7 +22,7 @@ import tachiyomi.domain.taste.model.SourceEvaluation
 object SourceRecommendationQualitySourceResolver {
 
     sealed interface ResolveResult {
-        data class Found(val source: CatalogueSource) : ResolveResult
+        data class Found(val source: Source) : ResolveResult
         data class Ambiguous(val reason: String) : ResolveResult
         data object NotFound : ResolveResult
     }
@@ -31,7 +31,7 @@ object SourceRecommendationQualitySourceResolver {
         installedExt: Extension.Installed,
         evaluation: SourceEvaluation,
     ): ResolveResult {
-        val sources = installedExt.sources.filterIsInstance<CatalogueSource>()
+        val sources = installedExt.sources.filterIsInstance<Source>()
 
         // Step 1: exact source id
         sources.find { it.id == evaluation.sourceId }?.let { return ResolveResult.Found(it) }

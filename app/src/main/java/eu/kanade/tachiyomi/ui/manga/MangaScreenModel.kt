@@ -28,7 +28,6 @@ import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.GetPagePreviews
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
@@ -109,6 +108,7 @@ import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.manga.model.toDomainManga
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
@@ -226,7 +226,7 @@ class MangaScreenModel(
     private val setReadStatus: SetReadStatus = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
@@ -659,9 +659,15 @@ class MangaScreenModel(
         val state = successState ?: return
         try {
             withIOContext {
-                val networkManga = state.source.getMangaDetails(state.manga.toSManga())
-                updateManga.awaitUpdateFromSource(state.manga, networkManga, manualFetch)
-                // KMK -->
+                // KMK --> 1.14.0 reconciliation: getMangaDetails/awaitUpdateFromSource were
+                // replaced by the unified updateMangaFromRemote interactor upstream.
+                updateMangaFromRemote(
+                    source = state.source,
+                    manga = state.manga,
+                    fetchDetails = true,
+                    fetchChapters = false,
+                    manualFetch = manualFetch,
+                ).getOrThrow()
                 clearErrorFromDB(state.manga.id)
                 // KMK <--
             }
@@ -1178,26 +1184,21 @@ class MangaScreenModel(
         val state = successState ?: return
         try {
             withIOContext {
-                // SY -->
-                if (state.source !is MergedSource) {
-                    // SY <--
-                    val chapters = state.source.getChapterList(state.manga.toSManga())
+                // KMK --> 1.14.0 reconciliation: getChapterList/fetchChaptersForMergedManga were
+                // replaced by the unified updateMangaFromRemote interactor upstream, which already
+                // internally special-cases MergedSource via fetchChaptersAndSync.
+                val newChapters = updateMangaFromRemote(
+                    source = state.source,
+                    manga = state.manga,
+                    fetchDetails = false,
+                    fetchChapters = true,
+                    manualFetch = manualFetch,
+                ).getOrThrow().newChapters
 
-                    val newChapters = syncChaptersWithSource.await(
-                        chapters,
-                        state.manga,
-                        state.source,
-                        manualFetch,
-                    )
-
-                    if (manualFetch) {
-                        downloadNewChapters(newChapters)
-                    }
-                    // SY -->
-                } else {
-                    state.source.fetchChaptersForMergedManga(state.manga, manualFetch)
+                if (manualFetch) {
+                    downloadNewChapters(newChapters)
                 }
-                // SY <--
+                // KMK <--
                 // KMK -->
                 clearErrorFromDB(state.manga.id)
                 // KMK <--

@@ -302,7 +302,7 @@ class SourceEvaluationRunner(
                         sourceId = source.id,
                         sourceName = source.name,
                         lang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang,
-                        repoName = ext.repoName,
+                        repoName = ext.storeName,
                         isNsfw = ext.isNsfw,
                         // KMK v0.7.45: classified key, not the raw exception message — see
                         // SourceEvaluationProbeErrorClassifier and EvaluationResultRow's rendering.
@@ -310,7 +310,7 @@ class SourceEvaluationRunner(
                         // KMK --> v0.7.4: record extension version
                         extensionVersionName = ext.versionName,
                         extensionVersionCode = ext.versionCode,
-                        extensionApkName = ext.apkName,
+                        extensionApkName = ext.apkUrl,
                         // KMK <--
                     )
                     upsertSourceEvaluation.await(errRecord)
@@ -497,7 +497,7 @@ class SourceEvaluationRunner(
             sourceName = source.name,
             lang = sourceLang,
             baseUrl = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.baseUrl,
-            repoName = ext.repoName,
+            repoName = ext.storeName,
             sourceCount = installedExt.sources.size,
             isNsfw = ext.isNsfw,
             catalogueSamples = catalogueSamples,
@@ -513,7 +513,7 @@ class SourceEvaluationRunner(
             // KMK --> v0.7.4: record extension version for update-reassessment detection
             extensionVersionName = ext.versionName,
             extensionVersionCode = ext.versionCode,
-            extensionApkName = ext.apkName,
+            extensionApkName = ext.apkUrl,
             // KMK <--
         )
 
@@ -636,13 +636,13 @@ class SourceEvaluationRunner(
             sourceId = null,
             sourceName = ext.name,
             lang = ext.lang,
-            repoName = ext.repoName,
+            repoName = ext.storeName,
             isNsfw = ext.isNsfw,
             errorMessage = message,
             // KMK --> v0.7.4: record extension version
             extensionVersionName = ext.versionName,
             extensionVersionCode = ext.versionCode,
-            extensionApkName = ext.apkName,
+            extensionApkName = ext.apkUrl,
             // KMK <--
         )
         scope.launch {

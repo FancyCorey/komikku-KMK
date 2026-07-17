@@ -99,7 +99,7 @@ class LovedMangaScreenModel(
         runCatching {
             // KMK --> v0.7.3: fail-safe source id lookup; empty set → hides all rather than showing uninstalled entries
             val installedSourceIds: Set<Long> = runCatching {
-                sourceManager.getVisibleCatalogueSources().map { it.id }.toSet()
+                sourceManager.getVisibleSources().map { it.id }.toSet()
             }.getOrDefault(emptySet())
             // KMK <--
 

@@ -2,6 +2,8 @@ package tachiyomi.domain.manga.model
 
 import androidx.compose.runtime.Immutable
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.manga.interactor.GetCustomMangaInfo
 import uy.kohesive.injekt.injectLazy
@@ -36,6 +38,10 @@ data class Manga(
     val favoriteModifiedAt: Long?,
     val version: Long,
     val notes: String,
+    // KMK --> 1.14.0 reconciliation: official mangas.memo column, vacant/forward-compatible storage;
+    // not yet read or written by any KMK or official feature in this pass.
+    val memo: JsonObject,
+    // KMK <--
 ) : Serializable {
 
     // SY -->
@@ -167,6 +173,7 @@ data class Manga(
             favoriteModifiedAt = null,
             version = 0L,
             notes = "",
+            memo = JsonObject.EMPTY,
         )
 
         // SY -->

@@ -3,13 +3,11 @@ package mihon.feature.migration.list
 import androidx.annotation.FloatRange
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
-import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
-import eu.kanade.tachiyomi.source.online.all.EHentai
 import exh.source.MERGED_SOURCE_ID
 import exh.util.ThrottleManager
 import kotlinx.collections.immutable.ImmutableList
@@ -31,6 +29,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.domain.migration.usecases.MigrateMangaUseCase
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import mihon.feature.migration.list.models.MigratingManga
 import mihon.feature.migration.list.models.MigratingManga.SearchResult
 import mihon.feature.migration.list.search.SmartSourceSearchEngine
@@ -56,8 +55,7 @@ class MigrationListScreenModel(
     private val sourceManager: SourceManager = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
-    private val updateManga: UpdateManga = Injekt.get(),
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val migrateManga: MigrateMangaUseCase = Injekt.get(),
 ) : StateScreenModel<MigrationListScreenModel.State>(State()) {
@@ -191,8 +189,11 @@ class MigrationListScreenModel(
 
             if (result != null && result.first.thumbnailUrl == null) {
                 try {
-                    val newManga = sourceManager.getOrStub(result.first.source).getMangaDetails(result.first.toSManga())
-                    updateManga.awaitUpdateFromSource(result.first, newManga, true)
+                    updateMangaFromRemote(
+                        manga = result.first,
+                        fetchDetails = true,
+                        manualFetch = true,
+                    ).getOrThrow()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -217,7 +218,7 @@ class MigrationListScreenModel(
 
     private suspend fun searchSource(
         manga: MigratingManga,
-        source: CatalogueSource,
+        source: Source,
         deepSearchMode: Boolean,
     ): Pair<Manga, ChapterInfo>? {
         return try {
@@ -231,23 +232,19 @@ class MigrationListScreenModel(
 
             var localManga = networkToLocalManga(searchResult)
             try {
-                val details = source.getMangaDetails(localManga.toSManga())
-                updateManga.awaitUpdateFromSource(localManga, details, true)
+                updateMangaFromRemote(
+                    source = source,
+                    manga = localManga,
+                    fetchDetails = true,
+                    fetchChapters = true,
+                    manualFetch = true,
+                    // SY -->
+                    throttleFunc = throttleManager::throttle,
+                    // SY <--
+                ).getOrThrow()
                 localManga = getManga.await(localManga.id) ?: localManga
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e)
-            }
-            try {
-                // SY -->
-                val chapters = if (source is EHentai) {
-                    source.getChapterList(localManga.toSManga(), throttleManager::throttle)
-                } else {
-                    // SY <--
-                    source.getChapterList(localManga.toSManga())
-                }
-                syncChaptersWithSource.await(chapters, localManga, source)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
             }
@@ -298,18 +295,19 @@ class MigrationListScreenModel(
                 val manga = getManga.await(target) ?: return@async null
                 try {
                     val source = sourceManager.get(manga.source)!!
-                    // SY -->
-                    val chapters = if (source is EHentai) {
-                        source.getChapterList(manga.toSManga(), throttleManager::throttle)
-                    } else {
+                    updateMangaFromRemote(
+                        source = source,
+                        manga = manga,
+                        fetchDetails = true,
+                        fetchChapters = true,
+                        manualFetch = true,
+                        // SY -->
+                        throttleFunc = throttleManager::throttle,
                         // SY <--
-                        source.getChapterList(manga.toSManga())
-                    }
-                    syncChaptersWithSource.await(chapters, manga, source)
+                    ).getOrThrow().manga
                 } catch (_: Exception) {
                     return@async null
                 }
-                manga
             }
                 .await()
 
@@ -319,14 +317,6 @@ class MigrationListScreenModel(
                 return@launchIO
             }
 
-            try {
-                val newManga = sourceManager.getOrStub(result.source).getMangaDetails(result.toSManga())
-                updateManga.awaitUpdateFromSource(result, newManga, true)
-            } catch (e: CancellationException) {
-                // Ignore cancellations
-                throw e
-            } catch (_: Exception) {
-            }
             migratingManga.searchResult.value = result.toSuccessSearchResult()
             updateMigrationProgress()
         }

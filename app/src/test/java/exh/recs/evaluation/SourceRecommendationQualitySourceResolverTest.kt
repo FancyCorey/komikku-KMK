@@ -14,7 +14,7 @@ private class FakeResolverSource(
     override val id: Long,
     override val name: String,
     override val lang: String,
-) : eu.kanade.tachiyomi.source.CatalogueSource {
+) : eu.kanade.tachiyomi.source.Source {
     override val supportsLatest = false
     override suspend fun getPopularManga(page: Int): eu.kanade.tachiyomi.source.model.MangasPage =
         eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
@@ -28,9 +28,12 @@ private class FakeResolverSource(
         eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
     override fun getFilterList(): eu.kanade.tachiyomi.source.model.FilterList =
         eu.kanade.tachiyomi.source.model.FilterList()
-    override suspend fun getMangaDetails(manga: eu.kanade.tachiyomi.source.model.SManga) = manga
-    override suspend fun getChapterList(manga: eu.kanade.tachiyomi.source.model.SManga) =
-        emptyList<eu.kanade.tachiyomi.source.model.SChapter>()
+    override suspend fun getMangaUpdate(
+        manga: eu.kanade.tachiyomi.source.model.SManga,
+        chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
     override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter) =
         emptyList<eu.kanade.tachiyomi.source.model.Page>()
 }
@@ -48,7 +51,7 @@ class SourceRecommendationQualitySourceResolverTest {
         lang = "en",
         isNsfw = false,
         signatureHash = "abc",
-        repoName = "test-repo",
+        storeName = "test-repo",
         pkgFactory = null,
         sources = sources.toList(),
         icon = null,

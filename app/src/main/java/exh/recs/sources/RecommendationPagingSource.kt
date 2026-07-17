@@ -4,7 +4,7 @@ import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -66,12 +66,12 @@ abstract class RecommendationPagingSource(
             // across every linked version, not just the primary manga's title.
             groupTitlesOverride: List<String>? = null,
             // KMK --> v0.7.44: when non-null (group-seeded path only), used instead of
-            // `sourceManager.getVisibleCatalogueSources().take(...)` for cross-extension rows, so
+            // `sourceManager.getVisibleSources().take(...)` for cross-extension rows, so
             // group recommendations honor the same language/priority/disabled/disliked source
             // policy as For You (RecommendationSourceSelector). Computed by the caller (already
             // running in a coroutine) so this function can stay non-suspend. Null (single-manga
             // path) keeps the existing raw visible-source behavior unchanged.
-            eligibleCrossExtensionSources: List<CatalogueSource>? = null,
+            eligibleCrossExtensionSources: List<Source>? = null,
             // KMK <--
             // KMK v0.8.6: shared across every CrossExtensionGenreSearchSource created by this call so
             // nested detail-enrichment requests are bounded by one total budget across all
@@ -125,7 +125,7 @@ abstract class RecommendationPagingSource(
                 if (sourcePreferences.recommendationCrossExtensionSearch().get()) {
                     val crossExtensionSources = eligibleCrossExtensionSources ?: run {
                         val sourceManager: SourceManager = Injekt.get()
-                        sourceManager.getVisibleCatalogueSources().take(MAX_CROSS_EXTENSION_SOURCES)
+                        sourceManager.getVisibleSources().take(MAX_CROSS_EXTENSION_SOURCES)
                     }
                     crossExtensionSources.forEach { catalogueSource ->
                         add(
@@ -199,10 +199,9 @@ abstract class TrackerRecommendationPagingSource(
 class RecommendationSource(
     override val id: Long = RECOMMENDS_SOURCE,
     sourceManager: SourceManager = Injekt.get(),
-) : CatalogueSource {
+) : Source {
     private val delegate by lazy {
         sourceManager.get(id)
-            ?.let { it as CatalogueSource }
     }
 
     fun isComickSource(): Boolean = id in COMICK_IDS
@@ -212,12 +211,13 @@ class RecommendationSource(
     override val lang: String by lazy { delegate?.lang ?: "all" }
     override val supportsLatest by lazy { delegate?.supportsLatest ?: false }
 
-    override suspend fun getMangaDetails(manga: SManga) =
-        delegate?.getMangaDetails(manga)
-            ?: throw UnsupportedOperationException()
-    override suspend fun getChapterList(manga: SManga) =
-        delegate?.getChapterList(manga)
-            ?: throw UnsupportedOperationException()
+    override suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ) = delegate?.getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
+        ?: throw UnsupportedOperationException()
     override suspend fun getPageList(chapter: SChapter) =
         delegate?.getPageList(chapter)
             ?: throw UnsupportedOperationException()

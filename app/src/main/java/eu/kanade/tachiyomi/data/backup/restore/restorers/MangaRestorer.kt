@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupTracking
 import exh.EXHMigrations
 import exh.source.MERGED_SOURCE_ID
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.manga.MangaMapper
 import tachiyomi.data.manga.MergedMangaMapper
@@ -170,6 +171,9 @@ class MangaRestorer(
                 version = manga.version,
                 isSyncing = 1,
                 notes = manga.notes,
+                // KMK -->
+                memo = MemoColumnAdapter.encode(manga.memo),
+                // KMK <--
             )
         }
         return manga

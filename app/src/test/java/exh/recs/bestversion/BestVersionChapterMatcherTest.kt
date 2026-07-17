@@ -2,6 +2,8 @@ package exh.recs.bestversion
 
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SChapterImpl
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -40,6 +42,7 @@ class BestVersionChapterMatcherTest {
             scanlator = null,
             lastModifiedAt = 0L,
             version = 1L,
+            memo = JsonObject.EMPTY,
         )
     }
 

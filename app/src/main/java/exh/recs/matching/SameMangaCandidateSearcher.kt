@@ -2,7 +2,7 @@ package exh.recs.matching
 
 // KMK --> v0.7.8
 import eu.kanade.domain.source.service.SourcePreferences
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -35,7 +35,7 @@ class SameMangaCandidateSearcher(
 ) {
     private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
 
-    fun getMatchingSources(): List<CatalogueSource> {
+    fun getMatchingSources(): List<Source> {
         val recLanguages = RecommendationSourceFilter.normalizeLanguages(
             sourcePreferences.recommendationSourceLanguages().get(),
         )
@@ -44,7 +44,7 @@ class SameMangaCandidateSearcher(
         )
         val disabledSourceIds = sourcePreferences.disabledSources().get()
             .mapNotNull { it.toLongOrNull() }.toSet()
-        val all = sourceManager.getVisibleCatalogueSources()
+        val all = sourceManager.getVisibleSources()
         val filtered = RecommendationSourceFilter.filterForRecommendations(all, recLanguages)
         return RecommendationSourceOrdering.apply(filtered, storedOrder, disabledSourceIds)
     }
@@ -58,7 +58,7 @@ class SameMangaCandidateSearcher(
         queries: List<String>,
         settings: SameMangaMatchSettings,
         originManga: Manga,
-        sources: List<CatalogueSource> = getMatchingSources(),
+        sources: List<Source> = getMatchingSources(),
         onResult: suspend (SameMangaSourceResult) -> Unit,
     ) = coroutineScope {
         val cap = SameMangaMatchSettings.clampResultCap(settings.resultsPerSource)
@@ -72,7 +72,7 @@ class SameMangaCandidateSearcher(
     }
 
     private suspend fun searchOneSource(
-        source: CatalogueSource,
+        source: Source,
         queries: List<String>,
         cap: Int,
         originManga: Manga,

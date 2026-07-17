@@ -7,7 +7,7 @@ import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import exh.recs.RecommendationErrorClassifier
 import exh.recs.matching.MangaIdentityKey
@@ -86,7 +86,7 @@ class BestVersionCompareScreenModel(
     data class State(
         val step: BestVersionStep = BestVersionStep.LoadingOrigin,
         val originManga: Manga? = null,
-        val candidates: PersistentMap<CatalogueSource, SameMangaCandidateResult> = persistentMapOf(),
+        val candidates: PersistentMap<Source, SameMangaCandidateResult> = persistentMapOf(),
         val selectedKeys: Set<MangaIdentityKey> = emptySet(),
         val manuallyDeselectedKeys: Set<MangaIdentityKey> = emptySet(),
         val selectedChapterNumber: Double? = null,
@@ -129,7 +129,7 @@ class BestVersionCompareScreenModel(
         mutableState.update {
             it.copy(
                 step = BestVersionStep.SearchingCandidates,
-                candidates = sources.associateWith<CatalogueSource, SameMangaCandidateResult> {
+                candidates = sources.associateWith<Source, SameMangaCandidateResult> {
                     SameMangaCandidateResult.Loading
                 }.toPersistentMap(),
                 sampleSize = settings.previewSampleSize,
@@ -154,7 +154,7 @@ class BestVersionCompareScreenModel(
         }
     }
 
-    private fun updateCandidate(source: CatalogueSource, result: SameMangaCandidateResult, preselect: Boolean) {
+    private fun updateCandidate(source: Source, result: SameMangaCandidateResult, preselect: Boolean) {
         val origin = originManga
         mutableState.update { current ->
             val newCandidates = current.candidates.mutate { it[source] = result }
@@ -211,13 +211,18 @@ class BestVersionCompareScreenModel(
                 async {
                     val key = MangaIdentityKey(manga.source, manga.url)
                     val source = sourceManager.get(manga.source)
-                    if (source == null || source !is CatalogueSource) {
+                    if (source == null) {
                         key to CandidateChapterState.ChapterError("Source not available")
                     } else {
                         try {
                             val sManga = manga.toSManga()
                             val chapters = withContext(coroutineDispatcher) {
-                                source.getChapterList(sManga)
+                                source.getMangaUpdate(
+                                    manga = sManga,
+                                    chapters = emptyList(),
+                                    fetchDetails = false,
+                                    fetchChapters = true,
+                                ).chapters
                             }
                             val match = if (targetChapterNumber >= 0) {
                                 BestVersionChapterMatcher.findMatch(targetChapterNumber, chapters)

@@ -1,7 +1,7 @@
 package exh.recs.sources
 
 import dev.icerock.moko.resources.StringResource
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -23,7 +23,7 @@ import xyz.nulldev.ts.api.http.serializer.FilterSerializer
 
 // KMK -->
 /**
- * A [RecommendationPagingSource] that searches a single installed [CatalogueSource] by the
+ * A [RecommendationPagingSource] that searches a single installed [Source] by the
  * source manga's genres, then scores and sorts the results using [exh.recs.RecommendationScorer].
  *
  * One instance is created per visible catalogue source when the cross-extension search preference
@@ -37,7 +37,7 @@ import xyz.nulldev.ts.api.http.serializer.FilterSerializer
  */
 internal class CrossExtensionGenreSearchSource(
     manga: Manga,
-    private val catalogueSource: CatalogueSource,
+    private val catalogueSource: Source,
     // KMK --> v0.7.43: when set (group-seeded recommendations), search by the combined/weighted
     // group tag list instead of this single manga's own genres.
     private val genreOverride: List<String>? = null,
@@ -216,7 +216,12 @@ internal class CrossExtensionGenreSearchSource(
                         // load, not just within this one source's own MAX_ENRICH_PER_SOURCE cap.
                         val enrich: suspend () -> Unit = {
                             runCatching {
-                                val details = catalogueSource.getMangaDetails(smanga)
+                                val details = catalogueSource.getMangaUpdate(
+                                    manga = smanga,
+                                    chapters = emptyList(),
+                                    fetchDetails = true,
+                                    fetchChapters = false,
+                                ).manga
                                 smanga.genre = details.genre
                                 smanga.description = details.description
                                 smanga.status = details.status

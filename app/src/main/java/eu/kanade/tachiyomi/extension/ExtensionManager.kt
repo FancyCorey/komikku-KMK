@@ -274,14 +274,14 @@ class ExtensionManager(
                 // Ext found: Update installed extensions with new information from repo
                 // Also clear isObsolete and set new repo Name if needed
                 val hasUpdate = extension.updateExists(availableExt)
+                // KMK -->
                 installedExtensionsMap[pkgName] = extension.copy(
                     hasUpdate = hasUpdate,
-                    repoUrl = availableExt.repoUrl,
-                    // KMK -->
+                    store = availableExt.store,
                     isObsolete = false,
-                    repoName = extension.repoName ?: availableExt.repoName,
-                    // KMK <--
+                    storeName = extension.storeName ?: availableExt.storeName,
                 )
+                // KMK <--
                 changed = true
             }
         }
@@ -303,7 +303,7 @@ class ExtensionManager(
         extension: Extension.Available,
         installerOverride: BasePreferences.ExtensionInstaller? = null,
     ): Flow<InstallStep> {
-        return installer.downloadAndInstall(api.getApkUrl(extension), extension, installerOverride)
+        return installer.downloadAndInstall(extension.apkUrl, extension, installerOverride)
     }
     // KMK <--
 

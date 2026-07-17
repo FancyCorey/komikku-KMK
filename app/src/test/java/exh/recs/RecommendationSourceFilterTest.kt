@@ -1,7 +1,7 @@
 package exh.recs
 
 // KMK -->
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test
 
 class RecommendationSourceFilterTest {
 
-    private fun source(id: Long, lang: String, name: String = "Source$id"): CatalogueSource = object : CatalogueSource {
+    private fun source(id: Long, lang: String, name: String = "Source$id"): Source = object : Source {
         override val id = id
         override val name = name
         override val lang = lang
@@ -20,8 +20,12 @@ class RecommendationSourceFilterTest {
         override suspend fun getPopularManga(page: Int): MangasPage = MangasPage(emptyList(), false)
         override suspend fun getLatestUpdates(page: Int): MangasPage = MangasPage(emptyList(), false)
         override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = MangasPage(emptyList(), false)
-        override suspend fun getMangaDetails(manga: SManga): SManga = manga
-        override suspend fun getChapterList(manga: SManga) = emptyList<eu.kanade.tachiyomi.source.model.SChapter>()
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ) = eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, emptyList())
         override suspend fun getPageList(chapter: eu.kanade.tachiyomi.source.model.SChapter) = emptyList<eu.kanade.tachiyomi.source.model.Page>()
         override fun getFilterList(): FilterList = FilterList()
     }

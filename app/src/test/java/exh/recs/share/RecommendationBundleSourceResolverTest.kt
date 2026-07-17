@@ -1,6 +1,7 @@
 package exh.recs.share
 
 import eu.kanade.tachiyomi.extension.model.Extension
+import mihon.domain.extension.model.ExtensionStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
@@ -166,11 +167,19 @@ class RecommendationBundleSourceResolverTest {
         lang = "en",
         isNsfw = false,
         signatureHash = sigHash,
-        repoName = "test-repo",
+        storeName = "test-repo",
         sources = emptyList(),
-        apkName = "$pkgName.apk",
+        apkUrl = "https://test-repo.example.com/apk/$pkgName.apk",
         iconUrl = "",
-        repoUrl = "",
+        store = ExtensionStore(
+            indexUrl = "",
+            name = "test-repo",
+            badgeLabel = "test-repo",
+            signingKey = sigHash,
+            contact = ExtensionStore.Contact(website = "", discord = null),
+            isLegacy = false,
+            extensionListUrl = null,
+        ),
     )
 
     @Test

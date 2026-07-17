@@ -1,7 +1,7 @@
 package exh.recs
 
 // KMK -->
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 
 internal object RecommendationSourceFilter {
 
@@ -16,9 +16,9 @@ internal object RecommendationSourceFilter {
         return normalized.ifEmpty { DefaultLanguages }
     }
 
-    fun isLocalSource(source: CatalogueSource): Boolean = source.id == LOCAL_SOURCE_ID
+    fun isLocalSource(source: Source): Boolean = source.id == LOCAL_SOURCE_ID
 
-    fun isAllowedLanguage(source: CatalogueSource, normalizedLanguages: Set<String>): Boolean =
+    fun isAllowedLanguage(source: Source, normalizedLanguages: Set<String>): Boolean =
         source.lang.lowercase() in normalizedLanguages
 
     /**
@@ -26,10 +26,10 @@ internal object RecommendationSourceFilter {
      * [includeLocal] can override the Local Source exclusion.
      */
     fun filterForRecommendations(
-        sources: List<CatalogueSource>,
+        sources: List<Source>,
         languages: Set<String>,
         includeLocal: Boolean = false,
-    ): List<CatalogueSource> {
+    ): List<Source> {
         val langs = normalizeLanguages(languages)
         return sources.filter { source ->
             if (isLocalSource(source) && !includeLocal) return@filter false
@@ -41,7 +41,7 @@ internal object RecommendationSourceFilter {
      * Returns the distinct sorted list of language codes from [sources], excluding Local Source lang.
      * Used to populate the available-languages chip list in settings.
      */
-    fun availableLanguages(sources: List<CatalogueSource>): List<String> =
+    fun availableLanguages(sources: List<Source>): List<String> =
         sources
             .filter { !isLocalSource(it) }
             .map { it.lang.lowercase() }

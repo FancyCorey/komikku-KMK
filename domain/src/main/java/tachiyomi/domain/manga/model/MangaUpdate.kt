@@ -1,6 +1,7 @@
 package tachiyomi.domain.manga.model
 
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.serialization.json.JsonObject
 
 data class MangaUpdate(
     val id: Long,
@@ -25,6 +26,9 @@ data class MangaUpdate(
     val initialized: Boolean? = null,
     val version: Long? = null,
     val notes: String? = null,
+    // KMK --> 1.14.0 reconciliation: mangas.memo column
+    val memo: JsonObject? = null,
+    // KMK <--
     // SY -->
     val filteredScanlators: List<String>? = null,
     // SY <--
@@ -56,5 +60,8 @@ fun Manga.toMangaUpdate(): MangaUpdate {
         initialized = initialized,
         version = version,
         notes = notes,
+        // KMK -->
+        memo = memo,
+        // KMK <--
     )
 }

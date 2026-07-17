@@ -75,7 +75,7 @@ class GetNonInstalledSourceSuggestions(
                 InstalledExtensionHints(
                     signatureHash = ext.signatureHash,
                     pkgName = ext.pkgName,
-                    repoName = ext.repoName,
+                    repoName = ext.storeName,
                     sourceNames = ext.sources.map { it.name },
                 )
             }

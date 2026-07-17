@@ -10,7 +10,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.isOnline
@@ -200,7 +200,7 @@ class BrowsePersonalRecommendationsScreenModel(
 
     /** Outcome returned by [searchSource] — carries result, status, and strategy for the caller. */
     private data class SourceSearchOutcome(
-        val source: CatalogueSource,
+        val source: Source,
         val result: PersonalRecommendationResult,
         val successfulStrategy: RecommendationQueryStrategyType?,
         val status: RecommendationSourceRunStatus,
@@ -260,7 +260,7 @@ class BrowsePersonalRecommendationsScreenModel(
         val storedOrder = RecommendationSourceOrdering.parse(sourcePreferences.recommendationSourceOrder().get())
         // KMK --> v0.7.40: use shared selector (language filter + ordering + disabled exclusion)
         val orderedEnabledSources = RecommendationSourceSelector.select(
-            sources = sourceManager.getVisibleCatalogueSources(),
+            sources = sourceManager.getVisibleSources(),
             languages = recommendationLanguages,
             storedOrder = storedOrder,
             effectiveDisabledIds = effectiveDisabledIds,
@@ -414,7 +414,7 @@ class BrowsePersonalRecommendationsScreenModel(
      * the result, diagnostic status, and the successful query strategy (if any).
      */
     private suspend fun searchSource(
-        source: CatalogueSource,
+        source: Source,
         queryKey: String,
         fingerprint: String,
         topTags: List<String>,
@@ -983,7 +983,7 @@ class BrowsePersonalRecommendationsScreenModel(
      * the fully filtered result — a known-only page is never recorded as successful/visible.
      */
     private suspend fun discoverAdditionalPage(
-        source: CatalogueSource,
+        source: Source,
         // KMK --> v0.7.40: full progress records replace Set<Int> so planner can classify failures
         progressRecords: List<RecommendationDiscoveryProgress>,
         // KMK <--
@@ -1171,7 +1171,7 @@ class BrowsePersonalRecommendationsScreenModel(
     }
 
     private fun updateItem(
-        source: CatalogueSource,
+        source: Source,
         result: PersonalRecommendationResult,
         status: RecommendationSourceRunStatus? = null,
     ) {
@@ -1202,11 +1202,11 @@ class BrowsePersonalRecommendationsScreenModel(
 
     @Immutable
     data class State(
-        val items: PersistentMap<CatalogueSource, PersonalRecommendationResult> = persistentMapOf(),
+        val items: PersistentMap<Source, PersonalRecommendationResult> = persistentMapOf(),
         val searchContexts: PersistentMap<Long, RecommendationSearchContext> = persistentMapOf(),
         // KMK -->
         /** Sources in priority order — used to render For You rows in the correct sequence. */
-        val sourceOrder: PersistentList<CatalogueSource> = persistentListOf(),
+        val sourceOrder: PersistentList<Source> = persistentListOf(),
         /** Top Picks row — up to [TOP_PICKS_ROW_CAP] results derived from all fetched source results. */
         val combinedResult: PersonalRecommendationResult? = null,
         /** Full Top Picks detail — up to [TOP_PICKS_DETAIL_CAP] results for the drill-down screen. */
@@ -1223,7 +1223,7 @@ class BrowsePersonalRecommendationsScreenModel(
         val progress: Int = items.count { it.value !is PersonalRecommendationResult.Loading }
         val total: Int = items.size
 
-        fun dedupedItems(): PersistentMap<CatalogueSource, PersonalRecommendationResult> {
+        fun dedupedItems(): PersistentMap<Source, PersonalRecommendationResult> {
             val winner = mutableMapOf<String, PersonalRecommendation>()
             items.values.forEach { result ->
                 if (result is PersonalRecommendationResult.Success) {

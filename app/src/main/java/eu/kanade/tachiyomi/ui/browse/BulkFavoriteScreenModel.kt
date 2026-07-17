@@ -9,9 +9,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.fastForEachIndexed
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
-import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
@@ -27,6 +25,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
@@ -58,7 +57,7 @@ class BulkFavoriteScreenModel(
     private val coverCache: CoverCache = Injekt.get(),
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
 ) : StateScreenModel<BulkFavoriteScreenModel.State>(initialState) {
 
     fun backHandler() {
@@ -256,16 +255,13 @@ class BulkFavoriteScreenModel(
                 val fetchMetadataOnAdd = libraryPreferences.fetchMetadataOnAdd().get()
                 val fetchChaptersOnAdd = libraryPreferences.fetchChaptersOnAdd().get()
                 if (fetchMetadataOnAdd || fetchChaptersOnAdd) {
-                    val sManga = manga.toSManga()
-                    if (fetchMetadataOnAdd) {
-                        val remoteMetadata = source.getMangaDetails(sManga)
-                        // Use `manga` instead of `new` so its title got updated with source's `getMangaDetails`
-                        updateManga.awaitUpdateFromSource(manga, remoteMetadata, false, coverCache)
-                    }
-                    if (fetchChaptersOnAdd) {
-                        val chapters = source.getChapterList(sManga)
-                        syncChaptersWithSource.await(chapters, manga, source, false)
-                    }
+                    // Use `manga` instead of `new` so its title got updated with source's remote details
+                    updateMangaFromRemote(
+                        source = source,
+                        manga = manga,
+                        fetchDetails = fetchMetadataOnAdd,
+                        fetchChapters = fetchChaptersOnAdd,
+                    ).getOrThrow()
                 }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
@@ -358,16 +354,13 @@ class BulkFavoriteScreenModel(
             if (new.favorite && (fetchMetadataOnAdd || fetchChaptersOnAdd)) {
                 withIOContext {
                     try {
-                        val sManga = manga.toSManga()
-                        if (fetchMetadataOnAdd) {
-                            val remoteMetadata = source.getMangaDetails(sManga)
-                            // Use `manga` instead of `new` so its title got updated with source's `getMangaDetails`
-                            updateManga.awaitUpdateFromSource(manga, remoteMetadata, false, coverCache)
-                        }
-                        if (fetchChaptersOnAdd) {
-                            val chapters = source.getChapterList(sManga)
-                            syncChaptersWithSource.await(chapters, manga, source, false)
-                        }
+                        // Use `manga` instead of `new` so its title got updated with source's remote details
+                        updateMangaFromRemote(
+                            source = source,
+                            manga = manga,
+                            fetchDetails = fetchMetadataOnAdd,
+                            fetchChapters = fetchChaptersOnAdd,
+                        ).getOrThrow()
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR, e)
                     }

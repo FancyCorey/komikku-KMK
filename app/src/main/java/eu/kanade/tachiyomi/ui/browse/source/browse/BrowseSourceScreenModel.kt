@@ -16,9 +16,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.core.preference.asState
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
-import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.interactor.GetExhSavedSearch
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.interactor.ToggleIncognito
@@ -60,6 +58,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import logcat.LogPriority
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
@@ -118,7 +117,7 @@ open class BrowseSourceScreenModel(
     // KMK -->
     private val toggleIncognito: ToggleIncognito = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     // KMK <--
 
     // SY -->
@@ -427,16 +426,13 @@ open class BrowseSourceScreenModel(
             if (new.favorite && (fetchMetadataOnAdd || fetchChaptersOnAdd)) {
                 withIOContext {
                     try {
-                        val sManga = manga.toSManga()
-                        if (fetchMetadataOnAdd) {
-                            val remoteMetadata = source.getMangaDetails(sManga)
-                            // Use `manga` instead of `new` so its title got updated with source's `getMangaDetails`
-                            updateManga.awaitUpdateFromSource(manga, remoteMetadata, false, coverCache)
-                        }
-                        if (fetchChaptersOnAdd) {
-                            val chapters = source.getChapterList(sManga)
-                            syncChaptersWithSource.await(chapters, manga, source, false)
-                        }
+                        // Use `manga` instead of `new` so its title got updated with source's remote details
+                        updateMangaFromRemote(
+                            source = source,
+                            manga = manga,
+                            fetchDetails = fetchMetadataOnAdd,
+                            fetchChapters = fetchChaptersOnAdd,
+                        ).getOrThrow()
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR, e)
                     }

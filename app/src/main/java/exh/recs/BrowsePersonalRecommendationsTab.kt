@@ -41,7 +41,7 @@ import eu.kanade.presentation.browse.components.GlobalSearchResultItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.util.formattedMessage
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
@@ -69,7 +69,7 @@ fun Screen.personalRecommendationsTab(): TabContent {
     val scope = rememberCoroutineScope()
 
     // KMK --> v0.7.5: source row targeted for export (null = Top Picks)
-    var pendingExportSource by remember { mutableStateOf<CatalogueSource?>(null) }
+    var pendingExportSource by remember { mutableStateOf<Source?>(null) }
     var pendingExportIsTopPicks by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -195,10 +195,10 @@ private fun PersonalRecommendationsContent(
     state: BrowsePersonalRecommendationsScreenModel.State,
     getManga: @Composable (Manga) -> State<Manga>,
     onClickItem: (Manga) -> Unit,
-    onClickSource: (CatalogueSource) -> Unit,
+    onClickSource: (Source) -> Unit,
     onClickTopPicks: () -> Unit,
     // KMK --> v0.7.5: export source row on long press
-    onLongClickSource: ((CatalogueSource) -> Unit)? = null,
+    onLongClickSource: ((Source) -> Unit)? = null,
     // KMK <--
     // KMK --> v0.7.25: retry callback for offline state
     onRetry: () -> Unit = {},

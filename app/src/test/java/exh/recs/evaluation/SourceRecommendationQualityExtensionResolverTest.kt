@@ -1,6 +1,7 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.extension.model.Extension
+import mihon.domain.extension.model.ExtensionStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
@@ -24,11 +25,19 @@ class SourceRecommendationQualityExtensionResolverTest {
         lang = lang,
         isNsfw = false,
         signatureHash = sig,
-        repoName = "test-repo",
+        storeName = "test-repo",
         sources = emptyList(),
-        apkName = "$pkg.apk",
+        apkUrl = "https://test-repo.example.com/apk/$pkg.apk",
         iconUrl = "",
-        repoUrl = "",
+        store = ExtensionStore(
+            indexUrl = "",
+            name = "test-repo",
+            badgeLabel = "test-repo",
+            signingKey = sig,
+            contact = ExtensionStore.Contact(website = "", discord = null),
+            isLegacy = false,
+            extensionListUrl = null,
+        ),
     )
 
     private fun makeEval(

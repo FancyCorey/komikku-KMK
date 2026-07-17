@@ -1,6 +1,6 @@
 package exh.recs.matching
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import tachiyomi.domain.manga.model.Manga
 
 // KMK --> v0.7.8
@@ -13,7 +13,7 @@ sealed interface SameMangaCandidateResult {
 
 /** Source + result pair returned from [SameMangaCandidateSearcher]. */
 data class SameMangaSourceResult(
-    val source: CatalogueSource,
+    val source: Source,
     val result: SameMangaCandidateResult,
 )
 // KMK <--

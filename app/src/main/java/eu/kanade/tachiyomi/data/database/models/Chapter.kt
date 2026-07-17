@@ -3,6 +3,8 @@
 package eu.kanade.tachiyomi.data.database.models
 
 import eu.kanade.tachiyomi.source.model.SChapter
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 import java.io.Serializable
 import tachiyomi.domain.chapter.model.Chapter as DomainChapter
 
@@ -47,5 +49,9 @@ fun Chapter.toDomainChapter(): DomainChapter? {
         scanlator = scanlator,
         lastModifiedAt = last_modified,
         version = version,
+        // KMK --> 1.14.0 reconciliation: chapters.memo column; this legacy bridge type doesn't
+        // track it, so vacant/default is the only faithful value available here.
+        memo = JsonObject.EMPTY,
+        // KMK <--
     )
 }

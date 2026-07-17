@@ -57,7 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceRunStatus
 import exh.recs.RecommendationSourceStatus
 import exh.recs.SourceFitLabel
@@ -399,7 +399,7 @@ internal fun SameMangaSwitchRow(
 
 @Composable
 internal fun ReorderableCollectionItemScope.SourcePriorityItem(
-    source: CatalogueSource,
+    source: Source,
     rank: Int,
     isBoosted: Boolean,
     enabled: Boolean,
