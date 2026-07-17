@@ -52,6 +52,8 @@ class RecommendationDiagnosticsSettingsScreen(
                 "discovery_cache_header",
                 "enrichment_cap",
                 "clear_discovery_history",
+                "taste_diagnostics_header",
+                "taste_diagnostics_content",
             )
         }
         ScrollToAnchorEffect(lazyListState, itemKeysInOrder, anchor)
@@ -101,6 +103,16 @@ class RecommendationDiagnosticsSettingsScreen(
                     ) {
                         Text(stringResource(KMR.strings.rec_reset_discovery_history))
                     }
+                }
+                // KMK v0.8.10: local, privacy-safe taste diagnostics -- see TasteDiagnosticsContent.
+                item(key = "taste_diagnostics_header") {
+                    SectionHeader(
+                        stringResource(KMR.strings.taste_diagnostics_header),
+                        summary = null,
+                    )
+                }
+                item(key = "taste_diagnostics_content") {
+                    TasteDiagnosticsContent(diagnostics = state.tasteDiagnostics)
                 }
             }
         }

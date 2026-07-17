@@ -29,7 +29,7 @@ class RecommendationTasteTagsSettingsScreen(
         val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
         val lazyListState = rememberLazyListState()
-        val itemKeysInOrder = remember { listOf("tag_header", "tag_content") }
+        val itemKeysInOrder = remember { listOf("tag_header", "tag_content", "suggestions_header", "suggestions_content") }
         ScrollToAnchorEffect(lazyListState, itemKeysInOrder, anchor)
 
         Scaffold(
@@ -55,6 +55,18 @@ class RecommendationTasteTagsSettingsScreen(
                         onAddClicked = screenModel::openAddTagDialog,
                         onEditClicked = screenModel::openEditTagDialog,
                         onDeleteClicked = screenModel::removeTagPreference,
+                    )
+                }
+                // KMK v0.8.10: taste suggestions -- derived purely from the user's own rated manga,
+                // added via the exact same TagPreference mutation as the dialog above.
+                item(key = "suggestions_header") {
+                    SectionHeader(stringResource(KMR.strings.taste_suggestions_header))
+                }
+                item(key = "suggestions_content") {
+                    TasteSuggestionsContent(
+                        suggestions = state.tasteSuggestions,
+                        onAddPreferred = { screenModel.addTasteSuggestion(it, TagPreference.PREFER) },
+                        onAddBlocked = { screenModel.addTasteSuggestion(it, TagPreference.BLOCK) },
                     )
                 }
             }

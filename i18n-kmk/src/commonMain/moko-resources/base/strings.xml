@@ -370,6 +370,26 @@
     <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_sort_best_fit">Best fit</string>
     <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_sort_name">Name</string>
     <!-- KMK v0.8.10 --> <string name="rec_sources_to_try_sort_language">Language</string>
+    <!-- KMK v0.8.10: Taste suggestions -->
+    <!-- KMK --> <string name="taste_suggestions_header">Suggestions from your ratings</string>
+    <!-- KMK --> <string name="taste_suggestions_insufficient_data">Rate a few more manga to get tag suggestions.</string>
+    <!-- KMK --> <string name="taste_suggestions_none_found">No new suggestions right now — your rated manga don\'t share a strong enough tag pattern yet.</string>
+    <!-- KMK --> <string name="taste_suggestions_preferred_header">Might want to prefer</string>
+    <!-- KMK --> <string name="taste_suggestions_blocked_header">Might want to block</string>
+    <!-- KMK --> <string name="taste_suggestions_add_preferred">Prefer</string>
+    <!-- KMK --> <string name="taste_suggestions_add_blocked">Block</string>
+    <!-- KMK --> <string name="taste_suggestions_evidence_count">Based on %1$d of your rated manga</string>
+    <!-- KMK v0.8.10: Taste diagnostics -->
+    <!-- KMK --> <string name="taste_diagnostics_header">Taste diagnostics</string>
+    <!-- KMK --> <string name="taste_diagnostics_loading">Loading diagnostics…</string>
+    <!-- KMK --> <string name="taste_diagnostics_rating_counts">Loved %1$d · Liked %2$d · Disliked %3$d</string>
+    <!-- KMK --> <string name="taste_diagnostics_confidence">Usable signals: %1$d positive, %2$d negative</string>
+    <!-- KMK --> <string name="taste_diagnostics_confidence_sufficient">Enough signal for personalized source evaluation.</string>
+    <!-- KMK --> <string name="taste_diagnostics_confidence_insufficient">Not enough signal yet for reliable personalized source evaluation — scores are still shown but low-confidence.</string>
+    <!-- KMK --> <string name="taste_diagnostics_preferred_tags_header">Preferred tags (%1$d)</string>
+    <!-- KMK --> <string name="taste_diagnostics_blocked_tags_header">Blocked tags (%1$d)</string>
+    <!-- KMK --> <string name="taste_diagnostics_tag_evidence_row">%1$s — %2$d rated manga</string>
+    <!-- KMK --> <string name="taste_diagnostics_signals_explanation">Used: manga ratings, their genres, and your explicit tag preferences. Not used: reading history, extension/source content, or anything not already stored for the taste system.</string>
     <!-- KMK v0.6.11 Shizuku setup -->
     <!-- KMK --> <string name="shizuku_setup_title">Shizuku</string>
     <!-- KMK --> <string name="shizuku_status_not_installed">Not installed</string>

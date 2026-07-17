@@ -44,8 +44,13 @@ import tachiyomi.domain.taste.interactor.ClearRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.ClearTagTaste
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetTagTaste
+import tachiyomi.domain.taste.interactor.GetTasteDiagnostics
+import tachiyomi.domain.taste.interactor.GetTasteSuggestions
 import tachiyomi.domain.taste.interactor.SetRecommendationSourceEnabled
 import tachiyomi.domain.taste.interactor.SetTagTaste
+import tachiyomi.domain.taste.interactor.TasteDiagnosticsResult
+import tachiyomi.domain.taste.interactor.TasteSuggestionCandidate
+import tachiyomi.domain.taste.interactor.TasteSuggestionResult
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.TagPreference
 import tachiyomi.domain.taste.model.TagTaste
@@ -69,6 +74,15 @@ class RecommendationsSettingsScreenModel(
     // KMK <--
     // KMK --> v0.7.39: also clear discovery progress when user resets discovery history
     private val clearDiscoveryProgress: ClearRecommendationDiscoveryProgress = Injekt.get(),
+    // KMK <--
+    // KMK v0.8.10: Taste suggestions + diagnostics -- both read-only, on-demand (same pattern as
+    // GetTasteProfile.await() elsewhere), deliberately not reactive Flow subscriptions since they
+    // aggregate over all rated manga + genres, which would be expensive to recompute on every tag
+    // preference keystroke. Reloaded explicitly: once at init, and once after any tag preference
+    // change (add/edit/remove), which is exactly when a suggestion could newly qualify or newly
+    // need excluding.
+    private val getTasteSuggestions: GetTasteSuggestions = Injekt.get(),
+    private val getTasteDiagnostics: GetTasteDiagnostics = Injekt.get(),
     // KMK <--
 ) : StateScreenModel<RecommendationsSettingsScreenModel.State>(State()) {
 
@@ -225,6 +239,9 @@ class RecommendationsSettingsScreenModel(
                         boostedSourceIds = boosted,
                     )
                 }
+                // KMK v0.8.10: a changed tag preference set can change which suggestions qualify
+                // (newly excluded, or newly re-eligible after a removal) -- reload to stay accurate.
+                loadTasteInsights()
             }
         }
 
@@ -234,6 +251,46 @@ class RecommendationsSettingsScreenModel(
         }
         // KMK <--
     }
+
+    // KMK v0.8.10: Taste suggestions + diagnostics loading -->
+    /**
+     * Loads (or reloads) both the taste-suggestion candidates and the diagnostics summary. Safe to
+     * call repeatedly -- guarded against overlapping loads so a rapid sequence of tag preference
+     * changes doesn't queue up redundant DB scans.
+     */
+    private fun loadTasteInsights() {
+        if (state.value.tasteInsightsLoading) return
+        mutableState.update { it.copy(tasteInsightsLoading = true) }
+        screenModelScope.launch {
+            try {
+                val suggestions = getTasteSuggestions.await()
+                val diagnostics = getTasteDiagnostics.await()
+                mutableState.update {
+                    it.copy(tasteSuggestions = suggestions, tasteDiagnostics = diagnostics, tasteInsightsLoading = false)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Local-DB-only aggregation; a failure here must never crash the settings screen --
+                // simply leave the previous (possibly empty) insights in place.
+                mutableState.update { it.copy(tasteInsightsLoading = false) }
+            }
+        }
+    }
+
+    /** Explicit user-triggered refresh (e.g. a refresh action on the suggestions/diagnostics screens). */
+    fun refreshTasteInsights() = loadTasteInsights()
+
+    /**
+     * Adds a suggested tag as an explicit preference, using the exact same mutation path
+     * ([setTagPreference]) a manually-added tag preference already uses -- fully reversible via the
+     * existing remove/edit tag preference actions, and the suggestions list itself is reloaded
+     * automatically once the tag preference change propagates through [getTagTaste]'s subscription.
+     */
+    fun addTasteSuggestion(candidate: TasteSuggestionCandidate, preference: TagPreference) {
+        setTagPreference(candidate.displayName, preference)
+    }
+    // KMK <--
 
     fun setRatedMangaVisibility(visibility: RatedMangaVisibility) {
         ratedVisibilityPref.set(visibility)
@@ -743,6 +800,11 @@ class RecommendationsSettingsScreenModel(
         val sameMangaPreselectResults: Boolean = true,
         val bestVersionPreviewSampleSize: Int = 5,
         val bestVersionAvoidFirstPages: Boolean = true,
+        // KMK <--
+        // KMK v0.8.10: taste suggestions + diagnostics
+        val tasteSuggestions: TasteSuggestionResult = TasteSuggestionResult(persistentListOf(), persistentListOf(), 0),
+        val tasteDiagnostics: TasteDiagnosticsResult? = null,
+        val tasteInsightsLoading: Boolean = false,
         // KMK <--
         // KMK <--
     ) {

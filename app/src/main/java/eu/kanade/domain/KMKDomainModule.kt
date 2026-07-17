@@ -58,7 +58,9 @@ import tachiyomi.domain.taste.interactor.GetSourceEvaluations
 import tachiyomi.domain.taste.interactor.GetSourceRecommendationFit
 import tachiyomi.domain.taste.interactor.GetTagAliases
 import tachiyomi.domain.taste.interactor.GetTagTaste
+import tachiyomi.domain.taste.interactor.GetTasteDiagnostics
 import tachiyomi.domain.taste.interactor.GetTasteProfile
+import tachiyomi.domain.taste.interactor.GetTasteSuggestions
 import tachiyomi.domain.taste.interactor.GetUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.MarkSourceEvaluationUnsafe
 import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
@@ -117,6 +119,13 @@ class KMKDomainModule : InjektModule {
         addFactory { SetMangaTasteBatch(get()) }
         addFactory { ClearMangaTaste(get()) }
         addFactory { GetTasteProfile(get(), get()) }
+        // KMK v0.8.10: Taste Suggestions -- deliberately a separate read-only interactor from
+        // GetTasteProfile above (which feeds live recommendation/source-evaluation scoring and is
+        // not touched by this addition).
+        addFactory { GetTasteSuggestions(get(), get()) }
+        // KMK v0.8.10: Diagnostics -- read-only, reuses GetTasteProfile (via Injekt.get() above)
+        // for the confidence signal instead of recomputing it a second way.
+        addFactory { GetTasteDiagnostics(get(), get(), get()) }
         addFactory { GetTagTaste(get()) }
         addFactory { SetTagTaste(get()) }
         addFactory { ClearTagTaste(get()) }

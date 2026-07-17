@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceRunStatus
 import exh.recs.RecommendationSourceStatus
@@ -72,6 +73,9 @@ import exh.recs.discovery.SuggestionConfidence
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import sh.calvin.reorderable.ReorderableCollectionItemScope
+import tachiyomi.domain.taste.interactor.TasteDiagnosticsResult
+import tachiyomi.domain.taste.interactor.TasteSuggestionCandidate
+import tachiyomi.domain.taste.interactor.TasteSuggestionResult
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.TagPreference
 import tachiyomi.domain.taste.model.TagTaste
@@ -784,3 +788,193 @@ internal fun SourceSuggestionItem(
         }
     }
 }
+
+// KMK v0.8.10 -->
+/**
+ * One taste suggestion row: a tag name, its evidence count, and a single "Add" action. Adding
+ * routes through the same [TagPreference] mutation every manually-added tag preference already
+ * uses, so it is fully reversible from the existing tag preference chips above.
+ */
+@Composable
+private fun TasteSuggestionRow(
+    candidate: TasteSuggestionCandidate,
+    actionLabel: StringResource,
+    onAdd: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = MaterialTheme.padding.extraSmall),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = candidate.displayName, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = stringResource(KMR.strings.taste_suggestions_evidence_count, candidate.evidenceCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onAdd) {
+            Text(stringResource(actionLabel))
+        }
+    }
+}
+
+/**
+ * Preferred/blocked tag suggestions derived purely from the user's own rated manga -- see
+ * [TasteSuggestionAggregator][tachiyomi.domain.taste.interactor.TasteSuggestionAggregator] for the
+ * aggregation rules (minimum evidence count, alias resolution, exclusion of already-set tags).
+ */
+@Composable
+internal fun TasteSuggestionsContent(
+    suggestions: TasteSuggestionResult,
+    onAddPreferred: (TasteSuggestionCandidate) -> Unit,
+    onAddBlocked: (TasteSuggestionCandidate) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium),
+    ) {
+        when {
+            suggestions.hasInsufficientData -> Text(
+                text = stringResource(KMR.strings.taste_suggestions_insufficient_data),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            suggestions.preferred.isEmpty() && suggestions.blocked.isEmpty() -> Text(
+                text = stringResource(KMR.strings.taste_suggestions_none_found),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> {
+                if (suggestions.preferred.isNotEmpty()) {
+                    Text(
+                        text = stringResource(KMR.strings.taste_suggestions_preferred_header),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    suggestions.preferred.forEach { candidate ->
+                        TasteSuggestionRow(
+                            candidate = candidate,
+                            actionLabel = KMR.strings.taste_suggestions_add_preferred,
+                            onAdd = { onAddPreferred(candidate) },
+                        )
+                    }
+                }
+                if (suggestions.blocked.isNotEmpty()) {
+                    Text(
+                        text = stringResource(KMR.strings.taste_suggestions_blocked_header),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = if (suggestions.preferred.isNotEmpty()) MaterialTheme.padding.medium else 0.dp),
+                    )
+                    suggestions.blocked.forEach { candidate ->
+                        TasteSuggestionRow(
+                            candidate = candidate,
+                            actionLabel = KMR.strings.taste_suggestions_add_blocked,
+                            onAdd = { onAddBlocked(candidate) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Local, privacy-safe diagnostics: rating counts, evidence behind currently-set tag preferences,
+ * and a metadata-confidence summary -- all derived from data the app already collects, nothing new
+ * is read and no raw URLs/cookies/extension internals/full manga content are ever shown.
+ */
+@Composable
+internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium),
+    ) {
+        if (diagnostics == null) {
+            Text(
+                text = stringResource(KMR.strings.taste_diagnostics_loading),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+
+        val summary = diagnostics.summary
+        Text(
+            text = stringResource(
+                KMR.strings.taste_diagnostics_rating_counts,
+                summary.ratingCounts.love,
+                summary.ratingCounts.like,
+                summary.ratingCounts.dislike,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = stringResource(
+                KMR.strings.taste_diagnostics_confidence,
+                diagnostics.confidence.usablePositiveTagCount,
+                diagnostics.confidence.usableNegativeTagCount,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+        )
+        Text(
+            text = stringResource(
+                if (diagnostics.confidence.isSufficientForPersonalizedEvaluation) {
+                    KMR.strings.taste_diagnostics_confidence_sufficient
+                } else {
+                    KMR.strings.taste_diagnostics_confidence_insufficient
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (summary.preferredTagEvidence.isNotEmpty()) {
+            Text(
+                text = stringResource(KMR.strings.taste_diagnostics_preferred_tags_header, summary.explicitPreferredTagCount),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = MaterialTheme.padding.medium),
+            )
+            summary.preferredTagEvidence.forEach { evidence ->
+                Text(
+                    text = stringResource(KMR.strings.taste_diagnostics_tag_evidence_row, evidence.displayName, evidence.evidenceCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (summary.blockedTagEvidence.isNotEmpty()) {
+            Text(
+                text = stringResource(KMR.strings.taste_diagnostics_blocked_tags_header, summary.explicitBlockedTagCount),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = MaterialTheme.padding.medium),
+            )
+            summary.blockedTagEvidence.forEach { evidence ->
+                Text(
+                    text = stringResource(KMR.strings.taste_diagnostics_tag_evidence_row, evidence.displayName, evidence.evidenceCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Text(
+            text = stringResource(KMR.strings.taste_diagnostics_signals_explanation),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = MaterialTheme.padding.medium),
+        )
+    }
+}
+// KMK <--
