@@ -38,8 +38,8 @@ data class Manga(
     val favoriteModifiedAt: Long?,
     val version: Long,
     val notes: String,
-    // KMK --> 1.14.0 reconciliation: official mangas.memo column, vacant/forward-compatible storage;
-    // not yet read or written by any KMK or official feature in this pass.
+    // KMK --> 1.14.0 reconciliation: official mangas.memo column, wired end-to-end through
+    // backup/restore, sync, and the source-fetch pipeline (SManga/SChapter -> Manga -> DB).
     val memo: JsonObject,
     // KMK <--
 ) : Serializable {
