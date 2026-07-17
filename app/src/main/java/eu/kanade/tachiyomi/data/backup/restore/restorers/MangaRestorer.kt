@@ -271,6 +271,9 @@ class MangaRestorer(
                     chapter.dateFetch,
                     chapter.dateUpload,
                     chapter.version,
+                    // KMK -->
+                    chapter.memo,
+                    // KMK <--
                 )
             }
         }
@@ -292,6 +295,7 @@ class MangaRestorer(
                     // KMK -->
                     sourceOrder = chapter.sourceOrder,
                     dateUpload = chapter.dateUpload,
+                    memo = MemoColumnAdapter.encode(chapter.memo),
                     // KMK <--
                     chapterId = chapter.id,
                     version = chapter.version,
@@ -332,6 +336,9 @@ class MangaRestorer(
                 updateStrategy = manga.updateStrategy,
                 version = manga.version,
                 notes = manga.notes,
+                // KMK -->
+                memo = manga.memo,
+                // KMK <--
             )
             mangasQueries.selectLastInsertedRowId()
         }
