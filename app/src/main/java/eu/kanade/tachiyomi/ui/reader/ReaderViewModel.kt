@@ -362,6 +362,15 @@ class ReaderViewModel @JvmOverloads constructor(
     @Volatile
     private var ratingPromptEvaluatedForChapterId: Long? = null
 
+    // KMK v0.8.10: the prompt is deferred to reader-exit (see ChapterCompletionPromptReducer) —
+    // this field replaces the old "set dialog immediately" behavior. Access is confined to the
+    // main thread (maybeShowChapterCompletionRatingPrompt runs its state-touching tail via
+    // withUIContext, and takePendingChapterCompletionRatingPromptForExit is only ever called from
+    // ReaderActivity.finish(), itself always on the main thread), so no additional synchronization
+    // is needed beyond @Volatile for cross-thread visibility.
+    @Volatile
+    private var chapterCompletionPromptState: ChapterCompletionPromptState = ChapterCompletionPromptState.None
+
     private suspend fun maybeShowChapterCompletionRatingPrompt(
         readerChapter: ReaderChapter,
         pageIndex: Int,
@@ -388,9 +397,33 @@ class ReaderViewModel @JvmOverloads constructor(
         if (!isGenuine) return
 
         val mangaId = manga?.id ?: return
+        // KMK v0.8.10: record the pending completion only — do NOT interrupt the reader. The
+        // dialog is shown later, when the reader is actually left (see
+        // takePendingChapterCompletionRatingPromptForExit / ReaderActivity.finish()).
         withUIContext {
-            mutableState.update { it.copy(dialog = Dialog.ChapterCompletionRating(mangaId)) }
+            chapterCompletionPromptState = ChapterCompletionPromptReducer.onGenuineCompletion(
+                chapterCompletionPromptState,
+                mangaId,
+            )
         }
+    }
+
+    /**
+     * Called by [ReaderActivity.finish] when the user is actually leaving the reader. Returns the
+     * manga id to show the rating prompt for, or null if there is nothing pending (the caller
+     * should proceed with a normal, immediate finish). Consuming is destructive: a second call in
+     * the same lifecycle always returns null, so the prompt is offered at most once per genuine
+     * completion, exactly like before this change — only the *timing* moved from mid-read to exit.
+     */
+    fun takePendingChapterCompletionRatingPromptForExit(): Long? {
+        val (mangaId, next) = ChapterCompletionPromptReducer.takeOnExit(chapterCompletionPromptState)
+        chapterCompletionPromptState = next
+        return mangaId
+    }
+
+    /** Shows the rating prompt dialog now. Only ever called right after [takePendingChapterCompletionRatingPromptForExit] returns non-null. */
+    fun showChapterCompletionRatingPromptNow(mangaId: Long) {
+        mutableState.update { it.copy(dialog = Dialog.ChapterCompletionRating(mangaId)) }
     }
 
     /** Commits [rating] via the same exclusive-rating mutation MangaScreenModel/LovedMangaScreenModel already use — no parallel rating path. */

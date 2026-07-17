@@ -456,6 +456,22 @@ class ReaderActivity : BaseActivity() {
             }
             // KMK <--
 
+            // KMK v0.8.10: once the deferred chapter-completion rating prompt (and its optional
+            // "rate other versions" step) resolves back to no dialog, actually finish() the
+            // activity that back-press/finish() deferred. Reacting to state.dialog here (rather
+            // than patching every dismiss/rate/mark-not-interested button individually) covers
+            // every dismissal path uniformly, including the system dialog back-press/scrim-tap
+            // dismiss that doesn't go through any button handler at all.
+            LaunchedEffect(state.dialog) {
+                if (awaitingChapterCompletionPromptResolution &&
+                    state.dialog !is ReaderViewModel.Dialog.ChapterCompletionRating &&
+                    state.dialog !is ReaderViewModel.Dialog.ChapterCompletionRatingGroupOffer
+                ) {
+                    awaitingChapterCompletionPromptResolution = false
+                    finish()
+                }
+            }
+
             val onDismissRequest = viewModel::closeDialog
             when (state.dialog) {
                 is ReaderViewModel.Dialog.Loading -> {
@@ -756,11 +772,32 @@ class ReaderActivity : BaseActivity() {
         assistUrl?.let { outContent.webUri = it.toUri() }
     }
 
+    // KMK v0.8.10: guards the deferred chapter-completion rating prompt (see
+    // ReaderViewModel.ChapterCompletionPromptState / finish() below). Plain Activity field, not
+    // Compose state -- finish() is a regular method, and this only needs to survive across the
+    // single finish() call that shows the dialog through to the LaunchedEffect below that observes
+    // its resolution; it intentionally does NOT need to survive process death (a fresh reader
+    // session after process death has no pending prompt to resolve).
+    private var awaitingChapterCompletionPromptResolution = false
+
     /**
      * Called when the user clicks the back key or the button on the toolbar. The call is
      * delegated to the presenter.
+     *
+     * KMK v0.8.10: if a chapter-completion rating prompt is pending for this exit, show it first
+     * and defer the actual finish -- see the LaunchedEffect(state.dialog) in setContent() that
+     * calls finish() again once the prompt (and, if offered, its "rate other versions" follow-up)
+     * has been resolved. Leaving the reader without a pending prompt is completely unaffected.
      */
     override fun finish() {
+        if (!awaitingChapterCompletionPromptResolution) {
+            val pendingMangaId = viewModel.takePendingChapterCompletionRatingPromptForExit()
+            if (pendingMangaId != null) {
+                awaitingChapterCompletionPromptResolution = true
+                viewModel.showChapterCompletionRatingPromptNow(pendingMangaId)
+                return
+            }
+        }
         viewModel.onActivityFinish()
         super.finish()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
