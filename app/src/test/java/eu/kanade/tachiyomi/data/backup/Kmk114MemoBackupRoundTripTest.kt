@@ -129,5 +129,45 @@ class Kmk114MemoBackupRoundTripTest {
         assertEquals("Future", decoded.title)
         assertArrayEquals(JsonObjectEmptyBytes, decoded.memo)
     }
+
+    // Mirrors BackupDecoder.decode()'s own SerializationException -> IOException translation
+    // for corrupt/malformed backup payloads, without needing BackupDecoder's Android Context/Uri
+    // plumbing -- proves the failure signal it depends on actually fires for garbage bytes.
+    @Test
+    fun `decoding garbage bytes as a Backup throws a catchable SerializationException`() {
+        val garbage = byteArrayOf(-1, -2, -3, 0, 127, 5, 9, 33, -128, 64)
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+            kotlinx.serialization.SerializationException::class.java,
+        ) {
+            parser.decodeFromByteArray(eu.kanade.tachiyomi.data.backup.models.Backup.serializer(), garbage)
+        }
+    }
+
+    // NOTE: unlike outright-garbage bytes (which reliably throw SerializationException, caught by
+    // BackupDecoder.decode()'s `catch (_: SerializationException)`), a *truncated but otherwise
+    // well-formed* protobuf stream throws IndexOutOfBoundsException from kotlinx.serialization's
+    // protobuf reader -- which is NOT a SerializationException and would NOT be caught by
+    // BackupDecoder, letting a corrupted/truncated backup file crash instead of showing the
+    // "invalid backup file" error message. Verified this is not a reconciliation regression:
+    // BackupDecoder.kt is byte-identical between the official v1.13.6 and v1.14.0 tags, so this
+    // is a pre-existing gap in code this reconciliation didn't touch, not something to silently
+    // fix as a side effect here -- documented and flagged separately instead.
+    @Test
+    fun `decoding a truncated valid backup throws (but not the exception type BackupDecoder catches)`() {
+        val original = BackupManga(source = 1L, url = "/manga/x", title = "X")
+        val bytes = parser.encodeToByteArray(BackupManga.serializer(), original)
+        val truncated = bytes.copyOf(bytes.size / 2)
+
+        val thrown = org.junit.jupiter.api.Assertions.assertThrows(Throwable::class.java) {
+            parser.decodeFromByteArray(BackupManga.serializer(), truncated)
+        }
+        org.junit.jupiter.api.Assertions.assertFalse(
+            thrown is kotlinx.serialization.SerializationException,
+            "If this ever becomes a SerializationException, BackupDecoder's existing catch clause " +
+                "would actually handle truncated backups -- update this test to assertThrows " +
+                "SerializationException instead, and note the gap is closed.",
+        )
+    }
 }
 // KMK <--
