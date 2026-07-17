@@ -40,6 +40,24 @@ conditions) was not performed — no physical device was available in this envir
 detail. **This entire v0.8.x line is an internal/private handoff build for development — no public
 release has been prepared or requested.**
 
+### v0.8.10 Phase G decision: What's New completion (2026-07-17)
+
+The v0.8.10 corrective plan required an explicit, documented decision between (1) keeping historical
+`KmkRecsReleaseNotes.kt` entries unchanged with official New/Improve/Fix formatting applying from
+v0.8.9 onward, or (2) mechanically converting historical entries to that structure with an audit
+proving no meaning was lost. **Decision: Option 1 (keep-as-is)** — this was already the exact
+decision v0.8.9 made and documented in-code (see the comment above `KmkRecsReleaseNotes.MARKDOWN`),
+and `KmkRecsReleaseNotesTest.kt` already mechanically enforces it (no duplicate headings, no
+truncation, correct ordering, official-structure checks scoped to the newest entry only). Reconciled
+against the actual file rather than re-deciding from scratch: the real historical entry count is
+**84** (`## KMK-Recs vX.Y.Z` headings, v0.4.2 through v0.8.9) — not the plan's stated "76." Retroactively
+converting 83 historical entries remains, as v0.8.9 already found, a large, error-prone content
+rewrite disproportionate to a pure formatting change, with no user-facing benefit (the existing
+`GFMFlavourDescriptor`-based `MarkdownRender` already renders both the old flat-bullet form and the
+new structured form correctly side by side in the same changelog). No code change was required for
+this phase; the v0.8.10 entry itself will be added only once the v0.8.10 implementation is complete,
+per the plan's explicit instruction.
+
 ## Feature Version
 
 Current documented feature version:

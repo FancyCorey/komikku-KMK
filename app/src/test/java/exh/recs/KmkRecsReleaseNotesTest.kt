@@ -45,9 +45,12 @@ class KmkRecsReleaseNotesTest {
 
     @Test
     fun `history is substantial - no accidental truncation of older entries`() {
-        // Regression guard: this file has 70+ historical entries going back to v0.4.2. A truncation
-        // bug (e.g. an accidentally-closed triple-quoted string) would silently drop most of them.
-        assertTrue(headings().size >= 70, "expected at least 70 historical entries, found ${headings().size}")
+        // Regression guard: as of the v0.8.10 Phase G audit this file has 84 entries going back to
+        // v0.4.2 (confirmed by counting real "## KMK-Recs vX.Y.Z" headings, not the v0.8.10 plan's
+        // stated "76"). A truncation bug (e.g. an accidentally-closed triple-quoted string) would
+        // silently drop most of them; the >= bound intentionally still passes as future versions add
+        // more entries, without needing to be bumped every release.
+        assertTrue(headings().size >= 84, "expected at least 84 historical entries, found ${headings().size}")
     }
 
     @Test
