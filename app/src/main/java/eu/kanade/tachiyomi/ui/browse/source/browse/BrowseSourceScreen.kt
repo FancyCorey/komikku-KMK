@@ -155,7 +155,7 @@ data class BrowseSourceScreen(
             val source = screenModel.source as? HttpSource ?: return@f
             navigator.push(
                 WebViewScreen(
-                    url = source.baseUrl,
+                    url = source.getHomeUrl(),
                     initialTitle = source.name,
                     sourceId = source.id,
                 ),
@@ -172,7 +172,7 @@ data class BrowseSourceScreen(
         // KMK <--
 
         LaunchedEffect(screenModel.source) {
-            assistUrl = (screenModel.source as? HttpSource)?.baseUrl
+            assistUrl = (screenModel.source as? HttpSource)?.getHomeUrl()
         }
 
         // KMK -->
