@@ -2,9 +2,10 @@ package exh.recs
 
 // KMK -->
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
@@ -36,17 +37,22 @@ internal class RecommendationCandidateEnricher(
             if (!manga.needsEnrichment()) continue
             val smanga = smangaByUrl[manga.url] ?: continue
 
-            runCatching {
-                val details = withContext(coroutineDispatcher) {
-                    source.getMangaUpdate(
-                        manga = smanga,
-                        chapters = emptyList(),
-                        fetchDetails = true,
-                        fetchChapters = false,
-                    ).manga
-                }
+            // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching -- the plan's
+            // explicit instruction is that runCatching must not be the source boundary because it
+            // does not record the failure registry. SourceRuntime still rethrows
+            // CancellationException and any genuinely fatal Error, exactly as runCatching should
+            // have but does not by default.
+            val enriched = SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate, coroutineDispatcher) {
+                getMangaUpdate(
+                    manga = smanga,
+                    chapters = emptyList(),
+                    fetchDetails = true,
+                    fetchChapters = false,
+                ).manga
+            }.getOrNull()?.let { details ->
                 networkToLocalManga(listOf(details.toDomainManga(source.id))).firstOrNull()
-            }.getOrNull()?.let { enriched ->
+            }
+            if (enriched != null) {
                 enrichedByUrl[manga.url] = enriched
             }
             enrichCount++

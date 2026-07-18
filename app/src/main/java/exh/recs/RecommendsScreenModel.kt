@@ -5,6 +5,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.produceState
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.group.GroupRecommendationSeed
 import exh.recs.group.GroupRecommendationSeedBuilder
 import exh.recs.group.GroupSeedRecommendationScorer
@@ -438,9 +440,20 @@ open class RecommendsScreenModel(
                         // never treated as an ordinary recoverable source error.
                         // KMK v0.8.10-fix2: narrowed from "every Error is fatal" to "every Error
                         // except a recoverable LinkageError (broken/incompatible extension) is fatal"
-                        // -- see RecommendationErrorClassifier.isRecoverableSourceFailure's doc for the
-                        // confirmed NoClassDefFoundError/okhttp3.zstd.Zstd root cause this fixes.
-                        if (!RecommendationErrorClassifier.isRecoverableSourceFailure(e)) throw e
+                        // -- confirmed NoClassDefFoundError/okhttp3.zstd.Zstd root cause this fixes.
+                        // KMK v0.8.10-fix4: this call site wraps recSource.requestNextPage(1), a
+                        // polymorphic call across several RecommendationPagingSource/PagingSource
+                        // implementations (CrossExtensionGenreSearchSource, RecommendationPagingSource
+                        // backed by data-module SourcePagingSource, StaticResultPagingSource, etc), not
+                        // a single raw Source method -- so it cannot be wrapped in SourceRuntime.run()
+                        // itself; each of those implementations already routes its own direct Source
+                        // calls through SourceRuntime.run() (app-module) or the shared core:common
+                        // classifier (data-module, which cannot depend on app's SourceRuntime object).
+                        // This outer catch now calls the same shared core:common classifier functions
+                        // directly instead of going through the RecommendationErrorClassifier
+                        // indirection, per the fix4 plan's instruction to prefer direct SourceRuntime/
+                        // classifier usage over delegation at call sites where feasible.
+                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                         logcat(LogPriority.WARN, e, tag = TAG) {
                             "GROUP_PREVIEW error source=${recSource.name} elapsedMs=${System.currentTimeMillis() - rowStartMs}"
                         }

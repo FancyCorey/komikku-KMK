@@ -2,10 +2,10 @@ package exh.recs.group
 
 // KMK -->
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.manga.interactor.GetManga
@@ -127,20 +127,23 @@ class GroupRecommendationSeedBuilder(
                         val smanga: SManga = localManga?.toSManga()
                             ?: SManga.create().also { it.url = membUrl }
 
+                        // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching --
+                        // the plan's explicit instruction is that runCatching must not be the source
+                        // boundary because it does not record the failure registry. SourceRuntime
+                        // still rethrows CancellationException and any genuinely fatal Error, exactly
+                        // as this code's own manual `if (e is CancellationException) throw e` used to
+                        // approximate by hand.
                         val enrichedManga = withTimeoutOrNull(ENRICH_MEMBER_TIMEOUT_MS) {
-                            runCatching {
-                                val details = withContext(Dispatchers.IO) {
-                                    source.getMangaUpdate(
-                                        manga = smanga,
-                                        chapters = emptyList(),
-                                        fetchDetails = true,
-                                        fetchChapters = false,
-                                    ).manga
-                                }
+                            SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate, Dispatchers.IO) {
+                                getMangaUpdate(
+                                    manga = smanga,
+                                    chapters = emptyList(),
+                                    fetchDetails = true,
+                                    fetchChapters = false,
+                                ).manga
+                            }.getOrNull()?.let { details ->
                                 networkToLocalManga(listOf(details.toDomainManga(src))).firstOrNull()
-                            }.onFailure { e ->
-                                if (e is CancellationException) throw e
-                            }.getOrNull()
+                            }
                         }
 
                         if (enrichedManga != null) {

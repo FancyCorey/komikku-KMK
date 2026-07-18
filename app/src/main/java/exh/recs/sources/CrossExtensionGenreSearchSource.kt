@@ -2,15 +2,14 @@ package exh.recs.sources
 
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationQueryAttemptPolicy
 import exh.recs.RecommendationQueryFailureKind
 import exh.recs.RecommendationQueryPlan
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -112,22 +111,14 @@ internal class CrossExtensionGenreSearchSource(
     // doesn't prevent trying a more lenient query — CancellationException always propagates.
     private suspend fun tryAttempt(plan: RecommendationQueryPlan): MangasPage? {
         // Step 1: get filter list (local call into extension APK — no network in most extensions)
-        val filterList = try {
-            catalogueSource.getFilterList()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) {
+        // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local try/catch(Exception)/
+        // catch(Error) pair -- one shared boundary classifies both, and records a recoverable
+        // failure (including an extension LinkageError) in SourceRuntimeFailureRegistry.
+        val filterList = SourceRuntime.run(catalogueSource, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrElse { throwable ->
+            logcat(LogPriority.WARN, throwable) {
                 "CrossExtensionGenreSearch[${catalogueSource.name}]: getFilterList failed, falling back to empty"
-            }
-            FilterList()
-        } catch (e: Error) {
-            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a LinkageError
-            // from getFilterList() -- previously uncaught here. Same empty-filter-list fallback as
-            // the Exception branch above; genuinely fatal VM errors still rethrow.
-            if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
-            logcat(LogPriority.WARN, e) {
-                "CrossExtensionGenreSearch[${catalogueSource.name}]: getFilterList failed (extension linkage failure), falling back to empty"
             }
             FilterList()
         }
@@ -140,29 +131,20 @@ internal class CrossExtensionGenreSearchSource(
         }.getOrNull()
 
         // Step 3: search the extension (one network call)
+        // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local try/catch(Exception)/
+        // catch(Error) pair. NoResultsException is still distinguished from every other recoverable
+        // failure (it must not set exceptionOccurred -- that flag specifically means "the attempt
+        // itself broke," not "the source legitimately had nothing").
         var exceptionOccurred = false
-        val mangasPage = try {
-            catalogueSource.getSearchManga(1, searchParams.textQuery, searchParams.filters)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: NoResultsException) {
-            null
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) {
-                "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} attempt failed"
+        val mangasPage = SourceRuntime.run(catalogueSource, SourceRuntimeOperation.Search) {
+            getSearchManga(1, searchParams.textQuery, searchParams.filters)
+        }.getOrElse { throwable ->
+            if (throwable !is NoResultsException) {
+                logcat(LogPriority.WARN, throwable) {
+                    "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} attempt failed"
+                }
+                exceptionOccurred = true
             }
-            exceptionOccurred = true
-            null
-        } catch (e: Error) {
-            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a LinkageError
-            // from getSearchManga() -- previously uncaught here, aborting the whole For You/group
-            // recommendation source row instead of just this one plan attempt. Genuinely fatal VM
-            // errors still rethrow.
-            if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
-            logcat(LogPriority.WARN, e) {
-                "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} attempt failed (extension linkage failure)"
-            }
-            exceptionOccurred = true
             null
         }
 
@@ -198,24 +180,15 @@ internal class CrossExtensionGenreSearchSource(
         for (title in titles) {
             cachedTextQuery = title
             cachedFiltersJson = null
-            val page = try {
-                catalogueSource.getSearchManga(1, title, FilterList())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: NoResultsException) {
-                continue
-            } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) {
-                    "CrossExtensionGenreSearch[${catalogueSource.name}]: title fallback failed for \"$title\""
-                }
-                continue
-            } catch (e: Error) {
-                // KMK v0.8.10-fix3: same reasoning as the getSearchManga() catch above -- a
-                // recoverable extension LinkageError skips this one title fallback attempt instead
-                // of aborting the whole fallback loop.
-                if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
-                logcat(LogPriority.WARN, e) {
-                    "CrossExtensionGenreSearch[${catalogueSource.name}]: title fallback failed for \"$title\" (extension linkage failure)"
+            // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local try/catch(Exception)/
+            // catch(Error) pair -- same reasoning as the tryAttempt() search above.
+            val page = SourceRuntime.run(catalogueSource, SourceRuntimeOperation.Search) {
+                getSearchManga(1, title, FilterList())
+            }.getOrElse { throwable ->
+                if (throwable !is NoResultsException) {
+                    logcat(LogPriority.WARN, throwable) {
+                        "CrossExtensionGenreSearch[${catalogueSource.name}]: title fallback failed for \"$title\""
+                    }
                 }
                 continue
             }
@@ -245,22 +218,31 @@ internal class CrossExtensionGenreSearchSource(
                         // semaphore's own `finally` (via withPermit), so the total number of
                         // in-flight detail requests is bounded across every source active under this
                         // load, not just within this one source's own MAX_ENRICH_PER_SOURCE cap.
+                        // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching --
+                        // the plan's explicit instruction is that runCatching must not be the source
+                        // boundary because it does not record the failure registry. SourceRuntime
+                        // still rethrows CancellationException and any genuinely fatal Error, exactly
+                        // as runCatching should have but does not by default.
                         val enrich: suspend () -> Unit = {
-                            runCatching {
-                                val details = catalogueSource.getMangaUpdate(
+                            SourceRuntime.run(catalogueSource, SourceRuntimeOperation.MangaUpdate) {
+                                getMangaUpdate(
                                     manga = smanga,
                                     chapters = emptyList(),
                                     fetchDetails = true,
                                     fetchChapters = false,
                                 ).manga
-                                smanga.genre = details.genre
-                                smanga.description = details.description
-                                smanga.status = details.status
-                            }.onFailure { e ->
-                                logcat(LogPriority.WARN, e) {
-                                    "CrossExtensionGenreSearch[${catalogueSource.name}]: getMangaDetails failed for ${smanga.title}"
-                                }
-                            }
+                            }.fold(
+                                onSuccess = { details ->
+                                    smanga.genre = details.genre
+                                    smanga.description = details.description
+                                    smanga.status = details.status
+                                },
+                                onFailure = { throwable ->
+                                    logcat(LogPriority.WARN, throwable) {
+                                        "CrossExtensionGenreSearch[${catalogueSource.name}]: getMangaDetails failed for ${smanga.title}"
+                                    }
+                                },
+                            )
                         }
                         if (sharedEnrichmentSemaphore != null) {
                             sharedEnrichmentSemaphore.withPermit { enrich() }

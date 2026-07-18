@@ -11,6 +11,8 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.system.isOnline
@@ -38,7 +40,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
@@ -524,13 +525,13 @@ class BrowsePersonalRecommendationsScreenModel(
                 )
             }
             try {
-                val filterList = withContext(coroutineDispatcher) {
-                    try {
-                        source.getFilterList()
-                    } catch (_: Exception) {
-                        FilterList()
-                    }
-                }
+                // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
+                // try/catch(Exception) -- a recoverable failure (ordinary Exception or an extension
+                // LinkageError such as the confirmed Asura Scans NoClassDefFoundError) now also
+                // gets recorded in SourceRuntimeFailureRegistry, not just silently swallowed.
+                val filterList = SourceRuntime.run(source, SourceRuntimeOperation.FilterList, coroutineDispatcher) {
+                    getFilterList()
+                }.getOrElse { FilterList() }
                 val searchParams = GenreFilterMapper.buildSearch(
                     filterList,
                     plan.tags,
@@ -548,9 +549,14 @@ class BrowsePersonalRecommendationsScreenModel(
                     }
                 }
 
-                val page = withContext(coroutineDispatcher) {
-                    source.getSearchManga(1, searchParams.textQuery, searchParams.filters)
-                }
+                // KMK v0.8.10-fix4: routed through SourceRuntime instead of a raw call inside
+                // withContext -- .getOrThrow() rethrows a recoverable failure as a normal exception
+                // for the existing outer catch(Exception)/catch(Error) below to record as lastError;
+                // a genuinely fatal error or CancellationException already propagated directly out
+                // of SourceRuntime.run() itself, before ever reaching this line.
+                val page = SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
+                    getSearchManga(1, searchParams.textQuery, searchParams.filters)
+                }.getOrThrow()
 
                 val rawSMangas = page.mangas.take(rawCap).distinctBy { it.url }
                 if (rawSMangas.isNotEmpty()) hadRawResults = true
@@ -736,14 +742,12 @@ class BrowsePersonalRecommendationsScreenModel(
             } catch (e: Exception) {
                 lastError = e
             } catch (e: Error) {
-                // KMK v0.8.10-fix2: this per-source loop previously had no Error handling at all --
-                // an Error simply propagated uncaught out of this suspend function, through the
-                // enclosing `async {}` (line ~343) and `.awaitAll()`, crashing the whole batch/load.
-                // Only a recoverable extension-linkage failure (LinkageError) is downgraded to a
-                // per-source error, matching the exact same policy used at RecommendsScreenModel's
-                // shared boundary. Genuinely fatal VM errors (OutOfMemoryError, StackOverflowError,
-                // any other non-linkage Error) are rethrown unchanged.
-                if (!RecommendationErrorClassifier.isRecoverableSourceFailure(e)) throw e
+                // KMK v0.8.10-fix4: this Error catch is now purely defensive bookkeeping, not the
+                // structural boundary -- both source calls above go through SourceRuntime.run(),
+                // which already rethrows CancellationException and any genuinely fatal Error
+                // directly (they never reach this catch clause at all); only a recoverable
+                // extension-linkage failure can still surface here, via .getOrThrow() on the search
+                // call. Recorded the same way as an ordinary Exception.
                 lastError = e
             }
         }
@@ -1044,10 +1048,17 @@ class BrowsePersonalRecommendationsScreenModel(
 
         // KMK --> v0.7.40: bounded timeout on additional-page search only (not page-1)
         val result = runCatching {
+            // KMK v0.8.10-fix4: routed through SourceRuntime instead of a raw call inside
+            // withContext -- registers a recoverable failure (including an extension LinkageError)
+            // in SourceRuntimeFailureRegistry instead of only relying on this function's outer
+            // runCatching, which does not record anything. .getOrThrow() rethrows a recoverable
+            // failure for the existing timeout/runCatching handling below to treat exactly as
+            // before; a genuinely fatal error already propagated directly out of
+            // SourceRuntime.run() itself.
             val pageResult = withTimeoutOrNull(ADDITIONAL_PAGE_TIMEOUT_MS) {
-                withContext(coroutineDispatcher) {
-                    source.getSearchManga(nextPage, searchParams.textQuery, searchParams.filters)
-                }
+                SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
+                    getSearchManga(nextPage, searchParams.textQuery, searchParams.filters)
+                }.getOrThrow()
             } ?: run {
                 // Explicit local probe timeout — a transient, retryable failure.
                 progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
