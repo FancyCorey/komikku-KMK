@@ -55,7 +55,10 @@ Do not assume a feature exists because it appears in a plan. Verify in this orde
 | `docs/community/KMK_PUBLIC_README_DRAFT.md` | Draft public-facing readme for sharing the fork/build. |
 | `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_AUDIT.md` | Read-only evidence and release blockers found while comparing the current KMK tree with official Komikku 1.14.0. Historical — see the implementation report below for final status. |
 | `docs/community/KMK_UPSTREAM_1_14_DETAILED_RECONCILIATION_PLAN.md` | Code-level reconciliation sequence, exact file areas, migration bridge, compatibility checks, and required tests for moving the KMK fork onto official 1.14.0. Historical — see the implementation report below for final status. |
-| `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` | **Current status.** Full 9-phase implementation report: every file changed, DB/preferences/proto changes, tests run, deviations from plan, follow-up work. App `versionName`/`versionCode` now 1.14.0/89; KMK-Recs feature label unchanged at v0.8.9. |
+| `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` | Full 9-phase implementation report: every file changed, DB/preferences/proto changes, tests run, deviations from plan, follow-up work. App `versionName`/`versionCode` now 1.14.0/89. |
+| `docs/community/KMK_RECS_V0_8_10_FIX1_FULL_KOMIKKU_CONFORMANCE_AND_STABILITY_IMPLEMENTATION_PLAN.md` | **Current in-progress work.** v0.8.10-fix1: full Komikku UI/architecture conformance pass across every KMK-added surface, lossless historical What's New conversion (supersedes the v0.8.10 Phase G "keep-as-is" decision), mandatory application-wide crash investigation. Gated Phase 0-8 plan. |
+| `docs/community/KMK_RECS_V0_8_10_FIX1_RELEASE_ASSURANCE_ADDENDUM.md` | v0.8.10-fix1 addendum: dependency/license audit, reproducible build docs, performance checks, upgrade/rollback tests, edge-case fixtures, crash-log export decision. |
+| `docs/community/KMK_RECS_V0_8_10_FIX1_FINAL_RELEASE_SAFETY_ADDENDUM.md` | v0.8.10-fix1 addendum: final release-safety gates before handoff. |
 | `docs/ocr/README.md` | OCR feature index and branch-specific OCR documentation entry point. |
 
 ## Constant Procedures

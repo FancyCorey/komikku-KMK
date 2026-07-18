@@ -1,5 +1,14 @@
 ﻿# KMK Personal Recommendations Next Work
 
+## v0.8.10-fix1 (in progress)
+
+Full Komikku UI/architecture conformance pass plus mandatory application-wide crash investigation and
+lossless historical What's New conversion. See
+`docs/community/KMK_RECS_V0_8_10_FIX1_FULL_KOMIKKU_CONFORMANCE_AND_STABILITY_IMPLEMENTATION_PLAN.md`
+(plus its two addenda) for the full gated Phase 0-8 requirements. Do not treat any phase as complete
+until its own report section says so — this plan explicitly overrides the v0.8.10 Phase G "keep
+historical entries as-is" decision.
+
 Date: 2026-07-09 (updated: 2026-07-17 -- v0.8.10 corrective/completion release shipped: Phases A-I of
 `docs/community/KMK_RECS_V0_8_10_0_8_9_COMPLETION_AND_1_14_VALIDATION_IMPLEMENTATION_PLAN.md` complete
 and verified; see `docs/recommendations/CURRENT_STATE.md`'s "v0.8.10 phase map" for the full A-J
