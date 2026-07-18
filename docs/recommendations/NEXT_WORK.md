@@ -1,22 +1,22 @@
 ﻿# KMK Personal Recommendations Next Work
 
-## v0.8.10-fix3 (planned next)
+## v0.8.10-fix3 (complete)
 
-Structural source-runtime isolation is the next approved crash/stability repair. See
-`docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md`.
+Structural source-runtime isolation is complete. See
+`docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md` for the
+full call-site inventory, the confirmed `app`→`data` module-dependency-direction blocker and its
+resolution (pure classifier functions relocated to `core:common`), tests, and verification.
 
-The v0.8.10-fix2 Asura/Zstd crash patch was correct but intentionally narrow: it protects selected
-For You/group-recommendation call sites. Real-device testing showed the same broken installed
-extension can still crash unrelated flows such as Browse, For You loading, extension update actions,
-and other global/bulk source operations. The next implementation must create one shared source
-runtime boundary, preserve cancellation and fatal VM-error propagation, classify recoverable
-extension `LinkageError` failures as source-scoped unavailable/incompatible errors, and migrate every
-app-owned source execution path listed in the plan.
+**Genuinely open follow-up from this pass** (documented, not silently dropped):
 
-This is a fix build under the v0.8.10 line. It should produce
-`Komikku-v1.14.0-kmk.8.10-fix3-debug.apk` in
-`C:\Users\USER\Downloads\Komikku\private\`. The word `private` is only the handoff folder name and
-must not appear in app-visible UI.
+- `BrowseSourceScreenModel.kt`'s remaining direct `getFilterList()` calls (UI-state-building, not the
+  paging load itself) were intentionally deferred as lower-risk and not a confirmed crash site. If a
+  future crash report implicates one of these specific calls, migrate them the same way as the rest
+  of this pass.
+- Real-device QA with the previously-broken Asura Scans extension still installed was **not**
+  performed (no `adb`/device access in this environment, confirmed empty via `adb devices`) — this
+  is the standing verification gap for fix1/fix2/fix3 alike and must be done before any public
+  release.
 
 ---
 

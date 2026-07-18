@@ -1,12 +1,24 @@
 ﻿# KMK Personal Recommendations Current State
 
-Date: 2026-07-09 (updated: 2026-07-18 -- v0.8.10-fix3 structural source-runtime isolation planned
-after v0.8.10-fix2 was confirmed too narrow. See
-`docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md`. The fix3 plan
-documents the required shared runtime boundary for extension source operations so one broken
-installed extension cannot crash Browse, For You, Source Evaluation, global search, reader/download,
-library update, or unrelated extension flows. v0.8.10-fix2 remains complete, but it should now be
-understood as a narrow patch, not the final structural repair.
+Date: 2026-07-09 (updated: 2026-07-18 -- v0.8.10-fix3 structural source-runtime isolation
+**complete**. New shared boundary: `eu.kanade.tachiyomi.source.SourceRuntime` (app-layer execution
+helper + failure registry) backed by pure classification functions
+(`isRecoverableSourceRuntimeFailure`/`unwrapSourceRuntimeCause`) relocated to `core:common` mid-pass
+to resolve a confirmed `app`→`data` module-dependency-direction blocker (full reasoning in the
+implementation report). 16 call sites across official Browse/global search/feeds, library
+update/bulk favorite, and KMK matching/Best Version/Source Evaluation/For You/group recommendations
+migrated to the shared classifier; 7 more call-site families (`MangaScreenModel` related-manga,
+reader `HttpPageLoader`, `Downloader`, `RecommendationPagingSource`,
+`RecommendationCandidateEnricher`, `GroupRecommendationSeedBuilder`) were confirmed **already**
+safely isolated via `runCatching`/`catch(Throwable)` by direct inspection, not assumed. One family
+(`BrowseSourceScreenModel`'s remaining local `getFilterList()` calls) intentionally deferred as
+lower-risk. 23 new tests (1408 -> 1431). See
+`docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md` for the
+complete call-site inventory, module-boundary blocker, and verification. `KmkRecsReleaseNotes` not
+bumped (matches the fix1/fix2 precedent for crash-isolation-only passes). Final APK:
+`Komikku-v1.14.0-kmk.8.10-fix3-debug.apk`. Fix2 (below) remains an accurate historical record of the
+narrow patch this fix3 pass superseded structurally, not a claim that fix2 itself was wrong or
+incomplete for its own stated scope.
 
 Previously updated: 2026-07-18 -- v0.8.10-fix2 (Asura extension-linkage crash isolation)
 complete: fixed a confirmed application-wide crash where a broken/incompletely-packaged extension

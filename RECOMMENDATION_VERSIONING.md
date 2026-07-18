@@ -2169,23 +2169,35 @@ from the feature label):
 - APK for this milestone: `Komikku-v1.14.0-kmk.8.9-debug.apk` — same recs feature suffix as the
   entry above, new upstream-version prefix.
 
-### KMK-Recs v0.8.10-fix3 (planned structural source-runtime isolation)
+### KMK-Recs v0.8.10-fix3 (structural source-runtime isolation, complete)
 
-Planned next corrective handoff under the v0.8.10 line. This is not a new feature phase; it is the
-structural follow-up to the narrow Asura/Zstd `LinkageError` crash isolation patch.
+Corrective handoff under the v0.8.10 line — not a new feature phase; the structural follow-up to
+fix2's narrow Asura/Zstd `LinkageError` crash isolation patch. Per the Canonical Versioning Rule
+above and the fix1/fix2 precedent: `KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` are **not**
+bumped for this pass (narrowly-scoped crash-isolation/stability work, not a new KMK-Recs feature) —
+remain at `760`/`"KMK-Recs v0.8.10"`.
 
-Authoritative plan:
+Authoritative plan and report:
 
-- `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md` (plan)
+- `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md`
+  (implementation report — full call-site inventory, module-boundary blocker and its resolution,
+  tests, verification)
 
-Expected APK handoff name:
+APK handoff name:
 
 ```text
 Komikku-v1.14.0-kmk.8.10-fix3-debug.apk
 ```
 
-Claude must update this section after implementation with the actual `KmkRecsReleaseNotes` decision,
-files changed, tests run, APK copy path, and implementation report link.
+Files changed: `SourceRuntime.kt`/`SourceRuntimeFailureRegistry.kt` (new, `app`),
+`SourceRuntimeClassifier.kt` (new, `core:common` — pure classification only, added mid-pass to
+resolve a confirmed `app`→`data` module-dependency-direction blocker), `RecommendationErrorClassifier.kt`
+(delegates instead of duplicating), `SourceEvaluationProbeErrorClassifier.kt` (new
+`EXTENSION_INCOMPATIBLE` kind), and 16 call-site files across official Browse/global search/feeds,
+library update/bulk favorite, KMK matching/Best Version/Source Evaluation/For You/group
+recommendations. Tests: 23 new (1408 → 1431). Full verification (`spotlessCheck`,
+`:app:testDebugUnitTest`, `assembleDebug`) passed before the APK was built.
 
 ## APK Naming Recommendation
 
