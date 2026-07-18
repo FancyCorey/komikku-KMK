@@ -7,7 +7,9 @@ import androidx.annotation.StringRes
 import androidx.core.net.toUri
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.log.ResettableLogger
 import exh.log.safeXLogTag
 import exh.recs.sources.RecommendationPagingSource
@@ -139,6 +141,15 @@ class RecommendationSearchHelper(val context: Context) {
                         } catch (_: NoResultsException) {
                         } catch (e: Exception) {
                             logger()?.e("Error while fetching recommendations for $recSourceId", e)
+                        } catch (e: Error) {
+                            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                            // LinkageError from requestNextPage() (which can delegate to a locally
+                            // installed source via RecommendationSource) -- previously uncaught here,
+                            // escaping awaitAll() and aborting the whole bulk search instead of just
+                            // this one source. Genuinely fatal VM errors still rethrow.
+                            val unwrapped = e.unwrapSourceRuntimeCause()
+                            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                            logger()?.e("Error while fetching recommendations for $recSourceId (extension linkage failure)", unwrapped)
                         }
                     }
                 }
