@@ -1,6 +1,11 @@
 ﻿# KMK Personal Recommendations Next Work
 
-Date: 2026-07-09 (updated: 2026-07-12 -- v0.8.1-fix2 shipped, version visibility + sync validation)
+Date: 2026-07-09 (updated: 2026-07-17 -- v0.8.10 corrective/completion release shipped: Phases A-I of
+`docs/community/KMK_RECS_V0_8_10_0_8_9_COMPLETION_AND_1_14_VALIDATION_IMPLEMENTATION_PLAN.md` complete
+and verified; see `docs/recommendations/CURRENT_STATE.md`'s "v0.8.10 phase map" for the full A-J
+breakdown. Phase J (device/accessibility/release verification) remains an open, disclosed blocker --
+not executable in this environment, must be done manually before any public release. Previously
+updated: 2026-07-12 -- v0.8.1-fix2 shipped, version visibility + sync validation)
 
 Status: v0.7 feature line is closed as of v0.7.45; v0.7.46/v0.7.47 were follow-up correctness/hygiene
 passes; v0.8.0 was the first private v0.8 feature build (Rated Manga management); v0.8.1-fix1 was a

@@ -1,13 +1,22 @@
 ﻿# KMK Personal Recommendations Current State
 
-Date: 2026-07-09 (updated: 2026-07-17 -- KMK upstream 1.14.0 reconciliation complete; app
-`versionName`/`versionCode` bumped to 1.14.0/89; KMK-Recs feature state unchanged at v0.8.9 and
-confirmed intact post-reconciliation. See
-`docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` for the full 9-phase report.
-Previously updated: 2026-07-16 -- v0.8.9 implementation complete in code, manual-QA pending)
+Date: 2026-07-09 (updated: 2026-07-17 -- v0.8.10 corrective/completion release complete: Phases
+A-I of `docs/community/KMK_RECS_V0_8_10_0_8_9_COMPLETION_AND_1_14_VALIDATION_IMPLEMENTATION_PLAN.md`
+all landed, verified, and committed; Phase J (device/accessibility/release verification) is
+explicitly not executable in this environment -- disclosed as a blocker, not claimed passed. App
+`versionName`/`versionCode` remain 1.14.0/89 (unchanged by v0.8.10 -- this release only touches the
+KMK-Recs feature layer, not the Komikku app version). `KmkRecsReleaseNotes.VERSION_CODE`/
+`VERSION_NAME` bumped 759/"KMK-Recs v0.8.9" -> 760/"KMK-Recs v0.8.10". Final APK:
+`Komikku-v1.14.0-kmk.8.10-debug.apk`. See "v0.8.10 phase map" below for the full A-J breakdown, and
+`docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` for the earlier 9-phase 1.14.0
+reconciliation this release's Phase I validated against.
+Previously updated: KMK upstream 1.14.0 reconciliation complete (2026-07-17, app versionName/
+versionCode bumped to 1.14.0/89); v0.8.9 implementation complete in code, manual-QA pending
+(2026-07-16))
 
-Status: Updated through KMK-Recs v0.8.9 (official-style What's New entry structure going forward,
-Recommendation Settings search — see below). Previously: v0.8.8 (schedule enforcement fix,
+Status: Updated through KMK-Recs v0.8.10 (see "v0.8.10 phase map" below). Previously: v0.8.9
+(official-style What's New entry structure going forward, Recommendation Settings search — see
+below). Before that: v0.8.8 (schedule enforcement fix,
 chapter-completion rating prompt, Recommendation Settings index, outdated-evaluation reconciliation
 fix). Before that: v0.8.7
 (Reading Schedule dialog root-cause fix, plus a partial Rated UI / Recommendation Settings refinement
@@ -97,12 +106,33 @@ test suites — this was a validation pass, not a re-merge.
   found of an actual interaction bug between these areas during migration — but it is recorded here
   explicitly rather than claimed as fully satisfying the plan's literal wording.
 
+### v0.8.10 phase map (2026-07-17)
+
+Explicit mapping of every phase in the v0.8.10 plan to its outcome, commit, and verification —
+required by the plan's final-documentation-reconciliation step.
+
+| Phase | Scope | Outcome | Commit |
+| --- | --- | --- | --- |
+| A | Defer chapter-completion rating prompt to reader exit | Done — new `ChapterCompletionPromptReducer` (pure, `None`/`PendingOnExit`), `ReaderViewModel`/`ReaderActivity` wired so the prompt fires on exit, never mid-read. 8 new tests. | `2f63c305a` |
+| B | Recommendation Settings search gains stable per-control anchors | Done — `anchor` param threaded through every category screen, `ScrollToAnchorEffect`, search index expanded 7→29 entries. 12 new tests. | `9c25c7360` |
+| C | Searchable Loved/Liked/Disliked rated manga collections | Done — `RatedMangaSearchFilter` (pure), `SearchToolbar` swap in `RatedMangaScreen`. 10 new tests. | `7004623e9` |
+| D | Sources To Try search, sort, and truthful explanation | Done — `SourcesToTrySearchAndSort` (pure), sort chips, fixed a pre-existing silent-null explanation-text gap (`EvaluatedExplicitHeavy`/`EvaluatedEcchiHeavy`). 11 new tests. | `3c6c0f1b3` |
+| E | Taste suggestions and diagnostics (largest net-new build) | Done — `TasteSuggestionAggregator`/`TasteDiagnosticsAggregator` (pure, separate from the live-scoring `GetTasteProfile`), new UI sections in Taste and Tags / Diagnostics settings screens, 19 new KMR strings. 18 new tests. | `f19841878` |
+| F | Source Evaluation UI/state corrections | Audited in full against the plan checklist; most items already correctly fixed in prior versions (independent cursors, outdated-queue reconciliation, classified error text, job-conflict guarding, gated installer messaging) and left untouched. One confirmed gap found and fixed: the "Evaluation completed" summary persisted indefinitely across screen visits — new `SourceEvaluationCompletionLifecyclePolicy` clears it on screen leave. 8 new tests. | `17e8b04c9` |
+| G | What's New completion decision | Decision: keep historical entries as-is (already v0.8.9's approach), official structure from v0.8.9 onward. Pinned the real entry count at 84 (plan stated "76"). No code change; documented here. | `10ea72efd` |
+| H | Backup decoder hardening | Done — confirmed the real crash empirically (truncated/corrupt gzip and near-empty files threw uncaught `EOFException`, not the already-caught `SerializationException`). New pure `BackupDecoderErrorPolicy` classifies the real malformed-backup exception family; `BackupDecoder.decode()` now wraps its full detection+decode block. 8 new tests driving the real pipeline. | `8c6917cc6` |
+| I | Komikku 1.14 compatibility validation | Done — confirmed migration history 1-63 is append-only with no gaps/duplicates (re-ran real-SQLite migration test suites), fixed stale "not-yet-applied" wording in `63.sqm`, confirmed backup proto fields 620-629 remain additive-only and intact, re-confirmed OCR/timer/schedule/backup/sync compatibility via the full suite. One scope limitation disclosed (see Phase I section above): no single combined-database migration test exists, though equivalent per-area coverage does. | `820153f99` |
+| J | Device/accessibility/release verification | **Not executable in this environment** — no physical/emulated Android device, no accessibility scanner, no release-signing pipeline available here. Disclosed as an explicit, standing blocker, not silently skipped or claimed passed. Must be performed manually before any public release. | n/a |
+
+v0.8.10 release-notes/version bump: `26966bb34`. Final APK build/copy/hash: see the implementation
+report's final verification section (this same commit range).
+
 ## Feature Version
 
 Current documented feature version:
 
 ```text
-KMK-Recs v0.8.9
+KMK-Recs v0.8.10
 ```
 
 The About screen's `KMK-Recs What's new` entry (More/Settings > About) always shows this exact
