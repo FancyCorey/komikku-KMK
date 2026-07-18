@@ -9,6 +9,8 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationSourceFilter
@@ -27,7 +29,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
 import tachiyomi.domain.category.interactor.GetCategories
@@ -159,30 +160,28 @@ class CrossExtensionMatchScreenModel(
                         for (query in queries) {
                             if (!isActive) break
                             if (seen.size >= cap) break
-                            try {
-                                val page = withContext(coroutineDispatcher) {
-                                    source.getSearchManga(1, query.sanitize(), source.getFilterList())
-                                }
-                                val resolved = page.mangas
-                                    .map { it.toDomainManga(source.id) }
-                                    .distinctBy { it.url }
-                                    .let { networkToLocalManga(it) }
-                                    .filterNot(::isOrigin)
-                                for (manga in resolved) {
-                                    if (seen.size >= cap) break
-                                    seen.putIfAbsent(manga.url, manga)
-                                }
-                            } catch (e: Exception) {
-                                lastError = e
-                            } catch (e: Error) {
-                                // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can
-                                // throw a LinkageError while searching -- treat it the same as an
-                                // ordinary per-query failure so sibling queries/sources still
-                                // complete. Genuinely fatal VM errors still rethrow.
-                                val unwrapped = e.unwrapSourceRuntimeCause()
-                                if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                                lastError = unwrapped
+                            // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
+                            // catch(Exception)/catch(Error) pair -- one shared boundary classifies
+                            // both, records a recoverable extension LinkageError in
+                            // SourceRuntimeFailureRegistry, and still always rethrows
+                            // CancellationException and any genuinely fatal Error.
+                            val searchResult = SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
+                                getSearchManga(1, query.sanitize(), getFilterList())
                             }
+                            searchResult.fold(
+                                onSuccess = { page ->
+                                    val resolved = page.mangas
+                                        .map { it.toDomainManga(source.id) }
+                                        .distinctBy { it.url }
+                                        .let { networkToLocalManga(it) }
+                                        .filterNot(::isOrigin)
+                                    for (manga in resolved) {
+                                        if (seen.size >= cap) break
+                                        seen.putIfAbsent(manga.url, manga)
+                                    }
+                                },
+                                onFailure = { throwable -> lastError = throwable },
+                            )
                         }
                         if (isActive) {
                             if (seen.isNotEmpty()) {

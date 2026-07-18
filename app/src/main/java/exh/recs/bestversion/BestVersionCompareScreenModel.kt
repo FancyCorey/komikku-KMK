@@ -8,9 +8,9 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.online.HttpSource
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationErrorClassifier
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.matching.SameMangaCandidateResult
@@ -27,7 +27,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
@@ -216,37 +215,37 @@ class BestVersionCompareScreenModel(
                     if (source == null) {
                         key to CandidateChapterState.ChapterError("Source not available")
                     } else {
-                        try {
-                            val sManga = manga.toSManga()
-                            val chapters = withContext(coroutineDispatcher) {
-                                source.getMangaUpdate(
-                                    manga = sManga,
-                                    chapters = emptyList(),
-                                    fetchDetails = false,
-                                    fetchChapters = true,
-                                ).chapters
-                            }
-                            val match = if (targetChapterNumber >= 0) {
-                                BestVersionChapterMatcher.findMatch(targetChapterNumber, chapters)
-                            } else {
-                                chapters.maxByOrNull { it.chapter_number }
-                            }
-                            key to if (match != null) {
-                                CandidateChapterState.Available(match, chapters.size)
-                            } else {
-                                CandidateChapterState.Unavailable
-                            }
-                        } catch (e: Exception) {
-                            // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
-                            key to CandidateChapterState.ChapterError(RecommendationErrorClassifier.classifyToStorageKey(e))
-                        } catch (e: Error) {
-                            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                            // LinkageError from getMangaUpdate() -- previously uncaught here.
-                            // Genuinely fatal VM errors still rethrow.
-                            val unwrapped = e.unwrapSourceRuntimeCause()
-                            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                            key to CandidateChapterState.ChapterError(RecommendationErrorClassifier.classifyToStorageKey(unwrapped))
-                        }
+                        // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
+                        // catch(Exception)/catch(Error) pair -- one shared boundary classifies
+                        // both and records a recoverable extension LinkageError in
+                        // SourceRuntimeFailureRegistry; still always rethrows
+                        // CancellationException and any genuinely fatal Error.
+                        val sManga = manga.toSManga()
+                        SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate, coroutineDispatcher) {
+                            getMangaUpdate(
+                                manga = sManga,
+                                chapters = emptyList(),
+                                fetchDetails = false,
+                                fetchChapters = true,
+                            ).chapters
+                        }.fold(
+                            onSuccess = { chapters ->
+                                val match = if (targetChapterNumber >= 0) {
+                                    BestVersionChapterMatcher.findMatch(targetChapterNumber, chapters)
+                                } else {
+                                    chapters.maxByOrNull { it.chapter_number }
+                                }
+                                key to if (match != null) {
+                                    CandidateChapterState.Available(match, chapters.size)
+                                } else {
+                                    CandidateChapterState.Unavailable
+                                }
+                            },
+                            onFailure = { throwable ->
+                                // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
+                                key to CandidateChapterState.ChapterError(RecommendationErrorClassifier.classifyToStorageKey(throwable))
+                            },
+                        )
                     }
                 }
             }.awaitAll()
@@ -291,30 +290,32 @@ class BestVersionCompareScreenModel(
                     val candidateChapter = (chapterMap[key] as? CandidateChapterState.Available)?.chapter
                         ?: return@async
                     val source = sourceManager.get(manga.source) as? HttpSource ?: return@async
-                    val result = try {
-                        val pages = withContext(coroutineDispatcher) {
-                            source.getPageList(candidateChapter)
-                        }
-                        val indexes = BestVersionPageSampler.sample(pages.size, sampleSize, avoidFirstPages)
-                        val sampledPages = indexes.mapNotNull { idx ->
-                            val page = pages.getOrNull(idx) ?: return@mapNotNull null
-                            val imageUrl = page.imageUrl ?: runCatching {
-                                withContext(coroutineDispatcher) { source.getImageUrl(page) }
-                            }.getOrNull() ?: return@mapNotNull null
-                            SampledPage(idx, imageUrl)
-                        }
-                        CandidatePreviewState.Loaded(sampledPages)
-                    } catch (e: Exception) {
-                        // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
-                        CandidatePreviewState.PreviewError(RecommendationErrorClassifier.classifyToStorageKey(e))
-                    } catch (e: Error) {
-                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                        // LinkageError from getPageList()/getImageUrl() -- previously uncaught here.
-                        // Genuinely fatal VM errors still rethrow.
-                        val unwrapped = e.unwrapSourceRuntimeCause()
-                        if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                        CandidatePreviewState.PreviewError(RecommendationErrorClassifier.classifyToStorageKey(unwrapped))
-                    }
+                    // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
+                    // catch(Exception)/catch(Error) pair -- one shared boundary classifies both
+                    // and records a recoverable extension LinkageError in
+                    // SourceRuntimeFailureRegistry; still always rethrows CancellationException
+                    // and any genuinely fatal Error.
+                    val result = SourceRuntime.run(source, SourceRuntimeOperation.PageList, coroutineDispatcher) {
+                        getPageList(candidateChapter)
+                    }.fold(
+                        onSuccess = { pages ->
+                            val indexes = BestVersionPageSampler.sample(pages.size, sampleSize, avoidFirstPages)
+                            val sampledPages = indexes.mapNotNull { idx ->
+                                val page = pages.getOrNull(idx) ?: return@mapNotNull null
+                                val imageUrl = page.imageUrl
+                                    ?: SourceRuntime.run(source, SourceRuntimeOperation.ImageUrl, coroutineDispatcher) {
+                                        (this as HttpSource).getImageUrl(page)
+                                    }.getOrNull()
+                                    ?: return@mapNotNull null
+                                SampledPage(idx, imageUrl)
+                            }
+                            CandidatePreviewState.Loaded(sampledPages)
+                        },
+                        onFailure = { throwable ->
+                            // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
+                            CandidatePreviewState.PreviewError(RecommendationErrorClassifier.classifyToStorageKey(throwable))
+                        },
+                    )
                     mutableState.update { current ->
                         current.copy(candidatePreviews = current.candidatePreviews.mutate { it[key] = result })
                     }
