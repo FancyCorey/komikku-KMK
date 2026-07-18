@@ -1,6 +1,8 @@
 package exh.recs
 
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import kotlinx.coroutines.CancellationException
 import tachiyomi.i18n.kmk.KMR
 import java.io.FileNotFoundException
@@ -34,8 +36,9 @@ enum class RecommendationErrorKind(val storageKey: String) {
 object RecommendationErrorClassifier {
     fun classify(e: Throwable): RecommendationErrorKind = when {
         e is CancellationException -> RecommendationErrorKind.Cancelled
-        // KMK v0.8.10-fix2: check before the generic Error fallthrough below.
-        e is LinkageError -> RecommendationErrorKind.ExtensionIncompatible
+        // KMK v0.8.10-fix3: unwrap first, same as SourceRuntime, in case a linkage failure arrived
+        // wrapped in ExecutionException/CompletionException/InvocationTargetException.
+        e.unwrapSourceRuntimeCause() is LinkageError -> RecommendationErrorKind.ExtensionIncompatible
         e is UnknownHostException -> RecommendationErrorKind.Network
         e is SocketTimeoutException -> RecommendationErrorKind.Timeout
         e is FileNotFoundException -> RecommendationErrorKind.FileAccess
@@ -63,8 +66,15 @@ object RecommendationErrorClassifier {
      * it simply fails, nothing else on the JVM is corrupted). False for genuinely fatal VM
      * conditions — [OutOfMemoryError], [StackOverflowError], and any other [Error] that is not a
      * [LinkageError] — which must always propagate uncaught, exactly as before this fix.
+     *
+     * KMK v0.8.10-fix3: delegates to the shared, app-wide
+     * [eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure] rather than duplicating the
+     * decision — recommendation screens must never classify a linkage failure differently than
+     * Browse, global search, or Source Evaluation. Unwraps first so a wrapped linkage failure
+     * (`ExecutionException`/`CompletionException`/`InvocationTargetException`) is classified
+     * correctly too.
      */
-    fun isRecoverableSourceFailure(e: Throwable): Boolean = e !is Error || e is LinkageError
+    fun isRecoverableSourceFailure(e: Throwable): Boolean = e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()
     // KMK <--
 }
 

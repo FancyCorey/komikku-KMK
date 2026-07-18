@@ -1,5 +1,25 @@
 ﻿# KMK Personal Recommendations Next Work
 
+## v0.8.10-fix3 (planned next)
+
+Structural source-runtime isolation is the next approved crash/stability repair. See
+`docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md`.
+
+The v0.8.10-fix2 Asura/Zstd crash patch was correct but intentionally narrow: it protects selected
+For You/group-recommendation call sites. Real-device testing showed the same broken installed
+extension can still crash unrelated flows such as Browse, For You loading, extension update actions,
+and other global/bulk source operations. The next implementation must create one shared source
+runtime boundary, preserve cancellation and fatal VM-error propagation, classify recoverable
+extension `LinkageError` failures as source-scoped unavailable/incompatible errors, and migrate every
+app-owned source execution path listed in the plan.
+
+This is a fix build under the v0.8.10 line. It should produce
+`Komikku-v1.14.0-kmk.8.10-fix3-debug.apk` in
+`C:\Users\USER\Downloads\Komikku\private\`. The word `private` is only the handoff folder name and
+must not appear in app-visible UI.
+
+---
+
 ## v0.8.10-fix1 (in progress)
 
 Full Komikku UI/architecture conformance pass plus mandatory application-wide crash investigation and
@@ -684,4 +704,3 @@ docs/recommendations/CURRENT_STATE.md
 docs/recommendations/NEXT_WORK.md                   <- this file
 docs/recommendations/KMK_RECS_POLISH_AND_REMAINING_WORK_PLAN.md
 ```
-

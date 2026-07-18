@@ -23,6 +23,11 @@ A capable implementer should be able to read the plan and determine:
 
 Do not use broad phrases such as â€œimprove the UI,â€ â€œmake it efficient,â€ â€œadd error handling,â€ or â€œalign with the existing systemâ€ without defining the exact meaning, affected files, behavior, and acceptance test.
 
+When a bug appears in several screens, do not plan a collection of local patches first. Identify the
+shared boundary, contract, dependency, or lifecycle path that those screens have in common. Local
+guards are acceptable only as temporary containment when the plan also records the structural fix or
+proves that no shared boundary exists.
+
 ## 2. Required planning workflow
 
 ### Step 1: establish scope
@@ -58,6 +63,25 @@ Before writing the solution, inspect:
 - official upstream/project conventions.
 
 Use the actual code as the source of truth. Planning documents may be stale. Mark every feature as implemented, partial, deferred, historical, or unverified based on code evidence.
+
+If the code contradicts the planning documents, document the contradiction before choosing a fix.
+Do not make Claude infer the missing decision from context; write the exact implementation decision
+into the plan.
+
+### Step 2A: ask targeted clarifying questions when behavior is ambiguous
+
+Before finalizing a plan, ask the user exact questions when the answer changes the implementation
+contract and cannot be safely discovered from code. Good questions are narrow and actionable, for
+example:
+
+- Should Cancel close only the dialog or exit the whole workflow?
+- Should this rating affect similar manga or only hide this title?
+- Should this action run in the background after leaving the screen?
+- Should a source be disliked for recommendation behavior, catalogue quality, explicit content, or all
+  of those separately?
+
+Record the user's answer in the plan as an implementation decision. Do not ask broad questions such
+as "how should this work?" when the code and prior discussion already provide enough context.
 
 ### Step 3: map the current behavior
 
@@ -249,6 +273,13 @@ The implementation report must record the requested and actual model/effort, any
 
 Do not call a model "best" without stating the objective: quality, first-pass correctness, throughput, latency, or total work before a usage limit. For this project, default to **Sonnet high** for ordinary implementation, **Opus high/xhigh** for high-risk reasoning, and **Sonnet medium** only when the plan is exceptionally precise and throughput is the primary constraint.
 
+User preference update: when Codex has already performed the audit and written an implementation
+plan with exact files, symbols, contracts, tests, and acceptance criteria, prefer **Sonnet low** for
+Claude execution unless the plan itself explains why low effort is unsafe. This is a throughput
+preference for implementation after planning, not a license to give Claude vague work. If low effort
+is selected for a risk-sensitive task, the plan must compensate by being more explicit and by requiring
+Claude to stop and report blockers instead of improvising large architectural decisions.
+
 ### Research basis
 
 This policy is based on the current official Claude guidance, not an assumption that the heaviest model is always best:
@@ -351,6 +382,11 @@ Define:
 
 Prefer one shared pure policy over multiple ad hoc copies when behavior must remain consistent.
 
+When repeated failures, repeated loading behavior, source selection, filtering, or visibility rules
+appear in several places, first look for an existing shared policy. If one does not exist and the same
+rule must be enforced across screens, create one shared policy or executor rather than duplicating
+logic inside each screen model.
+
 ## 8. Persistence, migration, backup, and sync
 
 For every stored value, state:
@@ -406,6 +442,33 @@ For every external boundary, define handling for:
 - duplicate concurrent operation.
 
 User-facing errors must be localized and actionable. Diagnostics may retain safe technical categories, but must not expose sensitive content or raw uncontrolled exception text.
+
+### Structural runtime-boundary rule
+
+For crashes or errors crossing a reusable external boundary, plan the boundary first and the
+individual call-site edits second. Examples include extension source execution, network requests,
+installer/service calls, backup decoding, tracker calls, database migrations, reader page loading,
+and background jobs.
+
+For extension source execution specifically:
+
+- do not rely only on `catch (Exception)`; extension code can throw `LinkageError` such as
+  `NoClassDefFoundError` after a source has already loaded successfully;
+- do not classify all `Error` as recoverable;
+- preserve `CancellationException`;
+- preserve fatal VM errors such as `OutOfMemoryError`, `StackOverflowError`, `ThreadDeath`, and
+  `AssertionError`;
+- unwrap `ExecutionException`, `CompletionException`, and `InvocationTargetException` before
+  classification;
+- convert recoverable extension/runtime failures into source-scoped unavailable/error states so
+  sibling sources and unrelated screens can continue;
+- record source identity and operation in diagnostics;
+- add tests proving sibling isolation, not merely classifier behavior.
+
+The v0.8.10-fix2/fix3 Asura/Zstd crash documents the pattern: a narrow recommendation-path classifier
+was useful containment, but the durable fix required one shared source-runtime policy used by Browse,
+For You, Source Evaluation, global search, reader/download, library update, matching, and grouped
+recommendation paths.
 
 ## 11. Test plan
 

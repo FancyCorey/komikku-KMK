@@ -37,6 +37,7 @@ Do not assume a feature exists because it appears in a plan. Verify in this orde
 | Community/public sharing readiness | `docs/community/KMK_V0_7_46_PUBLIC_POLISH_CLOSEOUT_PLAN.md` (current closeout pass, v0.7.46) | `KMK_V0_7_46_PUBLIC_POLISH_CLOSEOUT_IMPLEMENTATION.md`; foundation docs: `KMK_V0_7_FINAL_PUBLIC_RELEASE_READINESS_PLAN.md` + `_AMENDMENT.md` + `_IMPLEMENTATION.md` (v0.7.45), public README draft, public test build line docs, `docs/community/KMK_COMMUNITY_CONSOLIDATION_PHASES.md` for earlier history |
 | Official Komikku alignment | `AGENTS.md`, `CONTRIBUTING.md`, `README.md` | Phase 10/11 architecture/style/test/release docs |
 | Official Komikku 1.14.0 reconciliation | `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_IMPLEMENTATION.md` (complete, 9/9 phases) | `docs/community/KMK_UPSTREAM_1_14_RECONCILIATION_AUDIT.md`, `docs/community/KMK_UPSTREAM_1_14_DETAILED_RECONCILIATION_PLAN.md`, official git tags `v1.13.6` and `v1.14.0`, current source code |
+| Extension/source runtime crashes | `docs/community/KMK_RECS_V0_8_10_FIX2_EXTENSION_ISOLATION_AUDIT.md`, `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md` | Source execution call sites, `AndroidSourceManager`, source API methods, recommendation/source-evaluation/global-search/reader/download/library update paths |
 | Historical rationale | `docs/recommendations/archive/` | Prefer active docs first; archive files explain earlier decisions |
 
 ## Current Source Of Truth Files
@@ -59,6 +60,8 @@ Do not assume a feature exists because it appears in a plan. Verify in this orde
 | `docs/community/KMK_RECS_V0_8_10_FIX1_FULL_KOMIKKU_CONFORMANCE_AND_STABILITY_IMPLEMENTATION_PLAN.md` | **Current in-progress work.** v0.8.10-fix1: full Komikku UI/architecture conformance pass across every KMK-added surface, lossless historical What's New conversion (supersedes the v0.8.10 Phase G "keep-as-is" decision), mandatory application-wide crash investigation. Gated Phase 0-8 plan. |
 | `docs/community/KMK_RECS_V0_8_10_FIX1_RELEASE_ASSURANCE_ADDENDUM.md` | v0.8.10-fix1 addendum: dependency/license audit, reproducible build docs, performance checks, upgrade/rollback tests, edge-case fixtures, crash-log export decision. |
 | `docs/community/KMK_RECS_V0_8_10_FIX1_FINAL_RELEASE_SAFETY_ADDENDUM.md` | v0.8.10-fix1 addendum: final release-safety gates before handoff. |
+| `docs/community/KMK_RECS_V0_8_10_FIX2_EXTENSION_ISOLATION_AUDIT.md` | Audit proving the Asura/Zstd `LinkageError` problem is a structural source-runtime isolation gap, not only an Asura screen issue. |
+| `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md` | **Current next crash/stability plan.** v0.8.10-fix3: create one shared source-runtime boundary and migrate extension source calls across Browse, For You, Source Evaluation, global search, reader/download, library update, matching, and grouped recommendation flows. |
 | `docs/ocr/README.md` | OCR feature index and branch-specific OCR documentation entry point. |
 
 ## Constant Procedures
@@ -416,7 +419,23 @@ Authoritative guide: docs/IMPLEMENTATION_PLAN_STANDARD.md
 
 Use this file for every future implementation plan. It defines the required repository research, current-behavior mapping, exact file and symbol planning, phase sizing, UI/lifecycle/performance review, persistence and migration analysis, security/privacy review, exception handling, test matrix, documentation, and Claude execution contract.
 
-Every plan must include a phase-specific Claude model and effort assignment. Use Sonnet high for ordinary implementation, Sonnet medium only for tightly specified throughput-oriented work, Opus high/xhigh for migrations, lifecycle, security, concurrency, architecture, and difficult audits, and Fable high/xhigh only for unusually large autonomous phases. Use `opusplan` for a plan-first/execute-second workflow. Record the reason, token tradeoff, escalation rule, actual model/effort used, and required verification. The authoritative decision matrix is section 3A of `docs/IMPLEMENTATION_PLAN_STANDARD.md`.
+Every plan must include a phase-specific Claude model and effort assignment. Use risk-based defaults
+from section 3A of `docs/IMPLEMENTATION_PLAN_STANDARD.md`, but honor the current project preference:
+after Codex has already done the audit and written an exact implementation-ready plan, prefer Sonnet
+low for Claude execution unless the plan explains why low effort is unsafe. Record the reason, token
+tradeoff, escalation rule, actual model/effort used, and required verification.
+
+Every plan must also document whether the issue is local or structural. If several screens or jobs
+fail through one shared external boundary, such as extension source execution, network calls,
+backup decoding, tracker calls, installer/service calls, migrations, reader page loading, or
+background work, plan the shared boundary/policy first. Local catches are only acceptable as
+documented containment; they are not the final fix unless the plan proves there is no shared contract
+to repair.
+
+When user intent affects the implementation contract, ask narrow clarification questions before
+finalizing the plan and record the answer as a decision. Future implementers should not have to infer
+whether a button closes a dialog or exits a workflow, whether a rating affects similar manga, whether
+work continues in the background, or which source-feedback axis is being changed.
 
 Current detailed examples:
 

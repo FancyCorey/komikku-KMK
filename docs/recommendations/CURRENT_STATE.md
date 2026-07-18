@@ -1,6 +1,14 @@
 ﻿# KMK Personal Recommendations Current State
 
-Date: 2026-07-09 (updated: 2026-07-18 -- v0.8.10-fix2 (Asura extension-linkage crash isolation)
+Date: 2026-07-09 (updated: 2026-07-18 -- v0.8.10-fix3 structural source-runtime isolation planned
+after v0.8.10-fix2 was confirmed too narrow. See
+`docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md`. The fix3 plan
+documents the required shared runtime boundary for extension source operations so one broken
+installed extension cannot crash Browse, For You, Source Evaluation, global search, reader/download,
+library update, or unrelated extension flows. v0.8.10-fix2 remains complete, but it should now be
+understood as a narrow patch, not the final structural repair.
+
+Previously updated: 2026-07-18 -- v0.8.10-fix2 (Asura extension-linkage crash isolation)
 complete: fixed a confirmed application-wide crash where a broken/incompletely-packaged extension
 (the installed Asura Scans extension) threw `NoClassDefFoundError: okhttp3.zstd.Zstd` while
 constructing its HTTP client during a For You/group-recommendation request. Two call sites were
@@ -32,7 +40,8 @@ Previously updated: KMK upstream 1.14.0 reconciliation complete (2026-07-17, app
 versionCode bumped to 1.14.0/89); v0.8.9 implementation complete in code, manual-QA pending
 (2026-07-16))
 
-Status: Updated through KMK-Recs v0.8.10 (see "v0.8.10 phase map" below). Previously: v0.8.9
+Status: Updated through KMK-Recs v0.8.10, with v0.8.10-fix3 planned as the next structural crash
+repair (see "v0.8.10 phase map" below for the completed base release). Previously: v0.8.9
 (official-style What's New entry structure going forward, Recommendation Settings search — see
 below). Before that: v0.8.8 (schedule enforcement fix,
 chapter-completion rating prompt, Recommendation Settings index, outdated-evaluation reconciliation
@@ -1676,4 +1685,3 @@ Updated in v0.7.42-fix2 (no new migration):
 - `:app:testDebugUnitTest`: BUILD SUCCESSFUL (267 tasks, v0.7.42-fix2); `spotlessCheck`: BUILD SUCCESSFUL; `assembleDebug`: BUILD SUCCESSFUL
 
 Future changes should document exactly which tests were run.
-

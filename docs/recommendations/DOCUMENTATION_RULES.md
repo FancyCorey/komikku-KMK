@@ -14,6 +14,7 @@ Do not claim a feature is implemented because it appears in a plan. Verify again
 
 Before any new implementation, read:
 
+- `docs/IMPLEMENTATION_PLAN_STANDARD.md`
 - `docs/recommendations/README.md`
 - `docs/recommendations/CURRENT_STATE.md`
 - `docs/recommendations/NEXT_WORK.md`
@@ -22,11 +23,29 @@ Before any new implementation, read:
 
 Then create or update a focused implementation plan and wait for explicit user approval.
 
+The focused plan must follow `docs/IMPLEMENTATION_PLAN_STANDARD.md`. In particular:
+
+- inspect code before writing the solution;
+- record current behavior and target behavior;
+- name exact files, symbols, policies, tests, and non-goals;
+- ask narrow clarification questions when the user's answer changes the implementation contract;
+- prefer shared policies/runtime boundaries over repeated local fixes when several screens fail for
+  the same reason;
+- include a Claude model/effort assignment and APK handoff naming when applicable.
+
 ## During Implementation
 
 Keep the scope tied to the approved plan.
 
 If the implementation deviates from the plan, document the deviation and why it happened.
+
+If a local fix reveals a broader structural issue, stop and document that broader issue instead of
+silently adding more local patches. The implementation note must distinguish:
+
+- containment applied now;
+- structural work still required;
+- tests that prove containment;
+- tests or device checks still needed to prove the structural fix.
 
 ## Required Implementation Note Fields
 
@@ -43,6 +62,9 @@ Every implementation note must include:
 - Known limitations
 - Follow-up recommendations
 - Deviations from the approved plan
+- Requested and actual Claude model/effort when Claude Code was used
+- Any user clarifications that changed the implementation contract
+- Any structural boundary or shared policy introduced or intentionally deferred
 
 ## Versioning
 

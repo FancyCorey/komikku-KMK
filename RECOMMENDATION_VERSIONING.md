@@ -2169,6 +2169,24 @@ from the feature label):
 - APK for this milestone: `Komikku-v1.14.0-kmk.8.9-debug.apk` — same recs feature suffix as the
   entry above, new upstream-version prefix.
 
+### KMK-Recs v0.8.10-fix3 (planned structural source-runtime isolation)
+
+Planned next corrective handoff under the v0.8.10 line. This is not a new feature phase; it is the
+structural follow-up to the narrow Asura/Zstd `LinkageError` crash isolation patch.
+
+Authoritative plan:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md`
+
+Expected APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix3-debug.apk
+```
+
+Claude must update this section after implementation with the actual `KmkRecsReleaseNotes` decision,
+files changed, tests run, APK copy path, and implementation report link.
+
 ## APK Naming Recommendation
 
 For local handoff builds, use filenames like:

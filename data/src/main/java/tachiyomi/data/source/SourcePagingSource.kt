@@ -66,6 +66,11 @@ abstract class BaseSourcePagingSource(
             xLogE("${this::class.simpleName}: Failed to load paging source", e)
             LoadResult.Error(e)
         }
+        // KMK v0.8.10-fix3: NOT migrated here -- see the implementation report's "blocker" section.
+        // This file lives in the `data` Gradle module, which `app` depends on (not the reverse), so
+        // it cannot reference `eu.kanade.tachiyomi.source.SourceRuntime` (an `app`-module class)
+        // without a module restructure. Flagged as a genuine architectural contradiction with the
+        // plan's file recommendation rather than worked around unilaterally.
     }
 
     // SY -->
