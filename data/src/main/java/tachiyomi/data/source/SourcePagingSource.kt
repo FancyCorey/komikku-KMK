@@ -2,9 +2,11 @@ package tachiyomi.data.source
 
 import androidx.paging.PagingState
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.MetadataMangasPage
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.log.xLogE
 import exh.metadata.metadata.RaisedSearchMetadata
 import mihon.domain.manga.model.toDomainManga
@@ -65,12 +67,21 @@ abstract class BaseSourcePagingSource(
         } catch (e: Exception) {
             xLogE("${this::class.simpleName}: Failed to load paging source", e)
             LoadResult.Error(e)
+        } catch (e: Error) {
+            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension (e.g. a missing runtime
+            // dependency lazily touched while constructing its HTTP client) throws a LinkageError,
+            // which is an Error, not an Exception -- this catch block previously let it escape
+            // uncaught and crash Browse/search paging entirely instead of becoming a page load
+            // error. Genuinely fatal VM errors (OutOfMemoryError, StackOverflowError, ...) are still
+            // rethrown, exactly as before this fix. Uses the pure classifier shared with `app`'s
+            // SourceRuntime via core:common (see SourceRuntimeClassifier.kt) -- this `data`-module
+            // file cannot depend on `app`, so it cannot use SourceRuntime.run() itself, but the
+            // classification decision is identical either way, not a divergent copy.
+            val unwrapped = e.unwrapSourceRuntimeCause()
+            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+            xLogE("${this::class.simpleName}: Failed to load paging source (extension linkage failure)", unwrapped)
+            LoadResult.Error(unwrapped)
         }
-        // KMK v0.8.10-fix3: NOT migrated here -- see the implementation report's "blocker" section.
-        // This file lives in the `data` Gradle module, which `app` depends on (not the reverse), so
-        // it cannot reference `eu.kanade.tachiyomi.source.SourceRuntime` (an `app`-module class)
-        // without a module restructure. Flagged as a genuine architectural contradiction with the
-        // plan's file recommendation rather than worked around unilaterally.
     }
 
     // SY -->

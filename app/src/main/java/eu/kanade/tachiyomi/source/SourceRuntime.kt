@@ -4,9 +4,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.lang.reflect.InvocationTargetException
-import java.util.concurrent.CompletionException
-import java.util.concurrent.ExecutionException
 
 // KMK v0.8.10-fix3 -->
 /**
@@ -148,33 +145,12 @@ data class SourceRuntimeFailure(
     val throwable: Throwable,
 )
 
-/**
- * Unwraps a failure that may have been wrapped by concurrency/reflection bridging code
- * ([ExecutionException], [CompletionException], [InvocationTargetException]) so the real underlying
- * cause (e.g. a [LinkageError]) is what gets classified, not the wrapper.
- */
-fun Throwable.unwrapSourceRuntimeCause(): Throwable {
-    var current: Throwable = this
-    while (
-        (current is ExecutionException || current is CompletionException || current is InvocationTargetException) &&
-        current.cause != null
-    ) {
-        current = current.cause!!
-    }
-    return current
-}
-
-/**
- * True when [this] (already unwrapped via [unwrapSourceRuntimeCause] by callers that need it) is a
- * recoverable source-scoped failure: any ordinary [Exception], or a [LinkageError] (covers
- * [NoClassDefFoundError], [NoSuchMethodError], [NoSuchFieldError], [IncompatibleClassChangeError],
- * [ExceptionInInitializerError], and any other [LinkageError] subtype — all recoverable, since the
- * request that triggered them simply fails; nothing else on the JVM is corrupted). False for
- * [CancellationException] (handled separately by callers, never reaching this check) and for any
- * other [Error] — [OutOfMemoryError], [StackOverflowError], [ThreadDeath], [AssertionError], and any
- * unclassified [Error] — which must always propagate uncaught.
- */
-fun Throwable.isRecoverableSourceRuntimeFailure(): Boolean = this !is Error || this is LinkageError
+// KMK v0.8.10-fix3: isRecoverableSourceRuntimeFailure() and unwrapSourceRuntimeCause() moved to
+// core:common's eu.kanade.tachiyomi.source.SourceRuntimeClassifier.kt (same package, different
+// module) so data-module call sites (e.g. tachiyomi.data.source.SourcePagingSource, which `app`
+// depends on but which cannot depend back on `app`) can share this exact classification logic
+// instead of duplicating it. No import needed here since both files share this package. See that
+// file's KDoc for the full module-boundary reasoning.
 
 /** Maps a recoverable failure to a [SourceRuntimeFailureKind] for diagnostics/UI. */
 fun Throwable.toSourceRuntimeFailureKind(): SourceRuntimeFailureKind = when (this) {
