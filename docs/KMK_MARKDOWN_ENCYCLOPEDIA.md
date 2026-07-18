@@ -61,7 +61,9 @@ Do not assume a feature exists because it appears in a plan. Verify in this orde
 | `docs/community/KMK_RECS_V0_8_10_FIX1_RELEASE_ASSURANCE_ADDENDUM.md` | v0.8.10-fix1 addendum: dependency/license audit, reproducible build docs, performance checks, upgrade/rollback tests, edge-case fixtures, crash-log export decision. |
 | `docs/community/KMK_RECS_V0_8_10_FIX1_FINAL_RELEASE_SAFETY_ADDENDUM.md` | v0.8.10-fix1 addendum: final release-safety gates before handoff. |
 | `docs/community/KMK_RECS_V0_8_10_FIX2_EXTENSION_ISOLATION_AUDIT.md` | Audit proving the Asura/Zstd `LinkageError` problem is a structural source-runtime isolation gap, not only an Asura screen issue. |
-| `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md` | **Current next crash/stability plan.** v0.8.10-fix3: create one shared source-runtime boundary and migrate extension source calls across Browse, For You, Source Evaluation, global search, reader/download, library update, matching, and grouped recommendation flows. |
+| `docs/community/KMK_RECS_V0_8_10_FIX3_STRUCTURAL_SOURCE_RUNTIME_ISOLATION_PLAN.md` | v0.8.10-fix3: created the shared source-runtime boundary and migrated many source calls. Historical after live-device QA showed incomplete coverage. |
+| `docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_PLAN.md` | v0.8.10-fix4 plan: live-device follow-up after fix3 still crashed from AsuraScans `okhttp3.zstd.Zstd`; completes remaining direct source-call migrations, especially `BrowseSourceScreenModel.getFilterList()` and For You/group/feed/evaluation paths. |
+| `docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md` | **Current stable state.** v0.8.10-fix4 implementation report: confirmed root cause (`BrowseSourceScreenModel.kt`'s unguarded `getFilterList()`), full call-site inventory, sections 7-8 re-check findings, new sibling-isolation tests, final verification and APK hash. |
 | `docs/ocr/README.md` | OCR feature index and branch-specific OCR documentation entry point. |
 
 ## Constant Procedures

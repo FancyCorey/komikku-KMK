@@ -1,5 +1,16 @@
 ﻿# KMK Personal Recommendations Current State
 
+Latest correction (2026-07-18): `v0.8.10-fix4` is **complete**. Live-device evidence
+(`C:\Users\USER\Downloads\Komikku\kmk_fix3_live_crash_logcat.txt`) showed
+`Komikku-v1.14.0-kmk.8.10-fix3-debug.apk` still crashed with the installed AsuraScans extension
+present -- `NoClassDefFoundError: okhttp3.zstd.Zstd` still reached `GlobalExceptionHandler`/
+`CrashActivity` when opening For You/Browse/source-related flows. The confirmed root cause was
+`BrowseSourceScreenModel.kt`'s `init` block calling `source.getFilterList()` with no try/catch
+at all. Fix4 migrated that plus the remaining direct source-method call families listed in
+`docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_PLAN.md` to the shared
+`SourceRuntime` boundary; see
+`docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md` for the
+full report.
 Date: 2026-07-09 (updated: 2026-07-18 -- v0.8.10-fix3 structural source-runtime isolation
 **complete**. New shared boundary: `eu.kanade.tachiyomi.source.SourceRuntime` (app-layer execution
 helper + failure registry) backed by pure classification functions

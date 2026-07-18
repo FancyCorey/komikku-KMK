@@ -2199,6 +2199,49 @@ library update/bulk favorite, KMK matching/Best Version/Source Evaluation/For Yo
 recommendations. Tests: 23 new (1408 → 1431). Full verification (`spotlessCheck`,
 `:app:testDebugUnitTest`, `assembleDebug`) passed before the APK was built.
 
+### KMK-Recs v0.8.10-fix4 (complete source-runtime isolation, complete)
+
+Corrective handoff under the same v0.8.10 line after live-device QA disproved full fix3 coverage.
+`Komikku-v1.14.0-kmk.8.10-fix3-debug.apk` still crashed with the installed AsuraScans extension
+present: `NoClassDefFoundError: okhttp3.zstd.Zstd` reached `GlobalExceptionHandler`/`CrashActivity`
+when opening For You, manga recommendations, Browse/source screens, and For You settings. Direct
+re-inspection of the actual code (not fix3's report characterization of it) found the real,
+confirmed root cause: `BrowseSourceScreenModel.kt`'s `init` block called `source.getFilterList()`
+with zero try/catch -- not "lower risk", fully unguarded.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md`
+
+Migrated `BrowseSourceScreenModel.kt`, `SearchScreenModel.kt`, `FeedScreenModel.kt`,
+`SourceFeedScreenModel.kt`, `BrowsePersonalRecommendationsScreenModel.kt`,
+`CrossExtensionGenreSearchSource.kt`, `RecommendationCandidateEnricher.kt`,
+`GroupRecommendationSeedBuilder.kt`, `RecommendsScreenModel.kt` (partial -- see the implementation
+report's documented discrepancy: it wraps a polymorphic `PagingSource.requestNextPage()` call, not a
+single raw `Source` method, so it uses the shared `core:common` classifier directly instead of
+`SourceRuntime.run()`), `SourceEvaluationRunner.kt`, `SourceEvaluationCatalogueEnricher.kt`,
+`SourceRecommendationFitProbe.kt`, `SameMangaCandidateSearcher.kt`,
+`CrossExtensionMatchScreenModel.kt`, `BestVersionCompareScreenModel.kt` to the shared `SourceRuntime`
+boundary. Inspected and left unchanged (already safe via an equivalent mechanism):
+`SourceRecommendationQualityRunner.kt`, `RecommendationSearchHelper.kt`, `HttpPageLoader.kt`,
+`ChapterLoader.kt`, `Downloader.kt`, `ExtensionManager.kt`, `ExtensionsScreenModel.kt`,
+`ExtensionDetailsScreenModel.kt`. Tests: 3 new files, 24 tests, all proving sibling isolation against
+the real `SourceRuntime.run()` boundary (not only classifier-level assertions).
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix4-debug.apk
+```
+
+Release-note/version decision: confirmed via direct read of
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` -- `VERSION_CODE`/`VERSION_NAME` remain at
+`760`/`"KMK-Recs v0.8.10"`, unchanged from fix1/fix2/fix3, since this is a crash-isolation/stability
+pass with no user-visible feature change. No new What's New entry was added. The pre-supplied draft
+of this section (written before implementation) reached the same conclusion; confirmed, not
+overridden.
+
 ## APK Naming Recommendation
 
 For local handoff builds, use filenames like:

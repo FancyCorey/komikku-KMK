@@ -1,5 +1,15 @@
 ﻿# KMK Personal Recommendations Next Work
 
+## v0.8.10-fix4 (complete)
+
+Live-device verification after `v0.8.10-fix3` showed the AsuraScans `okhttp3.zstd.Zstd` `NoClassDefFoundError` still reached `GlobalExceptionHandler`/`CrashActivity` when opening For You, manga recommendations, Browse/source screens, and For You settings. The confirmed root cause was `BrowseSourceScreenModel.kt`'s `init` block calling `source.getFilterList()` with no try/catch at all -- not the "lower risk" deferral fix3's report characterized it as. See
+`docs/community/KMK_RECS_V0_8_10_FIX4_COMPLETE_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md` for the
+full call-site inventory, the `RecommendsScreenModel.kt`/`RecommendationSearchHelper.kt`
+polymorphic-PagingSource discrepancy from the plan's implied shape, the sections 7-8 re-check
+findings (HttpPageLoader/Downloader/ExtensionManager already safely isolated, no changes needed),
+new sibling-isolation tests, and the final APK hash.
+
+---
 ## v0.8.10-fix3 (complete)
 
 Structural source-runtime isolation is complete. See

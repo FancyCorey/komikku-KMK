@@ -465,10 +465,13 @@ For extension source execution specifically:
 - record source identity and operation in diagnostics;
 - add tests proving sibling isolation, not merely classifier behavior.
 
-The v0.8.10-fix2/fix3 Asura/Zstd crash documents the pattern: a narrow recommendation-path classifier
-was useful containment, but the durable fix required one shared source-runtime policy used by Browse,
-For You, Source Evaluation, global search, reader/download, library update, matching, and grouped
-recommendation paths.
+The v0.8.10-fix2/fix3/fix4 Asura/Zstd crash documents the pattern: a narrow recommendation-path
+classifier was useful containment, but the durable fix required one shared source-runtime policy used
+by Browse, For You, Source Evaluation, global search, reader/download, library update, matching, and
+grouped recommendation paths. A call site is not structurally fixed merely because it has a nearby
+`catch (Error)` branch; app-module source-method calls should use the shared runtime boundary unless
+a documented module boundary makes that impossible. Do not defer a source call as "lower risk" once
+real-device evidence shows it participates in the crash family.
 
 ## 11. Test plan
 
