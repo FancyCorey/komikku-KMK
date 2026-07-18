@@ -18,6 +18,11 @@ enum class RecommendationErrorKind(val storageKey: String) {
     Timeout("REC_ERROR_TIMEOUT"),
     Cancelled("REC_ERROR_CANCELLED"),
     FileAccess("REC_ERROR_FILE_ACCESS"),
+    // KMK v0.8.10-fix2: a broken/incompletely-packaged extension throwing a LinkageError
+    // (NoClassDefFoundError, NoSuchMethodError, IncompatibleClassChangeError, etc.) while
+    // constructing its HTTP client or otherwise executing. Recoverable as a per-source failure —
+    // never the whole recommendation load.
+    ExtensionIncompatible("REC_ERROR_EXTENSION_INCOMPATIBLE"),
     Internal("REC_ERROR_INTERNAL"),
     ;
 
@@ -29,6 +34,8 @@ enum class RecommendationErrorKind(val storageKey: String) {
 object RecommendationErrorClassifier {
     fun classify(e: Throwable): RecommendationErrorKind = when {
         e is CancellationException -> RecommendationErrorKind.Cancelled
+        // KMK v0.8.10-fix2: check before the generic Error fallthrough below.
+        e is LinkageError -> RecommendationErrorKind.ExtensionIncompatible
         e is UnknownHostException -> RecommendationErrorKind.Network
         e is SocketTimeoutException -> RecommendationErrorKind.Timeout
         e is FileNotFoundException -> RecommendationErrorKind.FileAccess
@@ -38,6 +45,27 @@ object RecommendationErrorClassifier {
 
     /** Stable storage key — used in place of a raw exception message in UI-facing state fields. */
     fun classifyToStorageKey(e: Throwable): String = classify(e).storageKey
+
+    // KMK v0.8.10-fix2 -->
+    /**
+     * Confirmed root cause (v0.8.10 fix2): a broken or incompletely-packaged extension can throw a
+     * [LinkageError] (observed in practice: `NoClassDefFoundError: okhttp3.zstd.Zstd` while the
+     * installed Asura Scans extension constructs its HTTP client) partway through a per-source
+     * recommendation request. [LinkageError] is an [Error], not an [Exception] — the per-source
+     * request loops in [exh.recs.RecommendsScreenModel] and
+     * [exh.recs.BrowsePersonalRecommendationsScreenModel] previously either rethrew every [Error]
+     * unconditionally, or (for the plain `catch (e: Exception)` request loop) never caught [Error] at
+     * all — so one incompatible extension crashed the entire For You screen / recommendation page
+     * instead of becoming a single failed source row.
+     *
+     * True for any [Exception] (never fatal to the process) and for [LinkageError] specifically
+     * (a load-time/class-resolution failure that is safely recoverable — the request that triggered
+     * it simply fails, nothing else on the JVM is corrupted). False for genuinely fatal VM
+     * conditions — [OutOfMemoryError], [StackOverflowError], and any other [Error] that is not a
+     * [LinkageError] — which must always propagate uncaught, exactly as before this fix.
+     */
+    fun isRecoverableSourceFailure(e: Throwable): Boolean = e !is Error || e is LinkageError
+    // KMK <--
 }
 
 /**
@@ -50,6 +78,7 @@ fun recommendationErrorMessageRes(kind: RecommendationErrorKind): StringResource
     RecommendationErrorKind.Timeout -> KMR.strings.rec_error_timeout
     RecommendationErrorKind.Cancelled -> KMR.strings.rec_error_cancelled
     RecommendationErrorKind.FileAccess -> KMR.strings.rec_error_file_access
+    RecommendationErrorKind.ExtensionIncompatible -> KMR.strings.rec_error_extension_incompatible
     RecommendationErrorKind.Internal -> KMR.strings.rec_error_internal
 }
 // KMK <--

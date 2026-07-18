@@ -806,6 +806,7 @@
     <!-- KMK --> <string name="rec_error_timeout">Timed out</string>
     <!-- KMK --> <string name="rec_error_cancelled">Cancelled</string>
     <!-- KMK --> <string name="rec_error_file_access">Could not access this file</string>
+    <!-- KMK v0.8.10-fix2 --> <string name="rec_error_extension_incompatible">Extension incompatible or missing dependency</string>
     <!-- KMK --> <string name="rec_error_internal">Something went wrong. See logs for details.</string>
     <!-- KMK --> <string name="rec_bundle_load_error_file_open_failed">Could not open the selected file.</string>
     <!-- KMK --> <string name="ocr_match_exact">Exact match</string>

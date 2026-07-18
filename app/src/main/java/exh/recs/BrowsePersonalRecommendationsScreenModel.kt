@@ -505,7 +505,12 @@ class BrowsePersonalRecommendationsScreenModel(
         }
 
         val plans = RecommendationQueryPlanner.buildPlans(topTags, lastStrategy)
-        var lastError: Exception? = null
+        // KMK v0.8.10-fix2: widened from Exception? to Throwable? -- this loop previously only
+        // caught Exception, so a broken/incompatible extension's LinkageError (e.g. the confirmed
+        // NoClassDefFoundError: okhttp3.zstd.Zstd from the Asura Scans extension constructing its
+        // HTTP client) was never caught here at all and crashed the whole For You load. See the new
+        // catch(Error) branch below and RecommendationErrorClassifier.isRecoverableSourceFailure.
+        var lastError: Throwable? = null
         var hadRawResults = false
 
         for (plan in plans) {
@@ -729,6 +734,16 @@ class BrowsePersonalRecommendationsScreenModel(
                     isUseful = mergedRecommendations.isNotEmpty(),
                 )
             } catch (e: Exception) {
+                lastError = e
+            } catch (e: Error) {
+                // KMK v0.8.10-fix2: this per-source loop previously had no Error handling at all --
+                // an Error simply propagated uncaught out of this suspend function, through the
+                // enclosing `async {}` (line ~343) and `.awaitAll()`, crashing the whole batch/load.
+                // Only a recoverable extension-linkage failure (LinkageError) is downgraded to a
+                // per-source error, matching the exact same policy used at RecommendsScreenModel's
+                // shared boundary. Genuinely fatal VM errors (OutOfMemoryError, StackOverflowError,
+                // any other non-linkage Error) are rethrown unchanged.
+                if (!RecommendationErrorClassifier.isRecoverableSourceFailure(e)) throw e
                 lastError = e
             }
         }

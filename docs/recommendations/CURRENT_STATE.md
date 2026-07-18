@@ -1,6 +1,24 @@
 ﻿# KMK Personal Recommendations Current State
 
-Date: 2026-07-09 (updated: 2026-07-17 -- v0.8.10 corrective/completion release complete: Phases
+Date: 2026-07-09 (updated: 2026-07-18 -- v0.8.10-fix2 (Asura extension-linkage crash isolation)
+complete: fixed a confirmed application-wide crash where a broken/incompletely-packaged extension
+(the installed Asura Scans extension) threw `NoClassDefFoundError: okhttp3.zstd.Zstd` while
+constructing its HTTP client during a For You/group-recommendation request. Two call sites were
+narrowed from "rethrow every Error" / "catch only Exception" to "recoverable LinkageError becomes a
+per-source error row; genuinely fatal VM errors (OutOfMemoryError, StackOverflowError, ...) still
+propagate": `RecommendsScreenModel`'s shared GROUP_PREVIEW boundary and
+`BrowsePersonalRecommendationsScreenModel`'s per-source search loop (the actual "For You" tab, which
+previously did not catch `Error` at all). New `RecommendationErrorKind.ExtensionIncompatible` +
+`RecommendationErrorClassifier.isRecoverableSourceFailure()`; the shared official
+`Throwable.formattedMessage` renderer now shows a sanitized "Extension incompatible or missing
+dependency" message for any `LinkageError` instead of leaking the raw class-resolution detail. 19 new
+tests. `KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` intentionally NOT bumped for this pass,
+matching the v0.8.10-fix1 precedent (a narrowly-scoped DI/crash-isolation fix, not a KMK-Recs feature
+changelog entry). Final APK: `Komikku-v1.14.0-kmk.8.10-fix2-debug.apk`. See
+`docs/community/KMK_RECS_V0_8_10_FIX2_IMPLEMENTATION.md` for the full report. Previously updated:
+2026-07-18 -- v0.8.10-fix1 (missing `UpdateMangaFromRemote` DI registration crash fix, see
+`docs/community/KMK_RECS_V0_8_10_FIX1_CRASH_FIX_IMPLEMENTATION.md`).
+Before that: 2026-07-17 -- v0.8.10 corrective/completion release complete: Phases
 A-I of `docs/community/KMK_RECS_V0_8_10_0_8_9_COMPLETION_AND_1_14_VALIDATION_IMPLEMENTATION_PLAN.md`
 all landed, verified, and committed; Phase J (device/accessibility/release verification) is
 explicitly not executable in this environment -- disclosed as a blocker, not claimed passed. App

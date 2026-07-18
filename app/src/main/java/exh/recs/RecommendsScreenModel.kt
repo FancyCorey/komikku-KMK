@@ -436,7 +436,11 @@ open class RecommendsScreenModel(
                     } catch (e: Throwable) {
                         // KMK v0.8.6: fatal VM errors (OutOfMemoryError, StackOverflowError, etc.) are
                         // never treated as an ordinary recoverable source error.
-                        if (e is Error) throw e
+                        // KMK v0.8.10-fix2: narrowed from "every Error is fatal" to "every Error
+                        // except a recoverable LinkageError (broken/incompatible extension) is fatal"
+                        // -- see RecommendationErrorClassifier.isRecoverableSourceFailure's doc for the
+                        // confirmed NoClassDefFoundError/okhttp3.zstd.Zstd root cause this fixes.
+                        if (!RecommendationErrorClassifier.isRecoverableSourceFailure(e)) throw e
                         logcat(LogPriority.WARN, e, tag = TAG) {
                             "GROUP_PREVIEW error source=${recSource.name} elapsedMs=${System.currentTimeMillis() - rowStartMs}"
                         }

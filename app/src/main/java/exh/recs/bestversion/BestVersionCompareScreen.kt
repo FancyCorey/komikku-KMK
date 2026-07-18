@@ -86,6 +86,7 @@ private fun recommendationErrorText(key: String): String {
             RecommendationErrorKind.Timeout -> KMR.strings.rec_error_timeout
             RecommendationErrorKind.Cancelled -> KMR.strings.rec_error_cancelled
             RecommendationErrorKind.FileAccess -> KMR.strings.rec_error_file_access
+            RecommendationErrorKind.ExtensionIncompatible -> KMR.strings.rec_error_extension_incompatible
             RecommendationErrorKind.Internal -> KMR.strings.rec_error_internal
         },
     )
