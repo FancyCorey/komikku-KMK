@@ -188,7 +188,13 @@ class SourceRecommendationFitProbeTest {
 
     @Test
     fun `probe errorCount increments when source throws`() = runTest {
-        val probe = SourceRecommendationFitProbe(fakeGetTagAliases)
+        // KMK v0.8.10-fix4: explicit UnconfinedTestDispatcher instead of the probe's real
+        // Dispatchers.IO default -- runTest's virtual-time withTimeoutOrNull races against work
+        // actually completing on a real dispatcher, and SourceRuntime.run's extra suspend hop
+        // (dispatcher switch + registry write) was enough to occasionally flip that race and
+        // report "timed out" instead of running the (synchronously-throwing) fake source to
+        // completion. Same fix already applied to the two dispatcher-specific tests below.
+        val probe = SourceRecommendationFitProbe(fakeGetTagAliases, ioDispatcher = UnconfinedTestDispatcher(testScheduler))
         val throwingSource = FakeCatalogueSource(throws = true)
         val profile = TasteProfile(
             learnedTagWeights = mapOf("action" to 0.9, "fantasy" to 0.8),
@@ -205,7 +211,9 @@ class SourceRecommendationFitProbeTest {
     // KMK --> v0.7.12: error transparency — reasons are populated for ERROR outcomes
     @Test
     fun `probe reasons list is populated when source throws`() = runTest {
-        val probe = SourceRecommendationFitProbe(fakeGetTagAliases)
+        // KMK v0.8.10-fix4: see the comment on `probe errorCount increments when source throws`
+        // above -- same virtual-time/real-dispatcher race, same fix.
+        val probe = SourceRecommendationFitProbe(fakeGetTagAliases, ioDispatcher = UnconfinedTestDispatcher(testScheduler))
         val throwingSource = FakeCatalogueSource(throws = true)
         val profile = TasteProfile(
             learnedTagWeights = mapOf("action" to 0.9),

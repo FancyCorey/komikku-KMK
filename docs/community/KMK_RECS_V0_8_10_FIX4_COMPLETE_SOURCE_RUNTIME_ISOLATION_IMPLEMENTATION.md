@@ -172,8 +172,38 @@ classifier-level assertion, per the plan's explicit requirement.
 - `./gradlew :app:testDebugUnitTest --tests "eu.kanade.tachiyomi.source.SourceRuntimeTest" --tests
   "exh.recs.RecommendationSourceFailureIsolationTest" --tests
   "exh.recs.evaluation.SourceEvaluationLinkageIsolationTest"` — 24/24 tests passed.
-- Final full verification (`spotlessCheck`, full `:app:testDebugUnitTest`, `:app:assembleDebug`) is
-  recorded in the "Final verification" section below.
+
+## Final verification (all synchronous, real output)
+
+- `./gradlew spotlessCheck` — `BUILD SUCCESSFUL` (first run, before the full test run).
+- `./gradlew :app:testDebugUnitTest` (first full run) — **1 failure**:
+  `SourceRecommendationFitProbeTest > probe reasons list is populated when source throws()` —
+  `AssertionFailedError: Reason should mention the error: [Plan TOP_TAGS_FILTER: timed out, Plan
+  TEXT_ONLY_TOP_TAGS: timed out]`. Root cause: this test (and its sibling `probe errorCount
+  increments when source throws`) construct `SourceRecommendationFitProbe` without passing a test
+  dispatcher, so `ioDispatcher` defaults to the real `Dispatchers.IO`. Inside `runTest`'s
+  virtual-time scheduler, `withTimeoutOrNull(PLAN_TIMEOUT_MS) { ... real dispatcher work ... }` is a
+  known race: the virtual clock can auto-advance to the timeout before the real-dispatcher work
+  completes, independent of anything this fix changed. `SourceRuntime.run`'s one extra suspend hop
+  (dispatcher switch through `SourceRuntime.run` itself, plus a `SourceRuntimeFailureRegistry` write
+  on the failure path) was enough to occasionally flip this pre-existing race from "completes before
+  the virtual timeout" to "the virtual timeout wins" for this specific synchronously-throwing fake
+  source. Fixed by passing `ioDispatcher = UnconfinedTestDispatcher(testScheduler)` explicitly to
+  both of this test class's throwing-source tests, matching the pattern the same file already uses
+  for its two dispatcher-specific tests (`probe runs source calls on injected dispatcher not caller
+  dispatcher`, etc.) — this is a test-only change
+  (`app/src/test/java/exh/recs/evaluation/SourceRecommendationFitProbeTest.kt`), no production code
+  was touched to fix it.
+- `./gradlew :app:testDebugUnitTest --tests "exh.recs.evaluation.SourceRecommendationFitProbeTest"`
+  after the fix — 14/14 passed.
+- `./gradlew :app:testDebugUnitTest` (second full run) — **1434 tests, 0 failures, 0 errors** across
+  all `app/build/test-results/testDebugUnitTest/*.xml` (summed programmatically from the JUnit XML
+  `tests=`/`failures=`/`errors=` attributes, not eyeballed from console tail).
+- `./gradlew spotlessCheck` (re-run after the test fix) — `BUILD SUCCESSFUL`, no reformatting
+  needed.
+- `./gradlew :app:assembleDebug` — `BUILD SUCCESSFUL` in 1m 22s, produced
+  `app-arm64-v8a-debug.apk`, `app-armeabi-v7a-debug.apk`, `app-universal-debug.apk`,
+  `app-x86-debug.apk`, `app-x86_64-debug.apk` under `app/build/outputs/apk/debug/`.
 
 ## No device access
 
@@ -202,6 +232,17 @@ the existing precedent requires it. The APK filename alone carries the `fix4` su
 
 ## APK handoff
 
-APK path, SHA-256 hash, and `aapt dump badging` metadata are recorded in the final verification
-section below, added once `spotlessCheck` / full `:app:testDebugUnitTest` / `:app:assembleDebug` all
-pass.
+- Path: `C:\Users\USER\Downloads\Komikku\private\Komikku-v1.14.0-kmk.8.10-fix4-debug.apk`
+- Copied from `app/build/outputs/apk/debug/app-universal-debug.apk` (the same variant every prior
+  v0.8.10 fix APK in `private/` was copied from — confirmed by matching file size, ~171 MB, against
+  the fix3 APK already in that folder).
+- Size: 171,433,587 bytes.
+- SHA-256: `b0319b22b548a146dcd07d5498377f086c2d29dc610b4cda3d122985b24ff52`
+- `versionCode`/`versionName` (from `app/build.gradle.kts`): Android package `versionCode = 89`,
+  `versionName = "1.14.0"` (plus the debug `versionNameSuffix`, unchanged by this fix).
+  `KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` (`760`/`"KMK-Recs v0.8.10"`) are the separately
+  tracked KMK feature version discussed in the "Versioning decision" section above.
+- `aapt dump badging` metadata was not captured: this environment has no Android SDK build-tools
+  `aapt`/`aapt2` binary available (consistent with every prior fix this session also reporting no
+  `adb`/device access). `versionCode`/`versionName` above were confirmed by reading
+  `app/build.gradle.kts` directly instead.
