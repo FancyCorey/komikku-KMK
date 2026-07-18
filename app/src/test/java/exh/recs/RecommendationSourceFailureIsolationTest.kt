@@ -1,5 +1,15 @@
 package exh.recs
 
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -110,5 +120,61 @@ class RecommendationSourceFailureIsolationTest {
         assertTrue(job.isCancelled)
         assertTrue(!sawStaleWork)
     }
+
+    // KMK v0.8.10-fix4 -->
+    // The tests above drive RecommendationErrorClassifier's decision in isolation. Fix4 migrated
+    // the real call sites (CrossExtensionGenreSearchSource, RecommendationCandidateEnricher,
+    // GroupRecommendationSeedBuilder) to call SourceRuntime.run() directly instead of a local
+    // try/catch. This section drives the *actual* SourceRuntime.run() boundary against a small
+    // per-manga enrichment loop shaped exactly like RecommendationCandidateEnricher.enrich() --
+    // sequential `for (manga in candidates)`, one SourceRuntime.run() call per candidate, a failure
+    // on one candidate must not stop enrichment of the next -- and additionally confirms the
+    // failure registry (not just a returned Result) records the failing source.
+    private class FakeEnrichSource(override val id: Long, override val name: String) : Source {
+        override val lang: String = "en"
+        override val supportsLatest: Boolean = false
+        var failOnUrl: String? = null
+
+        override fun getFilterList(): FilterList = FilterList()
+        override suspend fun getPopularManga(page: Int): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ): SMangaUpdate {
+            if (manga.url == failOnUrl) {
+                throw NoClassDefFoundError("okhttp3.zstd.Zstd")
+            }
+            return SMangaUpdate(manga = manga, chapters = emptyList())
+        }
+        override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
+    }
+
+    @Test
+    fun `SourceRuntime run isolates one candidate's linkage failure during sequential enrichment while sibling candidates still enrich`() = runTest {
+        val source = FakeEnrichSource(555L, "BrokenEnrichSource").apply { failOnUrl = "/manga/broken" }
+        SourceRuntimeFailureRegistry.clear(555L)
+
+        val candidateUrls = listOf("/manga/ok-1", "/manga/broken", "/manga/ok-2")
+        val outcomes = candidateUrls.map { url ->
+            val smanga = SManga.create().also { it.url = url }
+            url to SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate) {
+                getMangaUpdate(manga = smanga, chapters = emptyList(), fetchDetails = true, fetchChapters = false)
+            }
+        }
+
+        assertEquals(true, outcomes[0].second.isSuccess)
+        assertEquals(true, outcomes[1].second.isFailure)
+        assertEquals(true, outcomes[2].second.isSuccess)
+        assertTrue(outcomes[1].second.exceptionOrNull() is NoClassDefFoundError)
+
+        val recorded = SourceRuntimeFailureRegistry.get(555L)
+        assertTrue(recorded != null)
+        assertEquals(SourceRuntimeOperation.MangaUpdate, recorded!!.operation)
+    }
+    // KMK <--
 }
 // KMK <--

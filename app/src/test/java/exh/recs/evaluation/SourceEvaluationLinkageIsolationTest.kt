@@ -1,9 +1,21 @@
 package exh.recs.evaluation
 
+import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 // KMK v0.8.10-fix3 -->
@@ -52,5 +64,65 @@ class SourceEvaluationLinkageIsolationTest {
             probeSource("badsource") { throw OutOfMemoryError("heap exhausted") }
         }
     }
+
+    // KMK v0.8.10-fix4 -->
+    // Fix4 migrated SourceEvaluationRunner's Popular/Latest probe calls, and
+    // SourceEvaluationCatalogueEnricher's per-item getMangaUpdate() enrichment call, to
+    // SourceRuntime.run() instead of the catch(Exception)/catch(Error) pair the harness above
+    // mirrors. This drives the real SourceRuntime.run() boundary across several sources' Popular
+    // probes (one per source, like SourceEvaluationRunner's `for (source in catalogueSources)`
+    // loop) to prove sibling *sources* still complete, and confirms the failure is recorded in
+    // SourceRuntimeFailureRegistry -- not just swallowed into a local Result.
+    private class FakeProbeSource(
+        override val id: Long,
+        override val name: String,
+        private val failPopular: Boolean,
+    ) : CatalogueSource {
+        override val lang: String = "en"
+        override val supportsLatest: Boolean = false
+        override fun getFilterList(): FilterList = FilterList()
+        override suspend fun getPopularManga(page: Int): MangasPage {
+            if (failPopular) throw NoClassDefFoundError("okhttp3.zstd.Zstd")
+            return MangasPage(emptyList(), false)
+        }
+        override suspend fun getLatestUpdates(page: Int): MangasPage = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ): SMangaUpdate = throw UnsupportedOperationException()
+        override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
+    }
+
+    @Test
+    fun `SourceRuntime run isolates one source's Popular-probe linkage failure while sibling sources in the same batch still probe successfully`() = runTest {
+        val sources = listOf(
+            FakeProbeSource(1L, "asurascans", failPopular = true),
+            FakeProbeSource(2L, "mangadex", failPopular = false),
+            FakeProbeSource(3L, "comick", failPopular = false),
+        )
+        sources.forEach { SourceRuntimeFailureRegistry.clear(it.id) }
+
+        val outcomes = sources.map { source ->
+            source.name to SourceRuntime.run(source, SourceRuntimeOperation.Popular) { getPopularManga(1) }
+        }
+
+        val asura = outcomes.single { it.first == "asurascans" }
+        assertTrue(asura.second.isFailure)
+        assertTrue(asura.second.exceptionOrNull() is NoClassDefFoundError)
+
+        val siblings = outcomes.filter { it.first != "asurascans" }
+        assertTrue(siblings.all { it.second.isSuccess })
+
+        val recorded = SourceRuntimeFailureRegistry.get(1L)
+        assertTrue(recorded != null)
+        assertEquals(SourceRuntimeOperation.Popular, recorded!!.operation)
+        // Sibling sources must never be recorded as failed just because one source in the batch was.
+        assertEquals(null, SourceRuntimeFailureRegistry.get(2L))
+        assertEquals(null, SourceRuntimeFailureRegistry.get(3L))
+    }
+    // KMK <--
 }
 // KMK <--
