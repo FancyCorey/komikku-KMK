@@ -896,6 +896,7 @@
     <!-- KMK --> <string name="source_evaluation_probe_error_network">Network unavailable</string>
     <!-- KMK --> <string name="source_evaluation_probe_error_timeout">Timed out</string>
     <!-- KMK --> <string name="source_evaluation_probe_error_unsupported">Source does not support this action</string>
+    <!-- KMK v0.8.10-fix3 --> <string name="source_evaluation_probe_error_extension_incompatible">Extension incompatible or missing dependency</string>
     <!-- KMK --> <string name="source_evaluation_probe_error_internal">Internal error — see diagnostics</string>
     <!-- KMK v0.7.31: C2 — retry after connectivity loss -->
     <!-- KMK --> <string name="source_evaluation_retry_connectivity">Retry</string>

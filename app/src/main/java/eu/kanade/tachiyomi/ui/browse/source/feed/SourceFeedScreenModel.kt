@@ -18,8 +18,10 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.browse.SourceFeedUI
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.all.MangaDex
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.ui.browse.feed.MaxFeedItems
 import exh.source.EH_PACKAGE
 import exh.source.LOCAL_SOURCE_PACKAGE
@@ -249,6 +251,14 @@ open class SourceFeedScreenModel(
                             }
                         }.mangas
                     } catch (e: Exception) {
+                        emptyList()
+                    } catch (e: Error) {
+                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                        // LinkageError (an Error, not an Exception) lazily while executing a source
+                        // method -- previously uncaught here, crashing the source feed. Falls back to
+                        // emptyList() for this one feed item, same shape as the existing Exception
+                        // fallback above; genuinely fatal VM errors still rethrow.
+                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                         emptyList()
                     }
 

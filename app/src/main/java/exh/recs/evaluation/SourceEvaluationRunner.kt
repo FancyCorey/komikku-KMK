@@ -7,6 +7,8 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.system.isOnline
 import exh.recs.RecommendationSourceFilter
 import exh.source.ExplicitSourceClassifier
@@ -315,6 +317,32 @@ class SourceEvaluationRunner(
                     )
                     upsertSourceEvaluation.await(errRecord)
                     addResult(ext, source, SourceEvaluationVerdict.ERROR)
+                } catch (e: Error) {
+                    // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                    // LinkageError (e.g. NoClassDefFoundError) from Popular/Latest/Search/detail
+                    // calls inside probeAndScore() -- previously uncaught here, aborting the whole
+                    // evaluation batch instead of recording this one source as a technical
+                    // incompatibility and continuing to the next source. Genuinely fatal VM errors
+                    // still rethrow.
+                    val unwrapped = e.unwrapSourceRuntimeCause()
+                    if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                    logcat(LogPriority.WARN, unwrapped) { "Probe failed for source ${source.name} (extension linkage failure)" }
+                    val errRecord = SourceEvaluationScorer.errorRecord(
+                        extensionName = ext.name,
+                        pkgName = ext.pkgName,
+                        signatureHash = ext.signatureHash,
+                        sourceId = source.id,
+                        sourceName = source.name,
+                        lang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang,
+                        repoName = ext.storeName,
+                        isNsfw = ext.isNsfw,
+                        errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(unwrapped),
+                        extensionVersionName = ext.versionName,
+                        extensionVersionCode = ext.versionCode,
+                        extensionApkName = ext.apkUrl,
+                    )
+                    upsertSourceEvaluation.await(errRecord)
+                    addResult(ext, source, SourceEvaluationVerdict.ERROR)
                 }
                 delay(500L) // inter-source delay
             }
@@ -325,6 +353,14 @@ class SourceEvaluationRunner(
             // KMK v0.7.46: classified key, not raw exception text — same UI path (EvaluationResultRow)
             // as the per-source probe catch above; see SourceEvaluationProbeErrorClassifier.
             recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e))
+        } catch (e: Error) {
+            // KMK v0.8.10-fix3: same reasoning as the per-source probe catch above -- a recoverable
+            // extension LinkageError outside the per-source loop (e.g. during extension setup) must
+            // not abort the whole evaluation run.
+            val unwrapped = e.unwrapSourceRuntimeCause()
+            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+            logcat(LogPriority.ERROR, unwrapped) { "Extension evaluation failed: ${ext.name} (extension linkage failure)" }
+            recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(unwrapped))
         } finally {
             // KMK --> v0.6.16: crash quarantine — write marker before cleanup, then clear after
             writeProbeMarker(ext, null, null, ext.lang, SourceEvaluationQueueState.Phase.Cleanup, batchId, extStartedAt)

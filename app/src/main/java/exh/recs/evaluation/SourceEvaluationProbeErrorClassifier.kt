@@ -1,5 +1,6 @@
 package exh.recs.evaluation
 
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -14,6 +15,11 @@ internal enum class SourceEvaluationProbeErrorKind(val storageKey: String) {
     NETWORK_UNAVAILABLE("NETWORK_UNAVAILABLE"),
     TIMEOUT("TIMEOUT"),
     UNSUPPORTED("UNSUPPORTED"),
+    // KMK v0.8.10-fix3: a broken/incompletely-packaged extension (LinkageError) is a technical
+    // incompatibility, not a weak taste-fit or generic internal error -- do not conflate the two
+    // (see the fix3 plan's explicit "do not classify a dependency crash as weak taste fit"
+    // requirement).
+    EXTENSION_INCOMPATIBLE("EXTENSION_INCOMPATIBLE"),
     INTERNAL("INTERNAL"),
     ;
 
@@ -25,6 +31,10 @@ internal enum class SourceEvaluationProbeErrorKind(val storageKey: String) {
 
 internal object SourceEvaluationProbeErrorClassifier {
     fun classify(e: Throwable): SourceEvaluationProbeErrorKind = when {
+        // KMK v0.8.10-fix3: unwrap and check for a recoverable extension LinkageError before the
+        // other classifications -- shares the exact same decision as SourceRuntime/
+        // RecommendationErrorClassifier rather than a fourth divergent taxonomy.
+        e.unwrapSourceRuntimeCause() is LinkageError -> SourceEvaluationProbeErrorKind.EXTENSION_INCOMPATIBLE
         e is UnknownHostException -> SourceEvaluationProbeErrorKind.NETWORK_UNAVAILABLE
         e is SocketTimeoutException -> SourceEvaluationProbeErrorKind.TIMEOUT
         e is UnsupportedOperationException -> SourceEvaluationProbeErrorKind.UNSUPPORTED

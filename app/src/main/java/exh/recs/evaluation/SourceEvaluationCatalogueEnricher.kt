@@ -1,7 +1,9 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.manga.model.toDomainManga
@@ -72,6 +74,14 @@ object SourceEvaluationCatalogueEnricher {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                null
+            } catch (e: Error) {
+                // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                // LinkageError from getMangaUpdate() -- previously uncaught here, aborting
+                // enrichment for the whole batch instead of just skipping this one candidate's
+                // detail enrichment (identical fallback to the Exception branch above). Genuinely
+                // fatal VM errors still rethrow.
+                if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                 null
             }
 

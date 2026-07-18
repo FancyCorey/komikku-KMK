@@ -1,8 +1,10 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.PersonalRecommendationScorer
 import exh.recs.RecommendationQueryPlanner
 import exh.recs.sources.GenreFilterMapper
@@ -233,6 +235,16 @@ class SourceRecommendationFitProbe(
                 }
                 reasons.add("Plan ${plan.type.name}: error — $errorLabel")
                 // KMK <--
+            } catch (e: Error) {
+                // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                // LinkageError from getFilterList()/getSearchManga() -- previously uncaught here,
+                // aborting the whole probe instead of recording this one plan attempt as a
+                // technical-incompatibility error and continuing to the next plan. Genuinely fatal
+                // VM errors still rethrow.
+                val unwrapped = e.unwrapSourceRuntimeCause()
+                if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                errorCount++
+                reasons.add("Plan ${plan.type.name}: error — extension-incompatible")
             }
         }
 

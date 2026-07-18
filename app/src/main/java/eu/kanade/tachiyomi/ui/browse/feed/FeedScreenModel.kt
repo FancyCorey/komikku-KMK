@@ -11,7 +11,9 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.FeedItemUI
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -297,6 +299,14 @@ open class FeedScreenModel(
                             emptyList()
                         }
                     } catch (e: Exception) {
+                        emptyList()
+                    } catch (e: Error) {
+                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                        // LinkageError (an Error, not an Exception) lazily while executing a source
+                        // method -- previously uncaught here, crashing the feed. Falls back to
+                        // emptyList() for this one item, same shape as the existing Exception
+                        // fallback above; genuinely fatal VM errors still rethrow.
+                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                         emptyList()
                     }
 

@@ -3,6 +3,8 @@ package exh.recs.matching
 // KMK --> v0.7.8
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -79,7 +81,9 @@ class SameMangaCandidateSearcher(
     ): SameMangaCandidateResult {
         return try {
             val seen = LinkedHashMap<String, Manga>()
-            var lastError: Exception? = null
+            // KMK v0.8.10-fix3: widened from Exception? to Throwable? -- see the identical pattern
+            // in CrossExtensionMatchScreenModel for the full reasoning.
+            var lastError: Throwable? = null
             for (query in queries) {
                 if (!coroutineScope { isActive } && seen.isEmpty()) break
                 if (seen.size >= cap) break
@@ -98,6 +102,13 @@ class SameMangaCandidateSearcher(
                     }
                 } catch (e: Exception) {
                     lastError = e
+                } catch (e: Error) {
+                    // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                    // LinkageError while searching -- treat it the same as an ordinary per-query
+                    // failure. Genuinely fatal VM errors still rethrow.
+                    val unwrapped = e.unwrapSourceRuntimeCause()
+                    if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                    lastError = unwrapped
                 }
             }
             when {
@@ -107,6 +118,10 @@ class SameMangaCandidateSearcher(
             }
         } catch (e: Exception) {
             SameMangaCandidateResult.Error(e)
+        } catch (e: Error) {
+            val unwrapped = e.unwrapSourceRuntimeCause()
+            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+            SameMangaCandidateResult.Error(unwrapped)
         }
     }
 }

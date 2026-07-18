@@ -9,6 +9,8 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import kotlinx.collections.immutable.PersistentMap
@@ -150,7 +152,10 @@ class CrossExtensionMatchScreenModel(
                 async {
                     try {
                         val seen = LinkedHashMap<String, Manga>()
-                        var lastError: Exception? = null
+                        // KMK v0.8.10-fix3: widened from Exception? to Throwable? -- a recoverable
+                        // extension LinkageError is now also caught per-query below, alongside
+                        // ordinary Exceptions, instead of only Exceptions.
+                        var lastError: Throwable? = null
                         for (query in queries) {
                             if (!isActive) break
                             if (seen.size >= cap) break
@@ -169,6 +174,14 @@ class CrossExtensionMatchScreenModel(
                                 }
                             } catch (e: Exception) {
                                 lastError = e
+                            } catch (e: Error) {
+                                // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can
+                                // throw a LinkageError while searching -- treat it the same as an
+                                // ordinary per-query failure so sibling queries/sources still
+                                // complete. Genuinely fatal VM errors still rethrow.
+                                val unwrapped = e.unwrapSourceRuntimeCause()
+                                if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                                lastError = unwrapped
                             }
                         }
                         if (isActive) {
@@ -182,6 +195,13 @@ class CrossExtensionMatchScreenModel(
                         }
                     } catch (e: Exception) {
                         if (isActive) updateItem(source, MatchItemResult.Error(e))
+                    } catch (e: Error) {
+                        // KMK v0.8.10-fix3: outer boundary, same reasoning as the inner per-query
+                        // catch above -- catches anything not already handled inside the loop
+                        // (e.g. a LinkageError from source.getFilterList() itself).
+                        val unwrapped = e.unwrapSourceRuntimeCause()
+                        if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                        if (isActive) updateItem(source, MatchItemResult.Error(unwrapped))
                     }
                 }
             }.awaitAll()

@@ -9,6 +9,8 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
@@ -206,6 +208,18 @@ abstract class SearchScreenModel(
                     } catch (e: Exception) {
                         if (isActive) {
                             updateItem(source, SearchItemResult.Error(e))
+                        }
+                    } catch (e: Error) {
+                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension (e.g. missing a
+                        // runtime dependency lazily touched while constructing its HTTP client)
+                        // throws a LinkageError, which is an Error, not an Exception -- this global
+                        // search per-source coroutine previously let it escape uncaught, cancelling
+                        // sibling source searches via awaitAll() instead of becoming this one
+                        // source's row error. Genuinely fatal VM errors still rethrow.
+                        val unwrapped = e.unwrapSourceRuntimeCause()
+                        if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                        if (isActive) {
+                            updateItem(source, SearchItemResult.Error(unwrapped))
                         }
                     }
                 }

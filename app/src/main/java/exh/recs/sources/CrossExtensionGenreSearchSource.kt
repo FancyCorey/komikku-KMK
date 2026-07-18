@@ -2,9 +2,11 @@ package exh.recs.sources
 
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationQueryAttemptPolicy
 import exh.recs.RecommendationQueryFailureKind
 import exh.recs.RecommendationQueryPlan
@@ -119,6 +121,15 @@ internal class CrossExtensionGenreSearchSource(
                 "CrossExtensionGenreSearch[${catalogueSource.name}]: getFilterList failed, falling back to empty"
             }
             FilterList()
+        } catch (e: Error) {
+            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a LinkageError
+            // from getFilterList() -- previously uncaught here. Same empty-filter-list fallback as
+            // the Exception branch above; genuinely fatal VM errors still rethrow.
+            if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+            logcat(LogPriority.WARN, e) {
+                "CrossExtensionGenreSearch[${catalogueSource.name}]: getFilterList failed (extension linkage failure), falling back to empty"
+            }
+            FilterList()
         }
 
         // Step 2: map this attempt's tags to filters; unmatched tags become a text query
@@ -139,6 +150,17 @@ internal class CrossExtensionGenreSearchSource(
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) {
                 "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} attempt failed"
+            }
+            exceptionOccurred = true
+            null
+        } catch (e: Error) {
+            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a LinkageError
+            // from getSearchManga() -- previously uncaught here, aborting the whole For You/group
+            // recommendation source row instead of just this one plan attempt. Genuinely fatal VM
+            // errors still rethrow.
+            if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+            logcat(LogPriority.WARN, e) {
+                "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} attempt failed (extension linkage failure)"
             }
             exceptionOccurred = true
             null
@@ -185,6 +207,15 @@ internal class CrossExtensionGenreSearchSource(
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) {
                     "CrossExtensionGenreSearch[${catalogueSource.name}]: title fallback failed for \"$title\""
+                }
+                continue
+            } catch (e: Error) {
+                // KMK v0.8.10-fix3: same reasoning as the getSearchManga() catch above -- a
+                // recoverable extension LinkageError skips this one title fallback attempt instead
+                // of aborting the whole fallback loop.
+                if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+                logcat(LogPriority.WARN, e) {
+                    "CrossExtensionGenreSearch[${catalogueSource.name}]: title fallback failed for \"$title\" (extension linkage failure)"
                 }
                 continue
             }

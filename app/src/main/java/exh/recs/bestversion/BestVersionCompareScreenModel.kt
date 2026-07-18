@@ -8,7 +8,9 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationErrorClassifier
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.matching.SameMangaCandidateResult
@@ -237,6 +239,13 @@ class BestVersionCompareScreenModel(
                         } catch (e: Exception) {
                             // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
                             key to CandidateChapterState.ChapterError(RecommendationErrorClassifier.classifyToStorageKey(e))
+                        } catch (e: Error) {
+                            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                            // LinkageError from getMangaUpdate() -- previously uncaught here.
+                            // Genuinely fatal VM errors still rethrow.
+                            val unwrapped = e.unwrapSourceRuntimeCause()
+                            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                            key to CandidateChapterState.ChapterError(RecommendationErrorClassifier.classifyToStorageKey(unwrapped))
                         }
                     }
                 }
@@ -298,6 +307,13 @@ class BestVersionCompareScreenModel(
                     } catch (e: Exception) {
                         // KMK v0.7.46: stable key, not raw exception text — see RecommendationErrorClassifier.
                         CandidatePreviewState.PreviewError(RecommendationErrorClassifier.classifyToStorageKey(e))
+                    } catch (e: Error) {
+                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
+                        // LinkageError from getPageList()/getImageUrl() -- previously uncaught here.
+                        // Genuinely fatal VM errors still rethrow.
+                        val unwrapped = e.unwrapSourceRuntimeCause()
+                        if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                        CandidatePreviewState.PreviewError(RecommendationErrorClassifier.classifyToStorageKey(unwrapped))
                     }
                     mutableState.update { current ->
                         current.copy(candidatePreviews = current.candidatePreviews.mutate { it[key] = result })

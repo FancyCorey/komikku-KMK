@@ -1930,6 +1930,7 @@ private fun EvaluationResultRow(
                     SourceEvaluationProbeErrorKind.NETWORK_UNAVAILABLE -> KMR.strings.source_evaluation_probe_error_network
                     SourceEvaluationProbeErrorKind.TIMEOUT -> KMR.strings.source_evaluation_probe_error_timeout
                     SourceEvaluationProbeErrorKind.UNSUPPORTED -> KMR.strings.source_evaluation_probe_error_unsupported
+                    SourceEvaluationProbeErrorKind.EXTENSION_INCOMPATIBLE -> KMR.strings.source_evaluation_probe_error_extension_incompatible
                     SourceEvaluationProbeErrorKind.INTERNAL -> KMR.strings.source_evaluation_probe_error_internal
                 },
             )

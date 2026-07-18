@@ -7,9 +7,11 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.all.EHentai
 import eu.kanade.tachiyomi.source.online.all.MergedSource
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import logcat.LogPriority
 import mihon.domain.source.models.RemoteMangaUpdate
 import tachiyomi.core.common.util.lang.withIOContext
@@ -135,6 +137,17 @@ class UpdateMangaFromRemote(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             Result.failure(e)
+        } catch (e: Error) {
+            // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a LinkageError
+            // (an Error, not an Exception) lazily while executing source.getMangaUpdate() -- this
+            // interactor is invoked from LibraryUpdateJob (a whole library update), BulkFavoriteScreenModel,
+            // and any manga refresh, so an uncaught Error here could abort far more than one manga's
+            // update. Converted into the same Result.failure(...) contract every caller already
+            // handles per-manga; genuinely fatal VM errors still rethrow.
+            val unwrapped = e.unwrapSourceRuntimeCause()
+            if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+            logcat(LogPriority.ERROR, unwrapped)
+            Result.failure(unwrapped)
         }
     }
 

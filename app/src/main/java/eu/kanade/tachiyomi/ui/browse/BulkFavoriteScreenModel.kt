@@ -14,6 +14,8 @@ import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.PersistentList
@@ -265,6 +267,13 @@ class BulkFavoriteScreenModel(
                 }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
+            } catch (e: Error) {
+                // KMK v0.8.10-fix3: UpdateMangaFromRemote already converts a recoverable extension
+                // LinkageError into Result.failure(...), but Result.getOrThrow() rethrows that stored
+                // Throwable as-is -- if it's an Error (not an Exception), the catch(Exception) above
+                // never sees it. Genuinely fatal VM errors still rethrow.
+                if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+                logcat(LogPriority.ERROR, e)
             }
         }
     }
@@ -362,6 +371,12 @@ class BulkFavoriteScreenModel(
                             fetchChapters = fetchChaptersOnAdd,
                         ).getOrThrow()
                     } catch (e: Exception) {
+                        logcat(LogPriority.ERROR, e)
+                    } catch (e: Error) {
+                        // KMK v0.8.10-fix3: same reasoning as the other updateMangaFromRemote(...)
+                        // .getOrThrow() call site above -- a recoverable extension LinkageError can
+                        // be rethrown here as a raw Error, not an Exception.
+                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                         logcat(LogPriority.ERROR, e)
                     }
                 }
