@@ -37,7 +37,7 @@ class KmkRecsReleaseNotesTest {
         val all = headings().toSet()
         val expected = listOf(
             "v0.8.0", "v0.8.1-fix1", "v0.8.1-fix2", "v0.8.1-fix3", "v0.8.1-fix4",
-            "v0.8.2", "v0.8.3", "v0.8.4", "v0.8.5", "v0.8.6", "v0.8.7", "v0.8.8",
+            "v0.8.2", "v0.8.3", "v0.8.4", "v0.8.5", "v0.8.6", "v0.8.7", "v0.8.8", "v0.8.9",
         )
         val missing = expected.filterNot { it in all }
         assertTrue(missing.isEmpty(), "missing historical v0.8.x entries: $missing")
@@ -56,11 +56,11 @@ class KmkRecsReleaseNotesTest {
     @Test
     fun `headings are in strictly descending chronological order as written (newest-first)`() {
         // The renderer relies on source order for "newest first" -- verify the file wasn't
-        // accidentally reordered. v0.8.9 is expected to be exactly first.
+        // accidentally reordered. v0.8.10 is expected to be exactly first.
         val all = headings()
-        assertEquals("v0.8.9", all[0])
-        assertEquals("v0.8.8", all[1])
-        assertEquals("v0.8.7", all[2])
+        assertEquals("v0.8.10", all[0])
+        assertEquals("v0.8.9", all[1])
+        assertEquals("v0.8.8", all[2])
     }
 
     @Test
@@ -75,6 +75,15 @@ class KmkRecsReleaseNotesTest {
     fun `the v0_8_9 entry omits an empty Fix heading rather than rendering a blank section`() {
         val v089Section = KmkRecsReleaseNotes.MARKDOWN.substringAfter("## KMK-Recs v0.8.9").substringBefore("## KMK-Recs v0.8.8")
         assertFalse(v089Section.contains("##### Fix"))
+    }
+
+    @Test
+    fun `the new v0_8_10 entry uses the official What's Changed structure with all three sub-headings`() {
+        val v0810Section = KmkRecsReleaseNotes.MARKDOWN.substringAfter("## KMK-Recs v0.8.10").substringBefore("## KMK-Recs v0.8.9")
+        assertTrue(v0810Section.contains("#### What's Changed"))
+        assertTrue(v0810Section.contains("##### New"))
+        assertTrue(v0810Section.contains("##### Improve"))
+        assertTrue(v0810Section.contains("##### Fix"))
     }
 
     @Test

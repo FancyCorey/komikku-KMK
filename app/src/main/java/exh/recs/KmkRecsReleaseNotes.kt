@@ -2,8 +2,8 @@
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 759
-    const val VERSION_NAME = "KMK-Recs v0.8.9"
+    const val VERSION_CODE = 760
+    const val VERSION_NAME = "KMK-Recs v0.8.10"
 
     // KMK v0.8.9: entries from this version onward follow the official Komikku changelog structure
     // (version heading, short summary, "What's Changed" heading, New/Improve/Fix sub-headings with
@@ -13,8 +13,30 @@ object KmkRecsReleaseNotes {
     // preserved exactly as it was written, in its original flat-bullet format — retroactively
     // rewriting 40+ historical entries into the new structure was judged a large, error-prone
     // content-rewrite disproportionate to a formatting change, and out of scope for this pass; see
-    // the v0.8.9 implementation report for this documented scope decision.
+    // the v0.8.9 implementation report for this documented scope decision. v0.8.10 Phase G
+    // reconfirmed this decision (see docs/recommendations/CURRENT_STATE.md) rather than revisiting it.
     val MARKDOWN = """
+        ## KMK-Recs v0.8.10
+
+        Deferred reader rating prompt, searchable settings and rated collections, taste suggestions and diagnostics, and Source Evaluation/backup hardening.
+
+        #### What's Changed
+
+        ##### New
+        - **Taste and Tags:** a new "Suggestions from your ratings" section proposes tags to prefer or block, based on genres shared by manga you've rated Love/Like/Dislike. A tag needs at least 3 of your own rated manga behind it before it's suggested — a single Dislike never turns into a blocked-tag suggestion. Adding a suggestion uses the same add/edit tag action already available, so it's fully reversible.
+        - **Management and Diagnostics:** a new "Taste diagnostics" section shows your rating counts, how many of your rated manga back each of your already-set tag preferences, and a plain-language summary of which signals are currently used (ratings, genres, explicit tag preferences) and which are not (reading history, extension content).
+        - **Settings:** Recommendation Settings search now covers every individual control with a stable target, not just section-level entries.
+        - **Loved/Liked/Disliked:** the Rated collections screen can now be searched by title or source.
+        - **Sources To Try:** can now be searched, and sorted by best fit, name, or language.
+
+        ##### Improve
+        - **Reader:** the completion rating prompt (Love/Like/Dislike/Not Interested) now waits until you actually leave the reader instead of interrupting mid-read.
+        - **Sources To Try:** every suggestion reason now shows real explanatory text, including an explicit "not enough evidence yet" state instead of ever showing nothing.
+        - **Source Evaluation:** the "Evaluation completed" summary no longer lingers indefinitely — it's cleared once you leave the screen. A still-running evaluation is unaffected and keeps reporting progress normally.
+
+        ##### Fix
+        - **Backup restore:** a truncated or corrupted backup file (including a truncated gzip-compressed one, or a near-empty file) no longer crashes the restore — it now shows the same clear "invalid backup" message as other malformed-backup cases.
+
         ## KMK-Recs v0.8.9
 
         Official-style What's New formatting, and search for Recommendation Settings.
