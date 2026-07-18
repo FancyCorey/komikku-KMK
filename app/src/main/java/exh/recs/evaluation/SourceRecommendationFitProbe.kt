@@ -1,17 +1,16 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.PersonalRecommendationScorer
 import exh.recs.RecommendationQueryPlanner
 import exh.recs.sources.GenreFilterMapper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.manga.model.Manga
@@ -109,11 +108,13 @@ class SourceRecommendationFitProbe(
         for (plan in plans) {
             try {
                 // KMK --> v0.7.35: force IO dispatcher — getFilterList can hit disk/network
-                val filterList = try {
-                    withContext(ioDispatcher) { source.getFilterList() }
-                } catch (_: Exception) {
-                    FilterList()
-                }
+                // KMK v0.8.10-fix4: routed through SourceRuntime instead of catch(Exception) --
+                // still rethrows CancellationException/fatal Error, and records a recoverable
+                // extension LinkageError in SourceRuntimeFailureRegistry instead of only being
+                // caught by the outer per-plan catch(Error) below.
+                val filterList = SourceRuntime.run(source, SourceRuntimeOperation.FilterList, ioDispatcher) {
+                    getFilterList()
+                }.getOrElse { FilterList() }
                 // KMK <--
                 val searchParams = GenreFilterMapper.buildSearch(
                     filterList,
@@ -125,16 +126,30 @@ class SourceRecommendationFitProbe(
 
                 queryCount++
                 // KMK --> v0.7.35: force IO dispatcher — getSearchManga performs network I/O
-                val page = withTimeoutOrNull(PLAN_TIMEOUT_MS) {
-                    withContext(ioDispatcher) {
-                        source.getSearchManga(1, searchParams.textQuery, searchParams.filters)
+                // KMK v0.8.10-fix4: routed through SourceRuntime instead of a raw call inside
+                // withTimeoutOrNull -- records a recoverable extension LinkageError in
+                // SourceRuntimeFailureRegistry and reports it as this plan's own error/reason
+                // instead of only being caught by the outer per-plan catch(Error) below.
+                val searchResult = withTimeoutOrNull(PLAN_TIMEOUT_MS) {
+                    SourceRuntime.run(source, SourceRuntimeOperation.Search, ioDispatcher) {
+                        getSearchManga(1, searchParams.textQuery, searchParams.filters)
                     }
                 }
                 // KMK <--
 
-                if (page == null) {
+                if (searchResult == null) {
                     reasons.add("Plan ${plan.type.name}: timed out")
                     errorCount++
+                    continue
+                }
+                val page = searchResult.getOrElse { throwable ->
+                    errorCount++
+                    val errorLabel = if (throwable.javaClass.name.contains("NetworkOnMainThreadException")) {
+                        "internal-threading-error"
+                    } else {
+                        throwable.message?.take(60) ?: throwable.javaClass.simpleName
+                    }
+                    reasons.add("Plan ${plan.type.name}: error — $errorLabel")
                     continue
                 }
 
@@ -161,19 +176,19 @@ class SourceRecommendationFitProbe(
                         val smanga = smangaByUrl[manga.url]
                         if (smanga != null) {
                             // KMK --> v0.7.35: force IO dispatcher — getMangaDetails performs network I/O
-                            val enriched = runCatching {
-                                withTimeoutOrNull(ENRICH_TIMEOUT_MS) {
-                                    withContext(ioDispatcher) {
-                                        val details = source.getMangaUpdate(
-                                            manga = smanga,
-                                            chapters = emptyList(),
-                                            fetchDetails = true,
-                                            fetchChapters = false,
-                                        ).manga
-                                        details.toDomainManga(source.id)
-                                    }
-                                }
-                            }.getOrNull()
+                            // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching --
+                            // the plan's explicit instruction is that runCatching must not be the
+                            // source boundary because it does not record the failure registry.
+                            val enriched = withTimeoutOrNull(ENRICH_TIMEOUT_MS) {
+                                SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate, ioDispatcher) {
+                                    getMangaUpdate(
+                                        manga = smanga,
+                                        chapters = emptyList(),
+                                        fetchDetails = true,
+                                        fetchChapters = false,
+                                    ).manga
+                                }.getOrNull()?.toDomainManga(source.id)
+                            }
                             // KMK <--
                             if (enriched != null) {
                                 planEnrichedCount++
@@ -235,17 +250,14 @@ class SourceRecommendationFitProbe(
                 }
                 reasons.add("Plan ${plan.type.name}: error — $errorLabel")
                 // KMK <--
-            } catch (e: Error) {
-                // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                // LinkageError from getFilterList()/getSearchManga() -- previously uncaught here,
-                // aborting the whole probe instead of recording this one plan attempt as a
-                // technical-incompatibility error and continuing to the next plan. Genuinely fatal
-                // VM errors still rethrow.
-                val unwrapped = e.unwrapSourceRuntimeCause()
-                if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                errorCount++
-                reasons.add("Plan ${plan.type.name}: error — extension-incompatible")
             }
+            // KMK v0.8.10-fix4: the fix3 catch(Error) that used to sit here is no longer needed --
+            // every direct source call in this loop (getFilterList, getSearchManga, getMangaUpdate)
+            // now goes through SourceRuntime.run(), which already unwraps/classifies a recoverable
+            // extension LinkageError into this plan's own errorCount/reasons above (via
+            // .getOrElse{}/.getOrNull()) and rethrows anything genuinely fatal directly. A raw Error
+            // reaching this point would not be from a source call at all, so it is intentionally
+            // left to propagate rather than swallowed here.
         }
 
         val avgCandidateScore = if (visibleCandidateCount > 0) totalScore / visibleCandidateCount else 0.0

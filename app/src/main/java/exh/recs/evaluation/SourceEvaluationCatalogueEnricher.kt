@@ -1,10 +1,9 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.manga.model.Manga
@@ -62,27 +61,19 @@ object SourceEvaluationCatalogueEnricher {
             }
 
             attempts++
-            val enriched = try {
-                withTimeoutOrNull(timeoutMs) {
-                    source.getMangaUpdate(
+            // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
+            // catch(Exception)/catch(Error) pair -- one shared boundary classifies both, records a
+            // recoverable extension LinkageError in SourceRuntimeFailureRegistry, and still always
+            // rethrows CancellationException and any genuinely fatal Error.
+            val enriched = withTimeoutOrNull(timeoutMs) {
+                SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate) {
+                    getMangaUpdate(
                         manga = raw,
                         chapters = emptyList(),
                         fetchDetails = true,
                         fetchChapters = false,
                     ).manga
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                null
-            } catch (e: Error) {
-                // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                // LinkageError from getMangaUpdate() -- previously uncaught here, aborting
-                // enrichment for the whole batch instead of just skipping this one candidate's
-                // detail enrichment (identical fallback to the Exception branch above). Genuinely
-                // fatal VM errors still rethrow.
-                if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
-                null
+                }.getOrNull()
             }
 
             if (enriched != null) {

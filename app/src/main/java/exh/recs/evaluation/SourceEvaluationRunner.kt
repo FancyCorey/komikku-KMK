@@ -7,6 +7,8 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.system.isOnline
@@ -470,19 +472,26 @@ class SourceEvaluationRunner(
         writeProbeMarker(ext, source.id, source.name, sourceLang, SourceEvaluationQueueState.Phase.ProbingPopular, batchId, startedAt)
         // KMK <--
         // KMK --> v0.6.14: withTimeoutOrNull so probe timeout is a local failure, not batch cancel
-        try {
-            val page = withTimeoutOrNull(30_000L) { source.getPopularManga(1) }
-            if (page == null) {
-                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} popular probe timed out after 30000ms" }
-                errorCount++
-            } else {
-                val items = page.mangas.take(15)
-                popularCount = items.size
-                rawCatalogueItems += items
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
+        // KMK v0.8.10-fix4: routed through SourceRuntime instead of a raw call inside
+        // withTimeoutOrNull/catch(Exception) -- so a recoverable extension LinkageError is recorded
+        // in SourceRuntimeFailureRegistry, and always rethrows CancellationException/genuinely fatal
+        // Error, instead of only being caught by the outer per-source catch(Error) one frame up
+        // (which still exists as a defensive backstop, not the structural boundary).
+        val popularResult = withTimeoutOrNull(30_000L) {
+            SourceRuntime.run(source, SourceRuntimeOperation.Popular) { getPopularManga(1) }
+        }
+        if (popularResult == null) {
+            logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} popular probe timed out after 30000ms" }
             errorCount++
+        } else {
+            popularResult.fold(
+                onSuccess = { page ->
+                    val items = page.mangas.take(15)
+                    popularCount = items.size
+                    rawCatalogueItems += items
+                },
+                onFailure = { errorCount++ },
+            )
         }
         // KMK <--
 
@@ -493,19 +502,23 @@ class SourceEvaluationRunner(
             writeProbeMarker(ext, source.id, source.name, sourceLang, SourceEvaluationQueueState.Phase.ProbingLatest, batchId, startedAt)
             // KMK <--
             // KMK --> v0.6.14: withTimeoutOrNull so probe timeout is a local failure, not batch cancel
-            try {
-                val page = withTimeoutOrNull(30_000L) { source.getLatestUpdates(1) }
-                if (page == null) {
-                    logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} latest probe timed out after 30000ms" }
-                    errorCount++
-                } else {
-                    val items = page.mangas.take(10)
-                    latestCount = items.size
-                    rawCatalogueItems += items
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
+            // KMK v0.8.10-fix4: routed through SourceRuntime -- same reasoning as the popular probe
+            // above.
+            val latestResult = withTimeoutOrNull(30_000L) {
+                SourceRuntime.run(source, SourceRuntimeOperation.Latest) { getLatestUpdates(1) }
+            }
+            if (latestResult == null) {
+                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} latest probe timed out after 30000ms" }
                 errorCount++
+            } else {
+                latestResult.fold(
+                    onSuccess = { page ->
+                        val items = page.mangas.take(10)
+                        latestCount = items.size
+                        rawCatalogueItems += items
+                    },
+                    onFailure = { errorCount++ },
+                )
             }
             // KMK <--
         }
