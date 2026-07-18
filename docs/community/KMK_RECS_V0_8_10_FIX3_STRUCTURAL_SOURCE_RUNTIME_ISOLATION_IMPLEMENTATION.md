@@ -183,7 +183,11 @@ adding tests purely for pre-existing, unmodified behavior was judged out of this
 Built only after all verification in section 7 passed:
 
 - Path: `C:\Users\USER\Downloads\Komikku\private\Komikku-v1.14.0-kmk.8.10-fix3-debug.apk`
-- App metadata: `versionCode 89` (unchanged — this fix does not touch the upstream Komikku app version)
+- Size: 171,417,203 bytes
+- SHA-256: `7e8c4219dbd4a6c0e8c8cb72208be969f2eac8f48d7c6553d83ea8fffbc9800c`
+- App metadata (via `aapt dump badging`): `package: name='app.komikku.dev' versionCode='89'
+  versionName='1.14.0-39'` — `versionCode`/base `versionName` unchanged from fix1/fix2 (this fix does
+  not touch the upstream Komikku app version); the `-39` build-count suffix is auto-generated.
 - Device navigation verification: **not performed by me** — `adb devices` confirmed empty, same
   disclosed limitation as fix1/fix2. Requesting the user install with the currently-broken Asura
   Scans extension still present and confirm: For You, Browse, global search, Source Evaluation, and
