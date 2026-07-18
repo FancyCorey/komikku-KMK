@@ -18,10 +18,10 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.browse.SourceFeedUI
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.all.MangaDex
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.ui.browse.feed.MaxFeedItems
 import exh.source.EH_PACKAGE
 import exh.source.LOCAL_SOURCE_PACKAGE
@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
@@ -238,29 +237,25 @@ open class SourceFeedScreenModel(
         screenModelScope.launch {
             feedSavedSearch.map { sourceFeed ->
                 async {
-                    val page = try {
-                        withContext(coroutineDispatcher) {
-                            when (sourceFeed) {
-                                is SourceFeedUI.Browse -> source.getPopularManga(1)
-                                is SourceFeedUI.Latest -> source.getLatestUpdates(1)
-                                is SourceFeedUI.SourceSavedSearch -> source.getSearchManga(
-                                    page = 1,
-                                    query = sourceFeed.savedSearch.query?.sanitize().orEmpty(),
-                                    filters = getFilterList(sourceFeed.savedSearch, source),
-                                )
-                            }
-                        }.mangas
-                    } catch (e: Exception) {
-                        emptyList()
-                    } catch (e: Error) {
-                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                        // LinkageError (an Error, not an Exception) lazily while executing a source
-                        // method -- previously uncaught here, crashing the source feed. Falls back to
-                        // emptyList() for this one feed item, same shape as the existing Exception
-                        // fallback above; genuinely fatal VM errors still rethrow.
-                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
-                        emptyList()
+                    // KMK v0.8.10-fix4: routed through the shared SourceRuntime boundary instead of
+                    // a local catch(Error) band-aid (fix3's approach). See FeedScreenModel.kt's
+                    // identical migration for the full reasoning.
+                    val operation = when (sourceFeed) {
+                        is SourceFeedUI.Browse -> SourceRuntimeOperation.Popular
+                        is SourceFeedUI.Latest -> SourceRuntimeOperation.Latest
+                        is SourceFeedUI.SourceSavedSearch -> SourceRuntimeOperation.Search
                     }
+                    val page = SourceRuntime.run(source, operation, coroutineDispatcher) {
+                        when (sourceFeed) {
+                            is SourceFeedUI.Browse -> getPopularManga(1)
+                            is SourceFeedUI.Latest -> getLatestUpdates(1)
+                            is SourceFeedUI.SourceSavedSearch -> getSearchManga(
+                                page = 1,
+                                query = sourceFeed.savedSearch.query?.sanitize().orEmpty(),
+                                filters = getFilterList(sourceFeed.savedSearch, source),
+                            )
+                        }
+                    }.getOrNull()?.mangas ?: emptyList()
 
                     val titles = withIOContext {
                         page.map { it.toDomainManga(source.id) }

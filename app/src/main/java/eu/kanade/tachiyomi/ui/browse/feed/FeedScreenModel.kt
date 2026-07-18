@@ -11,9 +11,9 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.FeedItemUI
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -31,7 +31,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
@@ -274,39 +273,33 @@ open class FeedScreenModel(
         screenModelScope.launch {
             feedSavedSearch.map { itemUI ->
                 async {
-                    val page = try {
-                        if (itemUI.source != null) {
-                            withContext(coroutineDispatcher) {
-                                if (itemUI.savedSearch == null) {
-                                    // KMK -->
-                                    if (itemUI.source.supportsLatest) {
-                                        // KMK <--
-                                        itemUI.source.getLatestUpdates(1)
-                                        // KMK -->
-                                    } else {
-                                        itemUI.source.getPopularManga(1)
-                                    }
-                                    // KMK <--
-                                } else {
-                                    itemUI.source.getSearchManga(
-                                        1,
-                                        itemUI.savedSearch.query?.sanitize().orEmpty(),
-                                        getFilterList(itemUI.savedSearch, itemUI.source),
-                                    )
-                                }
-                            }.mangas
+                    // KMK v0.8.10-fix4: routed through the shared SourceRuntime boundary instead of
+                    // a local catch(Error) band-aid (fix3's approach). A recoverable failure
+                    // (ordinary Exception or extension LinkageError) falls back to emptyList() for
+                    // this one feed item, same as before; CancellationException and genuinely fatal
+                    // errors still propagate.
+                    val page = if (itemUI.source != null) {
+                        val operation = if (itemUI.savedSearch == null) {
+                            if (itemUI.source.supportsLatest) SourceRuntimeOperation.Latest else SourceRuntimeOperation.Popular
                         } else {
-                            emptyList()
+                            SourceRuntimeOperation.Search
                         }
-                    } catch (e: Exception) {
-                        emptyList()
-                    } catch (e: Error) {
-                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                        // LinkageError (an Error, not an Exception) lazily while executing a source
-                        // method -- previously uncaught here, crashing the feed. Falls back to
-                        // emptyList() for this one item, same shape as the existing Exception
-                        // fallback above; genuinely fatal VM errors still rethrow.
-                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+                        SourceRuntime.run(itemUI.source, operation, coroutineDispatcher) {
+                            if (itemUI.savedSearch == null) {
+                                if (itemUI.source.supportsLatest) {
+                                    getLatestUpdates(1)
+                                } else {
+                                    getPopularManga(1)
+                                }
+                            } else {
+                                getSearchManga(
+                                    1,
+                                    itemUI.savedSearch.query?.sanitize().orEmpty(),
+                                    getFilterList(itemUI.savedSearch, itemUI.source),
+                                )
+                            }
+                        }.getOrNull()?.mangas ?: emptyList()
+                    } else {
                         emptyList()
                     }
 

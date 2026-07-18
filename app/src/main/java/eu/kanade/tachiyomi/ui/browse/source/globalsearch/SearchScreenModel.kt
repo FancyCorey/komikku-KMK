@@ -9,8 +9,8 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
-import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
@@ -189,39 +188,35 @@ abstract class SearchScreenModel(
                         return@async
                     }
 
-                    try {
-                        val page = withContext(coroutineDispatcher) {
-                            source.getSearchManga(1, query.sanitize(), source.getFilterList())
-                        }
-
-                        val titles = page.mangas
-                            .map { it.toDomainManga(source.id) }
-                            .distinctBy { it.url }
-                            .let { networkToLocalManga(it) }
-                            // KMK -->
-                            .let { list -> perSourceResultLimit?.let(list::take) ?: list }
-                        // KMK <--
-
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Success(titles))
-                        }
-                    } catch (e: Exception) {
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Error(e))
-                        }
-                    } catch (e: Error) {
-                        // KMK v0.8.10-fix3: a broken/incompletely-packaged extension (e.g. missing a
-                        // runtime dependency lazily touched while constructing its HTTP client)
-                        // throws a LinkageError, which is an Error, not an Exception -- this global
-                        // search per-source coroutine previously let it escape uncaught, cancelling
-                        // sibling source searches via awaitAll() instead of becoming this one
-                        // source's row error. Genuinely fatal VM errors still rethrow.
-                        val unwrapped = e.unwrapSourceRuntimeCause()
-                        if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Error(unwrapped))
-                        }
+                    // KMK v0.8.10-fix4: routed through the shared SourceRuntime boundary instead of
+                    // a local catch(Error) band-aid (fix3's approach). SourceRuntime.run() already
+                    // catches both ordinary Exceptions and recoverable extension LinkageErrors
+                    // uniformly, always rethrows CancellationException, and always rethrows a
+                    // genuinely fatal Error -- replacing both catch clauses below with one call.
+                    val result = SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
+                        getSearchManga(1, query.sanitize(), getFilterList())
                     }
+
+                    result.fold(
+                        onSuccess = { page ->
+                            val titles = page.mangas
+                                .map { it.toDomainManga(source.id) }
+                                .distinctBy { it.url }
+                                .let { networkToLocalManga(it) }
+                                // KMK -->
+                                .let { list -> perSourceResultLimit?.let(list::take) ?: list }
+                            // KMK <--
+
+                            if (isActive) {
+                                updateItem(source, SearchItemResult.Success(titles))
+                            }
+                        },
+                        onFailure = { throwable ->
+                            if (isActive) {
+                                updateItem(source, SearchItemResult.Error(throwable))
+                            }
+                        },
+                    )
                 }
             }
                 .awaitAll()

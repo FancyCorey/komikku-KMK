@@ -27,6 +27,9 @@ import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MangaDex
@@ -134,6 +137,33 @@ open class BrowseSourceScreenModel(
 
     var source = sourceManager.getOrStub(sourceId)
 
+    // KMK v0.8.10-fix4 -->
+    /**
+     * Confirmed live-device crash: `source.getFilterList()` was called directly, unguarded, from
+     * this screen model's `init` block -- meaning opening *any* Browse source screen for a source
+     * whose extension throws a [LinkageError] the first time a method lazily touches a missing
+     * runtime dependency (confirmed: the installed Asura Scans extension, `NoClassDefFoundError:
+     * okhttp3.zstd.Zstd`) crashed immediately on screen construction. `getFilterList()` is declared
+     * directly on the base `Source` interface (not `CatalogueSource`-specific), so no cast is
+     * needed here.
+     *
+     * Routes through the shared [SourceRuntime] boundary (not a local `catch(Error)` band-aid) per
+     * the fix4 plan's explicit instruction. Falls back to an empty [FilterList] on any recoverable
+     * source-runtime failure -- every call site already tolerated an empty/default filter list, so
+     * this preserves existing behavior for the non-crash case exactly.
+     */
+    private fun safeFilterList(src: Source = source): FilterList {
+        return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrElse { throwable ->
+            logcat(LogPriority.WARN, throwable) {
+                "BrowseSourceScreenModel[${src.name}]: getFilterList failed"
+            }
+            FilterList()
+        }
+    }
+    // KMK <--
+
     // SY -->
     val ehentaiBrowseDisplayMode by exhPreferences.enhancedEHentaiView().asState(screenModelScope)
 
@@ -166,12 +196,12 @@ open class BrowseSourceScreenModel(
 
                     if (listing is Listing.Search) {
                         query = listing.query
-                        listing = Listing.Search(query, source.getFilterList())
+                        listing = Listing.Search(query, safeFilterList(source))
                     }
 
                     it.copy(
                         listing = listing,
-                        filters = source.getFilterList(),
+                        filters = safeFilterList(source),
                         toolbarQuery = query,
                     )
                 }
@@ -200,7 +230,7 @@ open class BrowseSourceScreenModel(
                 }
             }
 
-            getExhSavedSearch.subscribe(source.id, source::getFilterList)
+            getExhSavedSearch.subscribe(source.id) { safeFilterList(source) }
                 .map { it.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, EXHSavedSearch::name)) }
                 .onEach { savedSearches ->
                     mutableState.update { it.copy(savedSearches = savedSearches.toImmutableList()) }
@@ -292,7 +322,7 @@ open class BrowseSourceScreenModel(
         if (source !is CatalogueSource) return
 
         // KMK -->
-        setFilters(source.getFilterList())
+        setFilters(safeFilterList(source))
 
         reloadSavedSearches()
         // KMK <--
@@ -332,7 +362,7 @@ open class BrowseSourceScreenModel(
         }
         // SY <--
         val input = state.value.listing as? Listing.Search
-            ?: Listing.Search(query = null, filters = source.getFilterList())
+            ?: Listing.Search(query = null, filters = safeFilterList(source))
 
         mutableState.update {
             it.copy(
@@ -355,7 +385,7 @@ open class BrowseSourceScreenModel(
 
         if (source !is CatalogueSource) return
 
-        val defaultFilters = source.getFilterList()
+        val defaultFilters = safeFilterList(source)
         var genreExists = false
 
         filter@ for (sourceFilter in defaultFilters) {
@@ -579,7 +609,7 @@ open class BrowseSourceScreenModel(
     // KMK -->
     private fun reloadSavedSearches() {
         screenModelScope.launchIO {
-            getExhSavedSearch.await(source.id, (source as CatalogueSource)::getFilterList)
+            getExhSavedSearch.await(source.id) { safeFilterList(source) }
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, EXHSavedSearch::name))
                 .let { savedSearches ->
                     mutableState.update { it.copy(savedSearches = savedSearches.toImmutableList()) }
@@ -614,7 +644,7 @@ open class BrowseSourceScreenModel(
             if (source !is CatalogueSource) return@launchIO
 
             // KMK -->
-            val search = getExhSavedSearch.awaitOne(loadedSearch.id, source::getFilterList) ?: loadedSearch
+            val search = getExhSavedSearch.awaitOne(loadedSearch.id) { safeFilterList(source) } ?: loadedSearch
             // KMK <--
 
             if (search.filterList == null && state.value.filters.isNotEmpty()) {
@@ -624,12 +654,12 @@ open class BrowseSourceScreenModel(
                 return@launchIO
             }
 
-            val allDefault = search.filterList != null && search.filterList == source.getFilterList()
+            val allDefault = search.filterList != null && search.filterList == safeFilterList(source)
             setDialog(null)
 
             val filters = search.filterList
                 ?.takeUnless { allDefault }
-                ?: source.getFilterList()
+                ?: safeFilterList(source)
 
             mutableState.update {
                 it.copy(
@@ -664,7 +694,7 @@ open class BrowseSourceScreenModel(
             val query = state.value.toolbarQuery?.takeUnless {
                 it.isBlank() || it == GetRemoteManga.QUERY_POPULAR || it == GetRemoteManga.QUERY_LATEST
             }?.trim()
-            val filterList = state.value.filters.ifEmpty { source.getFilterList() }
+            val filterList = state.value.filters.ifEmpty { safeFilterList(source) }
             insertSavedSearch.await(
                 SavedSearch(
                     id = -1,
