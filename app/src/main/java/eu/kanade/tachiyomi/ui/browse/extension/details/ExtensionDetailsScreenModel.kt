@@ -17,6 +17,8 @@ import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -41,6 +43,15 @@ class ExtensionDetailsScreenModel(
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleIncognito: ToggleIncognito = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 (post-report follow-up):
+    // uninstallExtension()'s verification coroutine previously used the top-level `launchIO {}` extension,
+    // hardcoded to real Dispatchers.IO with no injection seam -- the same class of gap already fixed for
+    // ExtensionsScreenModel/BestVersionCompareScreenModel in the V2/V3 dispatcher-injection passes, but
+    // left unfixed here because this pass's own scope was only "add a direct test," not a dispatcher
+    // refactor. That forced the test to poll real wall-clock time with a short bound instead of proving
+    // the real 10s production timeout via virtual time. Injectable now, defaulting to the exact same
+    // Dispatchers.IO in production.
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : StateScreenModel<ExtensionDetailsScreenModel.State>(State()) {
 
     private val _events: Channel<ExtensionDetailsEvent> = Channel()
@@ -121,6 +132,20 @@ class ExtensionDetailsScreenModel(
     fun uninstallExtension() {
         val extension = state.value.extension ?: return
         extensionManager.uninstallExtension(extension)
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: this screen is a
+        // separate uninstall call site from ExtensionsScreenModel.uninstallExtension() -- without this,
+        // uninstalling from Extension Details produced no Action History entry and no
+        // PackageOperationReceipt (no verified-removal confirmation, no reinstall follow-up eligibility),
+        // unlike every other uninstall path in the app.
+        screenModelScope.launch(ioDispatcher) {
+            exh.util.verifyAndRecordUninstall(
+                installedPackageNames = extensionManager.installedExtensionsFlow.map { installed -> installed.map { it.pkgName } },
+                pkgName = extension.pkgName,
+                isEvaluationModeEnabled = { preferences.evaluationMode().get() },
+                signatureHash = extension.signatureHash,
+                versionCode = extension.versionCode,
+            )
+        }
     }
 
     fun toggleSource(sourceId: Long) {
