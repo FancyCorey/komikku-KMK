@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.SourceTemporarilyUnavailableException
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -168,8 +169,19 @@ class RecommendationSourceFailureIsolationTest {
 
         assertEquals(true, outcomes[0].second.isSuccess)
         assertEquals(true, outcomes[1].second.isFailure)
-        assertEquals(true, outcomes[2].second.isSuccess)
         assertTrue(outcomes[1].second.exceptionOrNull() is NoClassDefFoundError)
+
+        // KMK v0.8.10-fix8: run() now enforces suppression, so once /manga/broken confirms this
+        // source is broken, the very next candidate on the *same* source within the suppression
+        // window is short-circuited before ever touching it again -- it never reaches
+        // getMangaUpdate() a third time and never re-throws the raw NoClassDefFoundError. This is
+        // the intended strengthening (stop hammering a source already known to be broken); sibling
+        // *sources* (as opposed to sibling candidates of the same broken source) remaining
+        // unaffected is covered separately by
+        // `a batch of sibling sources is unaffected when one source is suppressed mid-batch` in
+        // SourceRuntimeTest.
+        assertEquals(true, outcomes[2].second.isFailure)
+        assertTrue(outcomes[2].second.exceptionOrNull() is SourceTemporarilyUnavailableException)
 
         val recorded = SourceRuntimeFailureRegistry.get(555L)
         assertTrue(recorded != null)

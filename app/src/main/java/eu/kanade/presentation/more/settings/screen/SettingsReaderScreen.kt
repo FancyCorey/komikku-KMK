@@ -699,8 +699,33 @@ object SettingsReaderScreen : SearchableSettings {
                 initialMode = mode,
                 initialWindows = windows,
                 onSave = { newMode, newWindows ->
-                    readerPreferences.readingScheduleMode().set(ReaderScheduleStore.serializeMode(newMode))
-                    readerPreferences.readingScheduleWindows().set(ReaderScheduleStore.serializeWindows(newWindows))
+                    // KMK Undo Expansion Phase 1: journal the complete prior mode+window serialization
+                    // as one preference entry so Undo restores the whole schedule, not a partial edit.
+                    val sourcePreferences = Injekt.get<eu.kanade.domain.source.service.SourcePreferences>()
+                    val windowsPref = readerPreferences.readingScheduleWindows()
+                    val modePref = readerPreferences.readingScheduleMode()
+                    val previousSerialized = modePref.get() to windowsPref.get()
+                    val newSerialized = ReaderScheduleStore.serializeMode(newMode) to ReaderScheduleStore.serializeWindows(newWindows)
+                    val undoEntry = if (sourcePreferences.evaluationMode().get() && previousSerialized != newSerialized) {
+                        exh.util.PreferenceUndoEntry(
+                            id = exh.util.PreferenceUndoEntry.newId(),
+                            timestamp = System.currentTimeMillis(),
+                            actionType = exh.util.PreferenceJournalActionType.READING_SCHEDULE,
+                            identityKey = "readingSchedule",
+                            previousValue = previousSerialized,
+                            expectedPostValue = newSerialized,
+                            readCurrent = { modePref.get() to windowsPref.get() },
+                            restore = { (mode, windows) ->
+                                modePref.set(mode)
+                                windowsPref.set(windows)
+                            },
+                        )
+                    } else {
+                        null
+                    }
+                    readerPreferences.readingScheduleMode().set(newSerialized.first)
+                    readerPreferences.readingScheduleWindows().set(newSerialized.second)
+                    undoEntry?.let { exh.util.PreferenceUndoJournal.record(it) }
                 },
             )
         }

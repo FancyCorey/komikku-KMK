@@ -27,16 +27,19 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.CallMerge
+import androidx.compose.material.icons.automirrored.outlined.CompareArrows
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.HourglassDisabled
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -240,7 +243,10 @@ fun MangaActionRow(
     isUserIntervalMode: Boolean,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    // KMK v0.8.18-fix1: renamed from onWebViewLongClicked -- this is no longer a long-click callback.
+    // It was dead wiring after v0.8.18 moved WebView into the "More" overflow menu (DropdownMenuItem has
+    // no long-press affordance); restored here as an explicit, always-reachable "Copy link" menu item.
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
@@ -344,25 +350,6 @@ fun MangaActionRow(
             color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
             onClick = onTrackingClicked,
         )
-        if (onWebViewClicked != null) {
-            MangaActionButton(
-                title = stringResource(MR.strings.action_web_view),
-                icon = Icons.Outlined.Public,
-                color = MaterialTheme.colorScheme.primary, // KMK: defaultActionButtonColor
-                onClick = onWebViewClicked,
-                onLongClick = onWebViewLongClicked,
-            )
-        }
-        // SY -->
-        if (onMergeClicked != null) {
-            MangaActionButton(
-                title = stringResource(SYMR.strings.merge),
-                icon = Icons.AutoMirrored.Outlined.CallMerge,
-                color = MaterialTheme.colorScheme.primary, // KMK: defaultActionButtonColor
-                onClick = onMergeClicked,
-            )
-        }
-        // SY <--
         // KMK -->
         if (onTasteClicked != null) {
             var tasteMenuExpanded by remember { mutableStateOf(false) }
@@ -495,20 +482,80 @@ fun MangaActionRow(
                             leadingIcon = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
                         )
                     }
-                    // KMK --> v0.7.8: find best version
-                    if (onFindBestVersionClicked != null) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(KMR.strings.best_version_find_action)) },
-                            onClick = {
-                                onFindBestVersionClicked()
-                                tasteMenuExpanded = false
-                            },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.CallMerge, contentDescription = null) },
-                        )
-                    }
-                    // KMK <--
                 }
                 // KMK <--
+                // KMK <--
+            }
+        }
+        // KMK v0.8.18: WebView, Merge, and Find best version were previously three more always-
+        // visible equal-weight primary buttons alongside Library/Interval/Tracking/Rate, crowding
+        // compact width. They now share one "More" overflow menu -- still fully reachable (one extra
+        // tap, matching the app's existing overflow-menu convention elsewhere), never removed. Find
+        // best version stays conceptually separate from Rate (it's still not inside the taste
+        // dropdown above) -- moving it here is acceptable per the v0.8.18 plan; moving it back into
+        // the Rate menu would not be.
+        // KMK v0.8.18-fix1: v0.8.18's move left onCopyLinkClicked (then onWebViewLongClicked) passed
+        // through several layers but never invoked -- the previous comment here judged the long-click
+        // affordance "not worth a second menu row," but that left real, working copy-link behavior
+        // unreachable rather than intentionally removed. Restored as an explicit "Copy link" menu item,
+        // gated the same as WebView itself since it only makes sense for HTTP sources.
+        if (onWebViewClicked != null || onCopyLinkClicked != null || onMergeClicked != null || onFindBestVersionClicked != null) {
+            var moreMenuExpanded by remember { mutableStateOf(false) }
+            MangaActionButton(
+                title = stringResource(MR.strings.label_more),
+                icon = Icons.Default.MoreVert,
+                color = defaultActionButtonColor,
+                onClick = { moreMenuExpanded = true },
+            )
+            DropdownMenu(
+                expanded = moreMenuExpanded,
+                onDismissRequest = { moreMenuExpanded = false },
+            ) {
+                if (onWebViewClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(MR.strings.action_web_view)) },
+                        onClick = {
+                            onWebViewClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+                    )
+                }
+                // KMK v0.8.18-fix1: restored copy-link as an explicit, always-reachable menu item.
+                if (onCopyLinkClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(MR.strings.action_copy_link)) },
+                        onClick = {
+                            onCopyLinkClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                    )
+                }
+                // SY -->
+                if (onMergeClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(SYMR.strings.merge)) },
+                        onClick = {
+                            onMergeClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.CallMerge, contentDescription = null) },
+                    )
+                }
+                // SY <--
+                // KMK --> v0.8.16: Find best version is a source-quality/comparison workflow, not a
+                // rating action -- must not live inside the taste/seen dropdown above.
+                if (onFindBestVersionClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.best_version_find_action)) },
+                        onClick = {
+                            onFindBestVersionClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.CompareArrows, contentDescription = null) },
+                    )
+                }
                 // KMK <--
             }
         }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -28,17 +29,24 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import kotlinx.coroutines.flow.update
 import mihon.domain.migration.models.MigrationFlag
 import mihon.domain.migration.usecases.MigrateMangaUseCase
+import mihon.domain.migration.usecases.MigrationOutcome
 import mihon.feature.common.utils.getLabel
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+
+// KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29: which localized message to show
+// for a non-Success MigrationOutcome -- kept as a plain enum (not the message string itself) so the
+// screen model stays UI-toolkit-agnostic and directly unit-testable.
+internal enum class MigrationDialogErrorKey { PARTIAL_FAILURE, NOT_STARTED }
 
 @Composable
 internal fun Screen.MigrateMangaDialog(
@@ -74,6 +82,20 @@ internal fun Screen.MigrateMangaDialog(
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
+                // KMK Confirmed Blocker Remediation Phase 1 2026-07-29: surface a truthful failure
+                // state instead of silently closing the dialog as if the migration had succeeded --
+                // see MigrateDialogScreenModel.migrateManga's MigrationOutcome handling below.
+                state.errorMessage?.let { key ->
+                    val messageRes = when (key) {
+                        MigrationDialogErrorKey.PARTIAL_FAILURE -> KMR.strings.migration_dialog_partial_failure
+                        MigrationDialogErrorKey.NOT_STARTED -> KMR.strings.migration_dialog_not_started
+                    }
+                    Text(
+                        text = stringResource(messageRes),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = MaterialTheme.padding.small),
+                    )
+                }
                 state.applicableFlags.fastForEach { flag ->
                     LabeledCheckbox(
                         label = stringResource(flag.getLabel()),
@@ -104,8 +126,8 @@ internal fun Screen.MigrateMangaDialog(
                 TextButton(
                     onClick = {
                         scope.launchIO {
-                            screenModel.migrateManga(replace = false)
-                            withUIContext { onComplete() }
+                            val migrated = screenModel.migrateManga(replace = false)
+                            if (migrated) withUIContext { onComplete() }
                         }
                     },
                 ) {
@@ -114,8 +136,8 @@ internal fun Screen.MigrateMangaDialog(
                 TextButton(
                     onClick = {
                         scope.launchIO {
-                            screenModel.migrateManga(replace = true)
-                            withUIContext { onComplete() }
+                            val migrated = screenModel.migrateManga(replace = true)
+                            if (migrated) withUIContext { onComplete() }
                         }
                     },
                 ) {
@@ -126,7 +148,10 @@ internal fun Screen.MigrateMangaDialog(
     )
 }
 
-private class MigrateDialogScreenModel(
+// KMK Confirmed Blocker Remediation follow-up Phase 1: internal (not private) so
+// MigrateDialogScreenModelMigrationOutcomeTest can construct it directly with a mocked
+// MigrateMangaUseCase, without needing the use case's full platform-dependency graph.
+internal class MigrateDialogScreenModel(
     val sourcePreference: SourcePreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
@@ -172,21 +197,40 @@ private class MigrateDialogScreenModel(
         }
     }
 
-    suspend fun migrateManga(replace: Boolean) {
+    // KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29: previously discarded the
+    // MigrationOutcome entirely and always set isMigrated = true, so a PartialFailure/NotStarted
+    // outcome (migrateManga's non-fatal-exception path) closed this dialog exactly as if the
+    // migration had fully succeeded. migrateManga(...) itself already catches every non-fatal
+    // exception internally and only lets CancellationException/fatal errors propagate (see
+    // MigrateMangaUseCase's own catch block) -- so this call intentionally has no try/catch of its
+    // own; a thrown exception here is meant to propagate to the caller's coroutine scope, not be
+    // swallowed. Returns true only for a verified Success, so the caller only calls onComplete()
+    // then.
+    suspend fun migrateManga(replace: Boolean): Boolean {
         val state = state.value
-        val current = state.current ?: return
-        val target = state.target ?: return
+        val current = state.current ?: return false
+        val target = state.target ?: return false
         // KMK -->
         // sourcePreference.migrationFlags().set(state.selectedFlags)
         // KMK <--
-        mutableState.update { it.copy(isMigrating = true) }
-        try {
-            migrateManga(current, target, replace, /* KMK --> */ state.selectedFlags /* KMK <-- */)
-            mutableState.update { it.copy(isMigrating = false, isMigrated = true) }
-            // KMK -->
-        } catch (_: Throwable) {
-            mutableState.update { it.copy(isMigrating = false, isMigrated = false) }
-            // KMK <--
+        mutableState.update { it.copy(isMigrating = true, errorMessage = null) }
+        return when (migrateManga(current, target, replace, /* KMK --> */ state.selectedFlags /* KMK <-- */)) {
+            is MigrationOutcome.Success -> {
+                mutableState.update { it.copy(isMigrating = false, isMigrated = true) }
+                true
+            }
+            is MigrationOutcome.PartialFailure -> {
+                mutableState.update {
+                    it.copy(isMigrating = false, isMigrated = false, errorMessage = MigrationDialogErrorKey.PARTIAL_FAILURE)
+                }
+                false
+            }
+            is MigrationOutcome.NotStarted -> {
+                mutableState.update {
+                    it.copy(isMigrating = false, isMigrated = false, errorMessage = MigrationDialogErrorKey.NOT_STARTED)
+                }
+                false
+            }
         }
     }
 
@@ -197,5 +241,8 @@ private class MigrateDialogScreenModel(
         val selectedFlags: Set<MigrationFlag> = emptySet(),
         val isMigrating: Boolean = false,
         val isMigrated: Boolean = false,
+        // KMK Confirmed Blocker Remediation follow-up Phase 1: non-null only after a verified
+        // PartialFailure/NotStarted MigrationOutcome; resolved to localized text in the Composable.
+        val errorMessage: MigrationDialogErrorKey? = null,
     )
 }

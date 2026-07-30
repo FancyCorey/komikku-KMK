@@ -16,6 +16,8 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.screens.LoadingScreen
 
@@ -77,12 +79,25 @@ class ExtensionStoresScreen(
                 )
             }
             is ExtensionStoreDialog.Delete -> {
+                // KMK --> v0.8.19: evaluation mode repo-name/URL obfuscation. The real indexUrl is
+                // still passed unobfuscated to onDelete (behavior must never change), only the two
+                // visible Text values are swapped.
+                val evaluationModeEnabled = rememberEvaluationModeEnabled()
                 ExtensionStoreDeleteDialog(
                     onDismissRequest = screenModel::dismissDialog,
                     onDelete = { screenModel.deleteRepo(dialog.store.indexUrl) },
-                    storeName = dialog.store.name,
-                    storeIndexUrl = dialog.store.indexUrl,
+                    storeName = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.repoLabel(dialog.store.name)
+                    } else {
+                        dialog.store.name
+                    },
+                    storeIndexUrl = if (evaluationModeEnabled) {
+                        "https://example.invalid/hidden-repo"
+                    } else {
+                        dialog.store.indexUrl
+                    },
                 )
+                // KMK <--
             }
             is ExtensionStoreDialog.Confirm -> {
                 ExtensionStoreConfirmDialog(

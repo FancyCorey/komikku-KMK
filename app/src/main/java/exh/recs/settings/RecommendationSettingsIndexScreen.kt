@@ -4,8 +4,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.CloudSync
-import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FactCheck
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Search
@@ -41,13 +39,21 @@ import eu.kanade.presentation.util.Screen as KomikkuScreen
  * in the prior pass specifically because it wasn't safe within one shared, variable-length screen;
  * that constraint no longer applies once each category has its own bounded `LazyColumn`).
  *
- * One category has a genuine structural exception, not an oversight:
- * - **Background/network/installer behavior** has no distinct content in the former
- *   `RecommendationsSettingsScreen` at all — installer mode, batch size, and network-retry behavior
- *   are controls that live entirely inside [SourceEvaluationScreen] (a separate screen already, since
- *   before this pass). Creating a new, empty "Background/Installer" screen just to redirect into
- *   `SourceEvaluationScreen` would add a pointless extra tap; this row routes directly to
- *   [SourceEvaluationScreen] instead, same as Evaluation.
+ * KMK v0.8.11: the former "Background, network, and installer behavior" index row was removed. It
+ * navigated to the exact same [SourceEvaluationScreen] as the "Source Evaluation" row (installer
+ * mode/batch size/cleanup controls all live inside that screen), which read as two different
+ * destinations but opened one page — confirmed by the user as confusing. Source Evaluation is now
+ * the single index row that opens that screen; installer/background search synonyms were folded
+ * into the Source Evaluation search entry (see RecommendationSettingsSearchScreen).
+ *
+ * KMK v0.8.14: rebuilt to the approved five-section structure -- "For You" and "Matching and
+ * versions" are retired as top-level destinations. Their controls were general taste/filter/display
+ * controls and advanced version/quality controls respectively, not meaningful sections of their own
+ * (confirmed via live-device audit -- see `docs/community/KMK_RECS_STRUCTURAL_UX_CORRECTION_AUDIT.md`).
+ * Every control they owned still exists, reachable now under "Taste and filters" (rated visibility,
+ * hide known manga, minimum chapter count) or "Management and diagnostics" (result budget, same-manga
+ * matching, Best Version preview, group-preview budget) -- same `screenModel` methods, same
+ * preference keys, zero behavior change.
  */
 object RecommendationSettingsIndexScreen : KomikkuScreen() {
     @Suppress("unused")
@@ -100,47 +106,45 @@ object RecommendationSettingsIndexScreen : KomikkuScreen() {
         val screen: Screen,
     )
 
+    // KMK v0.8.14: the approved five-section Recommendation Settings structure. Do not add a sixth
+    // top-level item or reintroduce "For You"/"Matching and versions" as destinations here -- see the
+    // class doc above.
     private val items = listOf(
         Item(
-            titleRes = KMR.strings.rec_settings_index_for_you,
-            subtitleRes = KMR.strings.rec_settings_daily_recs_header,
-            icon = Icons.Outlined.Explore,
-            screen = RecommendationForYouSettingsScreen(),
-        ),
-        Item(
-            titleRes = KMR.strings.rec_settings_index_source_priority,
-            subtitleRes = KMR.strings.rec_source_priority,
+            titleRes = KMR.strings.rec_settings_index_for_you_sources,
+            subtitleRes = KMR.strings.rec_settings_index_for_you_sources_summary,
             icon = Icons.Outlined.Star,
             screen = RecommendationSourcePrioritySettingsScreen(),
         ),
         Item(
-            titleRes = KMR.strings.rec_settings_index_taste_tags,
-            subtitleRes = KMR.strings.taste_settings_tag_prefs,
+            titleRes = KMR.strings.rec_settings_index_taste_filters,
+            subtitleRes = KMR.strings.rec_settings_index_taste_filters_summary,
             icon = Icons.Outlined.Label,
             screen = RecommendationTasteTagsSettingsScreen(),
         ),
         Item(
             titleRes = KMR.strings.rec_settings_index_evaluation,
-            subtitleRes = KMR.strings.source_evaluation_settings_desc,
+            // KMK v0.8.16-fix1: dedicated short user-goal subtitle -- see the string's own doc comment.
+            subtitleRes = KMR.strings.rec_settings_index_evaluation_summary,
             icon = Icons.Outlined.FactCheck,
             screen = SourceEvaluationScreen(),
         ),
         Item(
             titleRes = KMR.strings.rec_settings_index_discovery,
-            subtitleRes = KMR.strings.rec_sources_to_try_header,
+            // KMK v0.8.14-fix1: dedicated subtitle -- was rec_sources_to_try_header ("Sources To
+            // Try"), which just repeated the row title in different casing.
+            subtitleRes = KMR.strings.rec_settings_index_discovery_summary,
             icon = Icons.Outlined.ThumbUpAlt,
             screen = RecommendationNonInstalledDiscoverySettingsScreen(),
         ),
-        Item(
-            titleRes = KMR.strings.rec_settings_index_installer,
-            subtitleRes = KMR.strings.source_evaluation_settings_experimental_header,
-            icon = Icons.Outlined.CloudSync,
-            // KMK v0.8.8: no distinct content exists outside SourceEvaluationScreen — see class doc.
-            screen = SourceEvaluationScreen(),
-        ),
+        // KMK v0.8.11: the "Background, network, and installer behavior" row was removed here -- it
+        // duplicated the Source Evaluation destination above. See class doc.
         Item(
             titleRes = KMR.strings.rec_settings_index_diagnostics,
-            subtitleRes = KMR.strings.rec_settings_management_header,
+            // KMK v0.8.14-fix1: dedicated subtitle -- was rec_settings_management_header ("Source
+            // management"), which undersold this section (it also holds languages, versions/quality,
+            // and diagnostics, not just source management).
+            subtitleRes = KMR.strings.rec_settings_index_management_summary,
             icon = Icons.Outlined.BugReport,
             screen = RecommendationDiagnosticsSettingsScreen(),
         ),

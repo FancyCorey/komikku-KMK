@@ -10,6 +10,7 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.size.Size
 import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
@@ -17,6 +18,8 @@ import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
 import eu.kanade.tachiyomi.util.system.toShareIntent
+import exh.util.CustomCoverUndoRecorder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -28,6 +31,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
+import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -37,6 +41,7 @@ class MangaCoverScreenModel(
     private val imageSaver: ImageSaver = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<Manga?>(null) {
@@ -121,10 +126,20 @@ class MangaCoverScreenModel(
         val manga = state.value ?: return
         screenModelScope.launchIO {
             context.contentResolver.openInputStream(data)?.use {
+                val pending = if (!manga.isLocal() && manga.favorite) {
+                    CustomCoverUndoRecorder.build(sourcePreferences, coverCache, manga.id)
+                } else {
+                    null
+                }
                 try {
                     manga.editCover(Injekt.get(), it, updateManga, coverCache)
+                    CustomCoverUndoRecorder.commit(pending, coverCache)
                     notifyCoverUpdated(context)
+                } catch (e: CancellationException) {
+                    CustomCoverUndoRecorder.restoreForwardFailure(pending, coverCache)
+                    throw e
                 } catch (e: Exception) {
+                    CustomCoverUndoRecorder.restoreForwardFailure(pending, coverCache)
                     notifyFailedCoverUpdate(context, e)
                 }
             }
@@ -134,11 +149,18 @@ class MangaCoverScreenModel(
     fun deleteCustomCover(context: Context) {
         val mangaId = state.value?.id ?: return
         screenModelScope.launchIO {
+            if (!coverCache.getCustomCoverFile(mangaId).isFile) return@launchIO
+            val pending = CustomCoverUndoRecorder.build(sourcePreferences, coverCache, mangaId)
             try {
                 coverCache.deleteCustomCover(mangaId)
-                updateManga.awaitUpdateCoverLastModified(mangaId)
+                check(updateManga.awaitUpdateCoverLastModified(mangaId))
+                CustomCoverUndoRecorder.commit(pending, coverCache)
                 notifyCoverUpdated(context)
+            } catch (e: CancellationException) {
+                CustomCoverUndoRecorder.restoreForwardFailure(pending, coverCache)
+                throw e
             } catch (e: Exception) {
+                CustomCoverUndoRecorder.restoreForwardFailure(pending, coverCache)
                 notifyFailedCoverUpdate(context, e)
             }
         }

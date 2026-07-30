@@ -114,6 +114,9 @@ class UpdateMangaFromRemoteRegistrationTest {
                     addSingletonFactory<eu.kanade.domain.manga.interactor.UpdateManga> { mockk(relaxed = true) }
                     addSingletonFactory<tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags> { mockk(relaxed = true) }
                     addSingletonFactory<eu.kanade.domain.track.interactor.AddTracks> { mockk(relaxed = true) }
+                    // KMK Undo Expansion Phase 1: BulkFavoriteScreenModel gained a SourcePreferences
+                    // default constructor arg for Evaluation Mode library-undo journaling.
+                    addSingletonFactory<eu.kanade.domain.source.service.SourcePreferences> { mockk(relaxed = true) }
                 }
             },
         )

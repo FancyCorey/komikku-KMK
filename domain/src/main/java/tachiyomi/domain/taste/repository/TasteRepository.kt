@@ -72,6 +72,23 @@ interface TasteRepository {
 
     suspend fun deleteAllCrossSourceMangaLinks()
 
+    // KMK v0.8.20: atomically deletes every link row AND the primary-version row for [groupId] in one
+    // transaction, so "ungroup" can never leave a dangling primary pointing at a group with no links
+    // (the previous two-call sequence in LovedMangaScreenModel.ungroup() was not atomic). Used by the
+    // Undo Journal's snapshot-before/commit-after-transaction-success restore contract.
+    suspend fun deleteCrossSourceGroupCompletely(groupId: String)
+
+    // KMK v0.8.20: typed restore for the group-action Undo Journal. Applies exactly the previous-state
+    // writes/deletes for links and primaries captured in a GroupJournalEntry snapshot, atomically -- so
+    // an Undo either fully reconstructs the previous state or changes nothing at all if it fails
+    // partway through. Never a generic rollback: every argument is a concrete, typed row list.
+    suspend fun restoreCrossSourceGroupState(
+        linkUpserts: List<CrossSourceMangaLink>,
+        linkDeletes: List<Pair<Long, String>>,
+        primaryUpserts: List<CrossSourceGroupPrimary>,
+        primaryDeletes: List<String>,
+    )
+
     // KMK <--
 
     // --- manga_cross_source_group_primary --- KMK --> v0.8.0

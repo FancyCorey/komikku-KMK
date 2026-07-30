@@ -1,10 +1,12 @@
 package exh.recs.links
 
+import exh.recs.TestInjektSupport
 import exh.recs.loved.RatedMangaKey
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
@@ -17,6 +19,13 @@ import tachiyomi.domain.taste.model.MangaTaste
  * Run with: ./gradlew :app:testDebugUnitTest --tests "*.LinkedVersionListBuilderTest"
  */
 class LinkedVersionListBuilderTest {
+
+    companion object {
+        // KMK v0.8.20: see TestInjektSupport — this test constructs favorite=true Manga instances.
+        @JvmStatic
+        @BeforeAll
+        fun registerCustomMangaInfoBinding() = TestInjektSupport.ensureCustomMangaInfoBound()
+    }
 
     private fun link(source: Long, url: String, title: String = "t-$url", updatedAt: Long = 0L) =
         CrossSourceMangaLink(source = source, url = url, groupId = "g", title = title, createdAt = 0L, updatedAt = updatedAt)

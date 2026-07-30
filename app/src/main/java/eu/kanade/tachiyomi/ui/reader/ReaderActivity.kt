@@ -317,6 +317,11 @@ class ReaderActivity : BaseActivity() {
                     is ReaderViewModel.Event.SetCoverResult -> {
                         onSetAsCoverResult(event.result)
                     }
+                    // KMK Confirmed Blocker Remediation follow-up Phase 2 -->
+                    ReaderViewModel.Event.ChapterCompletionActionFailed -> {
+                        toast(KMR.strings.chapter_completion_action_failed)
+                    }
+                    // KMK <--
                 }
             }
             .launchIn(lifecycleScope)
@@ -669,17 +674,32 @@ class ReaderActivity : BaseActivity() {
                     )
                 }
 
-                // KMK v0.8.8: step 2 — offered only when a confirmed cross-source group exists for
-                // this manga. Yes launches MainActivity with primitives-only extras that push the
-                // existing CrossExtensionMatchScreen (Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING
-                // — see MainActivity's intent handling); No/Cancel just closes this dialog. Either
-                // way the rating already committed in step 1 is untouched.
+                // KMK v0.8.8: step 2 — offered after step 1's rating is committed. Yes launches
+                // MainActivity with primitives-only extras that push the existing
+                // CrossExtensionMatchScreen (Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING — see
+                // MainActivity's intent handling); No/Cancel just closes this dialog. Either way the
+                // rating already committed in step 1 is untouched.
+                // KMK v0.8.17-fix1: this is no longer gated on a confirmed cross-source group already
+                // existing -- CrossExtensionMatchScreen performs its own live title search regardless.
+                // `hasConfirmedGroup` now only selects honest wording: the "confirmed other versions"
+                // message when a group is already known, or a "search for other versions" message
+                // when this offer will run a fresh search instead of reusing a known group.
                 is ReaderViewModel.Dialog.ChapterCompletionRatingGroupOffer -> {
                     val dialog = state.dialog as ReaderViewModel.Dialog.ChapterCompletionRatingGroupOffer
+                    val titleRes = if (dialog.hasConfirmedGroup) {
+                        KMR.strings.chapter_completion_rating_group_offer_title
+                    } else {
+                        KMR.strings.chapter_completion_rating_search_offer_title
+                    }
+                    val messageRes = if (dialog.hasConfirmedGroup) {
+                        KMR.strings.chapter_completion_rating_group_offer_message
+                    } else {
+                        KMR.strings.chapter_completion_rating_search_offer_message
+                    }
                     AlertDialog(
                         onDismissRequest = onDismissRequest,
-                        title = { Text(stringResource(KMR.strings.chapter_completion_rating_group_offer_title)) },
-                        text = { Text(stringResource(KMR.strings.chapter_completion_rating_group_offer_message)) },
+                        title = { Text(stringResource(titleRes)) },
+                        text = { Text(stringResource(messageRes)) },
                         confirmButton = {
                             androidx.compose.material3.TextButton(onClick = {
                                 onDismissRequest()

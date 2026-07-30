@@ -14,6 +14,7 @@ import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.removeCovers
@@ -60,6 +61,8 @@ class BulkFavoriteScreenModel(
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
+    // KMK Undo Expansion Phase 1
+    private val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
 ) : StateScreenModel<BulkFavoriteScreenModel.State>(initialState) {
 
     fun backHandler() {
@@ -244,7 +247,7 @@ class BulkFavoriteScreenModel(
         toggleSelectionMode(false)
     }
 
-    private fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
+    private suspend fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
         moveMangaToCategory(manga.id, categories)
         if (manga.favorite) return
 
@@ -263,24 +266,31 @@ class BulkFavoriteScreenModel(
                         manga = manga,
                         fetchDetails = fetchMetadataOnAdd,
                         fetchChapters = fetchChaptersOnAdd,
-                    ).getOrThrow()
+                    ).getOrThrowSourceRuntimeException()
                 }
             } catch (e: Exception) {
+                // KMK v0.8.10-fix7: getOrThrowSourceRuntimeException() now converts a recoverable
+                // extension LinkageError into RecoverableSourceRuntimeException (an Exception), so
+                // this is the primary containment path -- the catch(Error) below is now
+                // defensive-only, for any path that has not been migrated.
                 logcat(LogPriority.ERROR, e)
             } catch (e: Error) {
-                // KMK v0.8.10-fix3: UpdateMangaFromRemote already converts a recoverable extension
-                // LinkageError into Result.failure(...), but Result.getOrThrow() rethrows that stored
-                // Throwable as-is -- if it's an Error (not an Exception), the catch(Exception) above
-                // never sees it. Genuinely fatal VM errors still rethrow.
                 if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                 logcat(LogPriority.ERROR, e)
             }
         }
     }
 
-    private fun moveMangaToCategory(mangaId: Long, categoryIds: List<Long>) {
-        screenModelScope.launchIO {
-            setMangaCategories.await(mangaId, categoryIds)
+    private suspend fun moveMangaToCategory(mangaId: Long, categoryIds: List<Long>) {
+        val previousCategoryIds = getCategories.await(mangaId).map { it.id }
+        val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(
+            sourcePreferences = sourcePreferences,
+            mangaId = mangaId,
+            previousCategoryIds = previousCategoryIds,
+            newCategoryIds = categoryIds,
+        )
+        if (setMangaCategories.await(mangaId, categoryIds)) {
+            undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
         }
     }
 
@@ -326,10 +336,20 @@ class BulkFavoriteScreenModel(
 
     private fun moveMangaToCategories(manga: Manga, categoryIds: List<Long>) {
         screenModelScope.launchIO {
-            setMangaCategories.await(
+            val previousCategoryIds = getCategories.await(manga.id).map { it.id }
+            val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(
+                sourcePreferences = sourcePreferences,
                 mangaId = manga.id,
-                categoryIds = categoryIds.toList(),
+                previousCategoryIds = previousCategoryIds,
+                newCategoryIds = categoryIds,
             )
+            if (setMangaCategories.await(
+                    mangaId = manga.id,
+                    categoryIds = categoryIds.toList(),
+                )
+            ) {
+                undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
+            }
         }
     }
 
@@ -350,6 +370,9 @@ class BulkFavoriteScreenModel(
                 },
             )
             // TODO: also allow deleting chapters when remove favorite (just like in [MangaScreenModel])
+            // KMK Undo Expansion Phase 1: build before write, commit only after success. Never
+            // journals the coupled cover removal / chapter-flag defaults / tracker bind below.
+            val undoEntry = exh.util.LibraryUndoRecorder.buildFavoriteEntry(sourcePreferences, manga, new.favorite)
             if (!new.favorite) {
                 new = new.removeCovers(coverCache)
             } else {
@@ -357,7 +380,8 @@ class BulkFavoriteScreenModel(
                 addTracks.bindEnhancedTrackers(manga, source)
             }
 
-            updateManga.await(new.toMangaUpdate())
+            val updated = updateManga.await(new.toMangaUpdate())
+            if (updated) undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
             val fetchMetadataOnAdd = libraryPreferences.fetchMetadataOnAdd().get()
             val fetchChaptersOnAdd = libraryPreferences.fetchChaptersOnAdd().get()
             if (new.favorite && (fetchMetadataOnAdd || fetchChaptersOnAdd)) {
@@ -369,13 +393,13 @@ class BulkFavoriteScreenModel(
                             manga = manga,
                             fetchDetails = fetchMetadataOnAdd,
                             fetchChapters = fetchChaptersOnAdd,
-                        ).getOrThrow()
+                        ).getOrThrowSourceRuntimeException()
                     } catch (e: Exception) {
+                        // KMK v0.8.10-fix7: same reasoning as the other updateMangaFromRemote(...)
+                        // call site above -- getOrThrowSourceRuntimeException() is the primary
+                        // containment path now; catch(Error) below is defensive-only.
                         logcat(LogPriority.ERROR, e)
                     } catch (e: Error) {
-                        // KMK v0.8.10-fix3: same reasoning as the other updateMangaFromRemote(...)
-                        // .getOrThrow() call site above -- a recoverable extension LinkageError can
-                        // be rethrown here as a raw Error, not an Exception.
                         if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                         logcat(LogPriority.ERROR, e)
                     }

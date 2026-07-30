@@ -12,7 +12,10 @@ import eu.kanade.domain.manga.model.PagePreview
 import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.PagePreviewSource
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.safeHeadersOrNull
 import exh.source.getMainSource
 import logcat.LogPriority
 import okhttp3.CacheControl
@@ -124,10 +127,21 @@ class PagePreviewFetcher(
     }
 
     private suspend fun executeNetworkRequest(): Response {
-        val response = sourceLazy.value?.fetchPreviewImage(
-            page.getPagePreviewInfo(),
-            getCacheControl(),
-        ) ?: callFactoryLazy.value.newCall(newRequest()).await()
+        // KMK v0.8.10-fix5: fetchPreviewImage() and the source's own client construction can throw
+        // LinkageError just like any other source-owned code -- PagePreviewSource always extends
+        // Source, so route through SourceRuntime and fall back to a direct image request instead of
+        // crashing Best Version / preview UI.
+        val previewSource = sourceLazy.value
+        val response = if (previewSource != null) {
+            SourceRuntime.run(previewSource, SourceRuntimeOperation.PreviewImage) {
+                (this as PagePreviewSource).fetchPreviewImage(
+                    page.getPagePreviewInfo(),
+                    getCacheControl(),
+                )
+            }.getOrNull()
+        } else {
+            null
+        } ?: callFactoryLazy.value.newCall(newRequest()).await()
         if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
             response.close()
             throw IOException(response.message)
@@ -152,7 +166,8 @@ class PagePreviewFetcher(
         val request = Request.Builder().apply {
             url(page.imageUrl)
 
-            val sourceHeaders = (sourceLazy.value as? HttpSource)?.headers
+            // KMK v0.8.10-fix5: same lazy-property linkage-failure risk as MangaCoverFetcher.
+            val sourceHeaders = (sourceLazy.value as? HttpSource)?.safeHeadersOrNull()
             if (sourceHeaders != null) {
                 headers(sourceHeaders)
             }

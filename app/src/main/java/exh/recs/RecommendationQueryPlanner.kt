@@ -54,54 +54,28 @@ internal object RecommendationQueryPlanner {
     /**
      * Returns an ordered list of plans to try for a source, capped at [MAX_STRATEGIES_PER_SOURCE].
      * Plans are deterministic — no randomness.
+     *
+     * KMK v0.8.13: delegates the base strict-to-lenient chain to
+     * [RecommendationQueryAttemptPolicy.buildTagAttemptChain] (TOP_TAGS_FILTER, TAG_PAIR or
+     * SINGLE_STRONGEST_TAG, TEXT_ONLY_TOP_TAGS) instead of maintaining a second, parallel
+     * `fallbackFor()` chain. [lastSuccessful] only rotates that same chain to start at a different
+     * point -- it can no longer eliminate the other attempts the way the old terminal
+     * `TEXT_ONLY_TOP_TAGS has no fallback` behavior did. Callers must pass a [lastSuccessful] that
+     * has already been validated by `RecommendationStrategyRecoveryPolicy` -- a raw, un-recovered
+     * persisted hint should never reach this function directly.
      */
     fun buildPlans(
         topTags: List<String>,
         lastSuccessful: RecommendationQueryStrategyType? = null,
     ): List<RecommendationQueryPlan> {
-        // KMK --> v0.7.44: walk the full fallbackFor() chain (not just one hop) so a source gets
-        // up to MAX_STRATEGIES_PER_SOURCE progressively more lenient attempts, still starting from
-        // lastSuccessful when known. TEXT_ONLY_TOP_TAGS remains terminal (fallbackFor returns null).
-        val plans = mutableListOf(planFor(lastSuccessful ?: RecommendationQueryStrategyType.TOP_TAGS_FILTER, topTags))
-        while (plans.size < MAX_STRATEGIES_PER_SOURCE) {
-            val next = fallbackFor(plans.last().type, topTags) ?: break
-            if (next.type == plans.last().type) break
-            plans.add(next)
-        }
-        return plans
-        // KMK <--
-    }
-
-    private fun planFor(type: RecommendationQueryStrategyType, topTags: List<String>): RecommendationQueryPlan =
-        when (type) {
-            RecommendationQueryStrategyType.TOP_TAGS_FILTER ->
-                RecommendationQueryPlan(type, topTags.take(5))
-            RecommendationQueryStrategyType.SINGLE_STRONGEST_TAG ->
-                RecommendationQueryPlan(type, topTags.take(1))
-            RecommendationQueryStrategyType.TAG_PAIR ->
-                RecommendationQueryPlan(type, topTags.take(2))
-            RecommendationQueryStrategyType.TEXT_ONLY_TOP_TAGS ->
-                RecommendationQueryPlan(type, topTags.take(3), forceTextOnly = true)
-        }
-
-    private fun fallbackFor(
-        primary: RecommendationQueryStrategyType,
-        topTags: List<String>,
-    ): RecommendationQueryPlan? {
-        val fallbackType = when (primary) {
-            RecommendationQueryStrategyType.TOP_TAGS_FILTER ->
-                if (topTags.size >= 2) {
-                    RecommendationQueryStrategyType.TAG_PAIR
-                } else {
-                    RecommendationQueryStrategyType.TEXT_ONLY_TOP_TAGS
-                }
-            RecommendationQueryStrategyType.TAG_PAIR ->
-                RecommendationQueryStrategyType.TEXT_ONLY_TOP_TAGS
-            RecommendationQueryStrategyType.SINGLE_STRONGEST_TAG ->
-                RecommendationQueryStrategyType.TEXT_ONLY_TOP_TAGS
-            RecommendationQueryStrategyType.TEXT_ONLY_TOP_TAGS -> null // most permissive, no fallback
-        }
-        return fallbackType?.let { planFor(it, topTags) }
+        val chain = RecommendationQueryAttemptPolicy.buildTagAttemptChain(topTags)
+        if (chain.isEmpty()) return chain
+        val startIndex = lastSuccessful
+            ?.let { last -> chain.indexOfFirst { it.type == last } }
+            ?.takeIf { it >= 0 }
+            ?: 0
+        val rotated = chain.drop(startIndex) + chain.take(startIndex)
+        return rotated.take(MAX_STRATEGIES_PER_SOURCE)
     }
 }
 // KMK <--

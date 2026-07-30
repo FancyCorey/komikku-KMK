@@ -24,6 +24,8 @@ object SourceEvaluationCompletionLifecyclePolicy {
         SourceEvaluationQueueState.Status.Cancelled,
         SourceEvaluationQueueState.Status.Failed,
         SourceEvaluationQueueState.Status.ConnectivityLost,
+        // KMK v0.8.15: terminal, same lifecycle as the other finished states.
+        SourceEvaluationQueueState.Status.NoActionableWork,
         -> true
         SourceEvaluationQueueState.Status.Idle,
         SourceEvaluationQueueState.Status.Running,

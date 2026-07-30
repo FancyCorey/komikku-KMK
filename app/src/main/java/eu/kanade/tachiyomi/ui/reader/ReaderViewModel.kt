@@ -31,6 +31,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MergedSource
+import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.ui.reader.chapter.ReaderChapterItem
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
@@ -160,6 +161,11 @@ class ReaderViewModel @JvmOverloads constructor(
     private val setMangaTasteInteractor: tachiyomi.domain.taste.interactor.SetMangaTaste = Injekt.get(),
     private val getCrossSourceMangaLinks: tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks = Injekt.get(),
     private val sourcePreferencesForRatingPrompt: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
+    // KMK Confirmed Blocker Remediation Phase 2 2026-07-29: same build-before-write/commit-after-
+    // success Evaluation Mode journal contract MangaScreenModel.setMangaTaste/clearMangaTaste use
+    // (see exh.util.EvaluationModeJournalRecorder) -- the reader's own rating/Not-Interested prompt
+    // previously bypassed the journal entirely, so its writes never appeared in Action History.
+    private val getMangaTasteForRatingPrompt: tachiyomi.domain.taste.interactor.GetMangaTaste = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -431,6 +437,18 @@ class ReaderViewModel @JvmOverloads constructor(
         val currentManga = manga
         viewModelScope.launchNonCancellable {
             if (currentManga != null && currentManga.id == mangaId) {
+                val journalActionType = when (rating) {
+                    MangaRating.LOVE -> exh.util.EvaluationJournalActionType.RATE_LOVE
+                    MangaRating.LIKE -> exh.util.EvaluationJournalActionType.RATE_LIKE
+                    MangaRating.DISLIKE -> exh.util.EvaluationJournalActionType.RATE_DISLIKE
+                }
+                val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
+                    sourcePreferencesForRatingPrompt,
+                    getMangaTasteForRatingPrompt,
+                    listOf(currentManga),
+                    rating.value,
+                    journalActionType,
+                )
                 setMangaTasteInteractor.await(
                     mangaId = currentManga.id,
                     source = currentManga.source,
@@ -438,20 +456,18 @@ class ReaderViewModel @JvmOverloads constructor(
                     title = currentManga.title,
                     rating = rating,
                 )
-                // KMK v0.8.8: offer step 2 (rate confirmed other versions) only when a confirmed
-                // cross-source group actually exists for this manga — reusing the same
-                // GetCrossSourceMangaLinks lookup LovedMangaScreenModel already relies on for
-                // hasConfirmedGroup, not a new duplicate check.
+                exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+                // KMK v0.8.8: reusing the same GetCrossSourceMangaLinks lookup LovedMangaScreenModel
+                // already relies on for hasConfirmedGroup, not a new duplicate check.
+                // KMK v0.8.17-fix1: step 2 is now always offered after a successful rating -- a
+                // confirmed group only changes which honest wording ReaderActivity shows (see
+                // Dialog.ChapterCompletionRatingGroupOffer). Previously, no confirmed group meant no
+                // offer at all, even though the same CrossExtensionMatchScreen route can search live
+                // for other versions regardless of whether a group is already confirmed.
                 val hasConfirmedGroup = getCrossSourceMangaLinks.awaitBySourceUrl(currentManga.source, currentManga.url) != null
                 withUIContext {
                     mutableState.update {
-                        it.copy(
-                            dialog = if (hasConfirmedGroup) {
-                                Dialog.ChapterCompletionRatingGroupOffer(mangaId, rating.value)
-                            } else {
-                                null
-                            },
-                        )
+                        it.copy(dialog = Dialog.ChapterCompletionRatingGroupOffer(mangaId, rating.value, hasConfirmedGroup))
                     }
                 }
             } else {
@@ -461,11 +477,24 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     /** Reuses the same "not interested" store the rated-manga item menu already writes to (SeenRecommendationMangaStore), not a new mechanism. */
+    // KMK Confirmed Blocker Remediation follow-up Phase 2 2026-07-29: previously wrapped the write
+    // in `runCatching { ... }` and then unconditionally closed the dialog afterward regardless of
+    // outcome -- runCatching also catches CancellationException, silently absorbing what should be
+    // structured-concurrency cancellation, and a failed preference write looked identical to a
+    // successful one from the UI's perspective (the prompt just closed either way, no error ever
+    // surfaced). The journal-entry ordering itself (build before write, commit only after the write
+    // line, so a failed write already could never reach the commit call) was already correct and is
+    // unchanged.
     fun markNotInterestedFromChapterCompletionPrompt(mangaId: Long) {
         val currentManga = manga
         viewModelScope.launchNonCancellable {
             if (currentManga != null && currentManga.id == mangaId) {
-                runCatching {
+                try {
+                    val journalEntries = exh.util.EvaluationModeJournalRecorder.buildNotInterested(
+                        sourcePreferencesForRatingPrompt,
+                        getMangaTasteForRatingPrompt,
+                        listOf(currentManga),
+                    )
                     val key = exh.recs.SeenMangaKey(currentManga.source, currentManga.url)
                     val current = exh.recs.SeenRecommendationMangaStore.parse(
                         sourcePreferencesForRatingPrompt.seenRecommendationMangaKeys().get(),
@@ -474,9 +503,17 @@ class ReaderViewModel @JvmOverloads constructor(
                     sourcePreferencesForRatingPrompt.seenRecommendationMangaKeys().set(
                         exh.recs.SeenRecommendationMangaStore.serialize(updated),
                     )
+                    exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+                    withUIContext { mutableState.update { it.copy(dialog = null) } }
+                } catch (e: Throwable) {
+                    // Rethrows CancellationException and genuine fatal VM errors; only a
+                    // recoverable, non-fatal failure reaches the truthful-error path below.
+                    rethrowIfFatal(e)
+                    eventChannel.send(Event.ChapterCompletionActionFailed)
                 }
+            } else {
+                withUIContext { mutableState.update { it.copy(dialog = null) } }
             }
-            withUIContext { mutableState.update { it.copy(dialog = null) } }
         }
     }
 
@@ -1338,35 +1375,50 @@ class ReaderViewModel @JvmOverloads constructor(
     fun toggleChapterBookmark() {
         val chapter = getCurrentChapter()?.chapter ?: return
         val bookmarked = !chapter.bookmark
-        chapter.bookmark = bookmarked
 
         viewModelScope.launchNonCancellable {
-            updateChapter.await(
+            val undoEntries = exh.util.ChapterUndoRecorder.buildBookmarkEntries(
+                sourcePreferencesForRatingPrompt,
+                listOf(chapter.toDomainChapter()!!),
+                bookmarked,
+            )
+            val updated = updateChapter.await(
                 ChapterUpdate(
                     id = chapter.id!!,
                     bookmark = bookmarked,
                 ),
             )
-        }
-
-        mutableState.update {
-            it.copy(
-                bookmarked = bookmarked,
-            )
+            if (updated) {
+                chapter.bookmark = bookmarked
+                undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+                mutableState.update {
+                    it.copy(
+                        bookmarked = bookmarked,
+                    )
+                }
+            }
         }
     }
 
     // SY -->
     fun toggleBookmark(chapterId: Long, bookmarked: Boolean) {
         val chapter = chapterList.find { it.chapter.id == chapterId }?.chapter ?: return
-        chapter.bookmark = bookmarked
         viewModelScope.launchNonCancellable {
-            updateChapter.await(
+            val undoEntries = exh.util.ChapterUndoRecorder.buildBookmarkEntries(
+                sourcePreferencesForRatingPrompt,
+                listOf(chapter.toDomainChapter()!!),
+                bookmarked,
+            )
+            val updated = updateChapter.await(
                 ChapterUpdate(
                     id = chapterId,
                     bookmark = bookmarked,
                 ),
             )
+            if (updated) {
+                chapter.bookmark = bookmarked
+                undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+            }
         }
     }
     // SY <--
@@ -1915,9 +1967,13 @@ class ReaderViewModel @JvmOverloads constructor(
         // either, since Dialog is never routed through SavedStateHandle in this codebase).
         data class ChapterCompletionRating(val mangaId: Long) : Dialog
 
-        // KMK v0.8.8: step 2 — offered only after a rating was just committed AND a confirmed
-        // cross-source group exists for this manga.
-        data class ChapterCompletionRatingGroupOffer(val mangaId: Long, val ratingValue: Int) : Dialog
+        // KMK v0.8.8: step 2 — offered after a rating was just committed. KMK v0.8.17-fix1: no
+        // longer gated on a confirmed cross-source group already existing -- `hasConfirmedGroup`
+        // now only picks which honest wording to show (see ReaderActivity), since
+        // `CrossExtensionMatchScreen` performs its own live title search regardless of whether a
+        // group is already confirmed, so there was no reason to withhold the offer entirely just
+        // because no group happened to exist yet.
+        data class ChapterCompletionRatingGroupOffer(val mangaId: Long, val ratingValue: Int, val hasConfirmedGroup: Boolean) : Dialog
     }
 
     sealed interface Event {
@@ -1935,5 +1991,10 @@ class ReaderViewModel @JvmOverloads constructor(
             // SY <--
         ) : Event
         data class CopyImage(val uri: Uri) : Event
+
+        // KMK Confirmed Blocker Remediation follow-up Phase 2: sent when
+        // markNotInterestedFromChapterCompletionPrompt's preference write fails (non-fatal,
+        // non-cancellation) -- the prompt stays open rather than closing as if the action succeeded.
+        data object ChapterCompletionActionFailed : Event
     }
 }

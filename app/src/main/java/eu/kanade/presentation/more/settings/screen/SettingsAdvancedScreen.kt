@@ -76,6 +76,7 @@ import exh.source.ExhPreferences
 import exh.util.toAnnotatedString
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -769,9 +770,30 @@ object SettingsAdvancedScreen : SearchableSettings {
         val exhPreferences = remember { Injekt.get<ExhPreferences>() }
         val delegateSourcePreferences = remember { Injekt.get<DelegateSourcePreferences>() }
         val securityPreferences = remember { Injekt.get<SecurityPreferences>() }
+        // KMK v0.8.19: gates the Action Undo Journal nav row below.
+        val evaluationModeEnabled = exh.util.rememberEvaluationModeEnabled()
         return Preference.PreferenceGroup(
             title = stringResource(SYMR.strings.developer_tools),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOfNotNull(
+                // KMK -->
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = sourcePreferences.evaluationMode(),
+                    title = stringResource(KMR.strings.evaluation_mode_title),
+                    subtitle = stringResource(KMR.strings.evaluation_mode_summary),
+                ),
+                // KMK v0.8.19: Evaluation Mode Action Undo Journal entry point -- only shown while
+                // Evaluation Mode is on; normal users (Evaluation Mode off) never see this row at all,
+                // matching the feature's explicit "no UI, no behavior change when disabled" requirement.
+                if (evaluationModeEnabled) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.eval_undo_history_nav_title),
+                        subtitle = stringResource(KMR.strings.eval_undo_history_nav_summary),
+                        onClick = { navigator.push(exh.util.EvaluationModeActionHistoryScreen()) },
+                    )
+                } else {
+                    null
+                },
+                // KMK <--
                 Preference.PreferenceItem.SwitchPreference(
                     preference = exhPreferences.isHentaiEnabled(),
                     title = stringResource(SYMR.strings.toggle_hentai_features),
@@ -794,7 +816,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     subtitle = stringResource(
                         SYMR.strings.toggle_delegated_sources_summary,
                         stringResource(MR.strings.app_name),
-                        AndroidSourceManager.DELEGATED_SOURCES.values.map { it.sourceName }.distinct()
+                        AndroidSourceManager.DELEGATED_SOURCES.map { it.sourceName }.distinct()
                             .joinToString(),
                     ),
                 ),
@@ -867,7 +889,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     },
                     onClick = { navigator.push(SettingsDebugScreen()) },
                 ),
-            ),
+            ).toImmutableList(),
         )
     }
 

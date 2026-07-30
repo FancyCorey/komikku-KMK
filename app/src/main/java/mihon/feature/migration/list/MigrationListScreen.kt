@@ -22,6 +22,7 @@ import mihon.feature.migration.config.MigrationConfigScreenSheet
 import mihon.feature.migration.list.components.MigrationExitDialog
 import mihon.feature.migration.list.components.MigrationMangaDialog
 import mihon.feature.migration.list.components.MigrationProgressDialog
+import mihon.feature.migration.list.components.MigrationResultDialog
 import mihon.feature.migration.list.models.MigratingManga
 import tachiyomi.i18n.MR
 
@@ -162,6 +163,16 @@ class MigrationListScreen(
                         screenModel.updateOptions()
                     },
                     fullSettings = false,
+                )
+            }
+            // KMK <--
+            // KMK Confirmed Blocker Remediation follow-up Phase 1 -->
+            is MigrationListScreenModel.Dialog.Result -> {
+                MigrationResultDialog(
+                    failedCount = dialog.failedCount,
+                    skippedCount = dialog.skippedCount,
+                    totalCount = dialog.totalCount,
+                    onDismissRequest = screenModel::dismissResultDialog,
                 )
             }
             // KMK <--

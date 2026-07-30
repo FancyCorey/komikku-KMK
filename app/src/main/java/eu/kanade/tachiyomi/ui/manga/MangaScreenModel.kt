@@ -59,6 +59,7 @@ import eu.kanade.tachiyomi.data.track.mdlist.MdList
 import eu.kanade.tachiyomi.source.PagePreviewSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MergedSource
@@ -128,6 +129,7 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.domain.chapter.service.getChapterSort
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.libraryUpdateError.interactor.DeleteLibraryUpdateErrors
 import tachiyomi.domain.libraryUpdateError.interactor.InsertLibraryUpdateErrors
@@ -221,6 +223,7 @@ class MangaScreenModel(
     private val setMangaChapterFlags: SetMangaChapterFlags = Injekt.get(),
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
     private val setReadStatus: SetReadStatus = Injekt.get(),
+    private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
@@ -644,6 +647,9 @@ class MangaScreenModel(
                 // KMK --> 1.14.0 reconciliation: getMangaDetails/getChapterList/awaitUpdateFromSource/
                 // syncChaptersWithSource were replaced by the unified updateMangaFromRemote interactor
                 // upstream, which already internally special-cases MergedSource via fetchChaptersAndSync.
+                // KMK v0.8.10-fix7: this was a genuine hole -- only CancellationException and
+                // Exception were caught below, no catch(Error) at all, so a raw NoClassDefFoundError
+                // from .getOrThrow() would have escaped this manga-detail refresh uncaught.
                 val update = updateMangaFromRemote(
                     source = state.source,
                     manga = state.manga,
@@ -651,7 +657,7 @@ class MangaScreenModel(
                     fetchChapters = fetchChapters,
                     manualFetch = manualFetch,
                 )
-                    .getOrThrow()
+                    .getOrThrowSourceRuntimeException()
 
                 clearErrorFromDB(state.manga.id)
                 // KMK <--
@@ -851,7 +857,12 @@ class MangaScreenModel(
 
             if (isFavorited) {
                 // Remove from library
+                // KMK Undo Expansion Phase 1: build the not-yet-committed favorite-flip entry from the
+                // pre-write manga row, commit only after the write succeeds. Never journals the
+                // following cover-removal -- that is a real external file effect, out of scope.
+                val undoEntry = exh.util.LibraryUndoRecorder.buildFavoriteEntry(sourcePreferences, manga, false)
                 if (updateManga.awaitUpdateFavorite(manga.id, false)) {
+                    undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
                     // Remove covers and update last modified in db
                     if (manga.removeCovers() != manga) {
                         updateManga.awaitUpdateCoverLastModified(manga.id)
@@ -874,11 +885,14 @@ class MangaScreenModel(
                 val categories = getCategories()
                 val defaultCategoryId = libraryPreferences.defaultCategory().get().toLong()
                 val defaultCategory = categories.find { it.id == defaultCategoryId }
+                // KMK Undo Expansion Phase 1: build before either write, commit only after success.
+                val addFavoriteUndoEntry = exh.util.LibraryUndoRecorder.buildFavoriteEntry(sourcePreferences, manga, true)
                 when {
                     // Default category set
                     defaultCategory != null -> {
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launchIO
+                        addFavoriteUndoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
                         moveMangaToCategory(defaultCategory)
                     }
 
@@ -886,6 +900,7 @@ class MangaScreenModel(
                     defaultCategoryId == 0L || categories.isEmpty() -> {
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launchIO
+                        addFavoriteUndoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
                         moveMangaToCategory(null)
                     }
 
@@ -1026,7 +1041,12 @@ class MangaScreenModel(
 
     private fun moveMangaToCategory(categoryIds: List<Long>) {
         screenModelScope.launchIO {
+            // KMK Undo Expansion Phase 1: build before write, commit only after -- see
+            // LibraryUndoRecorder.buildCategoriesEntry's build-before-write/commit-after-success contract.
+            val previousCategoryIds = getCategories.await(mangaId).map { it.id }
+            val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(sourcePreferences, mangaId, previousCategoryIds, categoryIds)
             setMangaCategories.await(mangaId, categoryIds)
+            undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
         }
     }
 
@@ -1406,10 +1426,19 @@ class MangaScreenModel(
         toggleAllSelection(false)
         if (chapters.isEmpty()) return
         screenModelScope.launchIO {
-            setReadStatus.await(
+            val canJournalReadState = !read || !downloadPreferences.removeAfterMarkedAsRead().get()
+            val undoEntries = if (canJournalReadState) {
+                exh.util.ChapterUndoRecorder.buildReadEntries(sourcePreferences, chapters, read)
+            } else {
+                emptyList()
+            }
+            val readResult = setReadStatus.await(
                 read = read,
                 chapters = chapters.toTypedArray(),
             )
+            if (readResult is SetReadStatus.Result.Success) {
+                undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+            }
 
             if (!read || successState?.hasLoggedInTrackers == false || autoTrackState == AutoTrackState.NEVER) {
                 return@launchIO
@@ -1495,10 +1524,13 @@ class MangaScreenModel(
      */
     fun bookmarkChapters(chapters: List<Chapter>, bookmarked: Boolean) {
         screenModelScope.launchIO {
-            chapters
-                .filterNot { it.bookmark == bookmarked }
-                .map { ChapterUpdate(id = it.id, bookmark = bookmarked) }
-                .let { updateChapter.awaitAll(it) }
+            // KMK Undo Expansion Phase 2: build before write, commit only after -- per the shared
+            // 500-chapter bound policy, an oversized batch still writes normally but is not journaled.
+            val toUpdate = chapters.filterNot { it.bookmark == bookmarked }
+            val undoEntries = exh.util.ChapterUndoRecorder.buildBookmarkEntries(sourcePreferences, toUpdate, bookmarked)
+            if (updateChapter.awaitAll(toUpdate.map { ChapterUpdate(id = it.id, bookmark = bookmarked) })) {
+                undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+            }
         }
         toggleAllSelection(false)
     }
@@ -1613,9 +1645,26 @@ class MangaScreenModel(
         }
     }
 
+    // KMK v0.8.20-fix1: journal-record this write for Evaluation Mode's Action History, same
+    // build-before-write/commit-after-success contract as the For You/Loved/Liked/Disliked routes
+    // (exh.recs.BrowsePersonalRecommendationsScreenModel.rateSelected/clearSelectedRatings) -- see
+    // exh.util.EvaluationModeJournalRecorder's own doc comment: it is a no-op when Evaluation Mode is
+    // disabled, so this adds no extra work for ordinary users.
     fun setMangaTaste(rating: MangaRating) {
         val manga = successState?.manga ?: return
         screenModelScope.launchNonCancellable {
+            val journalActionType = when (rating) {
+                MangaRating.LOVE -> exh.util.EvaluationJournalActionType.RATE_LOVE
+                MangaRating.LIKE -> exh.util.EvaluationJournalActionType.RATE_LIKE
+                MangaRating.DISLIKE -> exh.util.EvaluationJournalActionType.RATE_DISLIKE
+            }
+            val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
+                sourcePreferences,
+                getMangaTaste,
+                listOf(manga),
+                rating.value,
+                journalActionType,
+            )
             setMangaTasteInteractor.await(
                 mangaId = manga.id,
                 source = manga.source,
@@ -1623,13 +1672,22 @@ class MangaScreenModel(
                 title = manga.title,
                 rating = rating,
             )
+            exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
         }
     }
 
     fun clearMangaTaste() {
         val manga = successState?.manga ?: return
         screenModelScope.launchNonCancellable {
+            val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
+                sourcePreferences,
+                getMangaTaste,
+                listOf(manga),
+                null,
+                exh.util.EvaluationJournalActionType.CLEAR_RATING,
+            )
             clearMangaTasteInteractor.await(manga.source, manga.url)
+            exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
         }
     }
 

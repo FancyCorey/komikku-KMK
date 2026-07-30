@@ -61,13 +61,18 @@ import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
+import exh.recs.BulkTasteActionType
 import exh.recs.KmkRecsReleaseNotes
 import exh.recs.RecommendsScreen
+import exh.recs.bulkTasteActionMessage
 import exh.recs.links.LinkGroupManagementScreen
 import exh.recs.links.LinkedVersionListScreen
 import exh.recs.matching.CrossExtensionMatchMode
 import exh.recs.matching.CrossExtensionMatchScreen
+import exh.recs.settings.toScreen
 import exh.recs.share.RecommendationBundleExporter
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.withUIContext
@@ -82,6 +87,7 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 /**
  * Full-featured rated manga collection screen for LIKE and DISLIKE rating tiers.
@@ -126,6 +132,7 @@ internal fun RatedMangaCollectionContent(
     screenModel: LovedMangaScreenModel,
 ) {
     val navigator = LocalNavigator.currentOrThrow
+    // KMK: rated collections are root-pushed; For You navigation goes through HomeScreen.openTab.
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by screenModel.state.collectAsState()
@@ -191,386 +198,492 @@ internal fun RatedMangaCollectionContent(
     // screen leaves composition (navigating away), matching the plan's clear-on-navigation policy.
     var searchQuery by rememberSaveable { mutableStateOf<String?>(null) }
     val sourceManager = remember { Injekt.get<SourceManager>() }
-    val sourceNameById = remember(successState?.entries) {
+    // KMK --> v0.8.19: evaluation mode source-name obfuscation
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val sourceNameById = remember(successState?.entries, evaluationModeEnabled) {
         successState?.entries.orEmpty()
             .map { it.taste.source }
             .distinct()
-            .associateWith { sourceId -> runCatching { sourceManager.getOrStub(sourceId).name }.getOrNull() }
+            .associateWith { sourceId ->
+                if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(sourceId)
+                } else {
+                    runCatching { sourceManager.getOrStub(sourceId).name }.getOrNull()
+                }
+            }
     }
     // KMK <--
     // KMK v0.8.7: Snackbar-based Undo for Clear Rating and Mark Not Interested — the two bulk
     // actions cheap/safe to restore exactly (re-apply the previous MangaTaste rows, or remove
-    // exactly the "not interested" keys that were just added). Merge/Remove From Group/Ungroup are
-    // NOT undoable here — restoring cross-source link rows correctly would need snapshotting the
-    // whole link-group graph, a larger change than this pass's scope; see the implementation report.
+    // exactly the "not interested" keys that were just added).
+    // KMK v0.8.20: Merge/Remove From Group/Ungroup are now also undoable, via the typed
+    // GroupUndoJournal/GroupUndoService (see exh/util/GroupUndoJournal.kt) -- Undo is offered on the
+    // Snackbar only when Evaluation Mode is on and the mutation returned a committed journal entry id.
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(MR.strings.action_undo)
-    val clearedSnackbarMessage = stringResource(KMR.strings.rated_manga_undo_cleared, selectedCount)
-    val notInterestedSnackbarMessage = stringResource(KMR.strings.rated_manga_undo_not_interested, selectedCount)
-
-    Scaffold(
-        topBar = { scrollBehavior ->
-            if (selectionMode) {
-                // KMK --> v0.8.0: selection app bar — count + close
-                AppBar(
-                    title = stringResource(KMR.strings.rated_manga_selected_count, selectedCount),
-                    navigateUp = screenModel::clearSelection,
-                    navigationIcon = Icons.Outlined.Close,
-                    scrollBehavior = scrollBehavior,
-                )
-                // KMK <--
-            } else {
-                // KMK v0.8.10: SearchToolbar is the same search affordance the Library tab and
-                // other collection screens already use (search icon -> inline field -> reset/close
-                // icon), reused here rather than building a bespoke search bar. searchQuery == null
-                // shows the normal title + actions row; non-null shows the search field in its place.
-                SearchToolbar(
-                    titleContent = { Text(stringResource(titleRes)) },
-                    searchQuery = searchQuery,
-                    onChangeSearchQuery = { searchQuery = it },
-                    placeholderText = stringResource(KMR.strings.rated_manga_search_hint),
-                    navigateUp = navigator::pop,
-                    scrollBehavior = scrollBehavior,
-                    actions = {
-                        AppBarActions(
-                            persistentListOf(
-                                // KMK --> v0.8.0: visible top-right select action for discoverability
-                                // KMK v0.8.1-fix1: enters selection mode without auto-selecting the
-                                // first item — silently selecting an unintended manga was a safety
-                                // gap since bulk actions (clear rating, mark not interested, etc.)
-                                // would then apply to it. Long-press still selects the pressed item.
-                                AppBar.Action(
-                                    title = stringResource(KMR.strings.rated_manga_select),
-                                    icon = Icons.Outlined.Checklist,
-                                    onClick = { screenModel.enterSelectionMode() },
-                                ),
-                                // KMK <--
-                                AppBar.Action(
-                                    title = stringResource(KMR.strings.link_group_management_title),
-                                    icon = Icons.Outlined.Link,
-                                    onClick = { navigator.push(LinkGroupManagementScreen()) },
-                                ),
-                                AppBar.Action(
-                                    title = stringResource(exportActionRes),
-                                    icon = Icons.Outlined.Share,
-                                    onClick = {
-                                        val s = screenModel.state.value
-                                        if (s is LovedMangaScreenModel.State.Success && s.displayItems.isNotEmpty()) {
-                                            exportLauncher.launch(exportFilename)
-                                        } else {
-                                            scope.launch { withUIContext { context.toast(KMR.strings.rec_bundle_export_empty) } }
-                                        }
-                                    },
-                                ),
-                            ),
-                        )
-                    },
-                )
-            }
-        },
-        // KMK --> v0.8.0: phone-friendly bottom action bar while in selection mode
-        bottomBar = {
-            if (successState != null && successState.selectionMode) {
-                RatedSelectionBottomBar(
-                    selectedCount = selectedCount,
-                    onChange = { changeRatingTarget = true },
-                    onClear = { confirmAction = RatedMangaConfirmAction.ClearRatings },
-                    onGroup = {
-                        // "Group" merges selection into one group when 2+ are selected; with a
-                        // single confirmed-group selection it offers Select All In Group instead.
-                        if (selectedCount >= 2) {
-                            confirmAction = RatedMangaConfirmAction.MergeIntoGroup
-                        } else {
-                            val groupId = successState.displayItems
-                                .firstOrNull { it.key in successState.selectedKeys }
-                                ?.confirmedGroupId
-                            if (groupId != null) screenModel.selectAllInGroup(groupId)
+    // KMK v0.8.19: clear-rating/not-interested Snackbar text is now built from the real outcome via
+    // bulkTasteActionMessage() (BulkTasteActionFeedback.kt) at the point the action completes, not
+    // pre-resolved here from the pre-action selection count -- see the ClearRatings/NotInterested
+    // confirm-dialog branches below.
+    // KMK v0.8.11: explicit merge success/failure feedback -- see MergeIntoGroup below.
+    val mergeSuccessMessage = stringResource(KMR.strings.rated_manga_merge_success, selectedCount)
+    val mergeFailedMessage = stringResource(KMR.strings.rated_manga_merge_failed)
+    // KMK v0.8.20: group-action Undo — same Snackbar-with-action-label convention as Clear
+    // Rating/Not Interested above, wired to GroupUndoService via LovedMangaScreenModel.undoLastGroupAction().
+    val removeFromGroupSuccessMessage = stringResource(KMR.strings.rated_manga_remove_from_group_success, selectedCount)
+    val ungroupSuccessMessage = stringResource(KMR.strings.rated_manga_ungroup_success)
+    val groupUndoRestoredMessage = stringResource(KMR.strings.rated_manga_group_undo_restored)
+    val groupUndoConflictMessage = stringResource(KMR.strings.rated_manga_group_undo_conflict)
+    val groupUndoFailedMessage = stringResource(KMR.strings.rated_manga_group_undo_failed)
+    fun showGroupActionResult(message: String, entryId: String?) {
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = if (entryId != null) undoLabel else null,
+                withDismissAction = true,
+            )
+            if (result == SnackbarResult.ActionPerformed && entryId != null) {
+                screenModel.undoLastGroupAction(entryId) { outcome ->
+                    scope.launch {
+                        val undoResultMessage = when (outcome.result) {
+                            exh.util.GroupUndoResult.RESTORED -> groupUndoRestoredMessage
+                            exh.util.GroupUndoResult.CONFLICT -> groupUndoConflictMessage
+                            exh.util.GroupUndoResult.FAILED -> groupUndoFailedMessage
                         }
-                    },
-                    onMarkNotInterested = { confirmAction = RatedMangaConfirmAction.NotInterested },
-                    onRemoveFromGroup = { confirmAction = RatedMangaConfirmAction.RemoveFromGroup },
-                    // KMK v0.8.7: "Select All In Group" surfaced in the bulk-selection bottom bar's
-                    // More menu too (plan section 3.4), not only the per-item overflow menu. Only
-                    // offered when every currently selected item shares the same confirmed group —
-                    // see RatedSelectionGroupResolver for the exact conflict rule (empty selection,
-                    // any ungrouped item, or 2+ distinct groups all resolve to null/hidden).
-                    selectedGroupId = RatedSelectionGroupResolver.resolveSingleGroup(successState.displayItems, successState.selectedKeys),
-                    onSelectAllInGroup = { groupId -> screenModel.selectAllInGroup(groupId) },
-                )
-            }
-        },
-        // KMK <--
-        // KMK v0.8.7: Undo for reversible bulk actions (plan section 3.4), reusing this repo's
-        // existing Snackbar-with-action-label undo convention (see LibraryTab.kt's merge-undo
-        // Snackbar for the precedent this mirrors) rather than inventing a new mechanism.
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-    ) { contentPadding ->
-        when (val s = state) {
-            is LovedMangaScreenModel.State.Loading -> Box(
-                modifier = Modifier.fillMaxSize().padding(contentPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
-
-            is LovedMangaScreenModel.State.Empty -> Box(
-                modifier = Modifier.fillMaxSize().padding(contentPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(emptyRes),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(MaterialTheme.padding.medium),
-                )
-            }
-
-            is LovedMangaScreenModel.State.Error -> Box(
-                modifier = Modifier.fillMaxSize().padding(contentPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = s.error.message ?: stringResource(errorRes),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(MaterialTheme.padding.medium),
-                )
-            }
-
-            is LovedMangaScreenModel.State.Success -> {
-                // KMK v0.8.10: local, in-memory filter only -- never a network search, never
-                // changes s.displayItems itself (sort/grouping/selection/bulk actions/export/group
-                // management all keep operating on the full underlying state regardless of the
-                // active query).
-                val items = RatedMangaSearchFilter.filter(
-                    items = s.displayItems,
-                    query = searchQuery.orEmpty(),
-                    sourceNameOf = { sourceId -> sourceNameById[sourceId] },
-                )
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(96.dp + MaterialTheme.padding.small),
-                    contentPadding = contentPadding,
-                ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        RatedGroupDuplicatesToggleRow(
-                            checked = s.groupDuplicates,
-                            onToggle = screenModel::toggleGroupDuplicates,
-                        )
-                    }
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        RatedSortRow(
-                            current = s.sortMode,
-                            onSelect = screenModel::setSortMode,
-                        )
-                    }
-                    if (s.groupDuplicates && s.entries.isNotEmpty() && s.displayItems.size == s.entries.size) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                text = stringResource(KMR.strings.loved_manga_no_clear_duplicates),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                            )
-                        }
-                    }
-                    // KMK v0.8.10: a search that matches nothing is distinct from "no rated manga at
-                    // all" (State.Empty, a different branch entirely) -- shown only when a non-blank
-                    // query is active and every loaded item was filtered out by it.
-                    if (!searchQuery.isNullOrBlank() && items.isEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                text = stringResource(MR.strings.no_results_found),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(MaterialTheme.padding.medium),
-                            )
-                        }
-                    }
-                    items(items, key = { "${it.taste.source}|${it.taste.url}" }) { item ->
-                        var showItemMenu by rememberSaveable(item.key) { mutableStateOf(false) }
-                        Box {
-                            MangaItem(
-                                title = item.manga?.title ?: item.taste.title,
-                                cover = item.manga?.asMangaCover() ?: ratedFallbackCover(item),
-                                isFavorite = item.manga?.favorite ?: false,
-                                isSelected = item.key in s.selectedKeys,
-                                onClick = {
-                                    // KMK --> v0.8.0: tap toggles selection in selection mode;
-                                    // otherwise opens the manga as before.
-                                    if (s.selectionMode) {
-                                        screenModel.toggleSelection(item.key)
-                                    } else {
-                                        navigator.push(MangaScreen(item.taste.mangaId, true))
-                                    }
-                                    // KMK <--
-                                },
-                                onLongClick = {
-                                    // KMK --> v0.8.0: long-press enters selection mode; no longer
-                                    // opens recommendations directly (see plan §UX Contract).
-                                    screenModel.enterSelection(item.key)
-                                    // KMK <--
-                                },
-                            )
-                            if (item.versionCount > 1) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(4.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(KMR.strings.loved_manga_versions, item.versionCount),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
-                            // KMK --> v0.8.0: item action menu trigger, replacing the old Explore
-                            // overlay (recommendation actions moved into the grouped menu below).
-                            if (!s.selectionMode) {
-                                Box(modifier = Modifier.align(Alignment.TopStart)) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                        modifier = Modifier.padding(2.dp),
-                                    ) {
-                                        IconButton(
-                                            onClick = { showItemMenu = true },
-                                            modifier = Modifier.size(28.dp),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.MoreVert,
-                                                contentDescription = stringResource(KMR.strings.rated_manga_item_menu),
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                            )
-                                        }
-                                    }
-                                    RatedMangaItemMenu(
-                                        expanded = showItemMenu,
-                                        onDismiss = { showItemMenu = false },
-                                        item = item,
-                                        rating = rating,
-                                        navigator = navigator,
-                                        onChangeRating = {
-                                            screenModel.enterSelection(item.key)
-                                            changeRatingTarget = true
-                                        },
-                                        onClearRating = {
-                                            screenModel.enterSelection(item.key)
-                                            confirmAction = RatedMangaConfirmAction.ClearRatings
-                                        },
-                                        onMarkNotInterested = {
-                                            screenModel.enterSelection(item.key)
-                                            confirmAction = RatedMangaConfirmAction.NotInterested
-                                        },
-                                        onManageGroup = { groupId -> navigator.push(LinkGroupManagementScreen(groupId)) },
-                                        onViewLinkedVersions = { groupId -> navigator.push(LinkedVersionListScreen(groupId)) },
-                                        onSelectAllInGroup = { groupId -> screenModel.selectAllInGroup(groupId) },
-                                        onRemoveFromGroup = {
-                                            screenModel.enterSelection(item.key)
-                                            confirmAction = RatedMangaConfirmAction.RemoveFromGroup
-                                        },
-                                        onUngroup = { groupId -> confirmAction = RatedMangaConfirmAction.Ungroup(groupId) },
-                                    )
-                                }
-                            }
-                            // KMK <--
-                        }
+                        snackbarHostState.showSnackbar(undoResultMessage)
                     }
                 }
             }
         }
     }
 
-    // KMK --> v0.8.0: confirmation dialogs for destructive/broad actions
-    when (val action = confirmAction) {
-        RatedMangaConfirmAction.ClearRatings -> RatedMangaConfirmDialog(
-            titleRes = KMR.strings.rated_manga_action_clear_rating,
-            message = stringResource(KMR.strings.rated_manga_confirm_clear_rating, selectedCount),
-            onConfirm = {
-                // KMK v0.8.7: snapshot exactly the taste rows about to be cleared, before clearing,
-                // so Undo can re-apply them verbatim (title/rating/mangaId/source/url). The Snackbar
-                // message/action-label strings are pre-resolved outside this lambda (see
-                // clearedSnackbarMessage/undoLabel above) since stringResource() can only be called
-                // directly from composition, not from inside an event-callback lambda.
-                val snapshot = successState?.entries
-                    ?.filter { RatedMangaKey.of(it.taste) in successState.selectedKeys }
-                    ?.map { it.taste }
-                    .orEmpty()
-                screenModel.clearSelectedRatings()
-                if (snapshot.isNotEmpty()) {
-                    scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = clearedSnackbarMessage,
-                            actionLabel = undoLabel,
-                            withDismissAction = true,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            screenModel.restoreRatings(snapshot)
-                        }
-                    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = { scrollBehavior ->
+                if (selectionMode) {
+                    // KMK --> v0.8.0: selection app bar — count + close
+                    AppBar(
+                        title = stringResource(KMR.strings.rated_manga_selected_count, selectedCount),
+                        navigateUp = screenModel::clearSelection,
+                        navigationIcon = Icons.Outlined.Close,
+                        scrollBehavior = scrollBehavior,
+                    )
+                    // KMK <--
+                } else {
+                    // KMK v0.8.10: SearchToolbar is the same search affordance the Library tab and
+                    // other collection screens already use (search icon -> inline field -> reset/close
+                    // icon), reused here rather than building a bespoke search bar. searchQuery == null
+                    // shows the normal title + actions row; non-null shows the search field in its place.
+                    SearchToolbar(
+                        titleContent = { Text(stringResource(titleRes)) },
+                        searchQuery = searchQuery,
+                        onChangeSearchQuery = { searchQuery = it },
+                        placeholderText = stringResource(KMR.strings.rated_manga_search_hint),
+                        navigateUp = navigator::pop,
+                        scrollBehavior = scrollBehavior,
+                        actions = {
+                            AppBarActions(
+                                persistentListOf(
+                                    // KMK --> v0.8.0: visible top-right select action for discoverability
+                                    // KMK v0.8.1-fix1: enters selection mode without auto-selecting the
+                                    // first item — silently selecting an unintended manga was a safety
+                                    // gap since bulk actions (clear rating, mark not interested, etc.)
+                                    // would then apply to it. Long-press still selects the pressed item.
+                                    AppBar.Action(
+                                        title = stringResource(KMR.strings.rated_manga_select),
+                                        icon = Icons.Outlined.Checklist,
+                                        onClick = { screenModel.enterSelectionMode() },
+                                    ),
+                                    // KMK <--
+                                    AppBar.Action(
+                                        title = stringResource(KMR.strings.link_group_management_title),
+                                        icon = Icons.Outlined.Link,
+                                        onClick = { navigator.push(LinkGroupManagementScreen()) },
+                                    ),
+                                    AppBar.Action(
+                                        title = stringResource(exportActionRes),
+                                        icon = Icons.Outlined.Share,
+                                        onClick = {
+                                            val s = screenModel.state.value
+                                            if (s is LovedMangaScreenModel.State.Success && s.displayItems.isNotEmpty()) {
+                                                exportLauncher.launch(exportFilename)
+                                            } else {
+                                                scope.launch { withUIContext { context.toast(KMR.strings.rec_bundle_export_empty) } }
+                                            }
+                                        },
+                                    ),
+                                ),
+                            )
+                        },
+                    )
                 }
             },
-            onDismiss = { confirmAction = null },
-        )
-        RatedMangaConfirmAction.NotInterested -> RatedMangaConfirmDialog(
-            titleRes = KMR.strings.rated_manga_action_mark_not_interested,
-            message = stringResource(KMR.strings.rated_manga_confirm_not_interested, selectedCount),
-            onConfirm = {
-                // KMK v0.8.7: snapshot exactly which keys are about to be marked not-interested, so
-                // Undo removes only those keys (any other pre-existing "not interested" entries the
-                // user had are left untouched).
-                val snapshot = successState?.selectedKeys.orEmpty()
-                screenModel.markSelectedNotInterested()
-                if (snapshot.isNotEmpty()) {
-                    scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = notInterestedSnackbarMessage,
-                            actionLabel = undoLabel,
-                            withDismissAction = true,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            screenModel.undoMarkNotInterested(snapshot)
-                        }
-                    }
+            // KMK --> v0.8.0: phone-friendly bottom action bar while in selection mode
+            bottomBar = {
+                if (successState != null && successState.selectionMode) {
+                    RatedSelectionBottomBar(
+                        selectedCount = selectedCount,
+                        onChange = { changeRatingTarget = true },
+                        onClear = { confirmAction = RatedMangaConfirmAction.ClearRatings },
+                        onGroup = {
+                            // "Group" merges selection into one group when 2+ are selected; with a
+                            // single confirmed-group selection it offers Select All In Group instead.
+                            if (selectedCount >= 2) {
+                                confirmAction = RatedMangaConfirmAction.MergeIntoGroup
+                            } else {
+                                val groupId = successState.displayItems
+                                    .firstOrNull { it.key in successState.selectedKeys }
+                                    ?.confirmedGroupId
+                                if (groupId != null) screenModel.selectAllInGroup(groupId)
+                            }
+                        },
+                        onMarkNotInterested = { confirmAction = RatedMangaConfirmAction.NotInterested },
+                        onRemoveFromGroup = { confirmAction = RatedMangaConfirmAction.RemoveFromGroup },
+                        // KMK v0.8.7: "Select All In Group" surfaced in the bulk-selection bottom bar's
+                        // More menu too (plan section 3.4), not only the per-item overflow menu. Only
+                        // offered when every currently selected item shares the same confirmed group —
+                        // see RatedSelectionGroupResolver for the exact conflict rule (empty selection,
+                        // any ungrouped item, or 2+ distinct groups all resolve to null/hidden).
+                        selectedGroupId = RatedSelectionGroupResolver.resolveSingleGroup(successState.displayItems, successState.selectedKeys),
+                        onSelectAllInGroup = { groupId -> screenModel.selectAllInGroup(groupId) },
+                    )
                 }
             },
-            onDismiss = { confirmAction = null },
-        )
-        RatedMangaConfirmAction.MergeIntoGroup -> RatedMangaConfirmDialog(
-            titleRes = KMR.strings.rated_manga_action_merge_selected_into_group,
-            message = stringResource(KMR.strings.rated_manga_confirm_merge, selectedCount),
-            onConfirm = { screenModel.mergeSelectedIntoGroup() },
-            onDismiss = { confirmAction = null },
-        )
-        RatedMangaConfirmAction.RemoveFromGroup -> RatedMangaConfirmDialog(
-            titleRes = KMR.strings.rated_manga_action_remove_from_group,
-            message = stringResource(KMR.strings.rated_manga_confirm_remove_from_group, selectedCount),
-            onConfirm = { screenModel.removeSelectedFromGroup() },
-            onDismiss = { confirmAction = null },
-        )
-        is RatedMangaConfirmAction.Ungroup -> RatedMangaConfirmDialog(
-            titleRes = KMR.strings.rated_manga_action_ungroup,
-            message = stringResource(KMR.strings.rated_manga_confirm_ungroup),
-            onConfirm = { screenModel.ungroup(action.groupId) },
-            onDismiss = { confirmAction = null },
-        )
-        null -> {}
-    }
+            // KMK <--
+            // KMK v0.8.7: Undo for reversible bulk actions (plan section 3.4), reusing this repo's
+            // existing Snackbar-with-action-label undo convention (see LibraryTab.kt's merge-undo
+            // Snackbar for the precedent this mirrors) rather than inventing a new mechanism.
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        ) { contentPadding ->
+            when (val s = state) {
+                is LovedMangaScreenModel.State.Loading -> Box(
+                    modifier = Modifier.fillMaxSize().padding(contentPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
 
-    if (changeRatingTarget) {
-        RatedMangaChangeRatingDialog(
-            onSelect = { newRating ->
-                changeRatingTarget = false
-                screenModel.changeSelectedRating(newRating)
+                is LovedMangaScreenModel.State.Empty -> Box(
+                    modifier = Modifier.fillMaxSize().padding(contentPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(emptyRes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(MaterialTheme.padding.medium),
+                    )
+                }
+
+                is LovedMangaScreenModel.State.Error -> Box(
+                    modifier = Modifier.fillMaxSize().padding(contentPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = s.error.message ?: stringResource(errorRes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(MaterialTheme.padding.medium),
+                    )
+                }
+
+                is LovedMangaScreenModel.State.Success -> {
+                    // KMK v0.8.10: local, in-memory filter only -- never a network search, never
+                    // changes s.displayItems itself (sort/grouping/selection/bulk actions/export/group
+                    // management all keep operating on the full underlying state regardless of the
+                    // active query).
+                    val items = RatedMangaSearchFilter.filter(
+                        items = s.displayItems,
+                        query = searchQuery.orEmpty(),
+                        sourceNameOf = { sourceId -> sourceNameById[sourceId] },
+                    )
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(96.dp + MaterialTheme.padding.small),
+                        contentPadding = contentPadding,
+                    ) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            RatedGroupDuplicatesToggleRow(
+                                checked = s.groupDuplicates,
+                                onToggle = screenModel::toggleGroupDuplicates,
+                            )
+                        }
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            RatedSortRow(
+                                current = s.sortMode,
+                                onSelect = screenModel::setSortMode,
+                            )
+                        }
+                        if (s.groupDuplicates && s.entries.isNotEmpty() && s.displayItems.size == s.entries.size) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    text = stringResource(KMR.strings.loved_manga_no_clear_duplicates),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                        // KMK v0.8.10: a search that matches nothing is distinct from "no rated manga at
+                        // all" (State.Empty, a different branch entirely) -- shown only when a non-blank
+                        // query is active and every loaded item was filtered out by it.
+                        if (!searchQuery.isNullOrBlank() && items.isEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    text = stringResource(MR.strings.no_results_found),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(MaterialTheme.padding.medium),
+                                )
+                            }
+                        }
+                        items(items, key = { "${it.taste.source}|${it.taste.url}" }) { item ->
+                            var showItemMenu by rememberSaveable(item.key) { mutableStateOf(false) }
+                            Box {
+                                MangaItem(
+                                    // KMK v0.8.19: evaluation mode never changes manga titles -- only
+                                    // source/repo names are obfuscated (see sourceNameById above).
+                                    title = item.manga?.title ?: item.taste.title,
+                                    cover = item.manga?.asMangaCover() ?: ratedFallbackCover(item),
+                                    isFavorite = item.manga?.favorite ?: false,
+                                    isSelected = item.key in s.selectedKeys,
+                                    onClick = {
+                                        // KMK --> v0.8.0: tap toggles selection in selection mode;
+                                        // otherwise opens the manga as before.
+                                        if (s.selectionMode) {
+                                            screenModel.toggleSelection(item.key)
+                                        } else {
+                                            navigator.push(MangaScreen(item.taste.mangaId, true))
+                                        }
+                                        // KMK <--
+                                    },
+                                    onLongClick = {
+                                        // KMK --> v0.8.0: long-press enters selection mode; no longer
+                                        // opens recommendations directly (see plan §UX Contract).
+                                        screenModel.enterSelection(item.key)
+                                        // KMK <--
+                                    },
+                                )
+                                if (item.versionCount > 1) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp),
+                                    ) {
+                                        Text(
+                                            text = stringResource(KMR.strings.loved_manga_versions, item.versionCount),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
+                                // KMK --> v0.8.0: item action menu trigger, replacing the old Explore
+                                // overlay (recommendation actions moved into the grouped menu below).
+                                if (!s.selectionMode) {
+                                    Box(modifier = Modifier.align(Alignment.TopStart)) {
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
+                                            shape = MaterialTheme.shapes.extraSmall,
+                                            modifier = Modifier.padding(2.dp),
+                                        ) {
+                                            IconButton(
+                                                onClick = { showItemMenu = true },
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = stringResource(KMR.strings.rated_manga_item_menu),
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                )
+                                            }
+                                        }
+                                        RatedMangaItemMenu(
+                                            expanded = showItemMenu,
+                                            onDismiss = { showItemMenu = false },
+                                            item = item,
+                                            rating = rating,
+                                            navigator = navigator,
+                                            onChangeRating = {
+                                                screenModel.enterSelection(item.key)
+                                                changeRatingTarget = true
+                                            },
+                                            onClearRating = {
+                                                screenModel.enterSelection(item.key)
+                                                confirmAction = RatedMangaConfirmAction.ClearRatings
+                                            },
+                                            onMarkNotInterested = {
+                                                screenModel.enterSelection(item.key)
+                                                confirmAction = RatedMangaConfirmAction.NotInterested
+                                            },
+                                            onManageGroup = { groupId -> navigator.push(LinkGroupManagementScreen(groupId)) },
+                                            onViewLinkedVersions = { groupId -> navigator.push(LinkedVersionListScreen(groupId)) },
+                                            onSelectAllInGroup = { groupId -> screenModel.selectAllInGroup(groupId) },
+                                            onRemoveFromGroup = {
+                                                screenModel.enterSelection(item.key)
+                                                confirmAction = RatedMangaConfirmAction.RemoveFromGroup
+                                            },
+                                            onUngroup = { groupId -> confirmAction = RatedMangaConfirmAction.Ungroup(groupId) },
+                                        )
+                                    }
+                                }
+                                // KMK <--
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // KMK --> v0.8.0: confirmation dialogs for destructive/broad actions
+        when (val action = confirmAction) {
+            RatedMangaConfirmAction.ClearRatings -> RatedMangaConfirmDialog(
+                titleRes = KMR.strings.rated_manga_action_clear_rating,
+                message = stringResource(KMR.strings.rated_manga_confirm_clear_rating, selectedCount),
+                onConfirm = {
+                    // KMK v0.8.7: snapshot exactly the taste rows about to be cleared, before clearing,
+                    // so Undo can re-apply them verbatim (title/rating/mangaId/source/url).
+                    // KMK v0.8.19: the Snackbar now reflects the *actual* outcome (awaited from the
+                    // now-suspend clearSelectedRatings()) instead of always showing the "cleared"
+                    // message whenever the pre-action snapshot was non-empty -- a partial or total
+                    // failure previously looked identical to full success. Undo is only offered for
+                    // items that were durably cleared (snapshot filtered to successful keys only).
+                    scope.launch {
+                        val (outcome, successSnapshot) = screenModel.clearSelectedRatings()
+                        val message = bulkTasteActionMessage(context, BulkTasteActionType.CLEAR_RATING, outcome)
+                            ?: return@launch
+                        if (outcome.successCount > 0) {
+                            val result = snackbarHostState.showSnackbar(
+                                message = message,
+                                actionLabel = undoLabel,
+                                withDismissAction = true,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                val undoOutcome = screenModel.restoreRatings(successSnapshot)
+                                if (undoOutcome.partialFailure || undoOutcome.allFailed) {
+                                    snackbarHostState.showSnackbar(
+                                        context.contextStringResource(
+                                            KMR.strings.rec_bulk_action_undo_partial_failure,
+                                            undoOutcome.successCount,
+                                            undoOutcome.requestedCount,
+                                        ),
+                                    )
+                                }
+                            }
+                        } else {
+                            snackbarHostState.showSnackbar(message)
+                        }
+                    }
+                },
+                onDismiss = { confirmAction = null },
+            )
+            RatedMangaConfirmAction.NotInterested -> RatedMangaConfirmDialog(
+                titleRes = KMR.strings.rated_manga_action_mark_not_interested,
+                message = stringResource(KMR.strings.rated_manga_confirm_not_interested, selectedCount),
+                onConfirm = {
+                    // KMK v0.8.7: snapshot exactly which keys are about to be marked not-interested, so
+                    // Undo removes only those keys (any other pre-existing "not interested" entries the
+                    // user had are left untouched).
+                    // KMK v0.8.19: awaits the real outcome instead of assuming success.
+                    val snapshot = successState?.selectedKeys.orEmpty()
+                    scope.launch {
+                        val outcome = screenModel.markSelectedNotInterested()
+                        val message = bulkTasteActionMessage(context, BulkTasteActionType.NOT_INTERESTED, outcome)
+                            ?: return@launch
+                        if (outcome.successCount > 0) {
+                            val result = snackbarHostState.showSnackbar(
+                                message = message,
+                                actionLabel = undoLabel,
+                                withDismissAction = true,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                val undoOutcome = screenModel.undoMarkNotInterested(snapshot)
+                                if (undoOutcome.partialFailure || undoOutcome.allFailed) {
+                                    snackbarHostState.showSnackbar(
+                                        context.contextStringResource(
+                                            KMR.strings.rec_bulk_action_undo_partial_failure,
+                                            undoOutcome.successCount,
+                                            undoOutcome.requestedCount,
+                                        ),
+                                    )
+                                }
+                            }
+                        } else {
+                            snackbarHostState.showSnackbar(message)
+                        }
+                    }
+                },
+                onDismiss = { confirmAction = null },
+            )
+            RatedMangaConfirmAction.MergeIntoGroup -> RatedMangaConfirmDialog(
+                titleRes = KMR.strings.rated_manga_action_merge_selected_into_group,
+                message = stringResource(KMR.strings.rated_manga_confirm_merge, selectedCount),
+                onConfirm = {
+                    // KMK v0.8.11: previously fired with no feedback at all -- a plain failure (or the
+                    // stale-display bug fixed in LovedMangaScreenModel) looked identical to success. Now
+                    // shows an explicit non-fatal message either way.
+                    // KMK v0.8.20: on success, also offers Undo when the action was journaled (Evaluation
+                    // Mode on) via the entry id MergeResult.Success now carries.
+                    screenModel.mergeSelectedIntoGroup { result ->
+                        when (result) {
+                            is LovedMangaScreenModel.MergeResult.Success ->
+                                showGroupActionResult(mergeSuccessMessage, result.undoEntryId)
+                            LovedMangaScreenModel.MergeResult.Failed ->
+                                scope.launch { snackbarHostState.showSnackbar(mergeFailedMessage) }
+                            LovedMangaScreenModel.MergeResult.TooFewSelected -> {}
+                        }
+                    }
+                },
+                onDismiss = { confirmAction = null },
+            )
+            RatedMangaConfirmAction.RemoveFromGroup -> RatedMangaConfirmDialog(
+                titleRes = KMR.strings.rated_manga_action_remove_from_group,
+                message = stringResource(KMR.strings.rated_manga_confirm_remove_from_group, selectedCount),
+                onConfirm = {
+                    // KMK v0.8.20: now reports a real result and offers Undo (previously fired with no
+                    // feedback at all, unlike every other bulk action on this screen).
+                    screenModel.removeSelectedFromGroup { entry ->
+                        showGroupActionResult(removeFromGroupSuccessMessage, entry?.id)
+                    }
+                },
+                onDismiss = { confirmAction = null },
+            )
+            is RatedMangaConfirmAction.Ungroup -> RatedMangaConfirmDialog(
+                titleRes = KMR.strings.rated_manga_action_ungroup,
+                message = stringResource(KMR.strings.rated_manga_confirm_ungroup),
+                onConfirm = {
+                    // KMK v0.8.20: now reports a real result and offers Undo (previously silent).
+                    screenModel.ungroup(action.groupId) { entry ->
+                        showGroupActionResult(ungroupSuccessMessage, entry?.id)
+                    }
+                },
+                onDismiss = { confirmAction = null },
+            )
+            null -> {}
+        }
+
+        if (changeRatingTarget) {
+            RatedMangaChangeRatingDialog(
+                onSelect = { newRating ->
+                    changeRatingTarget = false
+                    screenModel.changeSelectedRating(newRating)
+                },
+                onDismiss = { changeRatingTarget = false },
+            )
+        }
+        // KMK <--
+        // KMK --> v0.8.19: this panel now jumps to Recommendation Settings sections (its
+        // originally-stated purpose) instead of switching between For You/Loved/Liked/Disliked.
+        exh.recs.settings.RecommendationSettingsQuickAccessPanel(
+            current = null,
+            onNavigate = { destination ->
+                navigator.replace(destination.toScreen())
             },
-            onDismiss = { changeRatingTarget = false },
         )
+        // KMK <--
     }
-    // KMK <--
 }
 // KMK <--
 

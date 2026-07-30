@@ -18,8 +18,9 @@ class SourceEvaluationCandidateQueuePolicyTest {
         pkgName: String,
         signatureHash: String,
         lang: String = "en",
+        name: String = "TestExt",
     ) = Extension.Available(
-        name = "TestExt",
+        name = name,
         pkgName = pkgName,
         versionName = "1.0",
         versionCode = 1L,
@@ -84,17 +85,20 @@ class SourceEvaluationCandidateQueuePolicyTest {
         errorMessage = null,
     )
 
-    private fun buildPool(available: List<Extension.Available>, evaluations: List<SourceEvaluation>) =
-        SourceEvaluationCandidateFilter.buildPool(
-            available = available,
-            installedPkgNames = emptySet(),
-            untrustedPkgNames = emptySet(),
-            recLanguages = setOf("en"),
-            nsfwEnabled = true,
-            blockExplicit = false,
-            dislikedKeys = emptySet(),
-            evaluations = evaluations,
-        )
+    private fun buildPool(
+        available: List<Extension.Available>,
+        evaluations: List<SourceEvaluation>,
+        blockExplicit: Boolean = false,
+    ) = SourceEvaluationCandidateFilter.buildPool(
+        available = available,
+        installedPkgNames = emptySet(),
+        untrustedPkgNames = emptySet(),
+        recLanguages = setOf("en"),
+        nsfwEnabled = true,
+        blockExplicit = blockExplicit,
+        dislikedKeys = emptySet(),
+        evaluations = evaluations,
+    )
 
     @Test
     fun `unassessed extension is not in the stale queue`() {
@@ -193,5 +197,51 @@ class SourceEvaluationCandidateQueuePolicyTest {
         assertEquals(1, stale.size)
         assertEquals("eu.kanade.tachiyomi.extension.en.needsredo", stale.first().extension.pkgName)
     }
+
+    // KMK v0.8.15-fix1 -->
+    // Root-cause regression coverage: the live-device "Reassess outdated advances 25 -> 15, reports
+    // Evaluation completed, but source_evaluation is unchanged" bug. pool.allEligible deliberately
+    // does not apply explicit/adult blocking, so an explicit-blocked extension used to still enter
+    // the stale queue and get skipped-without-write by the runner while still advancing the cursor.
+    @Test
+    fun `stale candidates exclude explicit extensions when blockExplicit is true and includeExplicit is false`() {
+        val ext = makeExt("eu.kanade.tachiyomi.extension.en.hentaisource", "sig1", name = "Hentai Source")
+        val eval = makeEval("sig1", "eu.kanade.tachiyomi.extension.en.hentaisource", expiresAt = now - 1L)
+        val pool = buildPool(listOf(ext), listOf(eval), blockExplicit = true)
+
+        val stale = SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = false)
+        assertTrue(stale.isEmpty(), "an explicit extension must not be actionable while blockExplicit is on")
+    }
+
+    @Test
+    fun `stale candidates include explicit extensions when includeExplicit is true`() {
+        val ext = makeExt("eu.kanade.tachiyomi.extension.en.hentaisource2", "sig2", name = "Hentai Source")
+        val eval = makeEval("sig2", "eu.kanade.tachiyomi.extension.en.hentaisource2", expiresAt = now - 1L)
+        val pool = buildPool(listOf(ext), listOf(eval), blockExplicit = true)
+
+        val stale = SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = true)
+        assertEquals(1, stale.size, "explicit extensions must be actionable once the user opts to include them")
+    }
+
+    @Test
+    fun `stale candidates include explicit extensions when blockExplicit is false`() {
+        val ext = makeExt("eu.kanade.tachiyomi.extension.en.hentaisource3", "sig3", name = "Hentai Source")
+        val eval = makeEval("sig3", "eu.kanade.tachiyomi.extension.en.hentaisource3", expiresAt = now - 1L)
+        val pool = buildPool(listOf(ext), listOf(eval), blockExplicit = false)
+
+        val stale = SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = false)
+        assertEquals(1, stale.size, "with blocking off entirely, explicit extensions are actionable like any other")
+    }
+
+    @Test
+    fun `stale candidates still ignore fresh evaluations even when explicit inclusion differs`() {
+        val ext = makeExt("eu.kanade.tachiyomi.extension.en.hentaisource4", "sig4", name = "Hentai Source")
+        val eval = makeEval("sig4", "eu.kanade.tachiyomi.extension.en.hentaisource4", expiresAt = now + 100_000L)
+        val pool = buildPool(listOf(ext), listOf(eval), blockExplicit = true)
+
+        assertTrue(SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = true).isEmpty())
+        assertTrue(SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = false).isEmpty())
+    }
+    // KMK <--
 }
 // KMK <--

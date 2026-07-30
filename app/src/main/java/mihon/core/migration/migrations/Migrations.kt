@@ -53,4 +53,8 @@ val migrations: List<Migration>
         CategoryPreferencesCleanupMigration(),
         RemoveDuplicateReaderPreferenceMigration(),
         SyncPrefKeyMigration(),
+        // KMK v0.8.17 (Komikku v1.14.1 reconciliation) -->
+        DisabledRepoMigration(),
+        ChapterUrlHashMigration(),
+        // KMK <--
     )

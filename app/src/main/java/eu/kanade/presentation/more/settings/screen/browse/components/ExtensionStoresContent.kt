@@ -33,6 +33,8 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.tachiyomi.R
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import mihon.domain.extension.model.ExtensionStore
 import mihon.domain.extension.model.KOMIKKU_SIGNATURE
@@ -129,8 +131,14 @@ private fun ExtensionStoresListItem(
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // KMK --> v0.8.19: evaluation mode repo-name obfuscation
                     Text(
-                        text = store.name,
+                        text = if (rememberEvaluationModeEnabled()) {
+                            EvaluationModeFormatter.repoLabel(store.name)
+                        } else {
+                            store.name
+                        },
+                        // KMK <--
                         // KMK: modifier = Modifier.padding(start = MaterialTheme.padding.medium),
                         style = MaterialTheme.typography.titleMedium,
                         // KMK -->

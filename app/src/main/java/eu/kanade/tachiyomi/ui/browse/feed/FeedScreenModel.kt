@@ -332,8 +332,14 @@ open class FeedScreenModel(
 
     private fun getFilterList(savedSearch: SavedSearch, source: Source): FilterList {
         val filters = savedSearch.filtersJson ?: return FilterList()
+        // KMK v0.8.10-fix6: source.getFilterList() can run an extension's lazy client-builder for
+        // the first time and throw LinkageError -- route through the shared SourceRuntime boundary
+        // (recording the failure in SourceRuntimeFailureRegistry) instead of a plain runCatching,
+        // which caught the crash but never recorded it and drifted away from the shared boundary.
+        val originalFilters = SourceRuntime.runBlockingSourceCall(source, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrElse { FilterList() }
         return runCatching {
-            val originalFilters = source.getFilterList()
             filterSerializer.deserialize(
                 filters = originalFilters,
                 json = Json.decodeFromString(filters),

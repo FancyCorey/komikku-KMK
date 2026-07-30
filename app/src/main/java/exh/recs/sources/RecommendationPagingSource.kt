@@ -5,6 +5,9 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -211,29 +214,57 @@ class RecommendationSource(
     override val lang: String by lazy { delegate?.lang ?: "all" }
     override val supportsLatest by lazy { delegate?.supportsLatest ?: false }
 
+    // KMK v0.8.10-fix6: this wrapper is a synthetic recommendation source that delegates to a real
+    // installed source. If any caller invokes it directly, the delegate call must be source-runtime
+    // safe at this boundary too -- not only at some outer caller that may or may not wrap it.
+    private fun requireDelegate(): Source = delegate ?: throw UnsupportedOperationException()
+
     override suspend fun getMangaUpdate(
         manga: SManga,
         chapters: List<SChapter>,
         fetchDetails: Boolean,
         fetchChapters: Boolean,
-    ) = delegate?.getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
-        ?: throw UnsupportedOperationException()
-    override suspend fun getPageList(chapter: SChapter) =
-        delegate?.getPageList(chapter)
-            ?: throw UnsupportedOperationException()
+    ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.MangaUpdate) {
+            getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
+        }.getOrThrowSourceRuntimeException()
+    }
 
-    override suspend fun getPopularManga(page: Int) =
-        delegate?.getPopularManga(page)
-            ?: throw UnsupportedOperationException()
-    override suspend fun getLatestUpdates(page: Int) =
-        delegate?.getLatestUpdates(page)
-            ?: throw UnsupportedOperationException()
-    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
-        delegate?.getSearchManga(page, query, filters)
-            ?: throw UnsupportedOperationException()
-    override fun getFilterList() =
-        delegate?.getFilterList()
-            ?: throw UnsupportedOperationException()
+    override suspend fun getPageList(chapter: SChapter): List<eu.kanade.tachiyomi.source.model.Page> {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.PageList) {
+            getPageList(chapter)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override suspend fun getPopularManga(page: Int): MangasPage {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.Popular) {
+            getPopularManga(page)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override suspend fun getLatestUpdates(page: Int): MangasPage {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.Latest) {
+            getLatestUpdates(page)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.Search) {
+            getSearchManga(page, query, filters)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override fun getFilterList(): FilterList {
+        val src = requireDelegate()
+        return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrThrowSourceRuntimeException()
+    }
 }
 
 const val RECOMMENDS_SOURCE = -1L

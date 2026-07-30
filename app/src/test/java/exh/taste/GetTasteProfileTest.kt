@@ -193,6 +193,19 @@ class GetTasteProfileTest {
         override suspend fun deleteCrossSourceMangaLink(source: Long, url: String) {}
         override suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String) {}
         override suspend fun deleteAllCrossSourceMangaLinks() {}
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: this local
+        // fake predates TasteRepository's deleteCrossSourceGroupCompletely/
+        // restoreCrossSourceGroupState (added for the Undo Journal's atomic group-restore
+        // contract); this test never exercises either method, so no-op stubs are sufficient --
+        // unlike app/src/test/java/exh/util/FakeTasteRepository.kt, which is the shared fake that
+        // actually needs real semantics for GroupUndoService's own tests.
+        override suspend fun deleteCrossSourceGroupCompletely(groupId: String) {}
+        override suspend fun restoreCrossSourceGroupState(
+            linkUpserts: List<CrossSourceMangaLink>,
+            linkDeletes: List<Pair<Long, String>>,
+            primaryUpserts: List<tachiyomi.domain.taste.model.CrossSourceGroupPrimary>,
+            primaryDeletes: List<String>,
+        ) {}
         // KMK <--
         // KMK --> v0.8.0
         override suspend fun getCrossSourceGroupPrimary(groupId: String): tachiyomi.domain.taste.model.CrossSourceGroupPrimary? = null

@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.browse.extension
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined._18UpRating
 import androidx.compose.material3.AlertDialog
@@ -13,6 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -21,14 +24,22 @@ import eu.kanade.presentation.browse.ExtensionScreen
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.extension.util.ExtensionApkExporter
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
+import eu.kanade.tachiyomi.util.system.toast
+import exh.recs.KmkRecsReleaseNotes
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 @Composable
 fun extensionsTab(
@@ -41,6 +52,45 @@ fun extensionsTab(
     var privateExtensionToUninstall by remember { mutableStateOf<Extension?>(null) }
     // KMK -->
     var showBulkUninstallConfirmDialog by remember { mutableStateOf(false) }
+    // KMK v0.8.18: manual extension APK export -- bulk export of the current selection as one zip
+    // (raw APK/archive bytes + non-sensitive manifest.json). Never repackages/re-signs anything.
+    var showBulkExportConfirmDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val bulkExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val selected = state.items.values.flatten()
+            .map { it.extension }
+            .filterIsInstance<Extension.Installed>()
+            .filter { "${it.pkgName}_${it.signatureHash}" in state.selectedExtensionKeys }
+        if (selected.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = ExtensionApkExporter.exportMultiple(
+                context = context,
+                extensions = selected,
+                destUri = uri,
+                appVersion = eu.kanade.tachiyomi.BuildConfig.VERSION_NAME,
+                kmkVersion = KmkRecsReleaseNotes.VERSION_NAME,
+            )
+            result.fold(
+                onSuccess = { summary ->
+                    val message = if (summary.skippedPkgNames.isEmpty()) {
+                        context.contextStringResource(KMR.strings.extension_export_multi_success, summary.exportedCount)
+                    } else {
+                        context.contextStringResource(
+                            KMR.strings.extension_export_multi_partial,
+                            summary.exportedCount,
+                            summary.skippedPkgNames.size,
+                        )
+                    }
+                    context.toast(message)
+                },
+                onFailure = { context.toast(context.contextStringResource(KMR.strings.extension_export_failed)) },
+            )
+            extensionsScreenModel.exitExtensionSelectionMode()
+        }
+    }
     // KMK <--
 
     return TabContent(
@@ -121,13 +171,20 @@ fun extensionsTab(
                 // KMK -->
                 onToggleExtensionSelected = extensionsScreenModel::toggleExtensionSelected,
                 onRequestUninstallSelected = { showBulkUninstallConfirmDialog = true },
+                onRequestExportSelected = { showBulkExportConfirmDialog = true },
                 onExitSelectionMode = extensionsScreenModel::exitExtensionSelectionMode,
                 // KMK <--
             )
 
             privateExtensionToUninstall?.let { extension ->
                 ExtensionUninstallConfirmation(
-                    extensionName = extension.name,
+                    // KMK -->
+                    extensionName = if (rememberEvaluationModeEnabled()) {
+                        EvaluationModeFormatter.sourceLabel(extension.pkgName)
+                    } else {
+                        extension.name
+                    },
+                    // KMK <--
                     onClickConfirm = {
                         extensionsScreenModel.uninstallExtension(extension)
                     },
@@ -148,6 +205,29 @@ fun extensionsTab(
                     },
                     onDismissRequest = {
                         showBulkUninstallConfirmDialog = false
+                    },
+                )
+            }
+            // KMK v0.8.18: manual extension APK export confirmation
+            if (showBulkExportConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showBulkExportConfirmDialog = false },
+                    title = { Text(stringResource(KMR.strings.extension_export_confirm_title)) },
+                    text = { Text(stringResource(KMR.strings.extension_export_confirm_body)) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showBulkExportConfirmDialog = false
+                                bulkExportLauncher.launch(eu.kanade.tachiyomi.extension.util.ExtensionApkExporter.suggestedZipFileName())
+                            },
+                        ) {
+                            Text(stringResource(KMR.strings.extension_export_confirm_action))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showBulkExportConfirmDialog = false }) {
+                            Text(stringResource(MR.strings.action_cancel))
+                        }
                     },
                 )
             }

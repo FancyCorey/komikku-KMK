@@ -22,6 +22,16 @@ interface SourceEvaluationRepository {
 
     suspend fun deleteByPackage(pkgName: String, signatureHash: String)
 
+    // KMK v0.8.19: atomic replacement for extension-level error reconciliation -- deletes existing
+    // package/signature rows and inserts the replacement evaluation in one transaction, so a failure
+    // partway through can never leave stale rows deleted without their replacement written (or vice
+    // versa). See SourceEvaluationRunner.recordExtensionError().
+    suspend fun replaceByPackage(
+        pkgName: String,
+        signatureHash: String,
+        evaluation: SourceEvaluation,
+    )
+
     suspend fun deleteAll()
 }
 // KMK <--

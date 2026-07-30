@@ -174,12 +174,91 @@ class PersonalRecommendationScorerTest {
     @Test
     fun `rankCandidates excludes blocked candidates`() {
         val blocked = manga(listOf("Harem"))
+        // KMK v0.8.13: gave "good" a matching learned tag so it has positive taste evidence and
+        // remains eligible under the new default relevance gate -- this test is about the block
+        // filter specifically, not about evidence gating (covered separately below).
         val good = manga(listOf("Action"))
-        val p = profile(blockedGroups = setOf("harem"))
+        val p = profile(blockedGroups = setOf("harem"), learnedTagWeights = mapOf("action" to 1.0))
 
         val ranked = PersonalRecommendationScorer.rankCandidates(listOf(blocked, good), p, emptyMap())
 
         assertTrue(ranked.none { it.manga.genre?.contains("Harem") == true }) { "Blocked candidate should not appear" }
         assertEquals(1, ranked.size)
     }
+
+    // KMK v0.8.13: positive taste evidence gate -->
+
+    @Test
+    fun `source-affinity-only candidate is excluded by default`() {
+        // No preferred/learned tags at all -- only a positive sourceAffinity contribution.
+        val candidate = manga(listOf("Something Unrelated"), sourceId = 99L)
+        val p = profile(sourceAffinity = mapOf(99L to 0.8))
+
+        val ranked = PersonalRecommendationScorer.rankCandidates(listOf(candidate), p, emptyMap())
+
+        assertTrue(ranked.isEmpty()) { "A candidate whose only positive signal is source affinity must not be eligible by default" }
+    }
+
+    @Test
+    fun `source-affinity-only candidate is included only when requirePositiveTasteEvidence is false`() {
+        val candidate = manga(listOf("Something Unrelated"), sourceId = 99L)
+        val p = profile(sourceAffinity = mapOf(99L to 0.8))
+
+        val ranked = PersonalRecommendationScorer.rankCandidates(
+            listOf(candidate),
+            p,
+            emptyMap(),
+            requirePositiveTasteEvidence = false,
+        )
+
+        assertEquals(1, ranked.size)
+    }
+
+    @Test
+    fun `candidate with a preferred tag and source affinity remains included and ranks higher than an otherwise equal candidate without source affinity`() {
+        val withAffinity = manga(listOf("Villainess"), sourceId = 42L)
+        val withoutAffinity = manga(listOf("Villainess"), sourceId = 43L)
+        val p = profile(
+            explicitTagPreferences = mapOf("villainess" to TagPreference.PREFER.value),
+            sourceAffinity = mapOf(42L to 0.5),
+        )
+
+        val ranked = PersonalRecommendationScorer.rankCandidates(listOf(withoutAffinity, withAffinity), p, emptyMap())
+
+        assertEquals(2, ranked.size) { "Both candidates have positive taste evidence, so both remain eligible" }
+        assertEquals(42L, ranked.first().manga.source) { "The candidate with source affinity should rank first" }
+    }
+
+    @Test
+    fun `blocked candidate remains excluded regardless of requirePositiveTasteEvidence`() {
+        val blocked = manga(listOf("Harem"))
+        val p = profile(blockedGroups = setOf("harem"))
+
+        val strict = PersonalRecommendationScorer.rankCandidates(listOf(blocked), p, emptyMap())
+        val loose = PersonalRecommendationScorer.rankCandidates(listOf(blocked), p, emptyMap(), requirePositiveTasteEvidence = false)
+
+        assertTrue(strict.isEmpty())
+        assertTrue(loose.isEmpty())
+    }
+
+    @Test
+    fun `learned positive weight alone counts as positive evidence`() {
+        val candidate = manga(listOf("Action"))
+        val p = profile(learnedTagWeights = mapOf("action" to 1.5))
+
+        val ranked = PersonalRecommendationScorer.rankCandidates(listOf(candidate), p, emptyMap())
+
+        assertEquals(1, ranked.size)
+    }
+
+    @Test
+    fun `disliked-only negative-only candidate is excluded`() {
+        val candidate = manga(listOf("Harem"))
+        val p = profile(explicitTagPreferences = mapOf("harem" to TagPreference.DISLIKE.value))
+
+        val ranked = PersonalRecommendationScorer.rankCandidates(listOf(candidate), p, emptyMap())
+
+        assertTrue(ranked.isEmpty()) { "A negative-only match has no positive evidence and must not be eligible" }
+    }
+    // KMK <--
 }

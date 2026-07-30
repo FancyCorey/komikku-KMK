@@ -1,4 +1,4 @@
-﻿# Recommendation Source List Diagnosis
+# Recommendation Source List Diagnosis
 
 Date: 2026-06-14
 
@@ -16,7 +16,7 @@ Examples reported in For You:
 - Manga Here
 - Manwa Top / ManhwaTop
 - QI Scans
-- Vortex Scans
+- the affected source
 
 Examples reported in Source Priority include additional sources such as:
 
@@ -30,7 +30,7 @@ Examples reported in Source Priority include additional sources such as:
 - Asmodius
 - ManhwaFast
 - KyanScans
-- VortexScans
+- the affected sourceScans
 - AsuraScans
 
 The user also asked about the missing Local Source / Top Picks recommendation behavior.

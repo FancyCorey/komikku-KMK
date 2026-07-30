@@ -1,6 +1,7 @@
 package exh.recs.share
 
 import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.source.service.SourcePreferences
 import kotlinx.coroutines.flow.firstOrNull
 import logcat.LogPriority
 import mihon.domain.source.interactor.UpdateMangaFromRemote
@@ -26,6 +27,14 @@ class RecommendationBundleLibraryAdder(
     private val updateManga: UpdateManga = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
+    // KMK Confirmed Blocker Remediation Phase 5 2026-07-29: bundle import's library-add half is
+    // exactly the "library additions" case the plan's classification rules require typed local undo
+    // for -- build-before-write/commit-after-success, same contract every other favorite-flip call
+    // site already uses (LibraryUndoRecorder). This is a distinct receipt from the extension-install
+    // half (RecommendationBundleImportScreenModel.installMissingExtension, already
+    // NonUndoableEventJournal-backed) -- the plan explicitly requires these stay two separate typed
+    // concerns, never one combined "undo the import" row.
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) {
 
     sealed interface Outcome {
@@ -52,8 +61,16 @@ class RecommendationBundleLibraryAdder(
         }
 
         return try {
+            // KMK Confirmed Blocker Remediation Phase 5: build the journal entry from the pre-write
+            // manga (favorite=false is guaranteed here by the early return above) before the write,
+            // commit only after updateManga.awaitUpdateFavorite returns -- see
+            // exh.util.LibraryUndoRecorder's own build-before-write/commit-after-success doc.
+            val journalEntry = exh.util.LibraryUndoRecorder.buildFavoriteEntry(sourcePreferences, manga, newFavorite = true)
             setMangaDefaultChapterFlags.await(manga)
-            updateManga.awaitUpdateFavorite(manga.id, true)
+            val favoriteWritten = updateManga.awaitUpdateFavorite(manga.id, true)
+            if (favoriteWritten) {
+                journalEntry?.let { exh.util.LibraryUndoJournal.record(it) }
+            }
 
             val resolvedCategories = categoryIds.ifEmpty { resolveDefaultCategoryIds() }
             setMangaCategories.await(manga.id, resolvedCategories)

@@ -27,6 +27,13 @@ class SourceEvaluationCompletionLifecyclePolicyTest {
         assertTrue(SourceEvaluationCompletionLifecyclePolicy.shouldClearOnLeave(SourceEvaluationQueueState.Status.ConnectivityLost))
     }
 
+    // KMK v0.8.15 -->
+    @Test
+    fun `a NoActionableWork status is cleared on leaving the screen -- same lifecycle as the other terminal states`() {
+        assertTrue(SourceEvaluationCompletionLifecyclePolicy.shouldClearOnLeave(SourceEvaluationQueueState.Status.NoActionableWork))
+    }
+    // KMK <--
+
     @Test
     fun `a Running status is never cleared on leaving the screen -- the background job must keep reporting progress`() {
         assertFalse(SourceEvaluationCompletionLifecyclePolicy.shouldClearOnLeave(SourceEvaluationQueueState.Status.Running))
@@ -48,7 +55,7 @@ class SourceEvaluationCompletionLifecyclePolicyTest {
         // exhaustive `when` inside shouldClearOnLeave already enforces this, but pinning the full
         // count here means this test itself changes (and gets reviewed) rather than silently no-op'ing.
         val allStatuses = SourceEvaluationQueueState.Status.entries
-        assertTrue(allStatuses.size == 7, "Expected 7 Status values; update this test's status coverage if that count changes.")
+        assertTrue(allStatuses.size == 8, "Expected 8 Status values; update this test's status coverage if that count changes.")
     }
 }
 // KMK <--

@@ -17,9 +17,18 @@ data class SourceEvaluationQueueState(
     val installerMode: SourceEvaluationInstallerPolicy.InstallerMode = SourceEvaluationInstallerPolicy.InstallerMode.PRIVATE,
     val batchSize: Int = 10,
     val errorMessage: String? = null,
+    // KMK v0.8.15-fix1: count of extension-level failures where the stale-package-row delete
+    // (SourceEvaluationRunner.recordExtensionError()) itself failed -- those candidates were not
+    // counted as durably handled (see completedCandidateKeys), so the user needs an honest,
+    // non-fatal explanation instead of a silent "why didn't the count go down" retry loop.
+    val reconciliationFailedCount: Int = 0,
 ) {
     // KMK --> v0.7.18
-    enum class Status { Idle, Running, Cancelling, Completed, Cancelled, Failed, ConnectivityLost }
+    // KMK v0.8.15: NoActionableWork added -- a stale-reassessment (or any) batch that ran to
+    // completion but durably handled zero candidates (every candidate was cancelled before any
+    // write, or the batch was empty) must not read as a generic "Evaluation completed" success.
+    // See SourceEvaluationRunner.start()'s end-of-run status decision.
+    enum class Status { Idle, Running, Cancelling, Completed, Cancelled, Failed, ConnectivityLost, NoActionableWork }
     // KMK <--
 
     enum class Phase {
@@ -63,10 +72,10 @@ data class SourceEvaluationQueueState(
     )
 
     // KMK --> v0.7.18: ConnectivityLost added to idle+terminal so options section re-appears and summary card shows
-    val isIdle: Boolean get() = status == Status.Idle || status == Status.Completed || status == Status.Cancelled || status == Status.Failed || status == Status.ConnectivityLost
+    val isIdle: Boolean get() = status == Status.Idle || status == Status.Completed || status == Status.Cancelled || status == Status.Failed || status == Status.ConnectivityLost || status == Status.NoActionableWork
     val isRunning: Boolean get() = status == Status.Running
     // KMK --> v0.6.19
-    val isTerminal: Boolean get() = status == Status.Completed || status == Status.Cancelled || status == Status.Failed || status == Status.ConnectivityLost
+    val isTerminal: Boolean get() = status == Status.Completed || status == Status.Cancelled || status == Status.Failed || status == Status.ConnectivityLost || status == Status.NoActionableWork
     // KMK <--
     // KMK <-- v0.7.18
     // KMK --> v0.6.13

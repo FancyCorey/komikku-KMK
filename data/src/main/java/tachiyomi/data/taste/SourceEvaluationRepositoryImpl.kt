@@ -1,6 +1,7 @@
 package tachiyomi.data.taste
 
 import kotlinx.coroutines.flow.Flow
+import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.taste.model.SourceEvaluation
 import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
@@ -44,61 +45,7 @@ class SourceEvaluationRepositoryImpl(
 
     override suspend fun upsert(evaluation: SourceEvaluation) {
         handler.await(inTransaction = true) {
-            source_evaluationQueries.upsert(
-                evaluationKey = evaluation.evaluationKey,
-                sourceId = evaluation.sourceId,
-                extensionPkgName = evaluation.extensionPkgName,
-                signatureHash = evaluation.signatureHash,
-                extensionName = evaluation.extensionName,
-                sourceName = evaluation.sourceName,
-                lang = evaluation.lang,
-                baseUrl = evaluation.baseUrl,
-                repoName = evaluation.repoName,
-                sourceCount = evaluation.sourceCount.toLong(),
-                isNsfw = if (evaluation.isNsfw) 1L else 0L,
-                evaluationVersion = evaluation.evaluationVersion.toLong(),
-                evaluatedAt = evaluation.evaluatedAt,
-                expiresAt = evaluation.expiresAt,
-                sampleCount = evaluation.sampleCount.toLong(),
-                popularCount = evaluation.popularCount.toLong(),
-                latestCount = evaluation.latestCount.toLong(),
-                searchCount = evaluation.searchCount.toLong(),
-                searchSuccessCount = evaluation.searchSuccessCount.toLong(),
-                likedTitleMatchCount = evaluation.likedTitleMatchCount.toLong(),
-                preferredTagMatchCount = evaluation.preferredTagMatchCount.toLong(),
-                blockedTagMatchCount = evaluation.blockedTagMatchCount.toLong(),
-                explicitSignalCount = evaluation.explicitSignalCount.toLong(),
-                ecchiSignalCount = evaluation.ecchiSignalCount.toLong(),
-                errorCount = evaluation.errorCount.toLong(),
-                qualityScore = evaluation.qualityScore,
-                recommendationFitScore = evaluation.recommendationFitScore,
-                searchReliabilityScore = evaluation.searchReliabilityScore,
-                explicitScore = evaluation.explicitScore,
-                ecchiScore = evaluation.ecchiScore,
-                verdict = evaluation.verdict.serialized,
-                sampledTitlesJson = evaluation.sampledTitlesJson,
-                sampledTagsJson = evaluation.sampledTagsJson,
-                errorMessage = evaluation.errorMessage,
-                // KMK --> v0.7.4: extension version fields
-                extensionVersionName = evaluation.extensionVersionName,
-                extensionVersionCode = evaluation.extensionVersionCode,
-                extensionApkName = evaluation.extensionApkName,
-                // KMK <--
-                // KMK --> v0.7.42
-                catalogueMetadataConfidence = evaluation.catalogueMetadataConfidence.serialized,
-                // KMK <--
-                // KMK --> v0.7.47
-                detailEnrichmentAttemptCount = evaluation.detailEnrichmentAttemptCount.toLong(),
-                detailEnrichmentSuccessCount = evaluation.detailEnrichmentSuccessCount.toLong(),
-                metadataCandidateCount = evaluation.metadataCandidateCount.toLong(),
-                positiveCandidateCount = evaluation.positiveCandidateCount.toLong(),
-                negativeCandidateCount = evaluation.negativeCandidateCount.toLong(),
-                explicitPreferredGroupHitCount = evaluation.explicitPreferredGroupHitCount.toLong(),
-                learnedPositiveGroupHitCount = evaluation.learnedPositiveGroupHitCount.toLong(),
-                blockedCandidateCount = evaluation.blockedCandidateCount.toLong(),
-                adultSignalCandidateCount = evaluation.adultSignalCandidateCount.toLong(),
-                // KMK <--
-            )
+            upsertQuery(evaluation)
         }
     }
 
@@ -110,8 +57,85 @@ class SourceEvaluationRepositoryImpl(
         handler.await { source_evaluationQueries.deleteByPackage(pkgName, signatureHash) }
     }
 
+    // KMK v0.8.19: atomic delete-then-upsert for extension-level error reconciliation. Both queries
+    // run inside the same transaction (a single handler.await(inTransaction = true) block), so a
+    // failure partway through rolls back the whole transaction -- the stale package rows and their
+    // replacement extension-level error row are always committed or rolled back together, never
+    // partially applied.
+    override suspend fun replaceByPackage(
+        pkgName: String,
+        signatureHash: String,
+        evaluation: SourceEvaluation,
+    ) {
+        handler.await(inTransaction = true) {
+            source_evaluationQueries.deleteByPackage(pkgName, signatureHash)
+            upsertQuery(evaluation)
+        }
+    }
+
     override suspend fun deleteAll() {
         handler.await { source_evaluationQueries.deleteAll() }
+    }
+
+    // KMK v0.8.19: extracted from upsert() so replaceByPackage() can share the exact same ~40-field
+    // mapping without duplicating it. Pure query invocation only -- does not open its own transaction,
+    // must always be called from inside an existing handler.await(inTransaction = true) block.
+    private fun Database.upsertQuery(evaluation: SourceEvaluation) {
+        source_evaluationQueries.upsert(
+            evaluationKey = evaluation.evaluationKey,
+            sourceId = evaluation.sourceId,
+            extensionPkgName = evaluation.extensionPkgName,
+            signatureHash = evaluation.signatureHash,
+            extensionName = evaluation.extensionName,
+            sourceName = evaluation.sourceName,
+            lang = evaluation.lang,
+            baseUrl = evaluation.baseUrl,
+            repoName = evaluation.repoName,
+            sourceCount = evaluation.sourceCount.toLong(),
+            isNsfw = if (evaluation.isNsfw) 1L else 0L,
+            evaluationVersion = evaluation.evaluationVersion.toLong(),
+            evaluatedAt = evaluation.evaluatedAt,
+            expiresAt = evaluation.expiresAt,
+            sampleCount = evaluation.sampleCount.toLong(),
+            popularCount = evaluation.popularCount.toLong(),
+            latestCount = evaluation.latestCount.toLong(),
+            searchCount = evaluation.searchCount.toLong(),
+            searchSuccessCount = evaluation.searchSuccessCount.toLong(),
+            likedTitleMatchCount = evaluation.likedTitleMatchCount.toLong(),
+            preferredTagMatchCount = evaluation.preferredTagMatchCount.toLong(),
+            blockedTagMatchCount = evaluation.blockedTagMatchCount.toLong(),
+            explicitSignalCount = evaluation.explicitSignalCount.toLong(),
+            ecchiSignalCount = evaluation.ecchiSignalCount.toLong(),
+            errorCount = evaluation.errorCount.toLong(),
+            qualityScore = evaluation.qualityScore,
+            recommendationFitScore = evaluation.recommendationFitScore,
+            searchReliabilityScore = evaluation.searchReliabilityScore,
+            explicitScore = evaluation.explicitScore,
+            ecchiScore = evaluation.ecchiScore,
+            verdict = evaluation.verdict.serialized,
+            sampledTitlesJson = evaluation.sampledTitlesJson,
+            sampledTagsJson = evaluation.sampledTagsJson,
+            errorMessage = evaluation.errorMessage,
+            // KMK --> v0.7.4: extension version fields
+            extensionVersionName = evaluation.extensionVersionName,
+            extensionVersionCode = evaluation.extensionVersionCode,
+            extensionApkName = evaluation.extensionApkName,
+            // KMK <--
+            // KMK --> v0.7.42
+            catalogueMetadataConfidence = evaluation.catalogueMetadataConfidence.serialized,
+            // KMK <--
+            // KMK --> v0.7.47
+            detailEnrichmentAttemptCount = evaluation.detailEnrichmentAttemptCount.toLong(),
+            detailEnrichmentSuccessCount = evaluation.detailEnrichmentSuccessCount.toLong(),
+            metadataCandidateCount = evaluation.metadataCandidateCount.toLong(),
+            positiveCandidateCount = evaluation.positiveCandidateCount.toLong(),
+            negativeCandidateCount = evaluation.negativeCandidateCount.toLong(),
+            explicitPreferredGroupHitCount = evaluation.explicitPreferredGroupHitCount.toLong(),
+            learnedPositiveGroupHitCount = evaluation.learnedPositiveGroupHitCount.toLong(),
+            blockedCandidateCount = evaluation.blockedCandidateCount.toLong(),
+            adultSignalCandidateCount = evaluation.adultSignalCandidateCount.toLong(),
+            // KMK <--
+        )
     }
 }
 

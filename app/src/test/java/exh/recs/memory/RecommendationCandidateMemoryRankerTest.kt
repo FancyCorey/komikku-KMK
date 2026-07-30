@@ -249,5 +249,51 @@ class RecommendationCandidateMemoryRankerTest {
         val result = mergeWithMinChapters(listOf(rec(m)), minChapterCount = 10, chapterCounts = mapOf(999L to 1L))
         assertTrue(result.any { it.manga.id == 9L }) { "Unknown chapter count must remain visible (fail open)" }
     }
+
+    // KMK v0.8.13: positive taste evidence gate applies to memory merge too -->
+
+    @Test
+    fun `remembered candidate with positive source affinity but empty matched groups does not reappear`() {
+        // No genres at all -- score() can only ever produce a positive score here via sourceAffinity,
+        // never a matched group, so this candidate must never survive merge()'s relevance gate.
+        val m = manga(id = 20L, source = 77L, genres = emptyList())
+        val entry = memEntry(sourceId = 77L, url = "/m/20", mangaId = 20L)
+        val affinityProfile = TasteProfile.EMPTY.copy(sourceAffinity = mapOf(77L to 0.9))
+
+        val result = RecommendationCandidateMemoryRanker.merge(
+            remembered = listOf(m to entry),
+            newResults = emptyList(),
+            profile = affinityProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 100,
+        )
+
+        assertTrue(result.none { it.manga.id == 20L }) { "Source-affinity-only remembered candidate must not reappear" }
+    }
+
+    @Test
+    fun `remembered candidate with a preferred learned matched group still appears`() {
+        val m = actionManga(id = 21L)
+        val entry = memEntry(sourceId = 1L, url = "/m/21", mangaId = 21L)
+
+        val result = RecommendationCandidateMemoryRanker.merge(
+            remembered = listOf(m to entry),
+            newResults = emptyList(),
+            profile = scoringProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 100,
+        )
+
+        assertTrue(result.any { it.manga.id == 21L }) { "A remembered candidate with real matched-tag evidence must still appear" }
+    }
+    // KMK <--
 }
 // KMK <--

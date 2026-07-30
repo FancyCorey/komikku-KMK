@@ -64,6 +64,7 @@ import tachiyomi.domain.taste.interactor.GetTasteSuggestions
 import tachiyomi.domain.taste.interactor.GetUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.MarkSourceEvaluationUnsafe
 import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.ReplaceSourceEvaluation
 import tachiyomi.domain.taste.interactor.SetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.SetMangaTaste
 import tachiyomi.domain.taste.interactor.SetMangaTasteBatch
@@ -141,6 +142,9 @@ class KMKDomainModule : InjektModule {
         addFactory { GetCrossSourceMangaLinks(get()) }
         addFactory { UpsertCrossSourceMangaLinks(get()) }
         addFactory { DeleteCrossSourceMangaLink(get()) }
+        // KMK v0.8.20: atomic ungroup + typed transactional restore for the group-action Undo Journal
+        addFactory { tachiyomi.domain.taste.interactor.DeleteCrossSourceGroupCompletely(get()) }
+        addFactory { tachiyomi.domain.taste.interactor.RestoreCrossSourceGroupState(get()) }
         // KMK <--
         // KMK --> v0.8.1-fix2: user-selected primary version per confirmed link group (v0.8.0).
         // These were introduced in v0.8.0 but never registered here, causing an Injekt
@@ -185,6 +189,7 @@ class KMKDomainModule : InjektModule {
         addFactory { GetSourceEvaluation(get()) }
         addFactory { UpsertSourceEvaluation(get()) }
         addFactory { DeleteSourceEvaluation(get()) }
+        addFactory { ReplaceSourceEvaluation(get()) }
         addFactory { ClearSourceEvaluations(get()) }
         addFactory { GetNonInstalledSourceSuggestions(get(), get(), get()) }
         // KMK --> v0.7.6: bounded recommendation-quality probe persistence

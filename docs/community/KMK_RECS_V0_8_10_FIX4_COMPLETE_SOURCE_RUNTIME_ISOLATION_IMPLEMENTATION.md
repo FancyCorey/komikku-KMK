@@ -1,5 +1,19 @@
 # KMK-Recs v0.8.10-fix4: Complete Source-Runtime Isolation — Implementation Report
 
+> **Correction (v0.8.10-fix5, 2026-07-18):** this report's title and acceptance criteria describe
+> source-runtime isolation as complete for the *method* call sites this pass covered
+> (`getPopularManga`, `getSearchManga`, `getMangaUpdate`, `getPageList`, etc.). Live-device evidence
+> after this fix shipped proved that description incomplete: the app still crashed with
+> `NoClassDefFoundError: okhttp3.zstd.Zstd` when opening For You, Browse, or manga recommendations —
+> reached from a **different, unprotected category** this pass did not cover: direct `HttpSource.client`/
+> `HttpSource.headers` lazy-property reads and page-preview image fetches in
+> `MangaCoverFetcher.kt`/`PagePreviewFetcher.kt`, invoked from Coil cover/preview loading rather than
+> any `SourceRuntime`-guarded method. `v0.8.10-fix5` (see
+> `docs/community/KMK_RECS_V0_8_10_FIX5_SOURCE_CLIENT_HEALTH_AND_RECOVERY_IMPLEMENTATION.md`) closed
+> that category. Do not read this report as "source-runtime isolation, complete, full stop" — read it
+> as "source-*method*-call isolation, complete" with fix5 covering the remaining source-*property*/
+> image-fetch category.
+
 ## Why this fix exists
 
 `v0.8.10-fix3` created the shared `eu.kanade.tachiyomi.source.SourceRuntime` execution boundary and

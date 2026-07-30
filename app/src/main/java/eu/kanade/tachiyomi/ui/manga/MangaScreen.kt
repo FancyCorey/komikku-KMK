@@ -305,7 +305,7 @@ class MangaScreen(
                 }
             }.takeIf { isHttpSource },
             // SY <--
-            onWebViewLongClicked = {
+            onCopyLinkClicked = {
                 // KMK -->
                 if (successState.mergedData == null) {
                     // KMK <--

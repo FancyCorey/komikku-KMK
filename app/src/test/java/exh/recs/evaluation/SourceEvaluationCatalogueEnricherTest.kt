@@ -1,6 +1,7 @@
 package exh.recs.evaluation
 
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 /**
@@ -22,6 +24,15 @@ import org.junit.jupiter.api.Test
  * Run with: ./gradlew :app:testDebugUnitTest --tests "*.SourceEvaluationCatalogueEnricherTest"
  */
 class SourceEvaluationCatalogueEnricherTest {
+
+    // KMK v0.8.10-fix8: every fake source in this file shares id 1L, and SourceRuntime now enforces
+    // suppression against SourceRuntimeFailureRegistry (a process-lifetime singleton). Without
+    // clearing between tests, a failure recorded by one test (e.g. "detail failure keeps original
+    // candidate...") would suppress an unrelated later test's calls to the same source id.
+    @BeforeEach
+    fun clearRegistry() {
+        SourceRuntimeFailureRegistry.clear(1L)
+    }
 
     private fun sManga(url: String, title: String = url, genres: List<String>? = null): SManga =
         SManga.create().apply {
@@ -121,10 +132,15 @@ class SourceEvaluationCatalogueEnricherTest {
 
         val result = SourceEvaluationCatalogueEnricher.enrich(source, raw, sourceId = 1L)
 
+        // KMK v0.8.10-fix8: SourceRuntime.run() now enforces suppression, so once /m/1's failure
+        // confirms this source is (temporarily) broken, /m/2's call on the same source within the
+        // suppression window is short-circuited before ever touching it again -- it still counts as
+        // an attempt (attempts is incremented unconditionally before the call), but can no longer
+        // succeed, so detailSuccesses drops to 0 and /m/2 also keeps its original (empty) genre.
         assertEquals(2, result.detailAttempts)
-        assertEquals(1, result.detailSuccesses)
+        assertEquals(0, result.detailSuccesses)
         assertTrue(result.samples[0].genre.isNullOrEmpty())
-        assertEquals(listOf("Comedy"), result.samples[1].genre)
+        assertTrue(result.samples[1].genre.isNullOrEmpty())
     }
 
     @Test

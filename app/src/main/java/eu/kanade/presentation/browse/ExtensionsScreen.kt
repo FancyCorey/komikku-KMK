@@ -60,6 +60,8 @@ import eu.kanade.tachiyomi.ui.browse.extension.ExtensionUiModel
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.launchRequestPackageInstallsPermission
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
@@ -95,6 +97,7 @@ fun ExtensionScreen(
     // KMK -->
     onToggleExtensionSelected: (Extension) -> Unit = {},
     onRequestUninstallSelected: () -> Unit = {},
+    onRequestExportSelected: () -> Unit = {},
     onExitSelectionMode: () -> Unit = {},
     // KMK <--
 ) {
@@ -141,6 +144,7 @@ fun ExtensionScreen(
                     // KMK -->
                     onToggleExtensionSelected = onToggleExtensionSelected,
                     onRequestUninstallSelected = onRequestUninstallSelected,
+                    onRequestExportSelected = onRequestExportSelected,
                     onExitSelectionMode = onExitSelectionMode,
                     // KMK <--
                 )
@@ -165,6 +169,7 @@ private fun ExtensionContent(
     // KMK -->
     onToggleExtensionSelected: (Extension) -> Unit = {},
     onRequestUninstallSelected: () -> Unit = {},
+    onRequestExportSelected: () -> Unit = {},
     onExitSelectionMode: () -> Unit = {},
     // KMK <--
 ) {
@@ -276,6 +281,14 @@ private fun ExtensionContent(
                             enabled = selectedCount > 0 && !state.isBulkUninstallingExtensions,
                         ) {
                             Text(stringResource(KMR.strings.extension_uninstall_selected, selectedCount))
+                        }
+                        // KMK v0.8.18: manual extension APK export -- bulk export shares the same
+                        // selection-mode UI uninstall already uses.
+                        OutlinedButton(
+                            onClick = onRequestExportSelected,
+                            enabled = selectedCount > 0 && !state.isBulkUninstallingExtensions,
+                        ) {
+                            Text(stringResource(KMR.strings.extension_export_selected_action))
                         }
                         OutlinedButton(
                             onClick = onExitSelectionMode,
@@ -469,11 +482,20 @@ private fun ExtensionItemContent(
     installStep: InstallStep,
     modifier: Modifier = Modifier,
 ) {
+    // KMK --> v0.8.19: evaluation mode name/repo obfuscation
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    // KMK <--
     Column(
         modifier = modifier.padding(start = MaterialTheme.padding.medium),
     ) {
         Text(
-            text = extension.name,
+            // KMK -->
+            text = if (evaluationModeEnabled) {
+                EvaluationModeFormatter.sourceLabel(extension.pkgName)
+            } else {
+                extension.name
+            },
+            // KMK <--
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
@@ -507,7 +529,11 @@ private fun ExtensionItemContent(
                 }
 
                 // KMK -->
-                Text(text = extension.storeName?.let { "@$it" } ?: "(?)")
+                Text(
+                    text = extension.storeName?.let { storeName ->
+                        "@" + if (evaluationModeEnabled) EvaluationModeFormatter.repoLabel(storeName) else storeName
+                    } ?: "(?)",
+                )
                 // KMK <--
 
                 val warning = when {

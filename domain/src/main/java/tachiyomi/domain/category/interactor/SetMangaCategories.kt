@@ -8,11 +8,13 @@ class SetMangaCategories(
     private val mangaRepository: MangaRepository,
 ) {
 
-    suspend fun await(mangaId: Long, categoryIds: List<Long>) {
+    suspend fun await(mangaId: Long, categoryIds: List<Long>): Boolean {
         try {
             mangaRepository.setMangaCategories(mangaId, categoryIds)
+            return true
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            return false
         }
     }
 }

@@ -44,7 +44,7 @@ import tachiyomi.domain.taste.model.SourceEvaluation
  * which must not be removed).
  *
  * Instead, this reconciles the two: given every currently-stale [SourceEvaluation] row and the actual
- * eligible candidate pool, it reports exactly how many visible "outdated" rows are workable right now
+ * actionable stale candidate queue, it reports exactly how many visible "outdated" rows are workable right now
  * versus permanently unreachable this run — so the UI can show an honest, specific explanation
  * ("N outdated, but M of them are for extensions you've since installed/excluded — reassess those
  * from Source Priority instead") instead of a silent zero-candidate no-op that looks like a failure.
@@ -65,20 +65,39 @@ object SourceEvaluationOutdatedReconciliation {
 
         /** True exactly when every visible outdated row is unreachable — the queue would show/behave as if there is nothing to do despite N visible "Outdated" rows. This is the precise condition that must never be reported as a generic "evaluation failed." */
         val allOutdatedAreUnreachable: Boolean get() = totalOutdatedCount > 0 && workableOutdatedCount == 0
+
+        // KMK v0.8.13-fix1 -->
+        /** True when at least one visible outdated row is actually reachable by "Continue reassessing outdated" this run -- the condition a runnable-looking reassess button must require. */
+        val hasActionableOutdated: Boolean get() = workableOutdatedCount > 0
+
+        /** True when at least one visible outdated row is excluded from this run (installed, language-filtered, disliked, quarantined, or otherwise excluded). */
+        val hasUnreachableOutdated: Boolean get() = unreachableOutdatedCount > 0
+
+        /** Alias for [hasUnreachableOutdated], named for the completion-copy call site: whether a "completed" message must still acknowledge rows it could not touch. */
+        val completionStillHasUnreachableRows: Boolean get() = hasUnreachableOutdated
+        // KMK <--
     }
 
     fun reconcile(
         allEvaluations: List<SourceEvaluation>,
         pool: SourceEvaluationCandidateFilter.CandidatePoolResult,
         now: Long,
+        includeExplicit: Boolean = true,
     ): Result {
         val totalOutdatedKeys = allEvaluations
             .groupBy { it.extensionKey }
             .filterValues { evals -> evals.any { SourceEvaluationDisplayPolicy.isStaleForRanking(it, now) } }
             .keys
 
-        val eligibleKeys = pool.allEligible.map { "${it.extension.signatureHash}|${it.extension.pkgName}" }.toSet()
-        val workableKeys = totalOutdatedKeys.intersect(eligibleKeys)
+        // Keep this derived from the exact queue policy used by the reassessment action. In
+        // particular, an explicit extension can remain in pool.allEligible while being excluded
+        // from the actionable queue when the current options block explicit sources.
+        val actionableKeys = SourceEvaluationCandidateQueuePolicy.staleCandidates(
+            pool = pool,
+            now = now,
+            includeExplicit = includeExplicit,
+        ).map { "${it.extension.signatureHash}|${it.extension.pkgName}" }.toSet()
+        val workableKeys = totalOutdatedKeys.intersect(actionableKeys)
 
         return Result(
             totalOutdatedExtensionKeys = totalOutdatedKeys,

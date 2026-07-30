@@ -73,6 +73,7 @@ fun ReaderScheduleDialog(
     var showAddFlow by rememberSaveable { mutableStateOf(false) }
     // KMK v0.8.7: null = adding a new window; non-null = editing windows[editingIndex] in place.
     var editingIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pendingDeleteIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
     fun openAddFlow() {
         editingIndex = null
@@ -137,7 +138,7 @@ fun ReaderScheduleDialog(
                                 contentDescription = stringResource(MR.strings.action_edit),
                             )
                         }
-                        IconButton(onClick = { windows = windows.toMutableList().also { it.removeAt(index) } }) {
+                        IconButton(onClick = { pendingDeleteIndex = index }) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
                                 contentDescription = stringResource(MR.strings.action_delete),
@@ -187,7 +188,46 @@ fun ReaderScheduleDialog(
             }
         },
     )
+
+    pendingDeleteIndex?.let { index ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteIndex = null },
+            title = { Text(stringResource(KMR.strings.reading_schedule_delete_window_title)) },
+            text = { Text(stringResource(KMR.strings.reading_schedule_delete_window_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        windows = ReaderScheduleWindowDeletionPolicy.removeAt(windows, index)
+                        pendingDeleteIndex = null
+                    },
+                ) {
+                    Text(stringResource(KMR.strings.reading_schedule_delete_window_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteIndex = null }) {
+                    Text(stringResource(MR.strings.action_cancel))
+                }
+            },
+        )
+    }
 }
+
+// KMK Confirmed Blocker Remediation 2026-07-28 -->
+/**
+ * Pure list mutation for the schedule-window delete-confirmation flow, extracted from
+ * [ReaderScheduleDialog]'s confirm-button `onClick` so the exact removal semantics are directly
+ * unit-testable without a Compose test harness (this module has no existing Compose UI test
+ * infrastructure -- see [ReaderScheduleDialogWindowDeletionTest] for the required coverage: tapping
+ * delete opens confirmation without mutating the draft, cancel/back leaves the row present, confirm
+ * removes only the selected row, and Save is a separate, later step this object does not touch).
+ */
+internal object ReaderScheduleWindowDeletionPolicy {
+    /** Removes the window at [index] from [windows], returning a new list. Out-of-range [index] is a no-op. */
+    fun removeAt(windows: List<ReaderScheduleWindow>, index: Int): List<ReaderScheduleWindow> =
+        windows.toMutableList().also { if (index in it.indices) it.removeAt(index) }
+}
+// KMK <--
 
 /**
  * Unwraps [ContextWrapper]s (e.g. `ContextThemeWrapper`) until a [FragmentActivity] is found, or

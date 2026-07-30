@@ -35,5 +35,42 @@ object RecommendationSettingsSectionSummaries {
         val enabled = orderedSourceIdsAndNames.filter { (id, _) -> id !in disabledSourceIds }
         return SourcePriorityCounts(enabled.size, enabled.firstOrNull()?.second)
     }
+
+    // KMK Confirmed Blocker Remediation 2026-07-28 -->
+    /**
+     * Already-safe-to-render presentation model for the "For You sources" section summary.
+     * [topSourceLabel] is never the raw source name when [SourcePrioritySummary] was built with
+     * `evaluationModeEnabled = true` -- callers must not read a raw name from anywhere else and
+     * substitute it in. This centralizes the exact privacy branch that used to live inline in
+     * `RecommendationSourcePrioritySettingsScreen.kt`'s Composable body, so every summary call site
+     * (index/search/detail/preview) can share one pure, unit-testable decision instead of each
+     * re-implementing the Evaluation Mode check.
+     */
+    data class SourcePrioritySummary(val enabledCount: Int, val topSourceLabel: String?)
+
+    /**
+     * @param orderedSourceIdsAndNames every source in its current priority order, paired with its
+     * display name, in the exact order used to resolve "the top enabled source."
+     * @param disabledSourceIds the currently disabled subset.
+     * @param evaluationModeEnabled when true, [SourcePrioritySummary.topSourceLabel] is always a
+     * stable opaque [exh.util.EvaluationModeFormatter] label, never [orderedSourceIdsAndNames]'s raw
+     * name -- even if the caller passes a source whose id could not be resolved, the fallback below
+     * still uses an opaque key derived from that source's own id, never its name.
+     */
+    fun sourcePrioritySummary(
+        orderedSourceIdsAndNames: List<Pair<Long, String>>,
+        disabledSourceIds: Set<Long>,
+        evaluationModeEnabled: Boolean,
+    ): SourcePrioritySummary {
+        val enabled = orderedSourceIdsAndNames.filter { (id, _) -> id !in disabledSourceIds }
+        val top = enabled.firstOrNull()
+        val label = when {
+            top == null -> null
+            evaluationModeEnabled -> exh.util.EvaluationModeFormatter.sourceLabel(top.first)
+            else -> top.second
+        }
+        return SourcePrioritySummary(enabled.size, label)
+    }
+    // KMK <--
 }
 // KMK <--

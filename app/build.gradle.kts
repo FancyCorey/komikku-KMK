@@ -28,8 +28,8 @@ android {
     defaultConfig {
         applicationId = "app.komikku"
 
-        versionCode = 89 // Android package versionCode. KMK feature version is tracked separately in KmkRecsReleaseNotes.
-        versionName = "1.14.0"
+        versionCode = 90 // Android package versionCode. KMK feature version is tracked separately in KmkRecsReleaseNotes.
+        versionName = "1.14.1"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -343,6 +343,10 @@ dependencies {
     implementation(libs.leakcanary.plumber)
 
     testImplementation(kotlinx.coroutines.test)
+
+    // Android UI evidence runner; never packaged in production APKs.
+    androidTestImplementation(androidx.test.ext)
+    androidTestImplementation(androidx.test.uiautomator)
 
     // SY -->
     // Better logging (EH)

@@ -10,6 +10,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.addOrRemove
 import eu.kanade.domain.chapter.interactor.SetReadStatus
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.updates.UpdatesUiModel
 import eu.kanade.tachiyomi.data.download.DownloadCache
@@ -47,6 +48,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.applyFilter
@@ -64,11 +66,13 @@ class UpdatesScreenModel(
     private val downloadCache: DownloadCache = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val setReadStatus: SetReadStatus = Injekt.get(),
+    private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val getUpdates: GetUpdates = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val getChapter: GetChapter = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val updatesPreferences: UpdatesPreferences = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     // SY -->
     readerPreferences: ReaderPreferences = Injekt.get(),
@@ -285,12 +289,20 @@ class UpdatesScreenModel(
      */
     fun markUpdatesRead(updates: List<UpdatesItem>, read: Boolean) {
         screenModelScope.launchIO {
-            setReadStatus.await(
+            val chapters = updates.mapNotNull { getChapter.await(it.update.chapterId) }
+            val canJournalReadState = !read || !downloadPreferences.removeAfterMarkedAsRead().get()
+            val undoEntries = if (canJournalReadState) {
+                exh.util.ChapterUndoRecorder.buildReadEntries(sourcePreferences, chapters, read)
+            } else {
+                emptyList()
+            }
+            val result = setReadStatus.await(
                 read = read,
-                chapters = updates
-                    .mapNotNull { getChapter.await(it.update.chapterId) }
-                    .toTypedArray(),
+                chapters = chapters.toTypedArray(),
             )
+            if (result is SetReadStatus.Result.Success) {
+                undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+            }
         }
         toggleAllSelection(false)
     }
@@ -301,10 +313,19 @@ class UpdatesScreenModel(
      */
     fun bookmarkUpdates(updates: List<UpdatesItem>, bookmark: Boolean) {
         screenModelScope.launchIO {
-            updates
-                .filterNot { it.update.bookmark == bookmark }
-                .map { ChapterUpdate(id = it.update.chapterId, bookmark = bookmark) }
-                .let { updateChapter.awaitAll(it) }
+            val chapters = updates.mapNotNull { getChapter.await(it.update.chapterId) }
+            val changedChapters = chapters.filterNot { it.bookmark == bookmark }
+            val undoEntries = exh.util.ChapterUndoRecorder.buildBookmarkEntries(
+                sourcePreferences,
+                changedChapters,
+                bookmark,
+            )
+            val updated = updateChapter.awaitAll(
+                changedChapters.map { ChapterUpdate(id = it.id, bookmark = bookmark) },
+            )
+            if (updated) {
+                undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+            }
         }
         toggleAllSelection(false)
     }

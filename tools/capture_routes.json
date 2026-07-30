@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "package": "app.komikku.dev",
+  "knownStates": [],
+  "routes": [
+    {"name": "browse", "description": "Browse source and extension surfaces", "status": "blocked", "blockingReason": "No stable production semantic marker has been approved for the known start state.", "capture": {"allowed": true}},
+    {"name": "for-you", "description": "Personal recommendations", "status": "blocked", "blockingReason": "Requires device-side session verification and a stable destination marker.", "capture": {"allowed": true}},
+    {"name": "recommendation-settings", "description": "Recommendation settings index and sections", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "source-evaluation", "description": "Source evaluation results", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "sources-to-try", "description": "Non-installed source suggestions", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "source-priority", "description": "For You source ordering", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "taste-and-tags", "description": "Preferred and blocked tags", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "management-diagnostics", "description": "Recommendation management and diagnostics", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "rated-collections", "description": "Loved, liked, and disliked collections", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "best-version", "description": "Cross-extension best-version comparison", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "group-recommendations", "description": "Recommendations across linked versions", "status": "blocked", "blockingReason": "Requires device-side session verification and stable route selectors.", "capture": {"allowed": true}},
+    {"name": "extension-export", "description": "Extension export workflow", "status": "blocked", "blockingReason": "Export identity must not be included in public evidence; requires a separate private validation route.", "capture": {"allowed": false}},
+    {"name": "reader-completion-rating", "description": "Latest-chapter completion rating prompt", "status": "blocked", "blockingReason": "Requires a controlled reader fixture and device-side verification.", "capture": {"allowed": true}}
+  ]
+}

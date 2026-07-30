@@ -3,6 +3,7 @@ package exh.recs.sources
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -91,6 +92,17 @@ internal class CrossExtensionGenreSearchSource(
     private val filterSerializer = FilterSerializer()
 
     override suspend fun requestNextPage(currentPage: Int): MangasPage {
+        // KMK v0.8.10-fix5: batch/global-flow proactive skip (Phase 7) -- only applies when this
+        // instance is part of a bounded batch load (sharedEnrichmentSemaphore != null, i.e.
+        // GROUP_PREVIEW/group recommendations), never a single-manga user-initiated open. Avoids
+        // re-attempting a source that just failed with a recoverable linkage error within this same
+        // process lifetime; advisory only -- does not persist or permanently block anything.
+        if (sharedEnrichmentSemaphore != null &&
+            SourceRuntimeFailureRegistry.isTemporarilyUnavailable(catalogueSource.id)
+        ) {
+            return MangasPage(emptyList(), false)
+        }
+
         val desiredGenres = genreOverride ?: manga.genre.orEmpty()
 
         // KMK --> v0.7.44: strict-to-lenient tag attempt chain (shared with For You via

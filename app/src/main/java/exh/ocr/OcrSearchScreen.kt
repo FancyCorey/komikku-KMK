@@ -53,6 +53,8 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
@@ -502,8 +504,14 @@ private fun OcrResultCard(
                 }
             }
             if (result.sourceName != null) {
+                // KMK --> v0.8.19: evaluation mode source-name obfuscation
                 Text(
-                    text = result.sourceName,
+                    text = if (rememberEvaluationModeEnabled()) {
+                        EvaluationModeFormatter.sourceLabel(result.sourceId)
+                    } else {
+                        result.sourceName
+                    },
+                    // KMK <--
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,

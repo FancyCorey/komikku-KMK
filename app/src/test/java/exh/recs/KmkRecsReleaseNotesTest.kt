@@ -18,7 +18,9 @@ class KmkRecsReleaseNotesTest {
 
     private val headingRegex = Regex("(?m)^\\s*## KMK-Recs (v\\S+)\\s*$")
 
-    private fun headings(): List<String> = headingRegex.findAll(KmkRecsReleaseNotes.MARKDOWN).map { it.groupValues[1] }.toList()
+    private fun headingMatches(): List<MatchResult> = headingRegex.findAll(KmkRecsReleaseNotes.MARKDOWN).toList()
+
+    private fun headings(): List<String> = headingMatches().map { it.groupValues[1] }
 
     @Test
     fun `the current VERSION_NAME appears as the first (newest) heading`() {
@@ -43,24 +45,88 @@ class KmkRecsReleaseNotesTest {
         assertTrue(missing.isEmpty(), "missing historical v0.8.x entries: $missing")
     }
 
+    // KMK v0.8.10-fix9 -->
+    @Test
+    fun `known historical versions across the full history still exist after the changelog conversion`() {
+        val all = headings().toSet()
+        val expected = listOf(
+            "v0.8.11", "v0.8.10-fix9", "v0.8.10", "v0.8.9", "v0.8.8", "v0.8.0",
+            "v0.7.47", "v0.7.45", "v0.7.0", "v0.6.8", "v0.5.0", "v0.4.2",
+        )
+        val missing = expected.filterNot { it in all }
+        assertTrue(missing.isEmpty(), "missing historical entries: $missing")
+    }
+
+    private fun sectionBodies(): List<Pair<String, String>> {
+        val matches = headingMatches()
+        return matches.mapIndexed { i, m ->
+            val start = m.range.first
+            val end = if (i + 1 < matches.size) matches[i + 1].range.first else KmkRecsReleaseNotes.MARKDOWN.length
+            m.groupValues[1] to KmkRecsReleaseNotes.MARKDOWN.substring(start, end)
+        }
+    }
+
+    @Test
+    fun `every version section contains a What's Changed heading`() {
+        val missing = sectionBodies().filterNot { (_, body) -> body.contains("#### What's Changed") }.map { it.first }
+        assertTrue(missing.isEmpty(), "sections missing '#### What's Changed': $missing")
+    }
+
+    @Test
+    fun `every version section contains at least one New, Improve, or Fix category heading`() {
+        val categoryRegex = Regex("##### (New|Improve|Fix)")
+        val missing = sectionBodies().filterNot { (_, body) -> categoryRegex.containsMatchIn(body) }.map { it.first }
+        assertTrue(missing.isEmpty(), "sections missing a category heading: $missing")
+    }
+
+    @Test
+    fun `no version section has a flat bullet between its summary and What's Changed`() {
+        val offenders = sectionBodies().filter { (_, body) ->
+            val pre = body.substringBefore("#### What's Changed")
+            Regex("(?m)^\\s*- ").containsMatchIn(pre)
+        }.map { it.first }
+        assertTrue(offenders.isEmpty(), "sections with a flat bullet before '#### What's Changed': $offenders")
+    }
+
+    @Test
+    fun `the rendered changelog no longer contains stale wording about historical formatting decisions`() {
+        val stale = listOf(
+            "preserved exactly as it was written",
+            "flat-bullet format",
+            "reconfirmed this decision",
+        )
+        stale.forEach { phrase ->
+            assertFalse(
+                KmkRecsReleaseNotes.MARKDOWN.contains(phrase),
+                "stale phrase still present in rendered changelog: \"$phrase\"",
+            )
+        }
+    }
+    // KMK <--
+
     @Test
     fun `history is substantial - no accidental truncation of older entries`() {
-        // Regression guard: as of the v0.8.10 Phase G audit this file has 84 entries going back to
-        // v0.4.2 (confirmed by counting real "## KMK-Recs vX.Y.Z" headings, not the v0.8.10 plan's
-        // stated "76"). A truncation bug (e.g. an accidentally-closed triple-quoted string) would
-        // silently drop most of them; the >= bound intentionally still passes as future versions add
-        // more entries, without needing to be bumped every release.
-        assertTrue(headings().size >= 84, "expected at least 84 historical entries, found ${headings().size}")
+        // Regression guard: as of v0.8.11 this file has 87 entries going back to v0.4.2 (confirmed
+        // by counting real "## KMK-Recs vX.Y.Z" headings). A truncation bug (e.g. an accidentally-
+        // closed triple-quoted string) would silently drop most of them; the >= bound intentionally
+        // still passes as future versions add more entries, without needing to be bumped every
+        // release.
+        assertTrue(headings().size >= 87, "expected at least 87 historical entries, found ${headings().size}")
     }
 
     @Test
     fun `headings are in strictly descending chronological order as written (newest-first)`() {
         // The renderer relies on source order for "newest first" -- verify the file wasn't
-        // accidentally reordered. v0.8.10 is expected to be exactly first.
+        // accidentally reordered. v0.8.20-fix3 is expected to be exactly first.
         val all = headings()
-        assertEquals("v0.8.10", all[0])
-        assertEquals("v0.8.9", all[1])
-        assertEquals("v0.8.8", all[2])
+        assertEquals("v0.8.20-fix3", all[0])
+        assertEquals("v0.8.20-fix2", all[1])
+        assertEquals("v0.8.20-fix1", all[2])
+        assertEquals("v0.8.20", all[3])
+        assertEquals("v0.8.19", all[4])
+        assertEquals("v0.8.18-fix1", all[5])
+        assertEquals("v0.8.18", all[6])
+        assertEquals("v0.8.17-fix1", all[7])
     }
 
     @Test
@@ -93,6 +159,17 @@ class KmkRecsReleaseNotesTest {
         forbidden.forEach { term ->
             assertFalse(lower.contains(term), "forbidden build-channel term found: \"$term\"")
         }
+    }
+
+    // KMK v0.8.16: Find best version was moved out of the taste/rating dropdown into its own visible
+    // manga action. Historical entries (e.g. v0.7.8, v0.6.20) legitimately used "rating menu" wording
+    // for their own era and must not be rewritten -- only the current (newest) entry must not describe
+    // the *current* placement that way.
+    @Test
+    fun `the current newest entry never describes Find best version as part of a rating menu`() {
+        val sections = sectionBodies()
+        val currentSection = sections.first().second.lowercase()
+        assertFalse(currentSection.contains("rating menu"), "current changelog entry should not describe Find best version as inside a rating menu")
     }
 }
 // KMK <--

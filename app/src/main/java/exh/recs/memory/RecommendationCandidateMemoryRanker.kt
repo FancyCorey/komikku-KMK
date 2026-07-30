@@ -74,7 +74,14 @@ object RecommendationCandidateMemoryRanker {
             if (!visible) return@mapNotNull null
 
             val result = PersonalRecommendationScorer.score(manga, profile, aliasMap)
-            if (result.blocked || result.score <= 0.0) return@mapNotNull null
+            // KMK v0.8.13: require positive taste evidence, the same gate
+            // PersonalRecommendationScorer.rankCandidates() applies by default -- confirmed on a live
+            // device: memory rows existed with a positive score and empty/null matchedGroups, purely
+            // from source affinity. Without this, a stale memory row created under the old looser
+            // rule (or a manga whose only positive signal is source affinity) could keep competing
+            // for display forever, since memory rows are never deleted, only re-filtered here on
+            // every merge.
+            if (result.blocked || result.score <= 0.0 || result.matchedGroups.isEmpty()) return@mapNotNull null
 
             PersonalRecommendation(
                 manga = manga,

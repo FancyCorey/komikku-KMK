@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
 import eu.kanade.tachiyomi.source.online.all.EHentai
 import exh.log.ResettableLogger
@@ -143,13 +144,16 @@ class GalleryAdder(
             )
 
             // Fetch and copy details
+            // KMK v0.8.10-fix7: genuine double hole -- both this function's outer catch(Exception)
+            // and the retry() helper's own catch(Exception) do not catch Error, so a raw
+            // NoClassDefFoundError from .getOrThrow() would have escaped both layers uncaught.
             manga = retry(retry) {
                 updateMangaFromRemote(
                     manga = manga,
                     fetchDetails = true,
                     fetchChapters = true,
                     throttleFunc = throttleFunc,
-                ).getOrThrow().manga
+                ).getOrThrowSourceRuntimeException().manga
             }
 
             if (fav) {

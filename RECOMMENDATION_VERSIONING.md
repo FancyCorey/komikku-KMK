@@ -2242,6 +2242,1133 @@ pass with no user-visible feature change. No new What's New entry was added. The
 of this section (written before implementation) reached the same conclusion; confirmed, not
 overridden.
 
+### KMK-Recs v0.8.10-fix5 (source client/property health and recovery, complete)
+
+Corrective handoff under the same v0.8.10 line after live-device evidence disproved fix4's "complete
+source-runtime isolation" framing. `Komikku-v1.14.0-kmk.8.10-fix4-debug.apk` still crashed with the
+installed AsuraScans extension present: `NoClassDefFoundError: okhttp3.zstd.Zstd`, now reached from a
+different, unprotected category fix3/fix4 did not cover -- direct `HttpSource.client`/
+`HttpSource.headers` lazy-property reads and page-preview image fetches in
+`MangaCoverFetcher.kt`/`PagePreviewFetcher.kt` (Coil cover/preview loading), not any
+`SourceRuntime`-guarded source *method*.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX5_SOURCE_CLIENT_HEALTH_AND_RECOVERY_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_10_FIX5_SOURCE_CLIENT_HEALTH_AND_RECOVERY_IMPLEMENTATION.md`
+
+Added `SourceRuntimeOperation.Client`/`Headers`/`CoverImage`/`PreviewImage`; new
+`SourceRuntimeAccessors.kt` (`HttpSource.safeClientOrNull()`/`safeHeadersOrNull()`, routing through
+`SourceRuntime.runBlockingSourceCall`); migrated `MangaCoverFetcher.kt`/`PagePreviewFetcher.kt`; new
+`SourceRuntimeHealthReporter.kt` mapping `SourceRuntimeFailureRegistry` entries to installed-extension
+identity; a non-blocking Source Evaluation source-health warning + recovery-actions dialog
+(`SourceEvaluationScreenModel.kt`/`SourceEvaluationScreen.kt` -- Retry/Update/Reinstall/Uninstall/
+Disable, each offered only when actually valid); and the optional Phase 7 proactive skip applied to
+`CrossExtensionGenreSearchSource.kt` (gated to `sharedEnrichmentSemaphore != null`, i.e. batch/
+GROUP_PREVIEW context only, never single-manga user-initiated browsing). Three call-site families
+reviewed and deferred with documented reasons: `SourceEvaluationRunner.kt`/
+`SourceRecommendationFitProbe.kt` iterate by extension, not source id, so the proactive-skip
+integration point doesn't exist cleanly at the loop level; `BrowsePersonalRecommendationsScreenModel.
+searchSource()`'s cache-first path was judged too risky to touch within this pass's scope. Tests: 6
+new (1434 -> 1440), extending the existing `SourceRuntimeTest.kt` `FakeSource` harness rather than a
+separate `HttpSource`-backed test file, since a real `HttpSource` subclass cannot be constructed in
+this test suite (its `network` lazy property calls `Injekt.get<NetworkHelper>()`, and there is no
+Injekt-bootstrapping harness here).
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix5-debug.apk
+```
+
+Release-note/version decision: `VERSION_CODE`/`VERSION_NAME` remain at `760`/`"KMK-Recs v0.8.10"`,
+unchanged from fix1-fix4, matching the same crash-isolation/stability-pass precedent -- no user-visible
+feature change, no new What's New entry.
+
+### KMK-Recs v0.8.10-fix6 (remaining source runtime isolation, complete)
+
+Corrective handoff under the same v0.8.10 line after a newer real-device crash log
+(`komikku_crash_logs_7.txt`) confirmed the same `NoClassDefFoundError: okhttp3.zstd.Zstd` structural
+hazard reaches additional, not-yet-migrated call sites: `getFilterList()` in
+`SourceFeedScreenModel.kt`/`FeedScreenModel.kt`, migration/smart-search
+(`SmartSourceSearchEngine.kt`), the `RecommendationSource` delegate wrapper
+(`RecommendationPagingSource.kt`), and WebView source-header reads
+(`WebViewScreenModel.kt`/`WebViewActivity.kt`, two separate occurrences of the same pattern). Now
+implicated by at least two extensions: AsuraScans and KaynScans.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX6_REMAINING_SOURCE_RUNTIME_ISOLATION_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_10_FIX6_REMAINING_SOURCE_RUNTIME_ISOLATION_IMPLEMENTATION.md`
+
+Migrated all 5 plan-named files (Tasks 1-5) to the existing shared `SourceRuntime`/
+`SourceRuntimeAccessors`/`SourceRuntimeFailureRegistry`/core:common classifier boundary -- no second
+classifier created. Task 6's re-audit found and fixed 2 additional genuine holes not named in the
+plan: `HttpPageLoader.kt`'s `getPages()` cache-miss fallback (the surrounding `catch(Throwable)`
+handled the cache lookup's exception, not the fallback call's own exception), and
+`WebViewActivity.kt`'s independent duplicate of the exact `source.headers`/`catch(Exception)` pattern
+fixed in `WebViewScreenModel.kt`. One item deferred with documented reasoning:
+`SuwayomiApi.kt`'s `source.client` read (the plan itself flagged the `Call.Factory` vs `OkHttpClient`
+type mismatch as uncertain; narrow tracker-specific path, not the reported crash surface). Tests: 3
+new (1440 -> 1443), extending the existing `SourceRuntimeTest.kt` harness per the plan's exact
+required cases.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix6-debug.apk
+```
+
+Release-note/version decision: `VERSION_CODE`/`VERSION_NAME` remain at `760`/`"KMK-Recs v0.8.10"`,
+unchanged from fix1-fix5, same crash-isolation/stability-pass precedent.
+
+### KMK-Recs v0.8.10-fix7 (source runtime rethrow containment, complete)
+
+Corrective handoff under the same v0.8.10 line after a newer real-device log
+(`2026-07-18-debug.txt`) confirmed the AsuraScans `okhttp3.zstd.Zstd` crash could still reach Browse/
+For You/recommendation-related paths after fix6. Root cause: `SourceRuntime.run(...)`/
+`runBlockingSourceCall(...)` correctly classify a recoverable `LinkageError` and record it in
+`SourceRuntimeFailureRegistry`, but several call sites then used `Result.getOrThrow()`, which rethrows
+the exact stored raw `LinkageError` -- an `Error`, not an `Exception` -- past any outer path that only
+catches `Exception`.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX7_SOURCE_RUNTIME_RETHROW_CONTAINMENT_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_10_FIX7_SOURCE_RUNTIME_RETHROW_CONTAINMENT_IMPLEMENTATION.md`
+
+Added `RecoverableSourceRuntimeException`/`getOrThrowSourceRuntimeException()` to `SourceRuntime.kt` --
+found and corrected a real defect in the plan's own provided code (no `CancellationException` guard,
+which would have broken cancellation semantics). Migrated the plan's 4 named locations
+(`RecommendationPagingSource.kt`, `SmartSourceSearchEngine.kt`,
+`BrowsePersonalRecommendationsScreenModel.kt` x2, `HttpPageLoader.kt`). The required Step 3 audit of
+every remaining `Result.getOrThrow()` found and fixed **6 more genuine holes** beyond the plan's named
+locations, all via `UpdateMangaFromRemote`'s stored raw `LinkageError`: `MergedSource.kt` (2 sites),
+`BrowseSourceScreenModel.kt`, `MangaScreenModel.kt`, `MigrationListScreenModel.kt` (3 sites), and
+`GalleryAdder.kt` (a double hole via its own `retry()` helper). 2 pre-existing, out-of-scope
+error-handling gaps were found and disclosed but not fixed (`MigrateMangaUseCase.kt`,
+`LibraryUpdateJob.kt`/`MetadataUpdateJob.kt` swallow fatal errors too broadly -- a different problem
+than this pass's scope). Tests: 4 new (1443 -> 1447).
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix7-debug.apk
+```
+
+Release-note/version decision: `VERSION_CODE`/`VERSION_NAME` remain at `760`/`"KMK-Recs v0.8.10"`,
+unchanged from fix1-fix6, same crash-isolation/stability-pass precedent.
+
+### KMK-Recs v0.8.10-fix8 (zstd dependency and enforced runtime suppression, complete)
+
+Corrective handoff under the same v0.8.10 line. Root cause had two parts: (1) the app's OkHttp 5.3.2
+setup never included `com.squareup.okhttp3:okhttp-zstd` -- a separate, optional artifact -- so any
+extension (confirmed: AsuraScans) whose lazy client touches `okhttp3.zstd.Zstd` throws
+`NoClassDefFoundError` the first time that code path runs; (2) `SourceRuntime.run()`/
+`runBlockingSourceCall()` correctly classified and recorded that failure in
+`SourceRuntimeFailureRegistry`, but the registry was advisory only -- nothing stopped the same
+already-known-broken source from being touched again on the very next call, so a source could crash
+repeatedly instead of failing fast after the first confirmed failure.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX8_ZSTD_AND_RUNTIME_SUPPRESSION_IMPLEMENTATION.md`
+
+Added `okhttp-zstd` to the existing `okhttp` bundle in `gradle/libs.versions.toml` (same
+`okhttp_version` ref, no version change). Added enforced suppression to `SourceRuntime.run()`/
+`runBlockingSourceCall()`: a new `suppressionFailureOrNull(source)` check runs before either function
+ever touches `source.block()` again; if `SourceRuntimeFailureRegistry.isTemporarilyUnavailable(id)` is
+true, the call returns `Result.failure(SourceTemporarilyUnavailableException(...))` immediately,
+without re-touching the source's (possibly still-broken) lazy `client`/`headers`.
+`CancellationException` and fatal non-`LinkageError` `Error`s are unaffected by this check (they were
+never suppressible failures to begin with). `safeClientOrNull()`/`safeHeadersOrNull()`
+(`SourceRuntimeAccessors.kt`) needed no code change -- they already delegate 100% through
+`runBlockingSourceCall()`, so the new enforcement covers them automatically.
+`MangaCoverFetcher.kt`/`PagePreviewFetcher.kt` likewise needed no change -- both already route every
+source-owned touch point through `SourceRuntime`/`safeClientOrNull()`/`safeHeadersOrNull()` since fix5.
+The required re-audit of the ~19 named source/client/recommendation touch-point files found all of them
+already covered by the fix1-fix7 migrations (`Downloader.kt` remains the sole file needing no
+`SourceRuntime` migration, per the fix7 analysis: its own outer `catch(Throwable)` already isolates a
+raw `Error`). No global `SafeHttpSource` proxy was introduced, per the plan's explicit instruction.
+
+Enforcing suppression changed real behavior that 3 pre-existing tests had encoded the old (advisory-only)
+assumption into, and this pass corrected all three along with the 8 new tests it added:
+- `SourceRuntimeTest`'s `...increments count on repeated failures...` test now clears the registry
+  between each of 3 repeated calls to prove genuinely separate failures still increment `count`
+  (previously it fired 3 rapid calls on the same source and expected `count == 3`; the 2nd and 3rd are
+  now correctly suppressed before ever reaching `record()`, so `count` stays `1` unless cleared).
+- `SourceRuntimeTest`'s lazy-client classification test now clears the registry between its two
+  `SourceRuntime.run()` calls on the same source, so the second is a genuine re-touch rather than an
+  now-suppressed one.
+- `RecommendationSourceFailureIsolationTest`'s sequential-enrichment test and
+  `SourceEvaluationCatalogueEnricherTest`'s "detail failure keeps original candidate" test both drove a
+  loop where one item's failure on a source is immediately followed by another item on the *same*
+  source within the same batch -- once fix8 confirms a source broken, that source is now correctly
+  suppressed for the rest of the batch too (this is the intended strengthening: stop hammering a source
+  already known to be broken), so both tests were updated to assert the new, correct outcome instead
+  of the item after the failure spuriously succeeding.
+- `SourceEvaluationCatalogueEnricherTest` and `SourceRecommendationFitProbeTest` also gained a
+  `@BeforeEach` registry clear: both reuse fixed fake-source ids across many test methods, and the new
+  enforcement means a failure recorded by one test method could otherwise leak into and suppress an
+  unrelated later test method sharing the same id.
+
+Sibling-*source* isolation (a different, unaffected property: one broken source must never suppress or
+block a different, healthy source) is covered by a new dedicated test, "a batch of sibling sources is
+unaffected when one source is suppressed mid-batch". Tests: 8 new (1447 -> 1455; all pass), plus the 3
+corrected pre-existing tests above.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix8-debug.apk
+```
+
+Release-note/version decision: `VERSION_CODE`/`VERSION_NAME` remain at `760`/`"KMK-Recs v0.8.10"`,
+unchanged from fix1-fix7, same crash-isolation/stability-pass precedent. No new What's New entry was
+added: every fix1-fix7 pass in this line was a pure crash-isolation/robustness pass with no
+user-visible feature change, and this pass follows the same category -- the `okhttp-zstd` dependency
+add and enforced suppression are both invisible to the user except as "the crash stops happening."
+
+### KMK-Recs v0.8.10-fix9 (deferred polish and conformance, partial)
+
+Corrective/polish handoff after fix8 confirmed stable on device. Unlike fix1-fix8 (crash-isolation
+passes), this pass bumps `VERSION_CODE`/`VERSION_NAME` to `761`/`"KMK-Recs v0.8.10-fix9"` and adds a
+real What's New entry, since it includes a user-visible change (Taste and Tags grouping).
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_10_FIX9_DEFERRED_POLISH_AND_CONFORMANCE_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_10_FIX9_DEFERRED_POLISH_AND_CONFORMANCE_IMPLEMENTATION.md`
+
+Delivered:
+
+- Converted all 85 historical KMK-Recs changelog entries to the What's Changed/New/Improve/Fix
+  structure (script-assisted, verified lossless by structural tests plus a bullet-count check: 345
+  bullets before and after).
+- Taste and Tags: new `TagPreferenceGroupingPolicy` splits Preferred/Disliked/Blocked/Other into
+  separate capped-at-10, expandable sections in `RecommendationSettingsSharedComponents.kt`'s
+  `TagPreferencesContent`, so Blocked is reachable without scrolling past a long Preferred list.
+- Source-runtime hygiene (bounded, per fix8's guardrails): `SuwayomiApi.kt`'s `client` field now
+  routes through `safeClientOrNull()` instead of a raw `source.client` read; a new shared
+  `rethrowIfFatal()` helper in `SourceRuntime.kt` (reusing the existing `core:common` classifier, not
+  a second one) is now called from `MigrateMangaUseCase.kt`, `LibraryUpdateJob.kt`, and
+  `MetadataUpdateJob.kt`'s broad `catch (e: Throwable)` blocks so cancellation and fatal VM/system
+  errors are rethrown instead of silently swallowed; added a test proving a second failure right after
+  a manual registry clear correctly re-enters suppression (not a one-shot bypass).
+
+Deferred, with documented reasoning (see implementation report):
+
+- The broader Phase 3/4 Komikku-widget conformance pass (`PreferenceGroupHeader`/
+  `SwitchPreferenceWidget`/`ListPreferenceWidget` migration across the Recommendation Settings/Source
+  Evaluation/Sources To Try/Rated Collections screens) was not attempted this pass — real scope, not a
+  quick edit.
+- The Recommendation Settings search "flicker" investigation found the KMK screen's
+  `Crossfade`/`produceState` pattern is *structurally identical* to official Komikku's own
+  `SettingsSearchScreen.kt`, disproving the plan's assumption that KMK deviates here. Per instruction,
+  stopped and asked the user rather than guessing; user chose to document and defer rather than
+  diverge from the official pattern.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.10-fix9-debug.apk
+```
+
+### KMK-Recs v0.8.11 (UI navigation standardization, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `762`/`"KMK-Recs v0.8.11"` — real user-visible UI/navigation
+changes, so (unlike fix1-fix9) this pass adds a genuine What's New entry.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_11_UI_NAVIGATION_STANDARDIZATION_AUDIT_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_11_UI_NAVIGATION_STANDARDIZATION_IMPLEMENTATION_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_11_UI_NAVIGATION_STANDARDIZATION_IMPLEMENTATION.md`
+- `docs/community/KMK_RECS_INTERACTION_FUNCTIONALITY_AUDIT.md`
+
+Delivered (Phases A-G): Recommendation Settings duplicate-destination removal and search-entry
+cleanup (with a new `dedupeKey` safety net in `RecommendationSettingsSearchIndex`), official
+`SwitchPreferenceWidget`/`ListPreferenceWidget`/`TextPreferenceWidget`/`PreferenceGroupHeader`
+conformance for simple rows, Taste Suggestions grouping/capping
+(`TasteSuggestionVisibilityPolicy`), Sources To Try action density (Install stays primary, rest moves
+to overflow), Source Priority density (like/dislike into overflow) plus a new "Best Version preview"
+section, `SourceEvaluationScreen` resectioned into named groups with real scroll-to-anchor support,
+and For You top-bar action grouping (Rated manga menu, Export to overflow).
+
+Delivered (Phase H): created `docs/community/KMK_RECS_INTERACTION_FUNCTIONALITY_AUDIT.md` defining a
+long-press/selection/bulk-action/search/grouping standard and auditing KMK-added screens against it;
+fixed the reported Loved/Liked/Disliked multi-select "Group" bug -- root cause was that
+`LovedMangaScreenModel.load()` only reloads reactively from a `manga_taste` Flow, while group actions
+only write to the non-reactive cross-source-link table, so the display never refreshed after a
+merge/ungroup until an unrelated taste change coincidentally reloaded it. Fixed by applying each
+action's writes into in-memory state immediately (`mergeLinkWritesIntoMap()`), with an explicit
+success/failure Snackbar added for Merge. One interaction gap documented, not fixed (real layout
+work): search is hidden, not disabled, while Loved/Liked/Disliked is in selection mode.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.11-debug.apk
+```
+
+### KMK-Recs v0.8.12 (Recommendation Settings structural follow-up, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `763`/`"KMK-Recs v0.8.12"` — real user-visible changes, so
+this pass adds a genuine What's New entry.
+
+Plan:
+
+- `docs/community/KMK_RECS_V0_8_12_RECOMMENDATION_SETTINGS_STRUCTURAL_FOLLOWUP_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_12_RECOMMENDATION_SETTINGS_STRUCTURAL_FOLLOWUP_IMPLEMENTATION.md`
+
+Delivered (Workstream A): `RecommendationLanguageAvailabilityPolicy` merges selected languages +
+installed-visible-source languages + available-extension languages (deterministic alphabetical,
+falls back to English only when all three are empty) so a selected non-English language can no
+longer disappear from the chip list just because installed sources happen to be mostly English.
+Wired into `RecommendationsSettingsScreenModel` with a new reactive collector on
+`availableExtensionsFlow`/language-preference changes. Audited the 9 other readers of
+`recommendationSourceLanguages()` — no other mismatches found.
+
+Delivered (Workstream B): new `RecommendationMatchingVersionsSettingsScreen` ("Matching and
+versions") holds Same Manga Matching and Best Version Preview, moved out of Source Priority (whose
+"physical adjacency" placement comment no longer applied). Index screen, search index (with a
+`matching_versions` category entry), and both anchor/search-index test files updated; no duplicated
+controls between the two destinations.
+
+Delivered (Workstream C): investigation found the plan's own evidence for outdated-reassessment
+counts did not match current code — `state.staleCandidates.size` and the stale-reassess button
+label already used only the actionable/workable count, with a separate non-inflating
+`outdated_unreachable_note`. No functional UI change was required; extracted the completion-display
+condition into a new tested `SourceEvaluationStaleCompletionDisplayPolicy` for C2's optional
+testability allowance, and confirmed C3's installed-extension evaluation boundary is unchanged.
+
+Delivered (Workstream D): `TasteSuggestionVisibilityPolicy` rewritten from a boolean `expanded` flag
+to an integer visible-count (`DEFAULT_VISIBLE = 10`, `REVEAL_STEP = 10`) with `visible()`,
+`nextVisibleCount()`, `canShowMore()`, `canShowAll()`, `canShowFewer()`. `TasteSuggestionGroup` and
+`TagPreferenceGroup` both updated to genuinely reveal 10 at a time ("Show N more" / "Show all (N)" /
+"Show fewer") instead of the old "Show more" action that revealed every remaining item at once
+despite its "(%d)" label implying a bounded reveal. Tag colors and mutation behavior unchanged.
+
+Delivered (Workstream E): confirmed search entries already route correctly to the new destinations
+(no duplicate rows). Fixed a real raw-exception leak in `ExceptionFormatter.formattedMessage`:
+`RecoverableSourceRuntimeException` (thrown by `getOrThrowSourceRuntimeException()` for any
+recoverable per-source failure) was not unwrapped before classification, so every recoverable
+failure surfaced through For You / Matching-and-versions rows as
+`"RecoverableSourceRuntimeException: ..."` instead of a clean message — including a `LinkageError`
+cause that the existing `is LinkageError` branch was meant to sanitize but never reached. Now
+recurses on `sourceRuntimeFailure` before falling through to the raw-class-name branch; added an
+`UninitializedPropertyAccessException` case. Same fix applied to `CrossExtensionMatchScreen`'s
+row error text (previously `localizedMessage ?: javaClass.simpleName`). SourceRuntime boundary
+itself untouched; all existing recoverable-failure tests still pass unchanged.
+
+Delivered (Workstream F): targeted For You false no-match audit using Vortex Scans as the concrete
+example. Root cause confirmed in code: the query-attempt chain's final, most-lenient attempt
+(`TEXT_ONLY_TOP_TAGS`) searches for the literal tag words themselves (e.g. "Isekai Fantasy Action")
+as free text — most source search backends treat a multi-word query as an AND-of-words *title*
+match, so a source whose text search does not also match genres/tags can legitimately return zero
+raw results for every attempt even though its Popular catalogue has plenty of matching manga. This
+is a genuine fetched-nothing-raw case, not a misclassification of filtered/weak-metadata results —
+`hadRawResults` correctly stayed false. Fix: new pure `RecommendationCatalogueFallbackPolicy`
+(`shouldAttempt(hadRawResults, hadError)`) gates one bounded, single-page `getPopularManga(1)` probe
+after the existing attempt chain finds nothing and no source error occurred, reusing the exact same
+visibility/enrichment/scoring/merge pipeline as an ordinary successful attempt — every existing
+filter (blocked/adult/known/rated/seen/min-chapter/dedup) still applies unchanged, and the fallback
+is never persisted as a "successful strategy" so it can't get locked in over the real tag-search
+strategies. `RecommendationDiscoveryPlanner`'s existing page/attempt caps are untouched — this adds
+exactly one bounded probe, not unbounded crawling.
+
+Files changed: `app/src/main/java/exh/recs/RecommendationLanguageAvailabilityPolicy.kt` (new),
+`app/src/main/java/exh/recs/settings/RecommendationsSettingsScreenModel.kt`,
+`app/src/main/java/exh/recs/settings/RecommendationMatchingVersionsSettingsScreen.kt` (new),
+`app/src/main/java/exh/recs/settings/RecommendationSourcePrioritySettingsScreen.kt`,
+`app/src/main/java/exh/recs/settings/RecommendationSettingsIndexScreen.kt`,
+`app/src/main/java/exh/recs/settings/RecommendationSettingsSearchScreen.kt`,
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationStaleCompletionDisplayPolicy.kt` (new),
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt`,
+`app/src/main/java/exh/recs/settings/TasteSuggestionVisibilityPolicy.kt`,
+`app/src/main/java/exh/recs/settings/RecommendationSettingsSharedComponents.kt`,
+`app/src/main/java/eu/kanade/presentation/util/ExceptionFormatter.kt`,
+`app/src/main/java/exh/recs/matching/CrossExtensionMatchScreen.kt`,
+`app/src/main/java/exh/recs/RecommendationCatalogueFallbackPolicy.kt` (new),
+`app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt`,
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=763),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`.
+
+Tests added/updated: `RecommendationLanguageAvailabilityPolicyTest` (7, new),
+`RecommendationSettingsScreenAnchorKeysTest` (updated for the new screen's keys),
+`SourceEvaluationStaleCompletionDisplayPolicyTest` (4, new), `TasteSuggestionVisibilityPolicyTest`
+(rewritten for the integer-count API), `RecommendationCatalogueFallbackPolicyTest` (4, new).
+
+Tests run:
+
+- `exh.recs.settings.*`, `exh.recs.evaluation.*`, `exh.recs.RecommendationLanguageAvailabilityPolicyTest`, `exh.recs.RecommendationCatalogueFallbackPolicyTest`, `eu.kanade.tachiyomi.source.SourceRuntimeTest`, `exh.recs.RecommendationErrorClassifierExtensionLinkageTest`, `exh.recs.RecommendationSourceFailureIsolationTest` — all PASSED
+- Full `:app:testDebugUnitTest` — BUILD SUCCESSFUL
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.12-debug.apk
+```
+
+### KMK-Recs v0.8.12-fix1 (fatal-error containment correction, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `764`/`"KMK-Recs v0.8.12-fix1"` — a real behavior/safety
+correction (not cosmetic-only), so this pass adds a genuine What's New entry per the canonical rule.
+
+Follow-up report:
+
+- `docs/community/KMK_RECS_V0_8_12_FIX1_FATAL_ERROR_CONTAINMENT_IMPLEMENTATION.md`
+
+**Problem found in review:** both `catch (e: Error)` blocks in
+`BrowsePersonalRecommendationsScreenModel.searchSource()` — the main tag-search attempt loop and the
+v0.8.12 Popular-catalogue fallback — caught every `Error` subtype unconditionally and recorded it as
+a per-source failure (or silently swallowed it, in the fallback's case). The code comments justifying
+this ("SourceRuntime.run() already rethrows fatal errors") were only true for `Error`s thrown
+*inside* a `SourceRuntime.run()`/`runBlockingSourceCall()` block. Code between those calls in the
+same `try` — enrichment, scoring, chapter-count/known-manga lookups, candidate-memory merge — runs
+outside SourceRuntime's boundary but was still covered by the same broad `catch (e: Error)`, so a
+genuinely fatal VM condition (`OutOfMemoryError`, `StackOverflowError`, `ThreadDeath`, or any other
+non-`LinkageError` `Error`) thrown from that code would have been silently recorded as an ordinary
+per-source search failure instead of propagating.
+
+**Fix:** both catch blocks now call the existing shared `rethrowIfFatal(e)` helper (already used
+elsewhere in the codebase for exactly this purpose, e.g. `MigrateMangaUseCase`/`LibraryUpdateJob`/
+`MetadataUpdateJob` since v0.8.10-fix9) before treating the caught `Error` as recoverable.
+`rethrowIfFatal` rethrows anything that is not a recoverable per-source failure (i.e. everything
+except `LinkageError` and its subtypes, after unwrapping `ExecutionException`/`CompletionException`/
+`InvocationTargetException` wrappers) and returns normally only for a genuinely recoverable failure.
+Recoverable extension/source failures (missing class, linkage failure, failed client init,
+`RecoverableSourceRuntimeException`) are still isolated exactly as before — only the fatal-error
+classification changed.
+
+**Also audited (no other defect found):** every other `catch (e: Error)` block in the recommendation
+codebase — `batch/RecommendationSearchHelper.kt`, `matching/CrossExtensionMatchScreenModel.kt`,
+`matching/SameMangaCandidateSearcher.kt`, `evaluation/SourceEvaluationRunner.kt` (2 sites) — already
+correctly checked `unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()` (or equivalent)
+before swallowing, and already rethrow anything not recoverable. Only
+`BrowsePersonalRecommendationsScreenModel.kt`'s two sites had the defect.
+
+**Catalogue fallback behavior reconfirmed unchanged:** `RecommendationCatalogueFallbackPolicy
+.shouldAttempt(hadRawResults, hadError)` still gates the fallback to run only when the tag-search
+attempts found zero raw results and no error occurred; the probe is still a single bounded
+`getPopularManga(1)` call with no retry loop; results still go through the same
+`filterVisibleCandidates`/enrichment/scoring/`RecommendationCandidateMemoryRanker.merge`/cache
+pipeline as an ordinary attempt; the fallback's `successfulStrategy` is still always `null`, so a
+failed or fatal-erroring probe can never be recorded as a successful tag-search strategy.
+
+Files changed: `app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt`,
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=764),
+`app/src/test/java/exh/recs/BrowsePersonalRecommendationsFatalErrorHandlingTest.kt` (new),
+`app/src/test/java/exh/recs/KmkRecsReleaseNotesTest.kt`, plus documentation listed above.
+
+Tests added: `BrowsePersonalRecommendationsFatalErrorHandlingTest` — 11 tests covering recoverable
+`LinkageError`/`RecoverableSourceRuntimeException`/ordinary `Exception` isolation, fatal
+`OutOfMemoryError`/`StackOverflowError`/`ThreadDeath`/`AssertionError` propagation (both the main loop
+and fallback catch-block shapes), and the fallback's single-bounded-attempt gate.
+
+Tests run:
+
+- `exh.recs.BrowsePersonalRecommendationsFatalErrorHandlingTest`, `eu.kanade.tachiyomi.source.SourceRuntimeTest`, `exh.recs.RecommendationSourceFailureIsolationTest`, `exh.recs.RecommendationCatalogueFallbackPolicyTest`, `exh.recs.KmkRecsReleaseNotesTest` — all PASSED
+- Full `:app:testDebugUnitTest` — BUILD SUCCESSFUL
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.12-fix1-debug.apk
+```
+
+### KMK-Recs v0.8.13 (For You strategy recovery and relevance, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `765`/`"KMK-Recs v0.8.13"` — real recommendation-quality
+behavior change, so this pass adds a genuine What's New entry.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_13_FOR_YOU_STRATEGY_RECOVERY_AND_RELEVANCE_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_13_FOR_YOU_STRATEGY_RECOVERY_AND_RELEVANCE_IMPLEMENTATION.md`
+
+Live-device audit (Vortex Scans) confirmed two structural bugs beyond the v0.8.12 catalogue
+fallback: (1) a persisted `TEXT_ONLY_TOP_TAGS` strategy was terminal in `RecommendationQueryPlanner`
+and never actively cleared on failure, permanently trapping a source in the least reliable search
+strategy; (2) `PersonalRecommendationScorer.rankCandidates`/`RecommendationCandidateMemoryRanker
+.merge` let a candidate become eligible from source affinity alone, with no actual tag match --
+confirmed live in `recommendation_candidate_memory` rows with a positive score and null
+`matched_groups_json`.
+
+Delivered (Phases A-H): new `RecommendationStrategyRecoveryPolicy` decides whether a persisted
+strategy hint is still trustworthy before `RecommendationQueryPlanner.buildPlans` uses it, and
+`BrowsePersonalRecommendationsScreenModel.load()` now actively removes a source's persisted strategy
+on `NoMatches`/`FilteredOut`/`Error`/`HiddenByDuplicateHandling`. `RecommendationQueryPlanner
+.buildPlans` rewritten to delegate to `RecommendationQueryAttemptPolicy.buildTagAttemptChain` and
+rotate it, so no valid last strategy (including `TEXT_ONLY_TOP_TAGS`) can ever eliminate the other
+attempts. New `RecommendationAdditionalPagePolicy.shouldDiscoverAdditionalPage` stops extra-page
+discovery for a zero-raw page-1 query. `PersonalRecommendationScorer.rankCandidates` gained a
+`requirePositiveTasteEvidence` parameter (default `true`, backward compatible) requiring
+`matchedGroups.isNotEmpty()`; `RecommendationCandidateMemoryRanker.merge` applies the same gate
+directly. The v0.8.12 catalogue fallback now also records itself in candidate memory/discovery
+progress under a named `RecommendationCatalogueFallbackPolicy.QUERY_STRATEGY` constant (never a
+persisted strategy) for diagnosability. `searchSource()` refactored into `processRawCandidates`,
+`mergeFreshAndRememberedCandidates`, `tryCatalogueFallback`, `resolveEffectiveStrategy`, and
+`finalEmptyOutcome` helpers, deduplicating logic that previously existed twice (plan loop + catalogue
+fallback) -- no behavior change beyond the other phases' fixes. Source status strings for
+`NoMatches`/`FilteredOut` clarified. Full per-source fallback/no-evidence provenance display in
+Recommendation Settings was scoped down to string-clarity only (see implementation report for the
+documented reasoning) -- it would require new screen-model data plumbing not otherwise needed by this
+plan's core fix.
+
+Tests added: `RecommendationStrategyRecoveryPolicyTest` (14), `RecommendationAdditionalPagePolicyTest`
+(5), plus updates to `RecommendationQueryPlannerTest`, `RecommendationCatalogueFallbackPolicyTest`,
+`PersonalRecommendationScorerTest`, `RecommendationCandidateMemoryRankerTest`,
+`KmkRecsReleaseNotesTest`.
+
+Tests run:
+
+- `exh.recs.*` (full package) — all PASSED
+- Full `:app:testDebugUnitTest` — BUILD SUCCESSFUL
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.13-debug.apk
+```
+
+### KMK-Recs v0.8.13-fix1 (Recommendation Settings and Source Evaluation UX, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `766`/`"KMK-Recs v0.8.13-fix1"` — real UX changes, so this
+pass adds a genuine What's New entry.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_13_FIX1_RECOMMENDATION_SETTINGS_AND_EVALUATION_UX_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_13_FIX1_RECOMMENDATION_SETTINGS_AND_EVALUATION_UX_IMPLEMENTATION.md`
+
+Live-device evidence (Samsung tablet, ADB) confirmed a Recommendation Settings search flicker:
+`produceState(initialValue = null, ...)` combined with `Crossfade(targetState = result)` intentionally
+passed every keystroke through a null/blank state and cross-faded to the result list; `uiautomator
+dump` failed with "could not get idle state" while the crossfade animated. Fixed by replacing both
+with a synchronous `remember(entries, searchKey)` computation (the search itself is pure, local, and
+cheap) — rows now render fully opaque immediately, no intermediate state.
+
+Delivered (Phases A-G): search-result category/control row distinction (`Category · summary`
+subtitle for anchored control rows, vs. category alone for category rows) so a query like "fil" no
+longer reads as several identical Source Evaluation rows; language selector moved from For You
+Display to Source Priority (source scope, not display density) and group-recommendation preview
+budget moved from For You Display to Matching and versions (controls group-recommendation previews,
+not the main For You page) — both pure moves, same preference keys, every language still available;
+new read-only "Preview For You layout" dialog on Source Priority
+(`RecommendationForYouPreviewPolicy`) showing source order/enabled/liked/disliked/boosted/last-status/
+result-budget/selected-languages from already-loaded state only — no network, source, or fetch calls;
+`SourceEvaluationStaleCompletionDisplayPolicy` extended to a three-state `DisplayState`
+(`Hidden`/`CompletedAllActionable`/`CompletedWithUnreachableRemaining`) so the completion card can no
+longer read as if excluded outdated rows had also been processed; `SourceEvaluationOutdatedReconciliation
+.Result` gained `hasActionableOutdated`/`hasUnreachableOutdated`/`completionStillHasUnreachableRows`
+helper properties; Source Evaluation's quarantine/blocked diagnostics now collapse by default; v0.8.13
+residual completion (`searchSource()` verified at ~350 lines, well under the compiler instruction-limit
+risk threshold — no further extraction needed; duplicate v0.8.13 encyclopedia rows merged into one).
+
+**Deferred, documented (not implemented this pass):** fallback/provenance UI in Source Priority/For
+You source status details (showing when a source's last useful candidates came from
+`RecommendationCatalogueFallbackPolicy.QUERY_STRATEGY`) requires new screen-model data plumbing
+(`RecommendationsSettingsScreenModel` has no dependency on candidate-memory/discovery-progress stores
+today) — the same scope boundary documented in the v0.8.13 implementation report's Phase H. Recorded
+as a `NEXT_WORK.md` item; the underlying data already exists (v0.8.13 Phase D), only the read-side UI
+wiring remains.
+
+Files changed: `app/src/main/java/exh/recs/settings/RecommendationSettingsSearchScreen.kt`,
+`RecommendationSettingsSearchIndex.kt` (no functional change, re-verified), `RecommendationForYouSettingsScreen.kt`,
+`RecommendationSourcePrioritySettingsScreen.kt`, `RecommendationMatchingVersionsSettingsScreen.kt`,
+`RecommendationSettingsIndexScreen.kt`, `RecommendationForYouPreviewPolicy.kt` (new),
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationOutdatedReconciliation.kt`,
+`SourceEvaluationStaleCompletionDisplayPolicy.kt`, `SourceEvaluationScreen.kt`,
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=766),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`, `docs/KMK_MARKDOWN_ENCYCLOPEDIA.md`
+(duplicate row merge).
+
+Tests added/updated: `RecommendationSettingsSearchIndexTest` (+5), `RecommendationSettingsScreenAnchorKeysTest`
+(updated for moved/new anchors), `RecommendationForYouPreviewPolicyTest` (6, new),
+`SourceEvaluationOutdatedReconciliationTest` (+2), `SourceEvaluationStaleCompletionDisplayPolicyTest`
+(+5), `KmkRecsReleaseNotesTest` (updated).
+
+Tests run:
+
+- `exh.recs.settings.*`, `exh.recs.evaluation.*`, `exh.recs.RecommendationStrategyRecoveryPolicyTest`,
+  `exh.recs.RecommendationAdditionalPagePolicyTest`, `exh.recs.RecommendationQueryPlannerTest`,
+  `exh.recs.PersonalRecommendationScorerTest`, `exh.recs.memory.RecommendationCandidateMemoryRankerTest` — all PASSED
+- Full `:app:testDebugUnitTest` — BUILD SUCCESSFUL
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- `:app:assembleDebug` — BUILD SUCCESSFUL
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.13-fix1-debug.apk
+```
+
+### KMK-Recs v0.8.14 (Recommendation Settings Structural UX correction, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `767`/`"KMK-Recs v0.8.14"`.
+
+Plan and audit:
+
+- `docs/community/KMK_RECS_STRUCTURAL_UX_CORRECTION_AUDIT.md`
+- `docs/community/KMK_RECS_V0_8_14_RECOMMENDATION_SETTINGS_STRUCTURAL_UX_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_14_RECOMMENDATION_SETTINGS_STRUCTURAL_UX_IMPLEMENTATION.md`
+
+Live-device evidence (ADB, Samsung SM-X520) after v0.8.13-fix1 still showed 7 top-level Recommendation
+Settings rows and a `hide` search still surfacing "For You" as a result — the prior pass renamed/moved
+individual controls but never removed "For You" and "Matching and versions" as standalone top-level
+destinations, which the user judged structurally wrong (their controls are general taste/filter and
+advanced version/quality controls, not meaningful sections of their own).
+
+Delivered (Phases A-G): Recommendation Settings index rebuilt to exactly five sections — Sources and
+languages, Taste and filters, Source Evaluation, Sources to try, Management and diagnostics.
+`RecommendationForYouSettingsScreen.kt` and `RecommendationMatchingVersionsSettingsScreen.kt` deleted
+(judged safe: no serialized-navigation compatibility concern for a private/dev build); every control
+they owned moved verbatim (same `RecommendationsSettingsScreenModel` methods/preference keys, zero
+preference-behavior change) into `RecommendationTasteTagsSettingsScreen` (rated visibility, hide known
+manga, minimum chapter count) or `RecommendationDiagnosticsSettingsScreen` (result budget, find other
+versions/same-manga matching, Best Version preview, group-preview budget). Search routing and anchor
+tests updated to match. Source Evaluation's stale-reassessment contract was already correct at the
+count/button level from v0.8.13-fix1 (`state.staleCandidates` was already actionable-only); this pass
+closed the two remaining gaps: the completion message now states the exact excluded count ("Actionable
+outdated sources reassessed. N outdated source(s) are outside this run because they are installed,
+filtered, or excluded."), and a past-evaluation row that is outdated but excluded from the current
+reassessment pool now reads "Outdated — not included in this run" instead of "Outdated — reassess
+needed" (`EvaluationResultRow` gained an `isActionableOutdated` param wired from
+`state.outdatedReconciliation.workableOutdatedExtensionKeys`). Source Evaluation's first screen also
+had its remaining visual fog reduced: the skip/include-explicit toggles, candidate diagnostics, and the
+installer-mode selector are now collapsed by default behind "More setup options"/"Installer details"
+disclosures — the installer selector still force-shows whenever the installer isn't ready, so no
+critical setup detail is ever hidden. A few remaining technical terms ("probe", "eligible") in primary
+Source Evaluation copy were replaced with plain wording.
+
+Files changed: `app/src/main/java/exh/recs/settings/RecommendationSettingsIndexScreen.kt`,
+`RecommendationSettingsSearchScreen.kt`, `RecommendationTasteTagsSettingsScreen.kt` (rewritten),
+`RecommendationDiagnosticsSettingsScreen.kt` (rewritten), `RecommendationSourcePrioritySettingsScreen.kt`
+(renamed to Sources and languages), `RecommendationForYouSettingsScreen.kt` (deleted),
+`RecommendationMatchingVersionsSettingsScreen.kt` (deleted),
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationOutdatedReconciliation.kt` (doc only, contract
+unchanged), `SourceEvaluationStaleCompletionDisplayPolicy.kt` (doc only, contract unchanged),
+`SourceEvaluationScreen.kt`, `SourceEvaluationScreenModel.kt` (`showSetupOptions`/`showInstallerDetails`
+state + toggles), `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=767),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`.
+
+Tests added/updated: `RecommendationSettingsSearchIndexTest` (5-section fixtures + new tests),
+`RecommendationSettingsScreenAnchorKeysTest` (rewritten key lists; new `setup_options_toggle`/
+`installer_details_toggle` static keys), `SourceEvaluationOutdatedReconciliationTest` (+1,
+`workableOutdatedExtensionKeys` membership).
+
+Tests run:
+
+- `:app:testDebugUnitTest --tests "*RecommendationSettingsSearchIndexTest" --tests
+  "*RecommendationSettingsScreenAnchorKeysTest" --tests "*SourceEvaluationOutdatedReconciliationTest"
+  --tests "*SourceEvaluationStaleCompletionDisplayPolicyTest"` — all PASSED
+- `:app:compileDebugKotlin` — BUILD SUCCESSFUL
+- Full `:app:testDebugUnitTest`, `:app:spotlessCheck`, `:app:assembleDebug` — pending final verification
+  pass (see implementation report for final status).
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.14-debug.apk
+```
+
+### KMK-Recs v0.8.14-fix1 (Recommendation Settings structural completion, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `768`/`"KMK-Recs v0.8.14-fix1"`.
+
+Plan, live-device follow-up, and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_14_LIVE_DEVICE_STRUCTURAL_UX_FOLLOWUP.md`
+- `docs/community/KMK_RECS_V0_8_14_FIX1_RECOMMENDATION_SETTINGS_STRUCTURAL_COMPLETION_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_14_FIX1_RECOMMENDATION_SETTINGS_STRUCTURAL_COMPLETION_IMPLEMENTATION.md`
+
+Live-device review (ADB, Samsung SM-X520) after v0.8.14 confirmed that pass renamed/moved individual
+controls but did not fully implement the intended structure: the top-level row still said "Sources and
+languages" with language selection bundled into it, the "Preview For You" dialog still showed only
+source order/status text (never actual manga), and the Source Evaluation excluded-sources note still
+sat ahead of the "Reassess outdated" action, reading as if it blocked that action.
+
+Delivered (Phases A-F): "Sources and languages" renamed "For You sources" (index label + screen `AppBar`
+title); `LanguageSelectorContent` moved from that screen to `RecommendationDiagnosticsSettingsScreen`'s
+new "Recommendation languages" section (same `state.recommendationLanguages`/`state.availableLanguages`/
+`screenModel::toggleRecommendationLanguage`, zero preference-behavior change); the Preview For You action
+moved from the bottom of the source screen to the top. The status-only preview was replaced entirely: a
+new `RecommendationForYouPreviewSnapshot`/`RecommendationForYouPreviewSnapshotStore` (compact
+control-character-delimited string format, same style as `RecommendationSourceRunStatusStore`, capped at
+21 rows / 30 manga per row, storing only manga id/source id/url/title/thumbnail url — no descriptions,
+genres, or scores) is built by `BrowsePersonalRecommendationsScreenModel.persistForYouPreviewSnapshot()`
+after a For You run finishes with at least one visible row (Top Picks first, then deduped visible source
+rows in priority order) and persisted to the new `recommendationForYouPreviewSnapshot()` preference;
+`RecommendationsSettingsScreenModel` reads and live-updates it via `.changes()`, the same pattern already
+used for source-run statuses. The new `ForYouSnapshotPreviewDialog` renders actual manga covers
+(`MangaCover.Book`, no `onClick`) and titles in horizontally-scrolling rows — no source calls, no network
+calls beyond the already-cached cover images, no manga/source navigation. Source Evaluation: the
+`Reassess outdated (N)` action (already actionable-count-only since v0.8.13-fix1/v0.8.14) now renders
+ahead of the excluded/unreachable-sources note, which is now a collapsed `N outdated source(s) outside
+this run` `DisclosureToggleRow` instead of an always-visible `InfoCard`. Recommendation Settings search:
+category-level result rows no longer fall back to showing their own category name as a subtitle when it
+equals the title (previously every category row read like "Taste and filters" / "Taste and filters");
+"language" search now routes to Management and diagnostics, not For You sources. Stale
+`RecommendationForYouSettingsScreen`/`RecommendationMatchingVersionsSettingsScreen` references audited
+across active code — every remaining mention is inside a comment explicitly marked "retired"/"former",
+no live imports or instantiations exist. Two icon-only tap targets in `EvaluationResultRow` (the
+rec-quality/catalogue-evidence `Show details`/`Hide details` toggles, previously a 20dp `IconButton`
+next to a non-clickable label) were changed to whole-row clickable targets, and the row overflow menu
+(previously a 28dp `IconButton`) now uses the default 48dp `IconButton` size.
+
+Files changed: `app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt` (new
+`recommendationForYouPreviewSnapshot()` preference),
+`app/src/main/java/exh/recs/settings/RecommendationForYouPreviewSnapshotStore.kt` (new, replaces the
+deleted `RecommendationForYouPreviewPolicy.kt`), `RecommendationSourcePrioritySettingsScreen.kt`,
+`RecommendationDiagnosticsSettingsScreen.kt`, `RecommendationSettingsIndexScreen.kt`,
+`RecommendationSettingsSearchScreen.kt`, `RecommendationSettingsSearchIndex.kt` (doc only),
+`RecommendationSettingsSharedComponents.kt` (doc only),
+`RecommendationNonInstalledDiscoverySettingsScreen.kt` (doc only), `RecommendationsSettingsScreenModel.kt`,
+`app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt`,
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt`,
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationScreenModel.kt`,
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=768),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`.
+
+Tests added/updated: `RecommendationForYouPreviewSnapshotStoreTest` (9, new, round-trip/cap/malformed
+coverage), `RecommendationSettingsScreenAnchorKeysTest` (rewritten `forYouSourcesKeys`, moved language
+keys into `diagnosticsKeys`, new `outdated_excluded_toggle` static key), `RecommendationSettingsSearchIndexTest`
+(fixture renamed, new "Sources and languages" retirement test, `searching language` test repointed to
+Management and diagnostics), `KmkRecsReleaseNotesTest` (updated heading order). Deleted:
+`RecommendationForYouPreviewPolicyTest.kt` (its subject, `RecommendationForYouPreviewPolicy`, was deleted
+— replaced by the real snapshot).
+
+Tests run:
+
+- `:app:testDebugUnitTest --tests "*RecommendationSettingsSearchIndexTest" --tests
+  "*RecommendationSettingsScreenAnchorKeysTest" --tests "*RecommendationForYouPreview*" --tests
+  "*SourceEvaluationOutdated*" --tests "*SourceEvaluationStaleCompletionDisplayPolicyTest"` — all PASSED
+- `:app:compileDebugKotlin` — BUILD SUCCESSFUL
+- Full `:app:testDebugUnitTest`, `:app:spotlessCheck`, `:app:assembleDebug` — see implementation report
+  for final status.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.14-fix1-debug.apk
+```
+
+### KMK-Recs v0.8.15 (Source Evaluation reassessment fix and universal UI readability, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `769`/`"KMK-Recs v0.8.15"`.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_15_SOURCE_EVALUATION_REASSESSMENT_AND_UNIVERSAL_UI_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_15_SOURCE_EVALUATION_REASSESSMENT_AND_UNIVERSAL_UI_IMPLEMENTATION.md`
+
+Live ADB evidence (device `R5GL201CAQX`, package `app.komikku.dev`) confirmed a false-completion bug:
+tapping `Reassess outdated (25)` finished in under a second, showed `Evaluation completed`, but a
+before/after database comparison showed zero source_evaluation changes, and 44 of the 48 stale rows
+had a non-null `source_id`. Root cause, confirmed by code inspection: `SourceEvaluationRunner
+.recordExtensionError()` wrote its error record via a fire-and-forget `scope.launch { ... }` (never
+awaited, so the batch/worker could reach a terminal state before the write landed), and built its key
+with `sourceId = null` (`SourceEvaluationScorer.errorRecord()`), which never matches — and so never
+replaces — existing per-source stale rows. Fixed: `recordExtensionError()` is now `suspend` and
+awaited directly by every caller in `evaluateExtension()`; it now also calls the already-existing
+`SourceEvaluationRepository.deleteByPackage`/`DeleteSourceEvaluation.awaitByPackage` (no schema
+change) to clear old per-source rows for that package/signature before upserting the current
+extension-level row. `evaluateExtension()` now returns whether it durably wrote anything, and the
+runner only advances `_completedCandidateKeys` (used for both stale-cursor advancement and the
+end-of-run status decision) for durably-handled candidates instead of every candidate handed to it.
+The end-of-run decision itself was extracted into a new pure `SourceEvaluationRunCompletionPolicy
+.resolveStatus(candidatesCount, durablyHandledCount)`: a non-empty batch with zero durable writes now
+resolves to a new `SourceEvaluationQueueState.Status.NoActionableWork` terminal status (own icon/message,
+same terminal/idle/lifecycle handling as Completed/Failed/etc.) instead of the misleading generic
+`Completed`.
+
+Also started the universal KMK UI readability audit (Phase B): Source Evaluation past-evaluation rows'
+main subtitle compacted from a single dense line (extension, language, catalogue fit %, metadata
+confidence, evidence strength, last-evaluated all at once) to `"<verdict> • Last evaluated ..."`, with
+the dropped raw facts moved into the row's existing expandable evidence-details disclosure; three
+Recommendation Settings summaries (`same_manga_match_preselect_summary`, `rec_enrichment_cap_summary`,
+`rec_group_preview_budget_summary`) shortened to plainer first-view wording; two mojibake'd strings
+(an en dash rendering as `1â€“2`, a multiplication sign rendering as `2Ã—`) corrected to plain ASCII;
+new living `docs/community/KMK_RECS_UNIVERSAL_UI_READABILITY_AUDIT.md` covering every KMK-added
+Recommendation Settings/For You surface (several verified compliant this pass without changes,
+several explicitly deferred with reasons — no surface claimed compliant without being opened and read
+this pass).
+
+Files changed: `app/src/main/java/exh/recs/evaluation/SourceEvaluationRunner.kt`,
+`SourceEvaluationQueueState.kt`, `SourceEvaluationRunCompletionPolicy.kt` (new),
+`SourceEvaluationCompletionLifecyclePolicy.kt`, `SourceEvaluationScreen.kt`,
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=769),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`,
+`docs/community/KMK_RECS_UNIVERSAL_UI_READABILITY_AUDIT.md` (new).
+
+Tests added: `SourceEvaluationRunCompletionPolicyTest` (4, new), `SourceEvaluationQueueStateTest` (4,
+new), `SourceEvaluationCompletionLifecyclePolicyTest` (+1, NoActionableWork lifecycle coverage).
+
+Tests run:
+
+- `:app:testDebugUnitTest --tests "exh.recs.evaluation.*" --tests "exh.recs.settings.*" --tests
+  "exh.recs.KmkRecsReleaseNotesTest"` — all PASSED
+- `:app:spotlessCheck` — BUILD SUCCESSFUL
+- Full `:app:testDebugUnitTest`, `:app:assembleDebug` — see implementation report for final status.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.15-debug.apk
+```
+
+### KMK-Recs v0.8.15-fix1 (Source Evaluation stale queue and row readability, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `770`/`"KMK-Recs v0.8.15-fix1"`.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_15_FIX1_SOURCE_EVALUATION_STALE_QUEUE_AND_ROW_READABILITY_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_15_FIX1_SOURCE_EVALUATION_STALE_QUEUE_AND_ROW_READABILITY_IMPLEMENTATION.md`
+
+Live ADB/database evidence (device `SM_X520`, package `app.komikku.dev`) showed v0.8.15 did not fully
+close the "Reassess outdated" false-progress bug: `Reassess outdated (25)` advanced to `Continue
+reassessing outdated (15 remaining)` and reported `Evaluation completed`, but `source_evaluation` had
+the same 48 stale rows before and after (425 total rows, 48 stale, 44 stale source-level + 4 stale
+extension-level, unchanged). Root cause: `SourceEvaluationCandidateQueuePolicy.staleCandidates(...)`
+built the stale queue from `pool.allEligible`, which deliberately does not apply explicit/adult-content
+blocking (that filtering is option-based, applied downstream by `SourceEvaluationCandidateFilter
+.applyOptions` for the *unassessed* queue only). An explicit-blocked extension could therefore still
+enter `state.staleCandidates`; `SourceEvaluationRunner.start()` correctly skipped it before any database
+write (blocking is honored) but still added its key to the cursor-tracking set, so the stale cursor
+advanced past sources that were never actually processed.
+
+Delivered (Fixes A-G): `staleCandidates(...)` gained an `includeExplicit` parameter and now filters
+blocked-explicit extensions out of the actionable list itself, mirroring `applyOptions`'s existing
+behavior -- non-actionable candidates never reach the runner in the first place.
+`SourceEvaluationScreenModel` passes `opts.includeExplicitCandidates` through. As a second, independent
+guarantee, the runner's cursor-tracking set was kept as `_completedCandidateKeys` but contract-narrowed to durable writes only and the
+deliberate explicit-skip branch no longer adds to it at all (only `skippedCount` increments) -- so even
+a future no-write skip path could never advance the cursor or satisfy
+`SourceEvaluationRunCompletionPolicy`'s durable-write count. `recordExtensionError()`'s v0.8.15
+delete-before-upsert step is now failure-aware: it returns whether the delete succeeded, every call
+site propagates that as the candidate's durable-handled result (`return recordExtensionError(...)`
+instead of an unconditional `return true`), and a new `SourceEvaluationQueueState
+.reconciliationFailedCount` plus in-app note gives an honest explanation instead of a silent
+retry-forever loop. Also delivered the plan's clarified Source Evaluation row-action model: a new pure
+`SourceEvaluationRowActionPolicy` (`InstallEligibility`, `hasErrorInfo`); the existing catalogue-evidence
+disclosure keeps its "Details" label; the existing rec-quality/search-compatibility disclosure was
+renamed "Errors" (`source_evaluation_row_show_details`/`hide_details` string values changed) and now
+also covers catalogue-level evaluation errors; a new "Install" `TextButton` reuses
+`extensionManager.installExtension(...)` via a new `SourceEvaluationScreenModel
+.installEvaluatedSource()`, shown only when `canOfferInstall` confirms the source is not installed,
+blocked/quarantined, or unavailable; and a page-level "Sources to try" app-bar action navigates to the
+existing `RecommendationNonInstalledDiscoverySettingsScreen` (no duplicate screen). No source-quality
+rating controls were added to Source Evaluation. No schema/migration changes.
+
+Files changed: `app/src/main/java/exh/recs/evaluation/SourceEvaluationCandidateQueuePolicy.kt`,
+`SourceEvaluationRunner.kt`, `SourceEvaluationScreenModel.kt`, `SourceEvaluationScreen.kt`,
+`SourceEvaluationQueueState.kt`, `SourceEvaluationRowActionPolicy.kt` (new),
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=770),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`.
+
+Tests added/updated: `SourceEvaluationCandidateQueuePolicyTest` (+4, explicit-blocking cases),
+`SourceEvaluationRowActionPolicyTest` (9, new), `KmkRecsReleaseNotesTest` (heading order updated).
+
+Tests run:
+
+- `:app:testDebugUnitTest --tests "exh.recs.evaluation.*" --tests "exh.recs.KmkRecsReleaseNotesTest"`
+  — all PASSED
+- `:app:compileDebugKotlin` — BUILD SUCCESSFUL
+- `:app:spotlessCheck`, full `:app:testDebugUnitTest`, `:app:assembleDebug` — see implementation report
+  for final status.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.15-fix1-debug.apk
+```
+
+### KMK-Recs v0.8.16 (Interaction, changelog, and Best Version polish, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `771`/`"KMK-Recs v0.8.16"`.
+
+Plan and implementation report:
+
+- `docs/community/KMK_RECS_V0_8_16_INTERACTION_CHANGELOG_AND_BEST_VERSION_POLISH_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_16_INTERACTION_CHANGELOG_AND_BEST_VERSION_POLISH_IMPLEMENTATION.md`
+
+Delivered:
+
+- **Phase A** — `MangaInfoHeader.MangaActionRow`: "Find best version" moved out of the taste/seen
+  dropdown into its own `MangaActionButton` (`Icons.AutoMirrored.Outlined.CompareArrows`), gated only
+  on `onFindBestVersionClicked != null` (no longer coupled to `onSeenClicked`).
+- **Phase B** — `BestVersionCompareScreenModel`/`BestVersionCompareScreen`: candidate rows in
+  confirmation/chapter-selection/preview now show source name (`sourceName(sourceId)`, resolved via
+  the already-injected `SourceManager`); a new `FullscreenCandidatePreviewDialog` shows every sampled
+  page for one candidate in a scrollable, read-only view with source/title context; `confirmMigration`
+  now stores `completedTargetMangaId = target.id` (candidates are already localized by
+  `SameMangaCandidateSearcher`, so no second `networkToLocalManga` call was needed) and Done
+  navigates via a new pure `BestVersionMigrationCompletionPolicy` (`navigator.replace(MangaScreen(...))`
+  on success, `navigator.pop()` fallback if the target id is somehow null).
+- **Phase C** — `BrowsePersonalRecommendationsTab`/`BrowsePersonalRecommendationsScreenModel`: long-press
+  on a For You card enters selection mode (new pure `ForYouSelectionPolicy`, keyed by
+  `MangaIdentityKey`); a bottom action bar offers Love/Like/Dislike (`SetMangaTasteBatch`, already
+  registered in `KMKDomainModule`), Not interested (`SeenRecommendationMangaStore`, same store manga
+  detail already uses), and (single-selection only) Find best version / Open. Bulk add-to-library was
+  evaluated and deliberately deferred (documented, not a fake button) -- it needs category-selection UX
+  beyond this pass's scope.
+- **Phase D** — new pure `KmkRecsReleaseNotesGroupingPolicy` splits `KmkRecsReleaseNotes.MARKDOWN` into
+  per-version sections and groups by major.minor family; `KmkRecsWhatsNewScreen` now renders each family
+  as an expandable section (current v0.8.x expanded, older families collapsed with a short summary)
+  using `InfoScreen` + `MarkdownRender` directly -- the official upstream `WhatsNewScreen` is untouched.
+  No historical entry was deleted or reformatted.
+- **Phase E** — `SourceEvaluationContinuationPolicyTest`'s stale doc comment (claiming completed keys are
+  populated "unconditionally on handoff") corrected to describe the v0.8.15-fix1 durable-write-only
+  contract; new pure `SourceEvaluationExtensionErrorReconciliationPolicy` extracted from
+  `SourceEvaluationRunner.recordExtensionError()`'s delete-then-upsert decision, with direct test
+  coverage (`SourceEvaluationExtensionErrorReconciliationPolicyTest`) -- full runner-level testing
+  remains too heavy (no fake/mock harness for the delete/upsert interactors in this suite, consistent
+  with the v0.8.15-fix1 precedent). `NEXT_WORK.md`'s v0.8.15/v0.8.15-fix1 rolling sections were verified
+  to already read as historical/resolved, not pending -- no change needed there.
+
+Files changed: `app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt`,
+`app/src/main/java/exh/recs/bestversion/BestVersionCompareScreenModel.kt`,
+`BestVersionCompareScreen.kt`, `BestVersionMigrationCompletionPolicy.kt` (new),
+`app/src/main/java/exh/recs/BrowsePersonalRecommendationsTab.kt`,
+`BrowsePersonalRecommendationsScreenModel.kt`, `ForYouSelectionPolicy.kt` (new),
+`app/src/main/java/eu/kanade/tachiyomi/ui/more/KmkRecsWhatsNewScreen.kt`,
+`app/src/main/java/exh/recs/KmkRecsReleaseNotesGroupingPolicy.kt` (new),
+`app/src/main/java/exh/recs/evaluation/SourceEvaluationExtensionErrorReconciliationPolicy.kt` (new),
+`SourceEvaluationRunner.kt`, `app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=771),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`.
+
+Tests added/updated: `BestVersionMigrationCompletionPolicyTest` (new), `ForYouSelectionPolicyTest` (new),
+`KmkRecsReleaseNotesGroupingPolicyTest` (new),
+`SourceEvaluationExtensionErrorReconciliationPolicyTest` (new),
+`SourceEvaluationContinuationPolicyTest` (comment fix, no behavior change), `KmkRecsReleaseNotesTest`
+(heading order + rating-menu wording scoped to the current entry).
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.16-debug.apk
+```
+
+### KMK-Recs v0.8.16-fix1 (UI readability and responsive polish, complete)
+
+`VERSION_CODE`/`VERSION_NAME` bumped to `772`/`"KMK-Recs v0.8.16-fix1"`.
+
+Plan and evidence:
+
+- `docs/community/KMK_RECS_V0_8_16_FIX1_UI_READABILITY_AND_RESPONSIVE_POLISH_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_16_FIX1_UI_READABILITY_AND_RESPONSIVE_POLISH_IMPLEMENTATION.md`
+- `C:\Users\USER\Downloads\Komikku\diagnostics\ui-audit-v0.8.16\UI_AUDIT_NOTES.md` (live ADB tablet audit)
+
+Delivered (Phases A-G):
+
+- **Phase A** — Source Evaluation reassessment copy: `source_evaluation_stale_reassess_complete_partial`
+  reworded from one success-reading sentence into two clearer sentences ("Finished reassessing... N
+  source(s) were skipped this run."); `source_evaluation_outdated_excluded_toggle` label shortened to
+  "N skipped source(s)". `SourceEvaluationStaleCompletionDisplayPolicy`'s existing three-state
+  `DisplayState` (Hidden/CompletedAllActionable/CompletedWithUnreachableRemaining) and its existing
+  test coverage already satisfied the plan's required scenarios -- no policy/test change needed, copy
+  only. The stale-reassess CTA already only renders when `state.staleCandidates.isNotEmpty()` (pre-
+  existing), so a zero-actionable state already shows no runnable-looking button.
+- **Phase B** — `EvaluationResultRow`: subtitle bumped `bodySmall` → `bodyMedium`; `Details`/`Errors`/
+  `Install` toggle labels bumped `labelSmall` → `bodySmall` and merged into one shared `FlowRow` so they
+  sit side by side on wide screens and wrap on narrow width instead of each always claiming a full-width
+  line. Raw metrics inside expanded Details/Errors remain `labelSmall` (unchanged -- true secondary
+  diagnostics).
+- **Phase C** — new pure `ForYouSelectionActionLayoutPolicy` (`layoutFor(maxWidthDp)`,
+  `overflowActions(layout, isSingleSelection)`); `ForYouSelectionBottomBar` wrapped in
+  `BoxWithConstraints`, compact width (<720dp) keeps Love/Like/Dislike visible and moves Not
+  interested/Find best version/Open into a "More" `DropdownMenu`; wide width renders every action
+  exactly as v0.8.16 did. No action was removed at any width.
+- **Phase D** — `ForYouSnapshotPreviewDialog` rebuilt from a compact `AlertDialog`
+  (`LazyColumn(heightIn(max = 420.dp))`) to a full-screen `Dialog` + `Scaffold`/`AppBar`, matching
+  `BestVersionCompareScreen`'s existing fullscreen-dialog pattern; height cap removed; close action is
+  top-left (`AppBar`'s standard navigation-icon position, matching every other Komikku/KMK top app bar
+  in this app, not a top-right-only icon). Still consumes only `RecommendationForYouPreviewSnapshot`;
+  no `onClick` was added to any card/row.
+- **Phase E** — Recommendation Settings index: new dedicated `rec_settings_index_evaluation_summary`
+  ("Find sources that match your taste.") replaces the reused `source_evaluation_settings_desc`
+  ("Temporarily install non-installed extensions...") on both the index row and the search-result
+  summary; `rec_settings_index_taste_filters_summary`/`_discovery_summary`/`_management_summary`
+  shortened to plainer sentences. Search synonyms (installer, background, network, shizuku, ...)
+  unchanged.
+- **Phase F** — `SampledPage` now carries `eu.kanade.domain.manga.model.PagePreview(index, imageUrl,
+  source)` instead of a bare `imageUrl: String`; all three Best Version preview surfaces (thumbnail row,
+  single-page fullscreen, candidate fullscreen) use `SubcomposeAsyncImage(model = page.preview, ...)`
+  with explicit loading/error content instead of `AsyncImage(model = page.imageUrl)`, routing through
+  the existing `PagePreviewFetcher`/`SourceRuntime` boundary instead of bypassing it. New pure
+  `BestVersionPreviewOutcomePolicy.hasUsablePreview(count)` -- a candidate with zero usable sampled
+  pages now reports `CandidatePreviewState.PreviewError` instead of a false-success `Loaded` row.
+  `best_version_pages_loaded` copy annotated (in-code comment) as counting prepared preview pages, not
+  confirmed image-decode success; new `best_version_preview_page_failed` string replaces the previous
+  silent broken-image placeholder.
+- **Phase G** — this section, `CURRENT_STATE.md`, `NEXT_WORK.md`, `README.md`,
+  `KMK_MARKDOWN_ENCYCLOPEDIA.md`, `KMK_RECS_UNIVERSAL_UI_READABILITY_AUDIT.md`, and the implementation
+  report.
+
+Files changed: `app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt`,
+`app/src/main/java/exh/recs/BrowsePersonalRecommendationsTab.kt`,
+`app/src/main/java/exh/recs/ForYouSelectionActionLayoutPolicy.kt` (new),
+`app/src/main/java/exh/recs/settings/RecommendationSourcePrioritySettingsScreen.kt`,
+`app/src/main/java/exh/recs/settings/RecommendationSettingsIndexScreen.kt`,
+`app/src/main/java/exh/recs/settings/RecommendationSettingsSearchScreen.kt`,
+`app/src/main/java/exh/recs/bestversion/BestVersionCompareScreenModel.kt`,
+`app/src/main/java/exh/recs/bestversion/BestVersionCompareScreen.kt`,
+`app/src/main/java/exh/recs/bestversion/BestVersionPreviewOutcomePolicy.kt` (new),
+`app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt` (VERSION_CODE=772),
+`i18n-kmk/src/commonMain/moko-resources/base/strings.xml`.
+
+Tests added/updated: `ForYouSelectionActionLayoutPolicyTest` (new),
+`BestVersionPreviewOutcomePolicyTest` (new), `SampledPageTest` (new), `KmkRecsReleaseNotesTest`
+(heading order). No pre-existing test file needed behavior changes -- Phase A's copy-only fix required
+no policy/test edits, confirmed by re-running `SourceEvaluationStaleCompletionDisplayPolicyTest`.
+
+Tests run: see the implementation report for exact commands/results.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.0-kmk.8.16-fix1-debug.apk
+```
+
+### KMK-Recs v0.8.17 (complete: Phase A/B/C/D)
+
+`KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` bumped `772`/`"KMK-Recs v0.8.16-fix1"` →
+`773`/`"KMK-Recs v0.8.17"` -- unlike the Phase-D-only intermediate pass (which intentionally did not
+bump, matching the v0.8.10-fix1 through fix8 precedent for behavior-neutral passes), this final pass
+includes real user-facing recommendation changes from Phase C. App `versionCode`/`versionName` bumped
+`89`/`"1.14.0"` → `90`/`"1.14.1"` (`app/build.gradle.kts`), from Phase D.
+
+**Phase B (universal UI/action standardization audit)**: re-inspected Sources to Try, Rated manga
+collections, Group recommendations, and Best Version against the readability/interaction standard --
+all confirmed already compliant (concise rows, one visible action plus overflow menu, official
+selection-mode components reused where they fit). No code changes needed; see
+`docs/community/KMK_RECS_UNIVERSAL_UI_READABILITY_AUDIT.md` and
+`docs/community/KMK_RECS_INTERACTION_FUNCTIONALITY_AUDIT.md` for the row-by-row evidence.
+`RecommendationDiagnosticsSettingsScreen`'s density (the one surface the plan named as needing action)
+was investigated: collapsing its 6 sections by default would silently break `ScrollToAnchorEffect`
+(used by every Recommendation Settings screen's search-anchor scrolling), since it assumes every
+anchorable row stays present in the `LazyColumn`'s item list. A correct fix requires the anchor system
+itself to auto-expand a collapsed section before scrolling -- a real cross-cutting change, not a local
+edit -- so this was deliberately deferred to a dedicated follow-up rather than risking a search-anchor
+regression for a cosmetic tweak.
+
+**Phase C (For You diagnostic-first quality tuning)**: `RecommendationSourceRunStatus`/`RecommendationSourceStatus`
+already distinguished `NoMatches` (search returned zero raw results) from `FilteredOut` (results existed
+but were all excluded by ratings/blocked tags/no positive taste match) and was already computed
+correctly in `BrowsePersonalRecommendationsScreenModel.finalEmptyOutcome()` -- but that distinction was
+only ever shown as a one-word badge on the dense `SourcePriorityItem` row, with no way to see more.
+Rather than build new pipeline instrumentation (high-risk, would touch `searchSource()`'s many helper
+functions), the compact-explanation layer was built entirely on this existing, already-correct signal:
+new `app/src/main/java/exh/recs/RecommendationSourceStatusExplanationPolicy.kt` maps each of the 7
+`RecommendationSourceStatus` values to a new `rec_source_status_explain_*` string; `SourcePriorityItem`'s
+status line is now tappable, opening an `AlertDialog` with the full plain-language explanation. The
+always-visible compact strings (`rec_source_status_no_matches`/`rec_source_status_filtered`) were
+shortened to genuinely short labels ("No matches"/"Filtered out"); their previous, longer text moved
+into the new `_explain_*` strings shown only on tap. 2 new tests
+(`RecommendationSourceStatusExplanationPolicyTest`).
+
+Plan, evidence, and reports:
+
+- `docs/community/KMK_RECS_V0_8_17_UNIVERSAL_UI_FOR_YOU_QUALITY_AND_1_14_1_PLAN.md`
+- `docs/community/KMK_RECS_V0_8_17_UNIVERSAL_UI_FOR_YOU_QUALITY_AND_1_14_1_IMPLEMENTATION.md`
+- `docs/community/KMK_WORKING_TREE_HYGIENE_AND_BASELINE.md`
+
+Official Komikku `v1.14.0..v1.14.1` is a small patch release: 4 commits, 14 changed files, no
+schema/proto/backup-format changes. Reconciled file-by-file:
+
+- **`app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt`** (the real risk this pass) --
+  `DELEGATED_SOURCES` restructured from `Map<String, DelegatedSource>` (keyed by qualified class name,
+  filtered by a separate `factory`-flag prefix-match pass) to a plain `List<DelegatedSource>` matched
+  inline (`firstOrNull { exact-match || (factory && startsWith(prefix)) }`) -- fixes upstream PR #1797
+  "Fix loading delegated sources with latest extension DSL changes". Pururin's entry moved from
+  `PURURIN_SOURCE_ID`/`eu.kanade.tachiyomi.extension.en.pururin.Pururin` to
+  `fillInSourceId`/`eu.kanade.tachiyomi.extension.all.pururin.Pururin` (matching the pattern already
+  used by MangaDex/NHentai/LANraragi); MangaDex's entry corrected from a package-prefix `factory=true`
+  match to an exact-class-name match; NHentai's and LANraragi's `factory=true` flags removed (their
+  qualified names already included the exact class, so the flag was redundant, not load-bearing). No
+  KMK customization existed inside the touched `DELEGATED_SOURCES`/`toInternalSource` region (verified
+  by direct inspection before editing) -- the rest of the file's `// KMK -->`/`// SY -->` additions
+  (merged sources, hentai/explicit filtering, `getMergedSources`) are untouched.
+- **`app/src/main/java/eu/kanade/tachiyomi/source/online/english/Pururin.kt`** → moved to
+  **`.../online/all/Pururin.kt`** (package rename, matching upstream's rename) and its redundant
+  `override val lang = "en"` removed (the source is no longer English-only, matching the "all" package).
+- **`app/src/main/java/eu/kanade/tachiyomi/source/online/all/NHentai.kt`**,
+  **`Lanraragi.kt`** -- removed a redundant `override val lang = delegate.lang` (confirmed
+  `DelegatedHttpSource` already defaults `lang` to `delegate.lang`).
+- **`app/src/main/java/exh/source/SourceHelper.kt`**,
+  **`app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt`** -- import path updated for
+  Pururin's package move. `PURURIN_SOURCE_ID`'s own definition and its other legitimate uses
+  (`ExplicitSourceClassifier.kt`, `SourceTagsUtil.kt`, `SourceHelper.kt`'s
+  `LIBRARY_UPDATE_EXCLUDED_SOURCES`) are untouched -- upstream's diff never touched those files.
+- **`app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt`** --
+  `DELEGATED_SOURCES.values.map{}` → `DELEGATED_SOURCES.map{}` (dependent on the Map→List change above).
+- **`app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/restorers/ExtensionStoreRestorer.kt`**,
+  **`app/src/main/java/mihon/core/migration/migrations/TrustExtensionRepositoryMigration.kt`** -- both
+  fixed to guard against a duplicated `/repo.json` suffix (`.removeSuffix("/repo.json")` added before
+  re-appending it) -- upstream PR #1801.
+- **`app/src/main/java/mihon/core/migration/migrations/ChapterUrlHashMigration.kt`** (new) -- defaults
+  `DownloadPreferences.includeChapterUrlHash()` to `true` for existing users if unset, preserving prior
+  download-folder-naming behavior (upstream PR #1800). Confirmed the underlying preference key is
+  unchanged in the KMK tree before adding. Assigned `version = 90f` (KMK's own next versionCode), not
+  upstream's original `81f` -- see below.
+- **`app/src/main/java/mihon/core/migration/migrations/DisabledRepoMigration.kt`** (new) -- fixes a
+  possible duplicated `/repo.json` suffix in the `disabled_repos` preference. **Investigated why this
+  file was absent from the KMK tree entirely**: `TrustExtensionRepositoryMigration` (upstream version
+  67) is present, but this migration (upstream version 80) and everything else in upstream's version
+  15-79 range is either missing or deliberately commented out in `Migrations.kt` -- consistent with a
+  systematic decision during the original 1.14.0 reconciliation, not an isolated oversight. However, the
+  underlying `sourcePreferences.disabledRepos()` preference key (`"disabled_repos"`) is unchanged and
+  still live in the KMK tree, so the fix itself remains relevant. **Root cause of the absence**: KMK's
+  local `versionCode` sequence diverged from upstream's numbering before this migration existed
+  upstream, and `Migrator`/`VersionRangeMigrationStrategy` only runs a migration whose `.version` falls
+  in the exact `(oldVersionCode+1)..newVersionCode` range being upgraded through (confirmed by reading
+  `Migrator.kt`, `MigrationStrategyFactory.kt`, `MigrationStrategy.kt`, and `App.kt`'s
+  `initializeMigrator()`, which passes `old = eh_last_version_code` app-state pref and
+  `new = BuildConfig.VERSION_CODE`) -- a straight copy of `version = 80f` would never have fired for any
+  KMK user, since KMK's versionCode was already past 80 by the time of the 1.14.0 reconciliation. Added
+  now with `version = 90f` (this release) so it finally runs once for existing KMK users, with the
+  duplicate-suffix guard already correctly written from the start (there was never a KMK release with
+  the buggy pre-fix version of this migration, so there was nothing to "fix" -- it's written correctly
+  on arrival).
+
+Files changed: `app/build.gradle.kts` (versionCode/versionName),
+`app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt`,
+`app/src/main/java/eu/kanade/tachiyomi/source/online/all/Pururin.kt` (new, moved from `online/english`),
+`app/src/main/java/eu/kanade/tachiyomi/source/online/all/NHentai.kt`,
+`app/src/main/java/eu/kanade/tachiyomi/source/online/all/Lanraragi.kt`,
+`app/src/main/java/exh/source/SourceHelper.kt`,
+`app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt`,
+`app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt`,
+`app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/restorers/ExtensionStoreRestorer.kt`,
+`app/src/main/java/mihon/core/migration/migrations/TrustExtensionRepositoryMigration.kt`,
+`app/src/main/java/mihon/core/migration/migrations/ChapterUrlHashMigration.kt` (new),
+`app/src/main/java/mihon/core/migration/migrations/DisabledRepoMigration.kt` (new),
+`app/src/main/java/mihon/core/migration/migrations/Migrations.kt`.
+
+Tests added: `app/src/test/java/eu/kanade/tachiyomi/source/DelegatedSourceResolutionTest.kt` (9 tests,
+covering exact-match resolution for Pururin/MangaDex/NHentai/LANraragi/8Muses, confirming Pururin no
+longer resolves by its old package name, confirming MangaDex no longer resolves by bare package-prefix
+now that `factory=false`, and confirming no `DELEGATED_SOURCES` entry retains the pre-fix `factory=true`
+flag).
+
+Tests run: `:app:compileDebugKotlin`, `:app:testDebugUnitTest --tests
+"eu.kanade.tachiyomi.source.DelegatedSourceResolutionTest"`, `spotlessCheck`, full
+`:app:testDebugUnitTest` -- all passed. See the implementation report for exact output.
+
+APK handoff name:
+
+```text
+Komikku-v1.14.1-kmk.8.17-debug.apk
+```
+
 ## APK Naming Recommendation
 
 For local handoff builds, use filenames like:
@@ -2270,3 +3397,122 @@ Also update the relevant implementation markdown file with:
 - tests run,
 - known risks,
 - APK filename if built.
+
+### KMK-Recs v0.8.17-fix1 (complete)
+
+`KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` bumped `773`/`"v0.8.17"` → `774`/`"v0.8.17-fix1"`. A
+live-device follow-up: For You selection gained Clear Rating and real bulk-action feedback, a
+rate-other-versions continuation, and consistent action-button alignment; Source Evaluation's
+`Details`/`Errors`/`Install` row actions were unified into one aligned composable; a
+`RecommendationSettingsQuickAccessRow` was added to all five Recommendation Settings detail screens;
+Best Version preview candidates gained a bounded 25s timeout, a per-candidate Retry action, and
+corrected "Prepared N of N preview samples" wording. See
+`docs/community/KMK_RECS_V0_8_17_FIX1_LIVE_DEVICE_UI_ACTION_AND_BEST_VERSION_IMPLEMENTATION.md`.
+App version unchanged (`1.14.1`/`90`, from v0.8.17). APK: `Komikku-v1.14.1-kmk.8.17-fix1-debug.apk`.
+
+### KMK-Recs v0.8.18 (complete)
+
+`KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` bumped `774`/`"v0.8.17-fix1"` → `775`/`"v0.8.18"`. This
+consolidated pass supersedes the separate v0.8.17-fix2 plan (its Best Version origin/unavailable-chapter/
+reader-preview scope became this pass's Phases B and C) -- fix2 was never implemented standalone. All
+six phases (A-F) implemented:
+
+- **Phase A**: removed `SourceEvaluationScreen`'s redundant top-right "Sources to try" app-bar action
+  (superseded by the v0.8.17-fix1 quick-access row already on that screen). No Home/For You replacement
+  action exists -- no safe route was found without either popping an unknown back-stack depth or faking
+  tab navigation; documented as a deliberate non-fix rather than invented.
+- **Phase B**: `BestVersionCompareScreenModel.State` gained `compareCandidates` (origin manga always
+  first, followed by every selected real candidate) and `originKey`. Origin's own chapter state is
+  derived directly from the already-fetched local `originChapters`/`BestVersionChapterMatcher
+  .selectDefaultChapter(...)` -- never searched through extensions. New `keepCurrentVersion()` finalizes
+  immediately (`step = Done`, `keptCurrentVersion = true`, `completedTargetMangaId = origin.id`) when
+  origin is selected as best, with no `migrateMangaUseCase` call and no migrate/copy confirmation dialog
+  -- the dialog's lookup in `BestVersionCompareScreen.kt` stays scoped to the unchanged
+  `selectedCandidates` list, which never includes origin, so it structurally cannot fire for origin.
+  `CandidatePreviewState` gained a `Skipped` case: a candidate whose chapter is already
+  `CandidateChapterState.Unavailable` before `startPreview()` runs is marked `Skipped` immediately and
+  never sent to page-list fetching -- it can no longer render as an indefinite spinner or a false
+  "failure". Zero previewable candidates now short-circuits straight to `ComparePreview` (all-Skipped)
+  instead of starting a pointless network round-trip. 9 new tests
+  (`BestVersionOriginAndUnavailablePreviewTest`).
+- **Phase C**: new pure `BestVersionReaderPreviewPolicy.resolve(defaultReadingModeValue,
+  webtoonSidePaddingPercent)` maps two `ReaderPreferences` values to a side-padding decision applied
+  only in `FullscreenCandidatePreviewDialog` when the user's own default reading mode is webtoon-style.
+  Reads only preference *values* via `Injekt.get<ReaderPreferences>()` -- no `ReaderActivity`/
+  `ReaderViewModel` embedding, and explicitly does not reuse reading history, mark-read, page timers,
+  scheduled jobs, chapter transitions, preloading, Discord RPC, or the reader's own menus/page actions.
+  4 new tests (`BestVersionReaderPreviewPolicyTest`).
+- **Phase D**: `MangaActionRow`'s WebView, Merge, and Find best version actions moved from three
+  always-visible equal-weight primary buttons into one "More" overflow `DropdownMenu` -- every action
+  remains one tap away; Find best version stays out of the Rate dropdown (unchanged since v0.8.16).
+- **Phase E**: new `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionApkExporter.kt` copies
+  raw installed-extension APK/archive bytes unchanged (never repackaged/re-signed) via
+  `ActivityResultContracts.CreateDocument`. Single export from Extension Details' overflow menu
+  (`application/vnd.android.package-archive`); multi export from the Extensions page's existing
+  selection mode as one `application/zip` containing every resolvable extension's file plus a
+  non-sensitive `manifest.json` (pkgName/name/lang/versionName/versionCode/signatureHash/isNsfw/
+  isShared/sourceCount/storeName/exportedAt/app+KMK version -- no cookies, credentials, preferences,
+  ratings, recommendation data, history, or backups). A confirmation dialog warns extensions are
+  executable code before every export; unresolvable source files are skipped and reported, never
+  failing the whole export. 3 new tests (`ExtensionApkExporterTest`).
+- **Phase F**: new `RecommendationSettingsEdgeQuickAccessPanel` in
+  `RecommendationSettingsSharedComponents.kt` -- a Samsung-edge-panel-style right-edge tap-to-open handle
+  (28dp wide, narrow enough to stay clear of Android's own edge-swipe-back gesture) that opens a compact
+  tile panel over the current screen, sharing the exact same `RecommendationSettingsQuickAccessDestination`
+  registry the existing `RecommendationSettingsQuickAccessRow` already uses -- one source of truth for
+  both mechanisms. Added to all five Recommendation Settings detail screens as an overlay above each
+  screen's own `Scaffold`, alongside the existing row (kept, not replaced, per the plan's "do not remove
+  it blindly"). Closes via tap-outside (scrim), the handle itself, or the system back gesture
+  (`BackHandler`). Swipe-to-open was judged unreliable/risky to implement safely alongside Android's own
+  edge-swipe-back gesture in this pass -- tap-to-open shipped, swipe-to-open documented as a real,
+  separate follow-up.
+
+App `versionCode`/`versionName` intentionally **unchanged** (`90`/`"1.14.1"`) -- no phase proved an
+Android app-version bump was required. See
+`docs/community/KMK_RECS_V0_8_18_CONSOLIDATED_IMPLEMENTATION.md` for the full implementation report.
+APK: `Komikku-v1.14.1-kmk.8.18-debug.apk`.
+
+### KMK-Recs v0.8.18-fix1 (private next-work queue, complete)
+
+`KmkRecsReleaseNotes.VERSION_CODE`/`VERSION_NAME` bumped `775`/`"v0.8.18"` → `776`/`"v0.8.18-fix1"`. A
+private corrective pass (not a public PR extraction) closing 5 items found after v0.8.18:
+
+- **Item 1**: audited all 6 bounded-integer Recommendation Settings controls against Komikku's official
+  `SliderPreference`. Only `result_budget` and `group_preview_budget` were even candidate-eligible for a
+  real slider (evenly spaced `5,10,15,20,30`), and both were kept as list/dialog controls rather than
+  silently widening their selectable range to include `25` -- documented with a code comment at each of
+  the 6 call sites (`RecommendationDiagnosticsSettingsScreen.kt` x5, `RecommendationTasteTagsSettingsScreen.kt`
+  x1). No preference keys, defaults, bounds, or behavior changed.
+- **Item 2**: `ExtensionApkExporter.exportSingle(...)`/`exportMultiple(...)` now wrap their file-copy work
+  in `withContext(Dispatchers.IO) { ... }` -- large exports no longer block the calling coroutine's
+  original dispatcher. SAF flow, confirmation dialogs, and manifest content unchanged.
+- **Item 3**: `MangaInfoHeader.kt`'s `onWebViewLongClicked` parameter (dead wiring since v0.8.18 moved
+  WebView into the "More" menu, which has no long-press affordance) renamed to `onCopyLinkClicked` and
+  restored as an explicit "Copy link" `DropdownMenuItem` in that same menu, reusing the existing
+  `MR.strings.action_copy_link` string. Renamed at every pass-through call site
+  (`presentation/manga/MangaScreen.kt`, `ui/manga/MangaScreen.kt`); the underlying `copyMangaUrl(...)`/
+  merged-manga behavior is unchanged.
+- **Item 4**: `RecommendationSettingsEdgeQuickAccessPanel` generalized into a reusable
+  `EdgeQuickAccessPanel<T>` shell in `RecommendationSettingsSharedComponents.kt`. Removed (with its
+  `Box(Modifier.fillMaxSize())` wrapper) from all five Recommendation Settings detail screens -- the
+  existing `RecommendationSettingsQuickAccessRow` was left untouched on all five. Added, via a new
+  `RecommendationCollectionQuickAccessDestination` enum (`ForYou`/`Loved`/`Liked`/`Disliked`) and
+  `RecommendationCollectionQuickAccessPanel` wrapper, to `RatedMangaCollectionContent` (covers Loved/
+  Liked/Disliked in one edit) and to `personalRecommendationsTab()`'s content (For You, overlaid inside
+  `BrowseTab`'s shared tab content since this tab has no screen-owned `Scaffold`). Tap-to-open/right-edge
+  handle only, unchanged from v0.8.18 -- no swipe-to-open attempted.
+- **Item 5**: confirmed `SourceEvaluationScreen` shares the same root `Navigator` as `BrowseTab` (both
+  reachable through `personalRecommendationsTab()`'s own push chain). Added `BrowseTab.showForYou()`/
+  `switchToForYouTabChannel`, mirroring the existing `showExtension()` pattern, and a "Go to For You"
+  app-bar action on `SourceEvaluationScreen` (gated on the For You tab not being hidden) that calls
+  `navigator.popUntilRoot()`, selects `BrowseTab` on the tab navigator, then `BrowseTab.showForYou()`. The
+  same route is reused by the new collection panel's `ForYou` destination.
+
+Items 6-8 (universal UI audit reaffirmation, For You scoring/Vortex deferral, upstream PR base note)
+required no code -- items 6's two "must fix now" sub-items are closed by items 3 and 4 above.
+
+App `versionCode`/`versionName` unchanged (`90`/`"1.14.1"`). Full `:app:testDebugUnitTest` suite (1646
+tests) passed; `KmkRecsReleaseNotesTest`'s heading-order assertion was updated for the new changelog
+entry (a legitimate test update, not a regression). See
+`docs/community/KMK_RECS_V0_8_18_FIX1_PRIVATE_NEXT_WORK_IMPLEMENTATION.md` for the full file list, known
+limitations, and remaining manual QA. APK: `Komikku-v1.14.1-kmk.8.18-fix1-debug.apk`.

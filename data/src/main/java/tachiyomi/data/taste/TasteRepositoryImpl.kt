@@ -202,6 +202,51 @@ class TasteRepositoryImpl(
         handler.await { manga_cross_source_linkQueries.deleteAll() }
     }
 
+    // KMK v0.8.20: atomic ungroup -- links and primary deleted together so no dangling primary can
+    // remain if the process dies between the two deletes.
+    override suspend fun deleteCrossSourceGroupCompletely(groupId: String) {
+        handler.await(inTransaction = true) {
+            manga_cross_source_linkQueries.deleteByGroupId(groupId)
+            manga_cross_source_group_primaryQueries.deleteByGroupId(groupId)
+        }
+    }
+
+    // KMK v0.8.20: typed, transactional restore for the group-action Undo Journal -- see
+    // TasteRepository.restoreCrossSourceGroupState's doc comment.
+    override suspend fun restoreCrossSourceGroupState(
+        linkUpserts: List<CrossSourceMangaLink>,
+        linkDeletes: List<Pair<Long, String>>,
+        primaryUpserts: List<CrossSourceGroupPrimary>,
+        primaryDeletes: List<String>,
+    ) {
+        handler.await(inTransaction = true) {
+            for (link in linkUpserts) {
+                manga_cross_source_linkQueries.upsert(
+                    source = link.source,
+                    url = link.url,
+                    groupId = link.groupId,
+                    title = link.title,
+                    createdAt = link.createdAt,
+                    updatedAt = link.updatedAt,
+                )
+            }
+            for ((source, url) in linkDeletes) {
+                manga_cross_source_linkQueries.deleteBySourceUrl(source, url)
+            }
+            for (primary in primaryUpserts) {
+                manga_cross_source_group_primaryQueries.upsert(
+                    groupId = primary.groupId,
+                    source = primary.source,
+                    url = primary.url,
+                    updatedAt = primary.updatedAt,
+                )
+            }
+            for (groupId in primaryDeletes) {
+                manga_cross_source_group_primaryQueries.deleteByGroupId(groupId)
+            }
+        }
+    }
+
     // endregion KMK <--
 
     // KMK --> v0.8.0: manga_cross_source_group_primary region

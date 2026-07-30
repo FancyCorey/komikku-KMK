@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
+import exh.recs.BulkTasteOutcome
 import exh.recs.SeenMangaKey
 import exh.recs.SeenRecommendationMangaStore
 import kotlinx.coroutines.CancellationException
@@ -13,7 +14,6 @@ import kotlinx.coroutines.launch
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.taste.interactor.ClearCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.ClearMangaTaste
 import tachiyomi.domain.taste.interactor.DeleteCrossSourceMangaLink
 import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
@@ -78,12 +78,15 @@ class LovedMangaScreenModel(
     // KMK --> v0.8.0: bulk selection + group actions
     private val getCrossSourceGroupPrimary: GetCrossSourceGroupPrimary = Injekt.get(),
     private val setCrossSourceGroupPrimary: SetCrossSourceGroupPrimary = Injekt.get(),
-    private val clearCrossSourceGroupPrimary: ClearCrossSourceGroupPrimary = Injekt.get(),
     private val setMangaTaste: SetMangaTaste = Injekt.get(),
     private val clearMangaTaste: ClearMangaTaste = Injekt.get(),
     private val upsertCrossSourceMangaLinks: UpsertCrossSourceMangaLinks = Injekt.get(),
     private val deleteCrossSourceMangaLink: DeleteCrossSourceMangaLink = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
+    // KMK <--
+    // KMK v0.8.20: atomic ungroup + group-action Undo Journal
+    private val deleteCrossSourceGroupCompletely: tachiyomi.domain.taste.interactor.DeleteCrossSourceGroupCompletely = Injekt.get(),
+    private val groupUndoService: exh.util.GroupUndoService = exh.util.GroupUndoService(),
     // KMK <--
 ) : StateScreenModel<LovedMangaScreenModel.State>(State.Loading) {
 
@@ -222,8 +225,20 @@ class LovedMangaScreenModel(
         val current = mutableState.value as? State.Success ?: return
         val targets = current.entries.filter { RatedMangaKey.of(it.taste) in current.selectedKeys }
         if (targets.isEmpty()) return
+        // KMK v0.8.19: build pre-write journal entries for Evaluation Mode's Undo Journal (no-op if
+        // disabled); each entry is committed only after its corresponding write succeeds.
+        val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChangeFromTaste(
+            sourcePreferences,
+            targets.map { it.taste },
+            rating.value,
+            when (rating) {
+                MangaRating.LOVE -> exh.util.EvaluationJournalActionType.RATE_LOVE
+                MangaRating.LIKE -> exh.util.EvaluationJournalActionType.RATE_LIKE
+                MangaRating.DISLIKE -> exh.util.EvaluationJournalActionType.RATE_DISLIKE
+            },
+        )
         screenModelScope.launch {
-            targets.forEach { entry ->
+            targets.forEachIndexed { index, entry ->
                 runCatching {
                     setMangaTaste.await(
                         mangaId = entry.taste.mangaId,
@@ -232,41 +247,93 @@ class LovedMangaScreenModel(
                         title = entry.manga?.title ?: entry.taste.title,
                         rating = rating,
                     )
+                }.onSuccess {
+                    journalEntries.getOrNull(index)?.let { exh.util.EvaluationModeJournalRecorder.commit(listOf(it)) }
                 }
             }
             clearSelection()
         }
     }
 
-    /** Clears ratings for the current selection. Does not touch cross-source link rows. */
-    fun clearSelectedRatings() {
-        val current = mutableState.value as? State.Success ?: return
+    /**
+     * Clears ratings for the current selection. Does not touch cross-source link rows.
+     *
+     * KMK v0.8.19: now `suspend` and returns a real [BulkTasteOutcome] instead of firing-and-
+     * forgetting inside its own `screenModelScope.launch` -- each item's [clearMangaTaste] call was
+     * previously wrapped in a per-item `runCatching` whose result was discarded, so the caller (the
+     * confirm-dialog's `onConfirm` in `RatedMangaScreen.kt`) always showed the "cleared" Snackbar
+     * regardless of whether any write actually succeeded. The caller now awaits this and only shows
+     * success/Undo for items that were durably cleared.
+     */
+    suspend fun clearSelectedRatings(): Pair<BulkTasteOutcome, List<MangaTaste>> {
+        val current = mutableState.value as? State.Success ?: return BulkTasteOutcome(0, 0, 0) to emptyList()
         val targets = current.entries.filter { RatedMangaKey.of(it.taste) in current.selectedKeys }
-        if (targets.isEmpty()) return
-        screenModelScope.launch {
-            targets.forEach { entry ->
-                runCatching { clearMangaTaste.await(entry.taste.mangaId) }
+        if (targets.isEmpty()) return BulkTasteOutcome(0, 0, 0) to emptyList()
+        // KMK v0.8.19: build pre-write journal entries for Evaluation Mode's Undo Journal (no-op if
+        // disabled); each entry is committed only after its corresponding clear succeeds.
+        val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChangeFromTaste(
+            sourcePreferences,
+            targets.map { it.taste },
+            null,
+            exh.util.EvaluationJournalActionType.CLEAR_RATING,
+        )
+        // KMK v0.8.19: track exactly which entries were durably cleared (not just a count) so the
+        // caller's Undo restores precisely the items that actually changed -- a count-only result
+        // cannot distinguish "the first 3 succeeded" from "the last 3 succeeded" when a partial
+        // failure happens.
+        val clearedEntries = mutableListOf<MangaTaste>()
+        var failureCount = 0
+        targets.forEachIndexed { index, entry ->
+            try {
+                clearMangaTaste.await(entry.taste.mangaId)
+                clearedEntries += entry.taste
+                journalEntries.getOrNull(index)?.let { exh.util.EvaluationModeJournalRecorder.commit(listOf(it)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failureCount++
             }
-            clearSelection()
         }
+        clearSelection()
+        val outcome = BulkTasteOutcome(requestedCount = targets.size, successCount = clearedEntries.size, failureCount = failureCount)
+        return outcome to clearedEntries
     }
 
-    /** Mild negative signal — same "not interested" store For You/manga-detail already use. */
-    fun markSelectedNotInterested() {
-        val current = mutableState.value as? State.Success ?: return
+    /**
+     * Mild negative signal — same "not interested" store For You/manga-detail already use.
+     *
+     * KMK v0.8.19: now `suspend` and returns a real [BulkTasteOutcome]. The preference write is a
+     * single atomic `set()` call (not per-item), so a failure is all-or-nothing for the whole
+     * selection -- reported honestly as such (all-failed, never partial) rather than guessed.
+     */
+    suspend fun markSelectedNotInterested(): BulkTasteOutcome {
+        val current = mutableState.value as? State.Success ?: return BulkTasteOutcome(0, 0, 0)
         val targets = current.selectedKeys
-        if (targets.isEmpty()) return
-        screenModelScope.launch {
-            runCatching {
-                val raw = sourcePreferences.seenRecommendationMangaKeys().get()
-                var seen = SeenRecommendationMangaStore.parse(raw)
-                targets.forEach { key ->
-                    seen = SeenRecommendationMangaStore.add(seen, SeenMangaKey(key.source, key.url))
-                }
-                sourcePreferences.seenRecommendationMangaKeys().set(SeenRecommendationMangaStore.serialize(seen))
+        if (targets.isEmpty()) return BulkTasteOutcome(0, 0, 0)
+        // KMK v0.8.19: build pre-write journal entries for Evaluation Mode's Undo Journal (no-op if
+        // disabled), commit only after the write below succeeds.
+        val targetEntries = current.entries.filter { RatedMangaKey.of(it.taste) in targets }
+        val journalEntries = exh.util.EvaluationModeJournalRecorder.buildNotInterestedFromTaste(
+            sourcePreferences,
+            targetEntries.map { it.taste },
+            targetEntries.map { it.taste.source to it.taste.url },
+        )
+        val outcome = try {
+            val raw = sourcePreferences.seenRecommendationMangaKeys().get()
+            var seen = SeenRecommendationMangaStore.parse(raw)
+            targets.forEach { key ->
+                seen = SeenRecommendationMangaStore.add(seen, SeenMangaKey(key.source, key.url))
             }
-            clearSelection()
+            sourcePreferences.seenRecommendationMangaKeys().set(SeenRecommendationMangaStore.serialize(seen))
+            exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+            BulkTasteOutcome.success(targets.size)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            BulkTasteOutcome.failed(targets.size)
         }
+        clearSelection()
+        return outcome
     }
     // KMK <--
 
@@ -278,52 +345,84 @@ class LovedMangaScreenModel(
      * screen model does not keep its own undo history, matching the existing project convention
      * (see `LibraryTab.kt`'s merge-undo Snackbar) of the caller owning the pre-action snapshot and
      * the Snackbar's `SnackbarResult.ActionPerformed` branch driving the restore call.
+     *
+     * KMK v0.8.19: now `suspend` and returns [BulkTasteOutcome] so the caller can report an honest
+     * "Undo partially failed" message instead of silently discarding per-item restore failures.
      */
-    fun restoreRatings(snapshot: List<MangaTaste>) {
-        if (snapshot.isEmpty()) return
-        screenModelScope.launch {
-            snapshot.forEach { taste ->
-                runCatching {
-                    setMangaTaste.await(
-                        mangaId = taste.mangaId,
-                        source = taste.source,
-                        url = taste.url,
-                        title = taste.title,
-                        rating = MangaRating.fromValue(taste.rating) ?: return@runCatching,
-                    )
-                }
+    suspend fun restoreRatings(snapshot: List<MangaTaste>): BulkTasteOutcome {
+        if (snapshot.isEmpty()) return BulkTasteOutcome(0, 0, 0)
+        var successCount = 0
+        var failureCount = 0
+        snapshot.forEach { taste ->
+            try {
+                setMangaTaste.await(
+                    mangaId = taste.mangaId,
+                    source = taste.source,
+                    url = taste.url,
+                    title = taste.title,
+                    rating = MangaRating.fromValue(taste.rating) ?: return@forEach,
+                )
+                successCount++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failureCount++
             }
         }
+        return BulkTasteOutcome(requestedCount = snapshot.size, successCount = successCount, failureCount = failureCount)
     }
 
-    /** Undo for [markSelectedNotInterested]: removes exactly the keys that were just added, leaving any other "not interested" entries the user had before untouched. */
-    fun undoMarkNotInterested(keys: Set<RatedMangaKey>) {
-        if (keys.isEmpty()) return
-        screenModelScope.launch {
-            runCatching {
-                val raw = sourcePreferences.seenRecommendationMangaKeys().get()
-                var seen = SeenRecommendationMangaStore.parse(raw)
-                keys.forEach { key ->
-                    seen = SeenRecommendationMangaStore.remove(seen, SeenMangaKey(key.source, key.url))
-                }
-                sourcePreferences.seenRecommendationMangaKeys().set(SeenRecommendationMangaStore.serialize(seen))
+    /**
+     * Undo for [markSelectedNotInterested]: removes exactly the keys that were just added, leaving
+     * any other "not interested" entries the user had before untouched.
+     *
+     * KMK v0.8.19: now `suspend` and returns [BulkTasteOutcome] (single atomic preference write, so
+     * all-or-nothing like [markSelectedNotInterested] itself).
+     */
+    suspend fun undoMarkNotInterested(keys: Set<RatedMangaKey>): BulkTasteOutcome {
+        if (keys.isEmpty()) return BulkTasteOutcome(0, 0, 0)
+        return try {
+            val raw = sourcePreferences.seenRecommendationMangaKeys().get()
+            var seen = SeenRecommendationMangaStore.parse(raw)
+            keys.forEach { key ->
+                seen = SeenRecommendationMangaStore.remove(seen, SeenMangaKey(key.source, key.url))
             }
+            sourcePreferences.seenRecommendationMangaKeys().set(SeenRecommendationMangaStore.serialize(seen))
+            BulkTasteOutcome.success(keys.size)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            BulkTasteOutcome.failed(keys.size)
         }
     }
     // KMK <--
 
     // KMK --> v0.8.0: group actions
+    // KMK v0.8.11: root cause of the reported "Group doesn't actually group the selection" bug --
+    // `load()` only reloads reactively from `getMangaTaste.subscribeAll()`, which fires on
+    // manga_taste changes. Group actions below only ever write to the cross-source-link table
+    // (`upsertCrossSourceMangaLinks`/`deleteCrossSourceMangaLink`), which is a plain suspend
+    // interactor with no Flow -- so nothing told the screen to reload after a merge/remove/ungroup,
+    // and the display kept showing the pre-action grouping until an unrelated taste change (e.g.
+    // rating another version, exactly the reported workaround) happened to re-trigger `load()`.
+    // Every group action below now updates `linkGroupByKey`/`primaryByGroupId` directly in state
+    // immediately after a successful write, instead of waiting for that unrelated reload.
     /**
-     * Merges the current selection into one group. Requires >= 2 selected entries. Never merges by
+     * Merges the current selection into one group. Requires >= 2 selected entries — returns a
+     * [MergeResult.TooFewSelected] otherwise (the UI already gates the confirm dialog on this, but
+     * the result type still covers it so a caller can never observe a silent no-op). Never merges by
      * title — see [RatedGroupMergePlanner]. If the selection spans multiple existing groups, every
      * member of every non-target group is folded into the target group (a genuine merge).
      */
-    fun mergeSelectedIntoGroup() {
-        val current = mutableState.value as? State.Success ?: return
+    fun mergeSelectedIntoGroup(onResult: (MergeResult) -> Unit = {}) {
+        val current = mutableState.value as? State.Success ?: return onResult(MergeResult.TooFewSelected)
         val selectedEntries = current.entries.filter { RatedMangaKey.of(it.taste) in current.selectedKeys }
-        if (selectedEntries.size < 2) return
+        if (selectedEntries.size < 2) {
+            onResult(MergeResult.TooFewSelected)
+            return
+        }
         screenModelScope.launch {
-            runCatching {
+            val result = runCatching {
                 val selected = selectedEntries.map { entry ->
                     val key = RatedMangaKey.of(entry.taste)
                     RatedGroupMergePlanner.SelectedEntry(
@@ -342,38 +441,136 @@ class LovedMangaScreenModel(
                     now = System.currentTimeMillis(),
                     newGroupIdProvider = { UUID.randomUUID().toString() },
                 )
-                if (plan != null) upsertCrossSourceMangaLinks.await(plan.writes)
+                    ?: error("RatedGroupMergePlanner.plan() returned null for ${selected.size} selected entries")
+                // KMK v0.8.20: build the not-yet-committed group-undo entry BEFORE the write (so it
+                // captures the correct pre-merge state), but only record it into the journal after the
+                // write below actually succeeds -- see GroupUndoRecorder's class doc.
+                val undoEntry = exh.util.GroupUndoRecorder.buildMergeEntry(sourcePreferences, plan, existingGroupMembers)
+                upsertCrossSourceMangaLinks.await(plan.writes)
+                undoEntry?.let { exh.util.GroupUndoJournal.record(it) }
+                plan to undoEntry?.id
+            }
+            result.onSuccess { (plan, undoEntryId) ->
+                applyLinkWrites(plan.writes)
+                onResult(MergeResult.Success(undoEntryId))
+            }.onFailure { e ->
+                if (e is CancellationException) throw e
+                onResult(MergeResult.Failed)
             }
             clearSelection()
         }
     }
 
-    /** Removes the current selection from their current confirmed group(s). Does not clear ratings. */
-    fun removeSelectedFromGroup() {
+    sealed interface MergeResult {
+        data class Success(val undoEntryId: String?) : MergeResult
+        data object TooFewSelected : MergeResult
+        data object Failed : MergeResult
+    }
+
+    /** Undoes the most recent reversible group action (merge / remove-from-group / ungroup), if any. */
+    fun undoLastGroupAction(entryId: String, onResult: (exh.util.GroupUndoOutcome) -> Unit = {}) {
+        screenModelScope.launch {
+            val outcome = groupUndoService.undo(entryId)
+            onResult(outcome)
+        }
+    }
+
+    /**
+     * Merges the freshly-written [writes] into the in-memory `linkGroupByKey` immediately, so the
+     * grouped display reflects a merge/split without waiting for an unrelated reactive reload — see
+     * the class-level note above `mergeSelectedIntoGroup()`.
+     */
+    private fun applyLinkWrites(writes: List<tachiyomi.domain.taste.model.CrossSourceMangaLink>) {
+        if (writes.isEmpty()) return
+        val current = mutableState.value as? State.Success ?: return
+        mutableState.value = current.copy(linkGroupByKey = mergeLinkWritesIntoMap(current.linkGroupByKey, writes))
+    }
+
+    /**
+     * Removes the current selection from their current confirmed group(s). Does not clear ratings.
+     * @param onResult receives the committed [exh.util.GroupJournalEntry] (for an Undo action) or
+     * `null` if nothing was removed or Evaluation Mode is off (no journal entry to undo).
+     */
+    fun removeSelectedFromGroup(onResult: (exh.util.GroupJournalEntry?) -> Unit = {}) {
         val current = mutableState.value as? State.Success ?: return
         val targets = current.selectedKeys.filter { current.linkGroupByKey.containsKey("${it.source}|${it.url}") }
         if (targets.isEmpty()) return
         screenModelScope.launch {
+            // KMK v0.8.20: read each link's full pre-removal row before deleting it, and only include
+            // a key in the group-undo snapshot if its delete actually succeeded -- see
+            // GroupUndoRecorder's build-before/commit-after contract.
+            val removed = mutableListOf<Pair<exh.util.RatedLinkKey, tachiyomi.domain.taste.model.CrossSourceMangaLink>>()
             targets.forEach { key ->
-                runCatching { deleteCrossSourceMangaLink.awaitBySourceUrl(key.source, key.url) }
+                val previous = runCatching { getCrossSourceMangaLinks.awaitBySourceUrl(key.source, key.url) }.getOrNull()
+                val deleted = runCatching { deleteCrossSourceMangaLink.awaitBySourceUrl(key.source, key.url) }.isSuccess
+                if (deleted && previous != null) {
+                    removed += exh.util.RatedLinkKey(key.source, key.url) to previous
+                }
+            }
+            val undoEntry = exh.util.GroupUndoRecorder.buildRemoveFromGroupEntry(sourcePreferences, removed)
+            undoEntry?.let { exh.util.GroupUndoJournal.record(it) }
+            // KMK v0.8.11: reflect the removal immediately -- see the class-level note above
+            // mergeSelectedIntoGroup().
+            val after = mutableState.value as? State.Success
+            if (after != null) {
+                val updated = after.linkGroupByKey.toMutableMap()
+                targets.forEach { key -> updated.remove("${key.source}|${key.url}") }
+                mutableState.value = after.copy(linkGroupByKey = updated)
             }
             clearSelection()
+            onResult(undoEntry)
         }
     }
 
-    /** Deletes every link in [groupId] and its stored primary version. Does not clear ratings. */
-    fun ungroup(groupId: String) {
+    /**
+     * Deletes every link in [groupId] and its stored primary version, atomically. Does not clear
+     * ratings.
+     * @param onResult receives the committed [exh.util.GroupJournalEntry] (for an Undo action) or
+     * `null` if the group was already empty, the delete failed, or Evaluation Mode is off.
+     */
+    fun ungroup(groupId: String, onResult: (exh.util.GroupJournalEntry?) -> Unit = {}) {
         screenModelScope.launch {
-            runCatching { deleteCrossSourceMangaLink.awaitByGroupId(groupId) }
-            runCatching { clearCrossSourceGroupPrimary.await(groupId) }
+            // KMK v0.8.20: snapshot the complete pre-ungroup state before the atomic delete, and only
+            // commit the group-undo entry after that delete actually succeeds.
+            val previousLinks = runCatching { getCrossSourceMangaLinks.awaitByGroupId(groupId) }.getOrDefault(emptyList())
+            val previousPrimary = runCatching { getCrossSourceGroupPrimary.awaitByGroupId(groupId) }.getOrNull()
+            val undoEntry = try {
+                deleteCrossSourceGroupCompletely.await(groupId)
+                exh.util.GroupUndoRecorder.buildUngroupEntry(sourcePreferences, groupId, previousLinks, previousPrimary)
+                    ?.also { exh.util.GroupUndoJournal.record(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            // KMK v0.8.11: reflect the ungroup immediately -- see the class-level note above
+            // mergeSelectedIntoGroup().
+            val after = mutableState.value as? State.Success
+            if (after != null) {
+                val updated = after.linkGroupByKey.filterValues { it != groupId }
+                mutableState.value = after.copy(linkGroupByKey = updated, primaryByGroupId = after.primaryByGroupId - groupId)
+            }
             clearSelection()
+            onResult(undoEntry)
         }
     }
 
     /** Sets which linked version controls the rated-list cover/title for [groupId]. */
     fun setPrimaryVersion(groupId: String, key: RatedMangaKey) {
         screenModelScope.launch {
-            runCatching { setCrossSourceGroupPrimary.await(groupId, key.source, key.url) }
+            val previousPrimary = getCrossSourceGroupPrimary.awaitByGroupId(groupId)
+            val undoEntry = exh.util.GroupUndoRecorder.buildSetPrimaryEntry(
+                sourcePreferences,
+                groupId,
+                previousPrimary,
+                exh.util.RatedLinkKey(key.source, key.url),
+            )
+            try {
+                setCrossSourceGroupPrimary.await(groupId, key.source, key.url)
+                undoEntry?.let { exh.util.GroupUndoJournal.record(it) }
+            } catch (e: CancellationException) {
+                throw e
+            }
         }
     }
     // KMK <--
@@ -421,6 +618,24 @@ class LovedMangaScreenModel(
         }
     }
 }
+
+// KMK v0.8.11 -->
+/**
+ * Pure helper: applies freshly-written [writes] on top of [current]'s `"source|url" -> groupId`
+ * map, without needing another DB round trip -- see the note above
+ * [LovedMangaScreenModel.mergeSelectedIntoGroup]. Extracted top-level so it is directly unit
+ * testable without an Injekt-bootstrapped `LovedMangaScreenModel`.
+ */
+internal fun mergeLinkWritesIntoMap(
+    current: Map<String, String>,
+    writes: List<tachiyomi.domain.taste.model.CrossSourceMangaLink>,
+): Map<String, String> {
+    if (writes.isEmpty()) return current
+    val updated = current.toMutableMap()
+    writes.forEach { link -> updated["${link.source}|${link.url}"] = link.groupId }
+    return updated
+}
+// KMK <--
 
 // KMK --> v0.7.14: sort entries according to the chosen sort mode
 private fun sortEntries(entries: List<LovedMangaEntry>, mode: LoveSortMode): List<LovedMangaEntry> = when (mode) {

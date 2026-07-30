@@ -5,10 +5,14 @@ import android.net.Uri
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.model.SManga
+import exh.util.PackageOperationKind
+import exh.util.recordPackageOperationReceipt
+import exh.util.recordUserInitiatedInstall
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
@@ -59,6 +63,7 @@ class RecommendationBundleImportScreenModel(
     private val context: Context,
     private val sourceManager: SourceManager = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val libraryAdder: RecommendationBundleLibraryAdder = RecommendationBundleLibraryAdder(),
@@ -325,24 +330,37 @@ class RecommendationBundleImportScreenModel(
             }
 
             try {
-                extensionManager.installExtension(ext).collectLatest { step ->
-                    if (step == InstallStep.Installed) {
-                        // Re-resolve items after install
-                        val currentPreview = mutableState.value as? State.Preview ?: return@collectLatest
-                        val newItems = resolveItems(currentPreview.bundle)
-                        mutableState.update { s ->
-                            (s as? State.Preview)?.copy(
-                                items = newItems,
-                                installingPkgName = null,
-                                selectedIndices = newItems.indices.filter { idx ->
-                                    val st = newItems[idx].itemState
-                                    st is RecommendationImportItemState.ReadyToAdd ||
-                                        st is RecommendationImportItemState.SourceInstalledNeedsResolve
-                                }.toSet(),
-                            ) ?: s
+                val receiptId = exh.util.NonUndoableEvent.newId()
+                extensionManager.installExtension(ext)
+                    .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
+                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
+                    // PackageOperationReceipt alongside the visibility-only event above.
+                    .recordPackageOperationReceipt(
+                        kind = PackageOperationKind.INSTALL,
+                        packageName = ext.pkgName,
+                        signatureHash = ext.signatureHash,
+                        versionCode = ext.versionCode,
+                        artifactUri = ext.apkUrl,
+                        id = receiptId,
+                    ) { sourcePreferences.evaluationMode().get() }
+                    .collectLatest { step ->
+                        if (step == InstallStep.Installed) {
+                            // Re-resolve items after install
+                            val currentPreview = mutableState.value as? State.Preview ?: return@collectLatest
+                            val newItems = resolveItems(currentPreview.bundle)
+                            mutableState.update { s ->
+                                (s as? State.Preview)?.copy(
+                                    items = newItems,
+                                    installingPkgName = null,
+                                    selectedIndices = newItems.indices.filter { idx ->
+                                        val st = newItems[idx].itemState
+                                        st is RecommendationImportItemState.ReadyToAdd ||
+                                            st is RecommendationImportItemState.SourceInstalledNeedsResolve
+                                    }.toSet(),
+                                ) ?: s
+                            }
                         }
                     }
-                }
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "Extension install failed: ${ext.name}" }
                 mutableState.update { s ->

@@ -15,6 +15,8 @@ import eu.kanade.presentation.util.formattedMessage
 import exh.recs.RecommendationItemResult
 import exh.recs.RecommendsScreenModel
 import exh.recs.sources.RecommendationPagingSource
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableMap
 import nl.adaptivity.xmlutil.core.impl.multiplatform.name
 import tachiyomi.domain.manga.model.Manga
@@ -66,13 +68,22 @@ internal fun RecommendsContent(
     onClickItem: (Manga) -> Unit,
     onLongClickItem: (Manga) -> Unit,
 ) {
+    // KMK --> v0.8.19: evaluation mode source-name obfuscation
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    // KMK <--
     LazyColumn(
         contentPadding = contentPadding,
     ) {
         items.forEach { (source, recResult) ->
             item(key = "${source::class.name}-${source.name}-${source.category.resourceId}") {
                 GlobalSearchResultItem(
-                    title = source.name,
+                    // KMK -->
+                    title = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(source.name)
+                    } else {
+                        source.name
+                    },
+                    // KMK <--
                     subtitle = stringResource(source.category),
                     onClick = { onClickSource(source) },
                 ) {

@@ -3,8 +3,12 @@ package eu.kanade.tachiyomi.ui.reader.loader
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -89,7 +93,19 @@ internal class HttpPageLoader(
             if (e is CancellationException) {
                 throw e
             }
-            source.getPageList(chapter.chapter)
+            // KMK v0.8.10-fix6/fix7: this cache-miss fallback call was NOT covered by the outer
+            // catch(Throwable) -- a LinkageError thrown here would still propagate out of getPages()
+            // uncaught, since we're already inside the catch block that handles it, not wrapping the
+            // fallback expression itself. Route through SourceRuntime. fix7: ChapterLoader.loadChapter()
+            // already wraps this in catch(Throwable) and sets ReaderChapter.State.Error(e) before
+            // rethrowing, so this specific escape is not itself an app-crash today -- but
+            // getOrThrowSourceRuntimeException() converts a recoverable failure into an Exception
+            // (RecoverableSourceRuntimeException) instead of a raw Error, so any downstream
+            // Exception-only handling in the reader chain is also protected, with no behavior change
+            // for the existing catch(Throwable) path.
+            SourceRuntime.run(source, SourceRuntimeOperation.PageList) {
+                getPageList(chapter.chapter)
+            }.getOrThrowSourceRuntimeException()
         }
         // SY -->
         val rp = pages.mapIndexed { index, page ->
@@ -213,13 +229,17 @@ internal class HttpPageLoader(
         try {
             if (page.imageUrl.isNullOrEmpty()) {
                 page.status = Page.State.LoadPage
-                page.imageUrl = source.getImageUrl(page)
+                page.imageUrl = SourceRuntime.run(source, SourceRuntimeOperation.ImageUrl) {
+                    (this as HttpSource).getImageUrl(page)
+                }.getOrThrowSourceRuntimeException()
             }
             val imageUrl = page.imageUrl!!
 
             if (!chapterCache.isImageInCache(imageUrl)) {
                 page.status = Page.State.DownloadImage
-                val imageResponse = source.getImage(page, dataSaver)
+                val imageResponse = SourceRuntime.run(source, SourceRuntimeOperation.Image) {
+                    (this as HttpSource).getImage(page, dataSaver)
+                }.getOrThrowSourceRuntimeException()
                 chapterCache.putImageToCache(imageUrl, imageResponse)
             }
 
@@ -230,6 +250,7 @@ internal class HttpPageLoader(
             if (e is CancellationException) {
                 throw e
             }
+            rethrowIfFatal(e)
         }
     }
 

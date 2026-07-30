@@ -1,5 +1,6 @@
 package exh.recs.evaluation
 
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.taste.interactor.GetTagAliases
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
@@ -52,6 +54,13 @@ private class FakeTasteRepository(
     override suspend fun deleteCrossSourceMangaLink(source: Long, url: String) {}
     override suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String) {}
     override suspend fun deleteAllCrossSourceMangaLinks() {}
+    override suspend fun deleteCrossSourceGroupCompletely(groupId: String) {}
+    override suspend fun restoreCrossSourceGroupState(
+        linkUpserts: List<CrossSourceMangaLink>,
+        linkDeletes: List<Pair<Long, String>>,
+        primaryUpserts: List<tachiyomi.domain.taste.model.CrossSourceGroupPrimary>,
+        primaryDeletes: List<String>,
+    ) {}
     // KMK --> v0.8.0
     override suspend fun getCrossSourceGroupPrimary(groupId: String): tachiyomi.domain.taste.model.CrossSourceGroupPrimary? = null
     override suspend fun getAllCrossSourceGroupPrimaries(): List<tachiyomi.domain.taste.model.CrossSourceGroupPrimary> = emptyList()
@@ -68,6 +77,15 @@ private class FakeTasteRepository(
 class SourceRecommendationFitProbeTest {
 
     private val fakeGetTagAliases = GetTagAliases(FakeTasteRepository())
+
+    // KMK v0.8.10-fix8: the fake sources in this file reuse fixed ids (997L/998L/999L) across many
+    // test methods, and SourceRuntime now enforces suppression against SourceRuntimeFailureRegistry
+    // (a process-lifetime singleton). Without clearing between tests, a failure recorded by one test
+    // would suppress an unrelated later test's calls to the same source id.
+    @BeforeEach
+    fun clearRegistry() {
+        SourceRuntimeFailureRegistry.clearAll()
+    }
 
     // --- Outcome label logic (pure, no source needed) ---
 

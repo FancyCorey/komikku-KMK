@@ -67,6 +67,17 @@ data object BrowseTab : Tab {
         switchToExtensionTabChannel.trySend(Unit)
     }
 
+    // KMK v0.8.18-fix1: mirrors showExtension() above -- lets a caller outside BrowseTab's own
+    // composition (Source Evaluation's app-bar action, the collection quick-access panel) jump to the
+    // For You sub-tab once BrowseTab is the selected tab and its Content() is composed. A no-op if the
+    // For You tab is hidden (hideForYouTab) -- callers must check that preference themselves before
+    // offering this action, since there is nothing to switch to in that case.
+    private val switchToForYouTabChannel = Channel<Unit>(1, BufferOverflow.DROP_OLDEST)
+
+    fun showForYou() {
+        switchToForYouTabChannel.trySend(Unit)
+    }
+
     @Composable
     override fun Content() {
         val context = LocalContext.current
@@ -131,6 +142,19 @@ data object BrowseTab : Tab {
                 // else        → [Feed?, Sources, Feed?, Extensions, ...] → index 2
                 .collectLatest { state.scrollToPage(if (hideFeedTab) 1 else 2) }
             // KMK <--
+        }
+
+        // KMK v0.8.18-fix1: For You index mirrors the tabs buildList order above -- Sources,
+        // (Feed if visible), Extensions, (Migrate if visible), then For You last (unless hidden, in
+        // which case the tab doesn't exist and showForYou() below is a no-op since the page index
+        // computed here would be out of range and scrollToPage would simply have nothing extra to do).
+        LaunchedEffect(Unit) {
+            switchToForYouTabChannel.receiveAsFlow()
+                .collectLatest {
+                    if (!hideForYouTab) {
+                        state.scrollToPage(tabs.size - 1)
+                    }
+                }
         }
 
         LaunchedEffect(Unit) {

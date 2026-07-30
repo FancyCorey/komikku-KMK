@@ -30,6 +30,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MangaDex
@@ -105,7 +106,7 @@ open class BrowseSourceScreenModel(
     private val savedSearch: Long? = null,
     // SY <--
     private val sourceManager: SourceManager = Injekt.get(),
-    sourcePreferences: SourcePreferences = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
     private val getRemoteManga: GetRemoteManga = Injekt.get(),
@@ -457,12 +458,17 @@ open class BrowseSourceScreenModel(
                 withIOContext {
                     try {
                         // Use `manga` instead of `new` so its title got updated with source's remote details
+                        // KMK v0.8.10-fix7: this was a genuine hole -- there was no catch(Error) at
+                        // all here, so a raw NoClassDefFoundError from .getOrThrow() would have
+                        // escaped uncaught. getOrThrowSourceRuntimeException() converts a recoverable
+                        // extension failure into an Exception so the existing catch(Exception) below
+                        // actually catches it.
                         updateMangaFromRemote(
                             source = source,
                             manga = manga,
                             fetchDetails = fetchMetadataOnAdd,
                             fetchChapters = fetchChaptersOnAdd,
-                        ).getOrThrow()
+                        ).getOrThrowSourceRuntimeException()
                     } catch (e: Exception) {
                         logcat(LogPriority.ERROR, e)
                     }
@@ -535,10 +541,20 @@ open class BrowseSourceScreenModel(
 
     fun moveMangaToCategories(manga: Manga, categoryIds: List<Long>) {
         screenModelScope.launchIO {
-            setMangaCategories.await(
+            val previousCategoryIds = getCategories.await(manga.id).map { it.id }
+            val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(
+                sourcePreferences = sourcePreferences,
                 mangaId = manga.id,
-                categoryIds = categoryIds.toList(),
+                previousCategoryIds = previousCategoryIds,
+                newCategoryIds = categoryIds,
             )
+            if (setMangaCategories.await(
+                    mangaId = manga.id,
+                    categoryIds = categoryIds.toList(),
+                )
+            ) {
+                undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
+            }
         }
     }
 

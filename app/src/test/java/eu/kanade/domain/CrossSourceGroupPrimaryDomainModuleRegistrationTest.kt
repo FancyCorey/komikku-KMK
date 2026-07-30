@@ -70,6 +70,13 @@ class CrossSourceGroupPrimaryDomainModuleRegistrationTest {
         override suspend fun deleteCrossSourceMangaLink(source: Long, url: String) {}
         override suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String) {}
         override suspend fun deleteAllCrossSourceMangaLinks() {}
+        override suspend fun deleteCrossSourceGroupCompletely(groupId: String) {}
+        override suspend fun restoreCrossSourceGroupState(
+            linkUpserts: List<CrossSourceMangaLink>,
+            linkDeletes: List<Pair<Long, String>>,
+            primaryUpserts: List<CrossSourceGroupPrimary>,
+            primaryDeletes: List<String>,
+        ) {}
         override suspend fun getCrossSourceGroupPrimary(groupId: String): CrossSourceGroupPrimary? = null
         override suspend fun getAllCrossSourceGroupPrimaries(): List<CrossSourceGroupPrimary> = emptyList()
         override suspend fun upsertCrossSourceGroupPrimary(primary: CrossSourceGroupPrimary) {}

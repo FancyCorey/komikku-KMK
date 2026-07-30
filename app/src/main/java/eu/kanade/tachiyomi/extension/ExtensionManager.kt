@@ -315,14 +315,19 @@ class ExtensionManager(
      * @param extension The extension to be updated.
      */
     fun updateExtension(extension: Extension.Installed): Flow<InstallStep> {
-        val availableExt = availableExtensionMapFlow.value[
-            extension.pkgName +
-                // KMK -->
-                "_${extension.signatureHash}",
-            // KMK <--
-        ] ?: return emptyFlow()
+        val availableExt = getAvailableExtension(extension) ?: return emptyFlow()
         return installExtension(availableExt)
     }
+
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: exposes the same
+    // pkgName+signatureHash lookup updateExtension() already does internally, so a caller (e.g. a
+    // PackageOperationReceipt-recording screen model) can resolve the update's own artifact URL
+    // without duplicating this lookup logic.
+    fun getAvailableExtension(extension: Extension.Installed): Extension.Available? =
+        availableExtensionMapFlow.value[
+            extension.pkgName +
+                "_${extension.signatureHash}",
+        ]
 
     fun cancelInstallUpdateExtension(extension: Extension) {
         installer.cancelInstall(

@@ -101,16 +101,28 @@ internal object PersonalRecommendationScorer {
     /**
      * Filters blocked candidates and returns the rest sorted by score descending.
      * [limit] caps the result list.
+     *
+     * KMK v0.8.13: [requirePositiveTasteEvidence] (default true) additionally requires
+     * [ScoredCandidate.matchedGroups] to be non-empty -- i.e. at least one explicit preferred tag or
+     * positive learned tag weight matched. Source affinity alone is deliberately not positive
+     * evidence: it is meant to boost a candidate that already has taste evidence, not make an
+     * otherwise-unrelated candidate eligible by itself. Confirmed on a live device: candidate-memory
+     * rows existed with a positive score, `matchedGroupsJson = null`, purely from source affinity --
+     * this is the "generic or unrelated manga" symptom the v0.8.13 relevance gate fixes. For You and
+     * candidate-memory merge must always use the strict (true) default; only pass false for a caller
+     * that has an explicit, documented reason to rank without requiring taste evidence.
      */
     fun rankCandidates(
         candidates: List<Manga>,
         profile: TasteProfile,
         aliasMap: Map<String, String>,
         limit: Int = 10,
+        requirePositiveTasteEvidence: Boolean = true,
     ): List<ScoredCandidate> {
         return candidates
             .map { score(it, profile, aliasMap) }
             .filter { !it.blocked }
+            .filter { !requirePositiveTasteEvidence || it.matchedGroups.isNotEmpty() }
             .sortedByDescending { it.score }
             .take(limit)
     }

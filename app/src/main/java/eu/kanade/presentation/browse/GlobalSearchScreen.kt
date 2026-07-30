@@ -20,6 +20,8 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchItemResult
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchScreenModel
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableMap
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.presentation.core.components.material.Scaffold
@@ -134,19 +136,31 @@ internal fun GlobalSearchContent(
                 )
                 // KMK <--
 
+                // KMK --> v0.8.19: evaluation mode source-name obfuscation
+                val evaluationModeEnabled = rememberEvaluationModeEnabled()
+                val displaySourceName = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(source.id)
+                } else {
+                    source.name
+                }
+                // KMK <--
                 GlobalSearchResultItem(
-                    title = (
-                        fromSourceId?.let {
-                            "▶ ${source.name}".takeIf { source.id == fromSourceId }
-                        } ?: source.name
-                        ) +
-                        // KMK -->
+                    title = if (evaluationModeEnabled) {
+                        displaySourceName
+                    } else {
                         (
-                            domainSource.installedExtension?.let { extension ->
-                                " (${extension.name})".takeIf { extension.name != source.name }
-                            } ?: ""
-                            ),
-                    // KMK <--
+                            fromSourceId?.let {
+                                "▶ $displaySourceName".takeIf { source.id == fromSourceId }
+                            } ?: displaySourceName
+                            ) +
+                            // KMK -->
+                            (
+                                domainSource.installedExtension?.let { extension ->
+                                    " (${extension.name})".takeIf { extension.name != source.name }
+                                } ?: ""
+                                )
+                        // KMK <--
+                    },
                     subtitle = LocaleHelper.getLocalizedDisplayName(source.lang),
                     onClick = { onClickSource(source) },
                     modifier = Modifier.animateItem(),

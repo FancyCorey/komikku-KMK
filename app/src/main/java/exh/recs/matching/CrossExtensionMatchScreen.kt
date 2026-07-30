@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.util.fastFilter
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -31,6 +32,9 @@ import eu.kanade.presentation.browse.components.GlobalSearchLoadingResultItem
 import eu.kanade.presentation.browse.components.GlobalSearchResultItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.formattedMessage
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.kmk.KMR
@@ -167,15 +171,27 @@ class CrossExtensionMatchScreen(
                             key = { (source, _) -> source.id },
                         ) { (source, result) ->
                             GlobalSearchResultItem(
-                                title = source.name,
+                                // KMK -->
+                                title = if (rememberEvaluationModeEnabled()) {
+                                    EvaluationModeFormatter.sourceLabel(source.id)
+                                } else {
+                                    source.name
+                                },
+                                // KMK <--
                                 subtitle = source.lang.uppercase(),
                                 onClick = {},
                             ) {
                                 when (result) {
                                     MatchItemResult.Loading -> GlobalSearchLoadingResultItem()
+                                    // KMK v0.8.12: routed through the shared formattedMessage
+                                    // classifier (same one For You rows use) instead of a raw
+                                    // localizedMessage/javaClass.simpleName fallback, which leaked
+                                    // developer-facing wrapper class names (e.g.
+                                    // "RecoverableSourceRuntimeException: ...") into this row.
                                     is MatchItemResult.Error -> GlobalSearchErrorResultItem(
-                                        message = result.throwable.localizedMessage
-                                            ?: result.throwable.javaClass.simpleName,
+                                        message = with(LocalContext.current) {
+                                            result.throwable.formattedMessage
+                                        },
                                     )
                                     is MatchItemResult.Success -> GlobalSearchCardRow(
                                         titles = result.result,

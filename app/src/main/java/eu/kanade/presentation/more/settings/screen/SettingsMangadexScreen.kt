@@ -35,12 +35,15 @@ import eu.kanade.presentation.more.settings.widget.BasePreferenceWidget
 import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import exh.md.utils.MdConstants
 import exh.md.utils.MdUtil
 import kotlinx.collections.immutable.toImmutableMap
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
@@ -117,7 +120,14 @@ object SettingsMangadexScreen : SearchableSettings {
                     logoutDialogOpen = false
                     scope.launchIO {
                         try {
-                            if (mdex.logout()) {
+                            val logoutResult = SourceRuntime.run<Boolean>(mdex, SourceRuntimeOperation.MangaUpdate) {
+                                (this as MangaDex).logout()
+                            }
+                            if (logoutResult.getOrElse { error ->
+                                    logcat(LogPriority.ERROR, error) { "MangaDex logout failed" }
+                                    false
+                                }
+                            ) {
                                 withUIContext {
                                     context.toast(MR.strings.logout_success)
                                 }
@@ -126,6 +136,8 @@ object SettingsMangadexScreen : SearchableSettings {
                                     context.toast(MR.strings.unknown_error)
                                 }
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             logcat(LogPriority.ERROR, e) { "Logout error" }
                             withUIContext {

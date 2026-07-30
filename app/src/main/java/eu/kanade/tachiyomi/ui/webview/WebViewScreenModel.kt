@@ -6,10 +6,10 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.safeHeadersOrNull
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
-import logcat.LogPriority
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.service.SourceManager
@@ -25,12 +25,14 @@ class WebViewScreenModel(
     var headers = emptyMap<String, String>()
 
     init {
+        // KMK v0.8.10-fix6: source.headers can run an extension's lazy client-builder for the first
+        // time and throw LinkageError -- the old catch(Exception) here never caught it. Route through
+        // the shared SourceRuntime boundary (safeHeadersOrNull) instead.
         sourceId?.let { sourceManager.get(it) as? HttpSource }?.let { source ->
-            try {
-                headers = source.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "Failed to build headers" }
-            }
+            headers = source.safeHeadersOrNull()
+                ?.toMultimap()
+                ?.mapValues { it.value.getOrNull(0) ?: "" }
+                .orEmpty()
         }
     }
 

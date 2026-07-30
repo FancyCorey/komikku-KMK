@@ -30,6 +30,35 @@ proves that no shared boundary exists.
 
 ## 2. Required planning workflow
 
+### Step 0: maintain a rolling implementation queue
+
+When the user mentions a future implementation, next version, fix, follow-up, or implementation-plan
+detail, record it promptly in the relevant active planning document, follow-up document, or
+`NEXT_WORK.md` unless the user explicitly says not to document it yet.
+
+Do not wait until the user asks for the final implementation plan to capture the detail. Long-running
+planning conversations can span many turns, and unrecorded details are easy to lose or flatten into a
+generic summary.
+
+Each rolling note should record:
+
+- the date;
+- the intended version or fix if known;
+- whether the item is confirmed, tentative, deferred, or only a concern to investigate;
+- the exact user-facing behavior requested;
+- any explicit non-goals or corrections;
+- any code areas that already appear likely to be affected;
+- whether more clarification is needed.
+
+When the user later changes, narrows, expands, or rejects an item, update the same rolling record
+instead of leaving contradictory notes in separate places. If an item is moved to a later version,
+mark it as deferred and state why. If an item is removed, mark it as rejected or superseded rather
+than silently deleting the history.
+
+Before writing the final implementation plan, reconcile the rolling queue against the actual code and
+the latest user corrections. The implementation plan must say which rolling items are included,
+which are deferred, and which are intentionally excluded.
+
 ### Step 1: establish scope
 
 Record:
@@ -49,6 +78,7 @@ Never infer a new version line from convenience. Follow the project's establishe
 
 Before writing the solution, inspect:
 
+- current branch, HEAD, and working-tree status;
 - current implementation files;
 - callers and consumers;
 - models, repositories, interactors, and persistence;
@@ -68,6 +98,34 @@ If the code contradicts the planning documents, document the contradiction befor
 Do not make Claude infer the missing decision from context; write the exact implementation decision
 into the plan.
 
+### Step 2B: maintain working-tree hygiene
+
+Every implementation prompt must start by checking `git status --short`. The implementer must state
+whether the worktree is clean or dirty before editing files.
+
+If the worktree is dirty, classify existing changes before editing files in the same areas:
+
+- implemented work that should be preserved;
+- documentation-only pending work;
+- generated or local-tooling output;
+- suspicious/stale files needing user review;
+- unrelated user-owned changes that must not be touched.
+
+Do not use destructive cleanup commands such as `git reset --hard`, broad `git checkout --`, broad
+`git clean`, or recursive deletion of untracked files unless the user explicitly approves the exact
+paths after seeing the inventory. Prefer a persistent inventory document when the dirty tree is large
+or when multiple implementation passes have accumulated changes.
+
+Every implementation report must include:
+
+- files intentionally changed by the implementation;
+- pre-existing dirty files left alone;
+- generated files ignored or not copied;
+- final `git status --short` summary;
+- any remaining dirty files and why they remain.
+
+Do not claim a version is complete while leaving unexplained modified, deleted, or untracked files.
+
 ### Step 2A: ask targeted clarifying questions when behavior is ambiguous
 
 Before finalizing a plan, ask the user exact questions when the answer changes the implementation
@@ -82,6 +140,23 @@ example:
 
 Record the user's answer in the plan as an implementation decision. Do not ask broad questions such
 as "how should this work?" when the code and prior discussion already provide enough context.
+
+Do not silently convert uncertainty into an implementation assumption. If the user describes an
+interaction, UI layout, data behavior, migration path, or recovery behavior in a way that could be
+implemented more than one reasonable way, pause before writing the full implementation plan and ask a
+small set of direct clarification questions. This is especially important when:
+
+- the requested behavior affects navigation, selection, grouping, rating, migration, source
+  installation, reader behavior, backup/sync, database state, or destructive/bulk actions;
+- the user is describing a visual workflow from memory or screenshots;
+- the request says "maybe", "I don't know", "perhaps", "I could be wrong", or similar uncertainty;
+- two earlier requirements appear to conflict;
+- the implementation could be simple but less correct, or structural but higher risk;
+- a feature could reuse an existing app pattern, but the exact user-facing result is not yet clear.
+
+Clarification questions should be asked before the final plan, not after Claude has already started
+implementation. Once answered, the plan must quote or summarize the answer in a dedicated
+"User-confirmed decisions" section so the implementer does not need to infer intent.
 
 ### Step 3: map the current behavior
 
@@ -472,6 +547,26 @@ grouped recommendation paths. A call site is not structurally fixed merely becau
 `catch (Error)` branch; app-module source-method calls should use the shared runtime boundary unless
 a documented module boundary makes that impossible. Do not defer a source call as "lower risk" once
 real-device evidence shows it participates in the crash family.
+
+### Repeated-fix escalation rule
+
+If a real-device crash or major functional failure continues after one or more "complete" fixes, stop
+writing narrow follow-up patches and create a short retrospective/diagnostic addendum first. The
+addendum must identify:
+
+- the exact latest APK/version/hash being tested;
+- the newest crash log and whether it is stale or current;
+- the shared boundary involved;
+- why earlier fixes did not cover the latest failure path;
+- whether the problem needs a direct dependency/configuration fix, not only defensive error handling;
+- whether an existing registry/cache/diagnostic layer is only advisory and therefore still allows
+  repeated unsafe execution;
+- the minimum structural fix that prevents sibling screens/jobs/sources from failing together.
+
+For Claude handoffs in this situation, keep the task in the primary session unless the user
+explicitly approves delegation. Broad agentic exploration is a process risk for repeated-fix work
+because it can split the shared mental model across partial agents. Codex should document exact
+files, functions, and expected code-level changes before Claude implements.
 
 ## 11. Test plan
 

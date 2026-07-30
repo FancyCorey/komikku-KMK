@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.Source
 import exh.recs.ForYouResultBudgetPolicy
 import exh.recs.GroupPreviewBudgetPolicy
+import exh.recs.RecommendationLanguageAvailabilityPolicy
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import exh.recs.RecommendationSourceRunStatus
@@ -21,6 +22,9 @@ import exh.recs.discovery.NonInstalledSourceSuggestion
 import exh.recs.discovery.NonInstalledSourceSuggestionStore
 import exh.recs.sourceprefs.RecommendationSourcePreference
 import exh.recs.sourceprefs.RecommendationSourcePreferenceStore
+import exh.util.PackageOperationKind
+import exh.util.recordPackageOperationReceipt
+import exh.util.recordUserInitiatedInstall
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.ImmutableSet
@@ -43,6 +47,7 @@ import tachiyomi.domain.taste.interactor.ClearRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.ClearRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.ClearTagTaste
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
+import tachiyomi.domain.taste.interactor.GetSourceEvaluations
 import tachiyomi.domain.taste.interactor.GetTagTaste
 import tachiyomi.domain.taste.interactor.GetTasteDiagnostics
 import tachiyomi.domain.taste.interactor.GetTasteSuggestions
@@ -54,6 +59,7 @@ import tachiyomi.domain.taste.interactor.TasteSuggestionResult
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.TagPreference
 import tachiyomi.domain.taste.model.TagTaste
+import tachiyomi.domain.taste.model.normalizeTag
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -83,6 +89,7 @@ class RecommendationsSettingsScreenModel(
     // need excluding.
     private val getTasteSuggestions: GetTasteSuggestions = Injekt.get(),
     private val getTasteDiagnostics: GetTasteDiagnostics = Injekt.get(),
+    private val getSourceEvaluations: GetSourceEvaluations = Injekt.get(),
     // KMK <--
 ) : StateScreenModel<RecommendationsSettingsScreenModel.State>(State()) {
 
@@ -106,6 +113,8 @@ class RecommendationsSettingsScreenModel(
     // KMK --> v0.7.19
     private val sourceFitStatsPref = sourcePreferences.recommendationSourceFitStats()
     // KMK <--
+    // KMK v0.8.14-fix1: read-only For You preview snapshot -- see RecommendationForYouPreviewSnapshotStore.
+    private val forYouPreviewSnapshotPref = sourcePreferences.recommendationForYouPreviewSnapshot()
 
     init {
         val languages = RecommendationSourceFilter.normalizeLanguages(languagesPref.get())
@@ -115,7 +124,14 @@ class RecommendationsSettingsScreenModel(
         val filteredSources = RecommendationSourceFilter.filterForRecommendations(initSources, languages)
         val storedOrder = RecommendationSourceOrdering.parse(sourceOrderPref.get())
         val allInOrder = RecommendationSourceOrdering.applyAll(filteredSources, storedOrder)
-        val availableLangs = RecommendationSourceFilter.availableLanguages(initSources)
+        // KMK v0.8.12: merges selected + installed + available-extension languages instead of only
+        // installed sources, so the chip list never collapses to just English -- see
+        // RecommendationLanguageAvailabilityPolicy.
+        val availableLangs = RecommendationLanguageAvailabilityPolicy.availableLanguages(
+            selectedLanguages = languages,
+            installedVisibleSources = initSources,
+            availableExtensions = extensionManager.availableExtensionsFlow.value,
+        )
         val parsedStatuses = RecommendationSourceRunStatusStore.parse(lastSourceStatusesPref.get())
         // KMK --> v0.7.19
         val parsedFitStats = SourceFitStatsStore.parse(sourceFitStatsPref.get())
@@ -180,6 +196,15 @@ class RecommendationsSettingsScreenModel(
         }
         // KMK <--
 
+        // KMK v0.8.14-fix1: read-only For You preview snapshot, live-updated whenever a For You run
+        // finishes and persists a new snapshot -- see RecommendationForYouPreviewSnapshotStore.
+        mutableState.update { it.copy(forYouPreviewSnapshot = RecommendationForYouPreviewSnapshotStore.parse(forYouPreviewSnapshotPref.get())) }
+        screenModelScope.launch {
+            forYouPreviewSnapshotPref.changes().collectLatest { raw ->
+                mutableState.update { it.copy(forYouPreviewSnapshot = RecommendationForYouPreviewSnapshotStore.parse(raw)) }
+            }
+        }
+
         // KMK --> v0.7.0: Phase 1 – track dismissed suggestion count
         val dismissedPref = sourcePreferences.dismissedNonInstalledRecommendationSources()
         mutableState.update { it.copy(dismissedSuggestionCount = NonInstalledSourceSuggestionStore.parse(dismissedPref.get()).size) }
@@ -194,6 +219,15 @@ class RecommendationsSettingsScreenModel(
         screenModelScope.launch {
             getNonInstalledSourceSuggestions.subscribe().collectLatest { suggestions ->
                 mutableState.update { it.copy(nonInstalledSuggestions = suggestions.toImmutableList()) }
+            }
+        }
+
+        // KMK v0.8.20-fix1: expose the existing per-source evaluation counters as read-only
+        // diagnostics. The settings screen never performs a source request here; it only observes
+        // the persisted evaluation rows and refreshes when a new evaluation is written.
+        screenModelScope.launch {
+            getSourceEvaluations.subscribeAll().collectLatest { evaluations ->
+                mutableState.update { it.copy(sourceMetadataTagDiagnostics = evaluations.toImmutableList()) }
             }
         }
 
@@ -250,6 +284,17 @@ class RecommendationsSettingsScreenModel(
             extensionManager.installedExtensionsFlow.collectLatest { refreshVisibleSources() }
         }
         // KMK <--
+        // KMK v0.8.12: also refresh the language chip list when the available-extension repo data
+        // changes (a repo refresh can surface new non-English extensions) or when the user's
+        // selected languages change (e.g. from another screen/device via sync) -- previously only
+        // installed-extension changes triggered a refresh, so the chip list could go stale.
+        screenModelScope.launch {
+            combine(
+                extensionManager.availableExtensionsFlow,
+                languagesPref.changes(),
+            ) { _, _ -> Unit }.collectLatest { refreshVisibleSources() }
+        }
+        // KMK <--
     }
 
     // KMK v0.8.10: Taste suggestions + diagnostics loading -->
@@ -293,25 +338,65 @@ class RecommendationsSettingsScreenModel(
     // KMK <--
 
     fun setRatedMangaVisibility(visibility: RatedMangaVisibility) {
-        ratedVisibilityPref.set(visibility)
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.RATED_MANGA_VISIBILITY,
+            "ratedMangaVisibility",
+            ratedVisibilityPref,
+            visibility,
+        ) {
+            ratedVisibilityPref.set(visibility)
+        }
         mutableState.update { it.copy(ratedMangaVisibility = visibility) }
     }
 
+    // KMK Undo Expansion Phase 1 -->
+    /**
+     * Shared build-before-write/commit-after-success wrapper for the simple [Preference]-backed
+     * recommendation settings below. Reads the previous value, performs [write], and only commits a
+     * journal entry to [exh.util.PreferenceUndoJournal] if the write actually changed the value.
+     */
+    private fun <T> journalPreferenceChange(
+        actionType: exh.util.PreferenceJournalActionType,
+        identityKey: String,
+        preference: tachiyomi.core.common.preference.Preference<T>,
+        newValue: T,
+        write: () -> Unit,
+    ) {
+        val previousValue = preference.get()
+        val undoEntry = exh.util.PreferenceUndoRecorder.buildPreferenceEntry(
+            sourcePreferences,
+            actionType,
+            identityKey,
+            preference,
+            previousValue,
+            newValue,
+        )
+        write()
+        undoEntry?.let { exh.util.PreferenceUndoJournal.record(it) }
+    }
+    // KMK <--
+
     fun setHideKnownManga(enabled: Boolean) {
-        hideKnownMangaPref.set(enabled)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.HIDE_KNOWN_MANGA, "hideKnownManga", hideKnownMangaPref, enabled) {
+            hideKnownMangaPref.set(enabled)
+        }
         mutableState.update { it.copy(hideKnownManga = enabled) }
     }
 
     // KMK --> v0.7.26
     fun setMinChapterCount(value: Int) {
-        minChapterCountPref.set(value)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.MIN_CHAPTER_COUNT, "minChapterCount", minChapterCountPref, value) {
+            minChapterCountPref.set(value)
+        }
         mutableState.update { it.copy(minChapterCount = value) }
     }
     // KMK <--
 
     // KMK --> v0.7.34: enrichment cap setter
     fun setEnrichmentCap(value: Int) {
-        enrichmentCapPref.set(value)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.ENRICHMENT_CAP, "enrichmentCap", enrichmentCapPref, value) {
+            enrichmentCapPref.set(value)
+        }
         mutableState.update { it.copy(enrichmentCap = value) }
     }
     // KMK <--
@@ -322,7 +407,9 @@ class RecommendationsSettingsScreenModel(
     // sized for the old budget.
     fun setResultBudget(value: Int) {
         val validated = ForYouResultBudgetPolicy.validate(value)
-        resultBudgetPref.set(validated)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.RESULT_BUDGET, "resultBudget", resultBudgetPref, validated) {
+            resultBudgetPref.set(validated)
+        }
         mutableState.update { it.copy(resultBudget = validated) }
     }
     // KMK <--
@@ -333,7 +420,9 @@ class RecommendationsSettingsScreenModel(
     // the cache instead of reusing a differently-sized preview.
     fun setGroupPreviewBudget(value: Int) {
         val validated = GroupPreviewBudgetPolicy.validate(value)
-        groupPreviewBudgetPref.set(validated)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.GROUP_PREVIEW_BUDGET, "groupPreviewBudget", groupPreviewBudgetPref, validated) {
+            groupPreviewBudgetPref.set(validated)
+        }
         mutableState.update { it.copy(groupPreviewBudget = validated) }
     }
     // KMK <--
@@ -350,7 +439,9 @@ class RecommendationsSettingsScreenModel(
             current + lang
         }
         val normalized = RecommendationSourceFilter.normalizeLanguages(updated.toSet())
-        languagesPref.set(normalized)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.RECOMMENDATION_LANGUAGES, "recommendationLanguages", languagesPref, normalized) {
+            languagesPref.set(normalized)
+        }
         recomputeSourcesForLanguages(normalized)
         mutableState.update { it.copy(recommendationLanguages = normalized.toImmutableSet()) }
     }
@@ -385,7 +476,10 @@ class RecommendationsSettingsScreenModel(
             visibleOrderedIds = newOrder.map { it.id },
             allVisibleSourceIds = allVisibleIds,
         )
-        sourceOrderPref.set(RecommendationSourceOrdering.serialize(mergedOrder))
+        val serializedOrder = RecommendationSourceOrdering.serialize(mergedOrder)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.SOURCE_ORDER, "sourceOrder", sourceOrderPref, serializedOrder) {
+            sourceOrderPref.set(serializedOrder)
+        }
 
         val disabledIds = state.value.disabledSourceIds
         val enabledOrdered = newOrder.filter { it.id !in disabledIds }
@@ -404,7 +498,14 @@ class RecommendationsSettingsScreenModel(
 
     fun confirmResetSourceOrder() {
         mutableState.update { it.copy(showResetSourceOrderDialog = false) }
-        sourceOrderPref.set("")
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.SOURCE_ORDER,
+            "sourceOrder",
+            sourceOrderPref,
+            "",
+        ) {
+            sourceOrderPref.set("")
+        }
         val languages = state.value.recommendationLanguages
         val filteredSources = RecommendationSourceFilter.filterForRecommendations(sourceManager.getVisibleSources(), languages.toSet())
         val fresh = filteredSources.toImmutableList()
@@ -431,14 +532,47 @@ class RecommendationsSettingsScreenModel(
 
     fun setTagPreference(displayName: String, preference: TagPreference) {
         if (displayName.isBlank()) return
+        val trimmed = displayName.trim()
         screenModelScope.launchNonCancellable {
-            setTagTaste.await(displayName.trim(), preference)
+            // KMK Undo Expansion Phase 1: build before write, commit only after success.
+            val normalizedTag = trimmed.normalizeTag()
+            val previous = getTagTaste.await(normalizedTag)?.preference?.let { TagPreference.fromValue(it) }
+            val undoEntry = exh.util.PreferenceUndoRecorder.buildTagPreferenceEntry(
+                sourcePreferences,
+                getTagTaste,
+                setTagTaste,
+                clearTagTaste,
+                trimmed,
+                normalizedTag,
+                previous,
+                preference,
+            )
+            setTagTaste.await(trimmed, preference)
+            undoEntry?.let { exh.util.PreferenceUndoJournal.record(it) }
         }
     }
 
     fun removeTagPreference(normalizedTag: String) {
         screenModelScope.launchNonCancellable {
+            // KMK Undo Expansion Phase 1: build before write, commit only after success.
+            val previousTaste = getTagTaste.await(normalizedTag)
+            val previous = previousTaste?.preference?.let { TagPreference.fromValue(it) }
+            val undoEntry = if (previousTaste != null) {
+                exh.util.PreferenceUndoRecorder.buildTagPreferenceEntry(
+                    sourcePreferences,
+                    getTagTaste,
+                    setTagTaste,
+                    clearTagTaste,
+                    previousTaste.displayName,
+                    normalizedTag,
+                    previous,
+                    null,
+                )
+            } else {
+                null
+            }
             clearTagTaste.await(normalizedTag)
+            undoEntry?.let { exh.util.PreferenceUndoJournal.record(it) }
         }
     }
 
@@ -446,8 +580,25 @@ class RecommendationsSettingsScreenModel(
 
     fun toggleSource(sourceId: Long) {
         val currentlyDisabled = sourceId in state.value.disabledSourceIds
+        if (!sourcePreferences.evaluationMode().get()) {
+            screenModelScope.launchNonCancellable {
+                setSourceEnabled.await(sourceId, enabled = currentlyDisabled)
+            }
+            return
+        }
         screenModelScope.launchNonCancellable {
+            val entry = exh.util.PreferenceUndoEntry(
+                id = exh.util.PreferenceUndoEntry.newId(),
+                timestamp = System.currentTimeMillis(),
+                actionType = exh.util.PreferenceJournalActionType.SOURCE_EXCLUSION,
+                identityKey = sourceId.toString(),
+                previousValue = !currentlyDisabled,
+                expectedPostValue = currentlyDisabled,
+                readCurrent = { sourceId !in getDisabledSources.await() },
+                restore = { enabled -> setSourceEnabled.await(sourceId, enabled) },
+            )
             setSourceEnabled.await(sourceId, enabled = currentlyDisabled)
+            exh.util.PreferenceUndoJournal.record(entry)
         }
     }
 
@@ -462,7 +613,19 @@ class RecommendationsSettingsScreenModel(
                 // KMK -->
                 // takeWhile stops collection at any terminal InstallStep (Installed, Error, Idle)
                 // without this, installExtension() flow never terminates and the coroutine hangs.
+                val receiptId = exh.util.NonUndoableEvent.newId()
                 extensionManager.installExtension(suggestion.extension)
+                    .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
+                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
+                    // PackageOperationReceipt alongside the visibility-only event above.
+                    .recordPackageOperationReceipt(
+                        kind = PackageOperationKind.INSTALL,
+                        packageName = suggestion.extension.pkgName,
+                        signatureHash = suggestion.extension.signatureHash,
+                        versionCode = suggestion.extension.versionCode,
+                        artifactUri = suggestion.extension.apkUrl,
+                        id = receiptId,
+                    ) { sourcePreferences.evaluationMode().get() }
                     .takeWhile { !it.isCompleted() }
                     .collect()
                 // KMK <--
@@ -490,7 +653,17 @@ class RecommendationsSettingsScreenModel(
                         // takeWhile terminates collection at any terminal step so the loop
                         // can advance to the next suggestion. Raw .collect {} never returns
                         // if the flow doesn't complete on its own.
+                        val receiptId = exh.util.NonUndoableEvent.newId()
                         extensionManager.installExtension(suggestion.extension)
+                            .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
+                            .recordPackageOperationReceipt(
+                                kind = PackageOperationKind.INSTALL,
+                                packageName = suggestion.extension.pkgName,
+                                signatureHash = suggestion.extension.signatureHash,
+                                versionCode = suggestion.extension.versionCode,
+                                artifactUri = suggestion.extension.apkUrl,
+                                id = receiptId,
+                            ) { sourcePreferences.evaluationMode().get() }
                             .takeWhile { !it.isCompleted() }
                             .collect()
                         // KMK <--
@@ -511,12 +684,18 @@ class RecommendationsSettingsScreenModel(
     fun dismissSuggestion(suggestion: NonInstalledSourceSuggestion) {
         val pref = sourcePreferences.dismissedNonInstalledRecommendationSources()
         val current = NonInstalledSourceSuggestionStore.parse(pref.get())
-        pref.set(NonInstalledSourceSuggestionStore.serialize(NonInstalledSourceSuggestionStore.dismiss(current, suggestion.dismissalKey)))
+        val newValue = NonInstalledSourceSuggestionStore.serialize(NonInstalledSourceSuggestionStore.dismiss(current, suggestion.dismissalKey))
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.SUGGESTION_DISMISSAL, suggestion.dismissalKey, pref, newValue) {
+            pref.set(newValue)
+        }
     }
 
     // KMK --> v0.7.0: Phase 1 – clear all dismissed source suggestions
     fun clearDismissedSuggestions() {
-        sourcePreferences.dismissedNonInstalledRecommendationSources().set("")
+        val pref = sourcePreferences.dismissedNonInstalledRecommendationSources()
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.DISMISSED_SUGGESTIONS_CLEAR, "dismissedSuggestions", pref, "") {
+            pref.set("")
+        }
     }
     // KMK <--
 
@@ -576,27 +755,50 @@ class RecommendationsSettingsScreenModel(
 
     // KMK --> v0.7.8: same-manga matching settings actions
     fun setSameMangaResultsPerSource(value: Int) {
-        sourcePreferences.sameMangaMatchResultsPerSource().set(value)
+        val preference = sourcePreferences.sameMangaMatchResultsPerSource()
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING, "sameMangaResultsPerSource", preference, value) {
+            preference.set(value)
+        }
         mutableState.update { it.copy(sameMangaResultsPerSource = value) }
     }
 
     fun setSameMangaPreselectResults(enabled: Boolean) {
-        sourcePreferences.sameMangaMatchPreselectResults().set(enabled)
+        val preference = sourcePreferences.sameMangaMatchPreselectResults()
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING, "sameMangaPreselectResults", preference, enabled) {
+            preference.set(enabled)
+        }
         mutableState.update { it.copy(sameMangaPreselectResults = enabled) }
     }
 
     fun setBestVersionPreviewSampleSize(value: Int) {
-        sourcePreferences.bestVersionPreviewSampleSize().set(value)
+        val preference = sourcePreferences.bestVersionPreviewSampleSize()
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.BEST_VERSION_PREVIEW, "bestVersionPreviewSampleSize", preference, value) {
+            preference.set(value)
+        }
         mutableState.update { it.copy(bestVersionPreviewSampleSize = value) }
     }
 
     fun setBestVersionAvoidFirstPages(enabled: Boolean) {
-        sourcePreferences.bestVersionAvoidFirstPages().set(enabled)
+        val preference = sourcePreferences.bestVersionAvoidFirstPages()
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.BEST_VERSION_PREVIEW, "bestVersionAvoidFirstPages", preference, enabled) {
+            preference.set(enabled)
+        }
         mutableState.update { it.copy(bestVersionAvoidFirstPages = enabled) }
     }
     // KMK <--
 
     // --- Source preference (like/dislike) actions ---
+
+    private fun currentRecommendationSourcePreferenceState(): exh.util.RecommendationSourcePreferenceUndoState =
+        exh.util.RecommendationSourcePreferenceUndoState(
+            liked = RecommendationSourcePreferenceStore.parse(sourcePreferences.likedRecommendationSourceKeys().get()),
+            disliked = RecommendationSourcePreferenceStore.parse(sourcePreferences.dislikedRecommendationSourceKeys().get()),
+        )
+
+    private fun writeRecommendationSourcePreferenceState(state: exh.util.RecommendationSourcePreferenceUndoState) {
+        sourcePreferences.likedRecommendationSourceKeys().set(RecommendationSourcePreferenceStore.serialize(state.liked))
+        sourcePreferences.dislikedRecommendationSourceKeys().set(RecommendationSourcePreferenceStore.serialize(state.disliked))
+    }
 
     fun setInstalledSourcePreference(sourceId: Long, preference: RecommendationSourcePreference) {
         val key = RecommendationSourcePreferenceStore.installedKey(sourceId)
@@ -622,8 +824,24 @@ class RecommendationsSettingsScreenModel(
             RecommendationSourcePreference.DISLIKE -> RecommendationSourcePreferenceStore.dislike(currentLiked, currentDisliked, key)
             RecommendationSourcePreference.NEUTRAL -> RecommendationSourcePreferenceStore.reset(currentLiked, currentDisliked, key)
         }
+        val previous = currentRecommendationSourcePreferenceState()
+        val next = exh.util.RecommendationSourcePreferenceUndoState(newLiked, newDisliked)
         likedPref.set(RecommendationSourcePreferenceStore.serialize(newLiked))
         dislikedPref.set(RecommendationSourcePreferenceStore.serialize(newDisliked))
+        if (sourcePreferences.evaluationMode().get() && previous != next) {
+            exh.util.PreferenceUndoJournal.record(
+                exh.util.PreferenceUndoEntry(
+                    id = exh.util.PreferenceUndoEntry.newId(),
+                    timestamp = System.currentTimeMillis(),
+                    actionType = exh.util.PreferenceJournalActionType.SOURCE_PREFERENCE,
+                    identityKey = key,
+                    previousValue = previous,
+                    expectedPostValue = next,
+                    readCurrent = ::currentRecommendationSourcePreferenceState,
+                    restore = ::writeRecommendationSourcePreferenceState,
+                ),
+            )
+        }
     }
     // KMK <--
 
@@ -654,45 +872,72 @@ class RecommendationsSettingsScreenModel(
         RecommendationSourcePreferenceStore.availableKey(suggestion.extension.signatureHash, suggestion.extension.pkgName, suggestion.source?.id),
     )
 
-    private fun applySourceQualityMark(key: String, poor: Boolean) {
+    // KMK Undo Expansion Phase 3: source-quality marks are 3 preferences (liked/disliked/explicit
+    // key sets) written together as one state transform. Journaled as a single composite
+    // Triple<Set,Set,Set> entry so Undo restores the whole prior mark state atomically, not one of
+    // the three preferences in isolation (which could reconstruct an impossible intermediate state).
+    private fun currentSourceQualityState(): exh.recs.sourceprefs.SourceQualityMarkPolicy.State {
         val likedPref = sourcePreferences.likedSourceQualityKeys()
         val dislikedPref = sourcePreferences.dislikedSourceQualityKeys()
         val explicitPref = sourcePreferences.explicitSourceQualityKeys()
-        val current = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
+        return exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
             liked = RecommendationSourcePreferenceStore.parse(likedPref.get()),
             disliked = RecommendationSourcePreferenceStore.parse(dislikedPref.get()),
             explicit = RecommendationSourcePreferenceStore.parse(explicitPref.get()),
         )
+    }
+
+    private fun writeSourceQualityState(state: exh.recs.sourceprefs.SourceQualityMarkPolicy.State) {
+        sourcePreferences.likedSourceQualityKeys().set(RecommendationSourcePreferenceStore.serialize(state.liked))
+        sourcePreferences.dislikedSourceQualityKeys().set(RecommendationSourcePreferenceStore.serialize(state.disliked))
+        sourcePreferences.explicitSourceQualityKeys().set(RecommendationSourcePreferenceStore.serialize(state.explicit))
+    }
+
+    private fun journalSourceQualityChange(
+        identityKey: String,
+        actionType: exh.util.PreferenceJournalActionType,
+        previous: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
+        next: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
+    ) {
+        if (!sourcePreferences.evaluationMode().get() || previous == next) return
+        exh.util.PreferenceUndoJournal.record(
+            exh.util.PreferenceUndoEntry(
+                id = exh.util.PreferenceUndoEntry.newId(),
+                timestamp = System.currentTimeMillis(),
+                actionType = actionType,
+                identityKey = identityKey,
+                previousValue = previous,
+                expectedPostValue = next,
+                readCurrent = { currentSourceQualityState() },
+                restore = { writeSourceQualityState(it) },
+            ),
+        )
+    }
+
+    private fun applySourceQualityMark(key: String, poor: Boolean) {
+        val current = currentSourceQualityState()
         val next = if (poor) {
             exh.recs.sourceprefs.SourceQualityMarkPolicy.markPoor(current, key)
         } else {
             exh.recs.sourceprefs.SourceQualityMarkPolicy.markExplicit(current, key)
         }
-        likedPref.set(RecommendationSourcePreferenceStore.serialize(next.liked))
-        dislikedPref.set(RecommendationSourcePreferenceStore.serialize(next.disliked))
-        explicitPref.set(RecommendationSourcePreferenceStore.serialize(next.explicit))
+        writeSourceQualityState(next)
+        journalSourceQualityChange(key, exh.util.PreferenceJournalActionType.SOURCE_QUALITY_MARK, current, next)
     }
 
     private fun clearSourceQualityMark(key: String) {
-        val likedPref = sourcePreferences.likedSourceQualityKeys()
-        val dislikedPref = sourcePreferences.dislikedSourceQualityKeys()
-        val explicitPref = sourcePreferences.explicitSourceQualityKeys()
-        val current = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
-            liked = RecommendationSourcePreferenceStore.parse(likedPref.get()),
-            disliked = RecommendationSourcePreferenceStore.parse(dislikedPref.get()),
-            explicit = RecommendationSourcePreferenceStore.parse(explicitPref.get()),
-        )
+        val current = currentSourceQualityState()
         val next = exh.recs.sourceprefs.SourceQualityMarkPolicy.clear(current, key)
-        likedPref.set(RecommendationSourcePreferenceStore.serialize(next.liked))
-        dislikedPref.set(RecommendationSourcePreferenceStore.serialize(next.disliked))
-        explicitPref.set(RecommendationSourcePreferenceStore.serialize(next.explicit))
+        writeSourceQualityState(next)
+        journalSourceQualityChange(key, exh.util.PreferenceJournalActionType.SOURCE_QUALITY_MARK, current, next)
     }
 
     /** Management/recovery action: clears every source-quality mark across all sources. */
     fun clearAllSourceQualityMarks() {
-        sourcePreferences.likedSourceQualityKeys().set("")
-        sourcePreferences.dislikedSourceQualityKeys().set("")
-        sourcePreferences.explicitSourceQualityKeys().set("")
+        val current = currentSourceQualityState()
+        val next = exh.recs.sourceprefs.SourceQualityMarkPolicy.State(emptySet(), emptySet(), emptySet())
+        writeSourceQualityState(next)
+        journalSourceQualityChange("all", exh.util.PreferenceJournalActionType.SOURCE_QUALITY_CLEAR_ALL, current, next)
     }
     // KMK <--
 
@@ -720,7 +965,12 @@ class RecommendationsSettingsScreenModel(
         val filteredSources = RecommendationSourceFilter.filterForRecommendations(freshSources, languages)
         val storedOrder = RecommendationSourceOrdering.parse(sourceOrderPref.get())
         val allInOrder = RecommendationSourceOrdering.applyAll(filteredSources, storedOrder)
-        val availableLangs = RecommendationSourceFilter.availableLanguages(freshSources)
+        // KMK v0.8.12: see the init block comment above -- same merged-language policy.
+        val availableLangs = RecommendationLanguageAvailabilityPolicy.availableLanguages(
+            selectedLanguages = languages,
+            installedVisibleSources = freshSources,
+            availableExtensions = extensionManager.availableExtensionsFlow.value,
+        )
         val disabledIds = state.value.disabledSourceIds
         val enabledOrdered = allInOrder.filter { it.id !in disabledIds }
         val boosted = RecommendationSourceOrdering.boostedSourceIds(enabledOrdered).toImmutableSet()
@@ -805,7 +1055,12 @@ class RecommendationsSettingsScreenModel(
         val tasteSuggestions: TasteSuggestionResult = TasteSuggestionResult(persistentListOf(), persistentListOf(), 0),
         val tasteDiagnostics: TasteDiagnosticsResult? = null,
         val tasteInsightsLoading: Boolean = false,
+        /** Latest persisted source-evaluation rows used for metadata/tag coverage diagnostics. */
+        val sourceMetadataTagDiagnostics: ImmutableList<tachiyomi.domain.taste.model.SourceEvaluation> = persistentListOf(),
         // KMK <--
+        // KMK v0.8.14-fix1: read-only For You preview snapshot -- null when no For You refresh has
+        // ever produced a visible result yet. See RecommendationForYouPreviewSnapshotStore.
+        val forYouPreviewSnapshot: RecommendationForYouPreviewSnapshot? = null,
         // KMK <--
     ) {
         // KMK --> v0.7.19: show the "Suggest priority order" button when enough sources have run history

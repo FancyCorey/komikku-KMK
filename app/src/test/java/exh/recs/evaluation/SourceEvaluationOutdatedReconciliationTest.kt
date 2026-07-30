@@ -91,13 +91,14 @@ class SourceEvaluationOutdatedReconciliationTest {
         installedPkgNames: Set<String> = emptySet(),
         recLanguages: Set<String> = setOf("en"),
         dislikedKeys: Set<String> = emptySet(),
+        blockExplicit: Boolean = false,
     ) = SourceEvaluationCandidateFilter.buildPool(
         available = available,
         installedPkgNames = installedPkgNames,
         untrustedPkgNames = emptySet(),
         recLanguages = recLanguages,
         nsfwEnabled = true,
-        blockExplicit = false,
+        blockExplicit = blockExplicit,
         dislikedKeys = dislikedKeys,
         evaluations = evaluations,
     )
@@ -274,5 +275,122 @@ class SourceEvaluationOutdatedReconciliationTest {
         assertEquals(processedInOrder.size, processedInOrder.toSet().size, "no duplicate processing across batches")
         assertEquals(4, iterations, "100 candidates at batch size 25 should take exactly 4 batches, not restart or skip")
     }
+
+    // KMK v0.8.13-fix1 -->
+    @Test
+    fun `hasActionableOutdated and hasUnreachableOutdated reflect a mixed pool correctly`() {
+        val workableExt = makeExt("com.test.workable2", "sigw2")
+        val workableEval = makeEval("sigw2", "com.test.workable2", expiresAt = now - 1L)
+        val unreachableExt = makeExt("com.test.unreachable2", "sigu2")
+        val unreachableEval = makeEval("sigu2", "com.test.unreachable2", expiresAt = now - 1L)
+        val pool = buildPool(
+            listOf(workableExt, unreachableExt),
+            listOf(workableEval, unreachableEval),
+            installedPkgNames = setOf("com.test.unreachable2"),
+        )
+        val result = SourceEvaluationOutdatedReconciliation.reconcile(listOf(workableEval, unreachableEval), pool, now)
+        assertTrue(result.hasActionableOutdated)
+        assertTrue(result.hasUnreachableOutdated)
+        assertTrue(result.completionStillHasUnreachableRows)
+    }
+
+    @Test
+    fun `hasActionableOutdated and hasUnreachableOutdated are false with no evaluations`() {
+        val result = SourceEvaluationOutdatedReconciliation.reconcile(emptyList(), buildPool(emptyList(), emptyList()), now)
+        assertFalse(result.hasActionableOutdated)
+        assertFalse(result.hasUnreachableOutdated)
+        assertFalse(result.completionStillHasUnreachableRows)
+    }
+    // KMK <--
+
+    // KMK v0.8.14 -->
+    @Test
+    fun `workableOutdatedExtensionKeys identifies exactly the actionable row, not the unreachable one`() {
+        // SourceEvaluationScreen's row label policy checks evaluation.extensionKey membership in this
+        // set to decide "Outdated - reassess needed" vs "Outdated - not included in this run" -- this
+        // test pins the exact key format ("signatureHash|pkgName") that call site relies on.
+        val workableExt = makeExt("com.test.actionable", "sigA")
+        val workableEval = makeEval("sigA", "com.test.actionable", expiresAt = now - 1L)
+        val unreachableExt = makeExt("com.test.notactionable", "sigB")
+        val unreachableEval = makeEval("sigB", "com.test.notactionable", expiresAt = now - 1L)
+        val pool = buildPool(
+            listOf(workableExt, unreachableExt),
+            listOf(workableEval, unreachableEval),
+            installedPkgNames = setOf("com.test.notactionable"),
+        )
+        val result = SourceEvaluationOutdatedReconciliation.reconcile(listOf(workableEval, unreachableEval), pool, now)
+
+        assertTrue(workableEval.extensionKey in result.workableOutdatedExtensionKeys)
+        assertFalse(unreachableEval.extensionKey in result.workableOutdatedExtensionKeys)
+    }
+
+    @Test
+    fun `explicit stale source excluded from the current queue is not workable`() {
+        val ext = makeExt("com.test.explicit", "sig-explicit")
+        val eval = makeEval("sig-explicit", "com.test.explicit", expiresAt = now - 1L)
+        val pool = buildPool(
+            available = listOf(ext),
+            evaluations = listOf(eval),
+            blockExplicit = true,
+        ).let { pool ->
+            // The test extension is classified as ordinary by the production classifier. Marking
+            // its key explicitly lets this test exercise the same pool contract without depending
+            // on a real extension package name or public source metadata.
+            pool.copy(explicitExtensionKeys = setOf("sig-explicit|com.test.explicit"))
+        }
+
+        val result = SourceEvaluationOutdatedReconciliation.reconcile(
+            allEvaluations = listOf(eval),
+            pool = pool,
+            now = now,
+            includeExplicit = false,
+        )
+
+        assertEquals(1, result.totalOutdatedCount)
+        assertEquals(0, result.workableOutdatedCount)
+        assertEquals(1, result.unreachableOutdatedCount)
+        assertTrue(result.allOutdatedAreUnreachable)
+    }
+
+    @Test
+    fun `mixed stale sources reconcile to the same count as the actionable queue`() {
+        val ordinaryExt = makeExt("com.test.ordinary", "sig-ordinary")
+        val explicitExt = makeExt("com.test.explicit-mixed", "sig-explicit-mixed")
+        val ordinaryEval = makeEval("sig-ordinary", "com.test.ordinary", expiresAt = now - 1L)
+        val explicitEval = makeEval("sig-explicit-mixed", "com.test.explicit-mixed", expiresAt = now - 1L)
+        val pool = buildPool(
+            available = listOf(ordinaryExt, explicitExt),
+            evaluations = listOf(ordinaryEval, explicitEval),
+            blockExplicit = true,
+        ).let { pool ->
+            pool.copy(explicitExtensionKeys = setOf("sig-explicit-mixed|com.test.explicit-mixed"))
+        }
+
+        val excluded = SourceEvaluationOutdatedReconciliation.reconcile(
+            allEvaluations = listOf(ordinaryEval, explicitEval),
+            pool = pool,
+            now = now,
+            includeExplicit = false,
+        )
+        val included = SourceEvaluationOutdatedReconciliation.reconcile(
+            allEvaluations = listOf(ordinaryEval, explicitEval),
+            pool = pool,
+            now = now,
+            includeExplicit = true,
+        )
+
+        assertEquals(1, excluded.workableOutdatedCount)
+        assertEquals(1, excluded.unreachableOutdatedCount)
+        assertEquals(
+            excluded.workableOutdatedCount,
+            SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = false).size,
+        )
+        assertEquals(2, included.workableOutdatedCount)
+        assertEquals(
+            included.workableOutdatedCount,
+            SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now, includeExplicit = true).size,
+        )
+    }
+    // KMK <--
 }
 // KMK <--

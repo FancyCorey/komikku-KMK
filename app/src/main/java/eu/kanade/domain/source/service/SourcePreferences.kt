@@ -181,6 +181,11 @@ class SourcePreferences(
     fun recommendationSourceFitStats() = preferenceStore.getString("recommendation_source_fit_stats", "")
     // KMK <--
 
+    // KMK v0.8.14-fix1: read-only For You preview snapshot for Recommendation Settings -- see
+    // exh.recs.settings.RecommendationForYouPreviewSnapshotStore.
+    /** Compact serialized snapshot (Top Picks + visible source rows, capped) from the last successful For You refresh. */
+    fun recommendationForYouPreviewSnapshot() = preferenceStore.getString("recommendation_for_you_preview_snapshot", "")
+
     // KMK --> v0.7.26: minimum chapter count filter for For You
     /** Minimum locally-known chapter count for a manga to appear in For You. 0 = no filter. */
     fun recommendationMinChapterCount() = preferenceStore.getInt("recommendation_min_chapter_count", 0)
@@ -253,6 +258,18 @@ class SourcePreferences(
     // KMK --> v0.7.11: source evaluation consent
     /** When true, the user has acknowledged the Source Evaluation pre-run warning. */
     fun sourceEvaluationConsentGiven() = preferenceStore.getBoolean("source_evaluation_consent_given", false)
+    // KMK <--
+
+    // KMK --> v0.8.19: evaluation mode (visual-only obfuscation for screen recordings/screenshots)
+    /**
+     * When true, every displayed source/extension name and icon, extension-repository name,
+     * disliked-manga title, and preferred/blocked tag label is replaced with a generic
+     * placeholder throughout the UI. Purely a display-layer relabeling -- no underlying data,
+     * network behavior, or functionality is affected. Intended for capturing public evidence
+     * (screenshots/screen recordings) without exposing private source/repo names or personal
+     * taste signals.
+     */
+    fun evaluationMode() = preferenceStore.getBoolean("evaluation_mode", false)
     // KMK <--
 
     // KMK --> v0.7.31: C3 — rated count at the time evaluation was last launched (for profile-changed prompt)

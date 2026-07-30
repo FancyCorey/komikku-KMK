@@ -61,6 +61,12 @@ object SourceRuntime {
         dispatcher: CoroutineDispatcher = Dispatchers.IO,
         crossinline block: suspend Source.() -> T,
     ): Result<T> {
+        // KMK v0.8.10-fix8: enforce suppression before ever touching the source again -- previously
+        // SourceRuntimeFailureRegistry.isTemporarilyUnavailable() was advisory only (callers had to
+        // remember to check it themselves), so a source that had just thrown a lazy-init LinkageError
+        // could still be re-invoked by any call site that didn't opt in, re-triggering the same crash
+        // risk. This check is unconditional for every run()/runBlockingSourceCall() caller now.
+        suppressionFailureOrNull(source)?.let { return Result.failure(it) }
         return try {
             Result.success(withContext(dispatcher) { source.block() })
         } catch (e: CancellationException) {
@@ -91,6 +97,8 @@ object SourceRuntime {
         operation: SourceRuntimeOperation,
         block: Source.() -> T,
     ): Result<T> {
+        // KMK v0.8.10-fix8: same enforced suppression as run() above.
+        suppressionFailureOrNull(source)?.let { return Result.failure(it) }
         return try {
             Result.success(source.block())
         } catch (e: CancellationException) {
@@ -111,7 +119,73 @@ object SourceRuntime {
             Result.failure(unwrapped)
         }
     }
+
+    /**
+     * Returns a [SourceTemporarilyUnavailableException] (never touching [source]) when
+     * [SourceRuntimeFailureRegistry.isTemporarilyUnavailable] is true for [source], or `null` when the
+     * caller should proceed normally. Shared by [run] and [runBlockingSourceCall] so both enforce the
+     * same suppression window identically.
+     */
+    fun suppressionFailureOrNull(source: Source): SourceTemporarilyUnavailableException? {
+        if (!SourceRuntimeFailureRegistry.isTemporarilyUnavailable(source.id)) return null
+        val entry = SourceRuntimeFailureRegistry.get(source.id)
+        return SourceTemporarilyUnavailableException(
+            sourceId = source.id,
+            sourceName = source.name,
+            sourceLang = source.lang,
+            lastOperation = entry?.operation,
+            lastKind = entry?.kind,
+        )
+    }
 }
+
+// KMK v0.8.10-fix8 -->
+/**
+ * Thrown (as a [Result.failure], never actually thrown across a call boundary) when
+ * [SourceRuntime.run]/[SourceRuntime.runBlockingSourceCall] refuses to touch [sourceId] again because
+ * it recently produced a recoverable failure ([SourceRuntimeFailureRegistry.isTemporarilyUnavailable]).
+ * An ordinary [Exception] -- never [CancellationException], never a fatal [Error] -- so every existing
+ * `catch (e: Exception)` path and [getOrThrowSourceRuntimeException] caller already handle it
+ * correctly as a non-fatal per-source failure.
+ *
+ * This is process-lifetime suppression only, exactly like the registry it reads from -- it does not
+ * persist across process restarts and does not disable/uninstall/block the extension. A user-initiated
+ * retry remains possible via [SourceRuntimeFailureRegistry.clear]/`clearAll` (already exposed through
+ * Source Evaluation's runtime-health "Retry now" action, added in v0.8.10-fix5).
+ */
+class SourceTemporarilyUnavailableException(
+    val sourceId: Long,
+    val sourceName: String,
+    val sourceLang: String,
+    val lastOperation: SourceRuntimeOperation?,
+    val lastKind: SourceRuntimeFailureKind?,
+) : Exception(
+    "Source \"$sourceName\" ($sourceLang) is temporarily unavailable after a recent recoverable " +
+        "failure" + (lastOperation?.let { " ($it)" } ?: ""),
+)
+// KMK <--
+
+// KMK v0.8.10-fix9 -->
+/**
+ * Rethrows [e] unchanged if it must never be swallowed by a broad `catch (e: Throwable)` block:
+ * [CancellationException] (structured concurrency must never be masked), or any genuinely fatal
+ * [Error] per [isRecoverableSourceRuntimeFailure] (unwrapped first via [unwrapSourceRuntimeCause], so
+ * a fatal error hidden behind [java.util.concurrent.ExecutionException]/`CompletionException`/
+ * `InvocationTargetException` is still caught). Returns normally (does not rethrow) for an ordinary
+ * [Exception] or a recoverable [LinkageError] -- the caller should isolate those per-item, exactly as
+ * before.
+ *
+ * Intended for app-layer call sites that isolate per-item failures across a batch (migration, library
+ * update, metadata update) but were catching every [Throwable] without distinguishing fatal VM/system
+ * conditions from recoverable per-item failures. Reuses the same classification
+ * [SourceRuntime.run]/[SourceRuntime.runBlockingSourceCall] use internally -- this is not a second,
+ * competing classifier.
+ */
+fun rethrowIfFatal(e: Throwable) {
+    if (e is CancellationException) throw e
+    if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+}
+// KMK <--
 
 /** The source-facing operation family being guarded — used for diagnostics and per-operation policy. */
 enum class SourceRuntimeOperation {
@@ -122,7 +196,15 @@ enum class SourceRuntimeOperation {
     MangaUpdate,
     PageList,
     ImageUrl,
+    Image,
     RelatedManga,
+    // KMK v0.8.10-fix5: lazy source-owned properties/image-fetch paths (client/headers construction,
+    // cover/preview requests) are a separate operation family from the method calls above — they can
+    // throw LinkageError while rendering covers/previews, not only while explicitly using a source.
+    Client,
+    Headers,
+    CoverImage,
+    PreviewImage,
 }
 
 /** Classification of a recoverable [SourceRuntimeFailure] for diagnostics/UI. */
@@ -161,5 +243,57 @@ fun Throwable.toSourceRuntimeFailureKind(): SourceRuntimeFailureKind = when (thi
     is tachiyomi.domain.source.model.SourceNotInstalledException -> SourceRuntimeFailureKind.SourceNotInstalled
     is UnsupportedOperationException -> SourceRuntimeFailureKind.Unsupported
     else -> SourceRuntimeFailureKind.Internal
+}
+// KMK <--
+
+// KMK v0.8.10-fix7 -->
+/**
+ * Bridges a recoverable [SourceRuntime]-classified source failure (which may be a raw
+ * [LinkageError] — an [Error], not an [Exception]) into an ordinary [Exception] for call sites that
+ * need exception-style flow control (a UI row, a source wrapper, a background job) and would
+ * otherwise crash on an uncaught [Error] from a `catch (e: Exception)`-only path.
+ *
+ * [SourceRuntime.run]/[SourceRuntime.runBlockingSourceCall] already classify and record the failure
+ * in [SourceRuntimeFailureRegistry] — this bridge only changes what type the *caller* sees when it
+ * chooses to rethrow via [Result.getOrThrow]-style flow instead of [Result.fold]. It does not replace
+ * `SourceRuntime.run(...).fold(...)` for code that can naturally handle a [Result] directly.
+ */
+class RecoverableSourceRuntimeException(
+    val sourceRuntimeFailure: Throwable,
+) : Exception(sourceRuntimeFailure.message, sourceRuntimeFailure)
+
+fun Throwable.asRecoverableSourceRuntimeException(): RecoverableSourceRuntimeException {
+    val unwrapped = unwrapSourceRuntimeCause()
+    return if (unwrapped is RecoverableSourceRuntimeException) {
+        unwrapped
+    } else {
+        RecoverableSourceRuntimeException(unwrapped)
+    }
+}
+
+/**
+ * Like [Result.getOrThrow], but a recoverable source failure (as classified by
+ * [isRecoverableSourceRuntimeFailure]) is thrown as [RecoverableSourceRuntimeException] (an
+ * [Exception]) instead of the raw [Throwable] stored in the [Result] — which may be a [LinkageError]
+ * that would otherwise crash any `catch (e: Exception)`-only path. Non-recoverable fatal errors and
+ * [CancellationException] are rethrown unchanged, exactly as [Result.getOrThrow] would.
+ *
+ * KMK v0.8.10-fix7 correction: [isRecoverableSourceRuntimeFailure] classifies *any* non-[Error]
+ * [Throwable] as recoverable — including [CancellationException], since it is itself an [Exception]
+ * subtype, not an [Error]. Without an explicit check here first, a [Result.failure] carrying a
+ * [CancellationException] would be wrongly wrapped into [RecoverableSourceRuntimeException], breaking
+ * structured concurrency (the exact type must propagate unchanged for cancellation to work). The
+ * fix7 plan's own required test ("does not wrap CancellationException") depends on this guard.
+ */
+fun <T> Result<T>.getOrThrowSourceRuntimeException(): T {
+    return getOrElse { throwable ->
+        if (throwable is CancellationException) throw throwable
+        val unwrapped = throwable.unwrapSourceRuntimeCause()
+        if (unwrapped is CancellationException) throw unwrapped
+        if (unwrapped.isRecoverableSourceRuntimeFailure()) {
+            throw unwrapped.asRecoverableSourceRuntimeException()
+        }
+        throw throwable
+    }
 }
 // KMK <--

@@ -58,6 +58,8 @@ import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
@@ -82,6 +84,8 @@ fun ExtensionDetailsScreen(
     onClickUninstall: () -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
     onClickIncognito: (Boolean) -> Unit,
+    // KMK v0.8.18: manual extension APK export
+    onClickExportApk: (() -> Unit)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val url = remember(state.extension) {
@@ -139,6 +143,15 @@ fun ExtensionDetailsScreen(
                                         ),
                                     ),
                                 )
+                                // KMK v0.8.18: manual extension APK export
+                                if (onClickExportApk != null) {
+                                    add(
+                                        AppBar.OverflowAction(
+                                            title = stringResource(tachiyomi.i18n.kmk.KMR.strings.extension_export_action),
+                                            onClick = onClickExportApk,
+                                        ),
+                                    )
+                                }
                             }
                             .build(),
                     )
@@ -294,8 +307,14 @@ private fun DetailsHeader(
                 density = DisplayMetrics.DENSITY_XXXHIGH,
             )
 
+            // KMK --> v0.8.19: evaluation mode name/package obfuscation
+            val evaluationModeEnabled = rememberEvaluationModeEnabled()
             Text(
-                text = extension.name,
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(extension.pkgName)
+                } else {
+                    extension.name
+                },
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
             )
@@ -303,9 +322,10 @@ private fun DetailsHeader(
             val strippedPkgName = extension.pkgName.substringAfter("eu.kanade.tachiyomi.extension.")
 
             Text(
-                text = strippedPkgName,
+                text = if (evaluationModeEnabled) "" else strippedPkgName,
                 style = MaterialTheme.typography.bodySmall,
             )
+            // KMK <--
         }
 
         Row(

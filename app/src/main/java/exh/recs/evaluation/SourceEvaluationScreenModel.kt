@@ -5,14 +5,25 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
+import eu.kanade.tachiyomi.source.SourceRuntimeHealthIssue
+import eu.kanade.tachiyomi.source.SourceRuntimeHealthReporter
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.isOnline
 import exh.recs.KmkRecsReleaseNotes
 import exh.recs.RecommendationSourceFilter
+import exh.util.PackageOperationKind
+import exh.util.recordPackageOperationReceipt
+import exh.util.recordUserInitiatedInstall
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -29,6 +40,7 @@ import tachiyomi.domain.taste.interactor.GetSourceEvaluations
 import tachiyomi.domain.taste.interactor.GetTasteProfile
 import tachiyomi.domain.taste.interactor.GetUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.MarkSourceEvaluationUnsafe
+import tachiyomi.domain.taste.interactor.UpsertUnsafeExtensionPackage
 import tachiyomi.domain.taste.model.SourceEvaluation
 import tachiyomi.domain.taste.model.SourceEvaluationUnsafeSource
 import tachiyomi.domain.taste.model.SourceRecommendationFit
@@ -86,6 +98,9 @@ class SourceEvaluationScreenModel(
     // KMK --> v0.7.6: rec-quality probe results
     private val getSourceRecommendationFit: tachiyomi.domain.taste.interactor.GetSourceRecommendationFit = Injekt.get(),
     // KMK <--
+    // KMK v0.8.10-fix5: user-confirmed "disable extension loading" writes here, same infrastructure
+    // package-level crash-quarantine already uses.
+    private val upsertUnsafeExtensionPackage: UpsertUnsafeExtensionPackage = Injekt.get(),
     // KMK <--
     // KMK <--
 ) : StateScreenModel<SourceEvaluationScreenModel.State>(State()) {
@@ -155,15 +170,34 @@ class SourceEvaluationScreenModel(
         val showManagementSection: Boolean = false,
         val managementConfirmAction: ManagementAction? = null,
         // KMK <--
+        // KMK v0.8.14: Phase E visual-fog reduction -- "skip evaluated"/"include explicit"/candidate
+        // diagnostics and the installer-mode selector/Shizuku toggle are secondary setup detail, not
+        // primary actions; collapsed behind disclosures by default so the first screen reads as
+        // status + primary action. Batch size stays visible (it's a search anchor target and a common
+        // first adjustment). See SourceEvaluationScreen's class doc / itemKeysInOrder.
+        val showSetupOptions: Boolean = false,
+        val showInstallerDetails: Boolean = false,
         // KMK --> v0.7.4: count of evaluated extensions that have a newer available version
         val updatedEvaluatedExtensionCount: Int = 0,
         // KMK <--
+        // KMK v0.8.10-fix5: non-blocking source-runtime health warning + details dialog.
+        val runtimeHealthIssues: List<SourceRuntimeHealthIssue> = emptyList(),
+        val showRuntimeHealthDialog: Boolean = false,
+        /** Package names with a matching available extension -- "Reinstall" is only valid for these. */
+        val runtimeHealthReinstallablePackages: Set<String> = emptySet(),
         // KMK --> v0.7.6: continuation cursor + installed-source display filter + rec-quality
         val continuationCursor: SourceEvaluationCursor? = null,
         val canContinue: Boolean = false,
         val remainingCandidateCount: Int = 0,
         val showInstalled: Boolean = false,
         val installedExtensionKeys: Set<String> = emptySet(),
+        // KMK v0.8.15-fix1: extension keys ("sig|pkg") currently present in the available-extensions
+        // repository listing -- used to decide per-row Install eligibility (an extension can
+        // disappear from a repo after being evaluated). See SourceEvaluationRowActionPolicy.
+        val availableExtensionKeys: Set<String> = emptySet(),
+        // KMK v0.8.15-fix1: pkgNames currently installing from a Source Evaluation row's Install
+        // action, so the button can show progress and avoid duplicate taps.
+        val installingPkgNames: Set<String> = emptySet(),
         val filteredEvaluations: List<SourceEvaluation> = emptyList(),
         val hiddenInstalledCount: Int = 0,
         val recommendationFitsByEvalKey: Map<String, SourceRecommendationFit> = emptyMap(),
@@ -322,6 +356,19 @@ class SourceEvaluationScreenModel(
         }
         // KMK <--
 
+        // KMK v0.8.10-fix5: observe process-lifetime source-runtime failures for the non-blocking
+        // health warning.
+        SourceRuntimeHealthReporter.issuesFlow(extensionManager)
+            .onEach { issues ->
+                val availablePkgNames = extensionManager.availableExtensionsFlow.value.map { it.pkgName }.toSet()
+                val reinstallable = issues.mapNotNull { it.packageName }.filter { it in availablePkgNames }.toSet()
+                mutableState.update {
+                    it.copy(runtimeHealthIssues = issues, runtimeHealthReinstallablePackages = reinstallable)
+                }
+            }
+            .launchIn(screenModelScope)
+        // KMK <--
+
         // KMK --> v0.6.19: reconnect to any active background evaluation job
         SourceEvaluationJobState.activeQueueState
             .onEach { jobQueueState ->
@@ -407,6 +454,15 @@ class SourceEvaluationScreenModel(
                 val keys = installed.map { "${it.signatureHash}|${it.pkgName}" }.toSet()
                 mutableState.update { it.copy(installedExtensionKeys = keys) }
                 applyDisplayFilter()
+            }
+            .launchIn(screenModelScope)
+
+        // KMK v0.8.15-fix1: keep availableExtensionKeys in sync -- used for per-row Install
+        // eligibility (SourceEvaluationRowActionPolicy).
+        extensionManager.availableExtensionsFlow
+            .onEach { available ->
+                val keys = available.map { "${it.signatureHash}|${it.pkgName}" }.toSet()
+                mutableState.update { it.copy(availableExtensionKeys = keys) }
             }
             .launchIn(screenModelScope)
         // KMK <--
@@ -854,6 +910,152 @@ class SourceEvaluationScreenModel(
         mutableState.update { it.copy(queueState = SourceEvaluationQueueState()) }
     }
 
+    // KMK v0.8.10-fix5 -->
+    /**
+     * Source-runtime health diagnostics + recovery actions. See
+     * `docs/community/KMK_RECS_V0_8_10_FIX5_SOURCE_CLIENT_HEALTH_AND_RECOVERY_PLAN.md`. Only offers
+     * actions that are actually possible for a given issue -- never silently uninstalls, reinstalls,
+     * or permanently blocks an extension.
+     */
+    fun showRuntimeHealthDialog() {
+        mutableState.update { it.copy(showRuntimeHealthDialog = true) }
+    }
+
+    fun dismissRuntimeHealthDialog() {
+        mutableState.update { it.copy(showRuntimeHealthDialog = false) }
+    }
+
+    /** Clears the process-lifetime runtime failure for [sourceId] so the next request tries again. */
+    fun retryRuntimeHealthSource(sourceId: Long) {
+        SourceRuntimeFailureRegistry.clear(sourceId)
+    }
+
+    fun updateRuntimeHealthExtension(pkgName: String) {
+        val installedExt = extensionManager.installedExtensionsFlow.value.find { it.pkgName == pkgName }
+            ?: return
+        if (!installedExt.hasUpdate) return
+        screenModelScope.launch {
+            try {
+                extensionManager.updateExtension(installedExt)
+                    .takeWhile { !it.isCompleted() }
+                    .collect()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: runtime-health update failed for $pkgName" }
+            }
+        }
+    }
+
+    // KMK v0.8.15-fix1 -->
+    /**
+     * Installs a source directly from a Source Evaluation row's `Install` action, reusing the same
+     * `extensionManager.installExtension(...)` path (and its existing installer safety/prompt
+     * behavior) as everywhere else in the app -- no new installer. Only ever called for a row where
+     * [SourceEvaluationRowActionPolicy.canOfferInstall] returned true, so this does not attempt to
+     * re-install an already-installed, blocked/quarantined, or no-longer-available extension.
+     */
+    fun installEvaluatedSource(pkgName: String, signatureHash: String) {
+        val availableExt = extensionManager.availableExtensionsFlow.value.find {
+            it.pkgName == pkgName && it.signatureHash == signatureHash
+        } ?: return
+        mutableState.update { it.copy(installingPkgNames = it.installingPkgNames + pkgName) }
+        screenModelScope.launch {
+            try {
+                // KMK v0.8.20-fix1: verify the terminal step is actually Installed (not just "completed",
+                // which .isCompleted() also returns for Error/Idle) before recording a non-undoable
+                // Action History event -- see exh.util.NonUndoableEventJournal's doc for why this
+                // operation can never have an Undo action. Same terminal-step check already used by
+                // SourceEvaluationRunner.installAndCheck/SourceRecommendationQualityRunner.
+                val receiptId = exh.util.NonUndoableEvent.newId()
+                extensionManager.installExtension(availableExt)
+                    .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
+                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
+                    // PackageOperationReceipt alongside the visibility-only event above -- see
+                    // ExtensionsScreenModel.installExtension() for the same pattern.
+                    .recordPackageOperationReceipt(
+                        kind = PackageOperationKind.INSTALL,
+                        packageName = pkgName,
+                        signatureHash = signatureHash,
+                        versionCode = availableExt.versionCode,
+                        artifactUri = availableExt.apkUrl,
+                        id = receiptId,
+                    ) { sourcePreferences.evaluationMode().get() }
+                    .first {
+                        it == eu.kanade.tachiyomi.extension.model.InstallStep.Installed ||
+                            it == eu.kanade.tachiyomi.extension.model.InstallStep.Error
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: install failed for $pkgName" }
+            } finally {
+                mutableState.update { it.copy(installingPkgNames = it.installingPkgNames - pkgName) }
+            }
+        }
+    }
+    // KMK <--
+
+    fun reinstallRuntimeHealthExtension(pkgName: String) {
+        val availableExt = extensionManager.availableExtensionsFlow.value.find { it.pkgName == pkgName }
+            ?: return
+        screenModelScope.launch {
+            try {
+                extensionManager.installExtension(availableExt)
+                    .takeWhile { !it.isCompleted() }
+                    .collect()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: runtime-health reinstall failed for $pkgName" }
+            }
+        }
+    }
+
+    // KMK Confirmed Blocker Remediation Phase 5: previously fire-and-forget with no completion
+    // signal at all, so uninstall was entirely unrepresented in Action History (a real, unsafe-by-
+    // omission gap -- not a fake Undo, but a silent one). Now verifies removal via
+    // extensionManager.installedExtensionsFlow before recording a non-undoable event -- see
+    // exh.util.verifyAndRecordUninstall's doc for why the event is never recorded on the mere fact
+    // that uninstall was requested.
+    fun uninstallRuntimeHealthExtension(pkgName: String) {
+        val installedExt = extensionManager.installedExtensionsFlow.value.find { it.pkgName == pkgName }
+            ?: return
+        extensionManager.uninstallExtension(installedExt)
+        screenModelScope.launch {
+            exh.util.verifyAndRecordUninstall(
+                installedPackageNames = extensionManager.installedExtensionsFlow.map { installed -> installed.map { it.pkgName } },
+                pkgName = pkgName,
+                isEvaluationModeEnabled = { sourcePreferences.evaluationMode().get() },
+                // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
+                // receipt identity for a future reinstall follow-up -- see ExtensionsScreenModel's
+                // uninstallExtension() for the same pattern.
+                signatureHash = installedExt.signatureHash,
+                versionCode = installedExt.versionCode,
+            )
+        }
+    }
+
+    /** User-confirmed: blocks [pkgName] from loading again, using the existing unsafe-package store. */
+    fun disableRuntimeHealthExtension(pkgName: String) {
+        val installedExt = extensionManager.installedExtensionsFlow.value.find { it.pkgName == pkgName }
+        screenModelScope.launch {
+            val now = System.currentTimeMillis()
+            upsertUnsafeExtensionPackage.await(
+                UnsafeExtensionPackage(
+                    pkgName = pkgName,
+                    extensionName = installedExt?.name,
+                    reason = "Repeated source-runtime failure (extension incompatible or missing a dependency)",
+                    source = "manual",
+                    removable = true,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
+        }
+    }
+    // KMK <--
+
     // KMK v0.8.10 -->
     /**
      * Called when the Source Evaluation screen is left (Composable dispose). If the run reached a
@@ -953,6 +1155,45 @@ class SourceEvaluationScreenModel(
         applyDisplayFilter()
     }
 
+    private fun currentSourceQualityState(): exh.recs.sourceprefs.SourceQualityMarkPolicy.State =
+        exh.recs.sourceprefs.SourceQualityMarkPolicy.State(
+            liked = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(sourcePreferences.likedSourceQualityKeys().get()),
+            disliked = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(sourcePreferences.dislikedSourceQualityKeys().get()),
+            explicit = exh.recs.sourceprefs.RecommendationSourcePreferenceStore.parse(sourcePreferences.explicitSourceQualityKeys().get()),
+        )
+
+    private fun writeSourceQualityState(state: exh.recs.sourceprefs.SourceQualityMarkPolicy.State) {
+        sourcePreferences.likedSourceQualityKeys().set(
+            exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(state.liked),
+        )
+        sourcePreferences.dislikedSourceQualityKeys().set(
+            exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(state.disliked),
+        )
+        sourcePreferences.explicitSourceQualityKeys().set(
+            exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(state.explicit),
+        )
+    }
+
+    private fun journalSourceQualityChange(
+        previous: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
+        next: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
+        identityKey: String,
+    ) {
+        if (!sourcePreferences.evaluationMode().get() || previous == next) return
+        exh.util.PreferenceUndoJournal.record(
+            exh.util.PreferenceUndoEntry(
+                id = exh.util.PreferenceUndoEntry.newId(),
+                timestamp = System.currentTimeMillis(),
+                actionType = exh.util.PreferenceJournalActionType.SOURCE_QUALITY_MARK,
+                identityKey = identityKey,
+                previousValue = previous,
+                expectedPostValue = next,
+                readCurrent = ::currentSourceQualityState,
+                restore = ::writeSourceQualityState,
+            ),
+        )
+    }
+
     private fun applySourceQualityMark(evaluation: SourceEvaluation, poor: Boolean) {
         val key = "a|${evaluation.extensionKey}"
         val likedPref = sourcePreferences.likedSourceQualityKeys()
@@ -971,6 +1212,7 @@ class SourceEvaluationScreenModel(
         likedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.liked))
         dislikedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.disliked))
         explicitPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.explicit))
+        journalSourceQualityChange(current, next, key)
         mutableState.update { it.copy(qualityDislikedSourceKeys = next.disliked, qualityExplicitSourceKeys = next.explicit) }
         applyDisplayFilter()
         applyOptionsAndUpdateState()
@@ -994,6 +1236,7 @@ class SourceEvaluationScreenModel(
         likedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.liked))
         dislikedPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.disliked))
         explicitPref.set(exh.recs.sourceprefs.RecommendationSourcePreferenceStore.serialize(next.explicit))
+        journalSourceQualityChange(current, next, key)
         mutableState.update { it.copy(qualityDislikedSourceKeys = next.disliked, qualityExplicitSourceKeys = next.explicit) }
         applyDisplayFilter()
         applyOptionsAndUpdateState()
@@ -1187,6 +1430,16 @@ class SourceEvaluationScreenModel(
     fun toggleManagementSection() {
         mutableState.update { it.copy(showManagementSection = !it.showManagementSection) }
     }
+
+    // KMK v0.8.14 -->
+    fun toggleSetupOptions() {
+        mutableState.update { it.copy(showSetupOptions = !it.showSetupOptions) }
+    }
+
+    fun toggleInstallerDetails() {
+        mutableState.update { it.copy(showInstallerDetails = !it.showInstallerDetails) }
+    }
+    // KMK <--
 
     fun requestManagementAction(action: ManagementAction) {
         mutableState.update { it.copy(managementConfirmAction = action) }
@@ -1445,7 +1698,13 @@ class SourceEvaluationScreenModel(
 
         // KMK --> v0.8.1-fix3: compute the stale/outdated reassessment queue independently of the
         // unassessed-queue options above — see SourceEvaluationCandidateQueuePolicy doc.
-        val staleCandidates = SourceEvaluationCandidateQueuePolicy.staleCandidates(pool, now)
+        // KMK v0.8.15-fix1: actionable-only -- see SourceEvaluationCandidateQueuePolicy.staleCandidates
+        // doc for the root-cause this closes.
+        val staleCandidates = SourceEvaluationCandidateQueuePolicy.staleCandidates(
+            pool,
+            now,
+            includeExplicit = opts.includeExplicitCandidates,
+        )
         val staleFingerprint = SourceEvaluationContinuationPolicy.buildFilterFingerprint(
             languages = recLanguages,
             includeExplicit = opts.includeExplicitCandidates,
@@ -1464,7 +1723,12 @@ class SourceEvaluationScreenModel(
         // full traced pipeline and confirmed cause. Reconciles the display-only "Outdated" row
         // classification against actual candidate-pool eligibility so the UI can explain a
         // zero-candidate outdated queue truthfully instead of it looking like a silent failure.
-        val outdatedReconciliation = SourceEvaluationOutdatedReconciliation.reconcile(state.value.evaluations, pool, now)
+        val outdatedReconciliation = SourceEvaluationOutdatedReconciliation.reconcile(
+            allEvaluations = state.value.evaluations,
+            pool = pool,
+            now = now,
+            includeExplicit = opts.includeExplicitCandidates,
+        )
 
         // KMK --> v0.7.18: warn when candidates empty AND available extensions list is also empty
         val repoUnavailable = result.candidates.isEmpty() &&

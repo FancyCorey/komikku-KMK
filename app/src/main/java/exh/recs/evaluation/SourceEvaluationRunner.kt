@@ -33,6 +33,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.taste.interactor.ClearSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.GetTagAliases
 import tachiyomi.domain.taste.interactor.GetTasteProfile
+import tachiyomi.domain.taste.interactor.ReplaceSourceEvaluation
 import tachiyomi.domain.taste.interactor.UpsertSourceEvaluation
 import tachiyomi.domain.taste.interactor.UpsertSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.UpsertSourceRecommendationFit
@@ -63,6 +64,10 @@ class SourceEvaluationRunner(
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val getTasteProfile: GetTasteProfile = Injekt.get(),
     private val upsertSourceEvaluation: UpsertSourceEvaluation = Injekt.get(),
+    // KMK v0.8.19: atomic package-level stale-row replacement for extension-level failures -- see
+    // recordExtensionError(). Replaces the separate delete+upsert pair (v0.8.15) with one
+    // transaction (SourceEvaluationRepositoryImpl.replaceByPackage()).
+    private val replaceSourceEvaluation: ReplaceSourceEvaluation = Injekt.get(),
     // KMK --> v0.6.16: crash quarantine probe marker
     private val upsertProbeMarker: UpsertSourceEvaluationProbeMarker = Injekt.get(),
     private val clearProbeMarker: ClearSourceEvaluationProbeMarker = Injekt.get(),
@@ -79,6 +84,15 @@ class SourceEvaluationRunner(
     val state: StateFlow<SourceEvaluationQueueState> = _state.asStateFlow()
 
     // KMK --> v0.7.6: keys of candidates handed to the runner in this batch (for cursor advance)
+    // KMK v0.8.15-fix1: narrowed contract -- this set (and therefore both stale-cursor advancement
+    // and SourceEvaluationRunCompletionPolicy's durable-write count) now contains ONLY candidates
+    // for which evaluateExtension() confirmed a durable source_evaluation write, never a candidate
+    // that was skipped before any write was attempted. Fix A (SourceEvaluationCandidateQueuePolicy
+    // .staleCandidates) already keeps non-actionable (blocked/explicit) candidates out of the stale
+    // queue entirely, so the deliberate-skip branch below should never fire during a stale run in
+    // practice -- but it deliberately no longer adds to this set even if it does, as a second,
+    // independent guarantee that a no-write skip can never advance the cursor or count as durable
+    // work.
     private val _completedCandidateKeys = mutableSetOf<String>()
     val completedCandidateKeys: Set<String> get() = _completedCandidateKeys.toSet()
     // KMK <--
@@ -145,11 +159,13 @@ class SourceEvaluationRunner(
                         // KMK <--
 
                         val ext = candidate.extension
-                        // KMK --> v0.7.6: record that this candidate was handed to the runner
-                        _completedCandidateKeys.add("${ext.signatureHash}|${ext.pkgName}")
-                        // KMK <--
 
-                        // Skip if explicitly disliked and blockExplicit is on
+                        // Skip if explicitly disliked and blockExplicit is on. KMK v0.8.15-fix1: this
+                        // candidate is intentionally excluded from the run -- it must NOT be treated
+                        // as durably handled or advance the cursor (see SourceEvaluationCandidateQueuePolicy
+                        // .staleCandidates, which now filters these out of the stale queue before it
+                        // ever reaches here; this branch is a defensive backstop for the unassessed
+                        // queue / any future caller, not the primary fix).
                         if (!options.includeExplicitCandidates &&
                             blockExplicit &&
                             ExplicitSourceClassifier.isExplicitExtension(ext)
@@ -158,9 +174,17 @@ class SourceEvaluationRunner(
                             continue
                         }
 
+                        // KMK v0.8.15 / v0.8.15-fix1: root-cause fix for the live-device "Reassess
+                        // outdated" false no-op -- the key used to be added unconditionally, before
+                        // evaluateExtension() knew whether it durably wrote anything. Now it's only
+                        // added once evaluateExtension() confirms a durable write happened, so the
+                        // stale cursor and end-of-run "durable handled" check both reflect reality.
                         // KMK --> v0.6.13: pass options and privateAvailable for diagnostics + cleanup
-                        evaluateExtension(ext, installerOverride, tasteProfile, aliasMap, recLanguages, options, privateAvailable, batchId)
+                        val durablyHandled = evaluateExtension(ext, installerOverride, tasteProfile, aliasMap, recLanguages, options, privateAvailable, batchId)
                         // KMK <--
+                        if (durablyHandled) {
+                            _completedCandidateKeys.add("${ext.signatureHash}|${ext.pkgName}")
+                        }
 
                         // Respectful inter-extension delay
                         delay(1500L)
@@ -168,8 +192,19 @@ class SourceEvaluationRunner(
                 }
 
                 // KMK --> v0.7.18: only mark Completed if no mid-run terminal status (e.g. ConnectivityLost) was set
+                // KMK v0.8.15: do not report generic "Evaluation completed" when candidates existed
+                // but none of them durably wrote anything (e.g. every candidate was cancelled before
+                // evaluateExtension() returned, or the batch was empty of anything actionable) -- this
+                // is exactly the live-device "Reassess outdated (25)" / "Evaluation completed" /
+                // no DB change bug. With the durable-write fix above, a non-empty candidates list
+                // will normally always produce at least one durable write; NoActionableWork is the
+                // honest fallback for the remaining edge cases (see SourceEvaluationQueueState.kt).
                 if (_state.value.status == SourceEvaluationQueueState.Status.Running) {
-                    _state.update { it.copy(status = SourceEvaluationQueueState.Status.Completed) }
+                    val newStatus = SourceEvaluationRunCompletionPolicy.resolveStatus(
+                        candidatesCount = candidates.size,
+                        durablyHandledCount = _completedCandidateKeys.size,
+                    )
+                    _state.update { it.copy(status = newStatus) }
                 }
                 // KMK <--
             } catch (e: CancellationException) {
@@ -196,6 +231,12 @@ class SourceEvaluationRunner(
         _state.value = SourceEvaluationQueueState()
     }
 
+    // KMK v0.8.15: returns true exactly when this candidate durably wrote a source_evaluation row
+    // (a real evaluation, a per-source error, or -- via recordExtensionError() -- a reconciled
+    // extension-level error) before returning. The caller only advances the stale-reassessment
+    // cursor for candidates that return true, so a candidate that fails before any write is
+    // attempted (should that ever happen) is correctly left un-advanced instead of being silently
+    // treated as handled.
     private suspend fun evaluateExtension(
         ext: Extension.Available,
         installerOverride: BasePreferences.ExtensionInstaller?,
@@ -211,7 +252,7 @@ class SourceEvaluationRunner(
         // KMK --> v0.6.16: crash quarantine
         batchId: String,
         // KMK <--
-    ) {
+    ): Boolean {
         setPhase(ext.name, null, SourceEvaluationQueueState.Phase.Downloading)
 
         // KMK --> v0.6.13: detect pre-existing installation to avoid accidental cleanup
@@ -225,8 +266,7 @@ class SourceEvaluationRunner(
         }
         if (preExistingInstalled != null) {
             logcat(LogPriority.INFO) { "KMK SourceEvaluation install: skipping ${ext.name} — already installed before evaluation" }
-            recordExtensionError(ext, "Already installed before evaluation", SourceEvaluationQueueState.CleanupStatus.SkippedPreExisting)
-            return
+            return recordExtensionError(ext, "Already installed before evaluation", SourceEvaluationQueueState.CleanupStatus.SkippedPreExisting)
         }
         // KMK <--
 
@@ -246,12 +286,10 @@ class SourceEvaluationRunner(
             }
             if (installResult == null) {
                 logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} install timed out after 90000ms" }
-                recordExtensionError(ext, "Install timed out after 90s")
-                return
+                return recordExtensionError(ext, "Install timed out after 90s")
             }
             if (!installResult) {
-                recordExtensionError(ext, "Install failed")
-                return
+                return recordExtensionError(ext, "Install failed")
             }
             // KMK <--
 
@@ -277,16 +315,14 @@ class SourceEvaluationRunner(
 
             if (installedExt == null) {
                 logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} loading sources timed out after 20000ms" }
-                recordExtensionError(ext, "Loading sources timed out after 20s")
-                return
+                return recordExtensionError(ext, "Loading sources timed out after 20s")
             }
             // KMK <-- (closes v0.6.14 load timeout block)
 
             val catalogueSources = installedExt.sources.filterIsInstance<CatalogueSource>()
 
             if (catalogueSources.isEmpty()) {
-                recordExtensionError(ext, "No catalogue sources found in extension")
-                return
+                return recordExtensionError(ext, "No catalogue sources found in extension")
             }
 
             // Probe each source
@@ -348,13 +384,14 @@ class SourceEvaluationRunner(
                 }
                 delay(500L) // inter-source delay
             }
+            return true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Extension evaluation failed: ${ext.name}" }
             // KMK v0.7.46: classified key, not raw exception text — same UI path (EvaluationResultRow)
             // as the per-source probe catch above; see SourceEvaluationProbeErrorClassifier.
-            recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e))
+            return recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e))
         } catch (e: Error) {
             // KMK v0.8.10-fix3: same reasoning as the per-source probe catch above -- a recoverable
             // extension LinkageError outside the per-source loop (e.g. during extension setup) must
@@ -362,7 +399,7 @@ class SourceEvaluationRunner(
             val unwrapped = e.unwrapSourceRuntimeCause()
             if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
             logcat(LogPriority.ERROR, unwrapped) { "Extension evaluation failed: ${ext.name} (extension linkage failure)" }
-            recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(unwrapped))
+            return recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(unwrapped))
         } finally {
             // KMK --> v0.6.16: crash quarantine — write marker before cleanup, then clear after
             writeProbeMarker(ext, null, null, ext.lang, SourceEvaluationQueueState.Phase.Cleanup, batchId, extStartedAt)
@@ -671,13 +708,45 @@ class SourceEvaluationRunner(
     }
     // KMK <--
 
-    private fun recordExtensionError(
+    // KMK v0.8.15: root-cause fix -- was `private fun` with a fire-and-forget `scope.launch { ... }`
+    // write, so the runner (and the WorkManager job waiting on it) could reach a terminal state
+    // before the database was actually updated. Now `suspend` and awaited directly by every caller
+    // (all already inside a suspend context in evaluateExtension()).
+    //
+    // Also reconciles stale per-source rows for this package: this is an extension-level failure --
+    // no source-specific probe ran, so the only durable record possible is one row with
+    // `sourceId = null`. SourceEvaluationScorer.errorRecord() builds its key from
+    // (signatureHash, pkgName, sourceId), so that extension-level key does NOT match -- and
+    // therefore does not replace -- any existing stale rows that have a real `sourceId`. Confirmed
+    // live-device root cause: 44 of 48 stale rows had a non-null source_id, so an extension-level
+    // error upsert alone left them untouched even after this fix's durable-write change. Deleting
+    // every existing row for (pkgName, signatureHash) before the upsert (SourceEvaluationRepository
+    // .deleteByPackage, already-existing API, no schema change) collapses them into the one current
+    // extension-level row, so `SourceEvaluationCandidateQueuePolicy.staleCandidates` -- which is
+    // recomputed reactively from the DB -- correctly stops counting this package as outdated.
+    // This delete+upsert pair is only reached from extension-level failure paths (already-installed,
+    // install timeout/failure, source-loading timeout, no catalogue sources, and the outer
+    // recoverable-failure catches in evaluateExtension()) -- never after a successful per-source
+    // probe, which upserts its own source-specific row directly and never calls this function.
+    //
+    // KMK v0.8.15-fix1: hardened the delete-failure edge case (plan Fix C). If
+    // deleteSourceEvaluation.awaitByPackage(...) fails, old source-specific stale rows for this
+    // package can remain beside the new extension-level error row -- exactly the stale-count bug
+    // this whole mechanism exists to prevent, just triggered by a delete failure instead of the
+    // original key-mismatch bug. Previously this function logged the failure and silently continued,
+    // implicitly reporting the candidate as durably handled (the caller always returned `true` after
+    // calling it). It now returns `false` when the delete failed, so the caller does not advance the
+    // stale cursor or count this candidate as durable work for a run that might still leave stale
+    // rows behind -- the candidate stays actionable and will be retried on the next reassessment run.
+    // The upsert still happens either way (the new extension-level row is itself correct and useful),
+    // this only affects whether the *candidate* counts as fully reconciled.
+    private suspend fun recordExtensionError(
         ext: Extension.Available,
         message: String,
         // KMK --> v0.6.13
         cleanupStatus: SourceEvaluationQueueState.CleanupStatus = SourceEvaluationQueueState.CleanupStatus.NotNeeded,
         // KMK <--
-    ) {
+    ): Boolean {
         val errRecord = SourceEvaluationScorer.errorRecord(
             extensionName = ext.name,
             pkgName = ext.pkgName,
@@ -694,12 +763,30 @@ class SourceEvaluationRunner(
             extensionApkName = ext.apkUrl,
             // KMK <--
         )
-        scope.launch {
-            upsertSourceEvaluation.await(errRecord)
+        // KMK v0.8.16: the durable-handled/reconciliation-count decision itself is now a pure,
+        // directly-tested policy (SourceEvaluationExtensionErrorReconciliationPolicyTest) instead of
+        // only inline if/else here.
+        // KMK v0.8.19: delete-then-upsert is now one atomic repository transaction
+        // (ReplaceSourceEvaluation/SourceEvaluationRepositoryImpl.replaceByPackage()) instead of two
+        // separate interactor calls -- a failure partway through can no longer leave stale rows
+        // deleted without their replacement written. Cancellation still propagates unchanged; any
+        // other failure is logged and reported as a non-durable reconciliation via the same policy.
+        val replaceSucceeded = try {
+            replaceSourceEvaluation.await(ext.pkgName, ext.signatureHash, errRecord)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to atomically reconcile stale package rows for ${ext.name} (pkg=${ext.pkgName})" }
+            false
         }
+        val outcome = SourceEvaluationExtensionErrorReconciliationPolicy.resolve(deleteSucceeded = replaceSucceeded)
         _state.update { s ->
             s.copy(
                 failedCount = s.failedCount + 1,
+                // KMK v0.8.15-fix1: surfaced non-fatal so the user sees an honest result instead of a
+                // silent retry-forever loop -- see EvaluationSummaryCard's reconciliation-failed line.
+                reconciliationFailedCount = s.reconciliationFailedCount + outcome.reconciliationFailedCountDelta,
                 results = s.results + SourceEvaluationQueueState.EvaluationResult(
                     extensionName = ext.name,
                     sourceName = ext.name,
@@ -714,6 +801,7 @@ class SourceEvaluationRunner(
                 ),
             )
         }
+        return outcome.countsAsDurablyHandled
     }
 
     private fun addResult(

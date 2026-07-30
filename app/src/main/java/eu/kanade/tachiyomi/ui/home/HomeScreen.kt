@@ -186,6 +186,10 @@ object HomeScreen : Screen() {
                                 if (it.toExtensions) {
                                     BrowseTab.showExtension()
                                 }
+                                // KMK: route root-level callers to Browse's For You sub-tab.
+                                if (it.toForYou) {
+                                    BrowseTab.showForYou()
+                                }
                                 BrowseTab
                             }
                             is Tab.More -> MoreTab
@@ -350,7 +354,7 @@ object HomeScreen : Screen() {
         data class Library(val mangaIdToOpen: Long? = null) : Tab
         data object Updates : Tab
         data object History : Tab
-        data class Browse(val toExtensions: Boolean = false) : Tab
+        data class Browse(val toExtensions: Boolean = false, val toForYou: Boolean = false) : Tab
         data class More(
             val toDownloads: Boolean,
             // KMK -->

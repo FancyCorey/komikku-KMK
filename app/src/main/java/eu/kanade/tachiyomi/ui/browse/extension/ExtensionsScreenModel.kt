@@ -14,6 +14,12 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import exh.util.NonUndoableEventType
+import exh.util.PackageOperationKind
+import exh.util.recordPackageOperationReceipt
+import exh.util.recordUserInitiatedInstall
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +35,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
@@ -37,10 +42,17 @@ import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
 
 class ExtensionsScreenModel(
-    preferences: SourcePreferences = Injekt.get(),
+    private val preferences: SourcePreferences = Injekt.get(),
     basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getExtensions: GetExtensionsByType = Injekt.get(),
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: every background
+    // operation in this class previously used the top-level launchIO {} extension, which is hardcoded
+    // to the real Dispatchers.IO with no way for a test to redirect it (unlike Dispatchers.Main, which
+    // kotlinx-coroutines-test can swap via Dispatchers.setMain()). Injecting the dispatcher here --
+    // defaulting to the exact same Dispatchers.IO in production -- lets tests substitute a deterministic
+    // TestDispatcher while every real caller keeps identical behavior.
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
@@ -61,7 +73,7 @@ class ExtensionsScreenModel(
             }
         }
 
-        screenModelScope.launchIO {
+        screenModelScope.launch(ioDispatcher) {
             combine(
                 state.map { it.searchQuery }
                     .distinctUntilChanged()
@@ -129,7 +141,7 @@ class ExtensionsScreenModel(
                 }
         }
 
-        screenModelScope.launchIO { findAvailableExtensions() }
+        screenModelScope.launch(ioDispatcher) { findAvailableExtensions() }
 
         preferences.extensionUpdatesCount().changes()
             .onEach { mutableState.update { state -> state.copy(updates = it) } }
@@ -177,7 +189,7 @@ class ExtensionsScreenModel(
     }
 
     fun updateAllExtensions() {
-        screenModelScope.launchIO {
+        screenModelScope.launch(ioDispatcher) {
             state.value.items.values.flatten()
                 .map { it.extension }
                 .filterIsInstance<Extension.Installed>()
@@ -187,14 +199,47 @@ class ExtensionsScreenModel(
     }
 
     fun installExtension(extension: Extension.Available) {
-        screenModelScope.launchIO {
-            extensionManager.installExtension(extension).collectToInstallUpdate(extension)
+        screenModelScope.launch(ioDispatcher) {
+            // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: one shared id
+            // for both the visibility-only NonUndoableEvent and the private PackageOperationReceipt --
+            // EvaluationModeActionHistoryScreen correlates the two by this id to decide whether a
+            // follow-up action can be offered for this row.
+            val receiptId = exh.util.NonUndoableEvent.newId()
+            extensionManager.installExtension(extension)
+                .recordUserInitiatedInstall(id = receiptId) { preferences.evaluationMode().get() }
+                .recordPackageOperationReceipt(
+                    kind = PackageOperationKind.INSTALL,
+                    packageName = extension.pkgName,
+                    signatureHash = extension.signatureHash,
+                    versionCode = extension.versionCode,
+                    artifactUri = extension.apkUrl,
+                    id = receiptId,
+                ) { preferences.evaluationMode().get() }
+                .collectToInstallUpdate(extension)
         }
     }
 
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: previously reused
+    // recordUserInitiatedInstall()'s default EXTENSION_INSTALLED event type unmodified, so every
+    // update from this screen was misrecorded in Action History as a fresh install rather than an
+    // update. Now passes EXTENSION_UPDATED explicitly.
     fun updateExtension(extension: Extension.Installed) {
-        screenModelScope.launchIO {
-            extensionManager.updateExtension(extension).collectToInstallUpdate(extension)
+        screenModelScope.launch(ioDispatcher) {
+            val availableExt = extensionManager.getAvailableExtension(extension)
+            val receiptId = exh.util.NonUndoableEvent.newId()
+            extensionManager.updateExtension(extension)
+                .recordUserInitiatedInstall(eventType = NonUndoableEventType.EXTENSION_UPDATED, id = receiptId) {
+                    preferences.evaluationMode().get()
+                }
+                .recordPackageOperationReceipt(
+                    kind = PackageOperationKind.UPDATE,
+                    packageName = extension.pkgName,
+                    signatureHash = availableExt?.signatureHash ?: extension.signatureHash,
+                    versionCode = availableExt?.versionCode,
+                    artifactUri = availableExt?.apkUrl,
+                    id = receiptId,
+                ) { preferences.evaluationMode().get() }
+                .collectToInstallUpdate(extension)
         }
     }
 
@@ -233,12 +278,30 @@ class ExtensionsScreenModel(
             .onCompletion { removeDownloadState(extension) }
             .collect()
 
+    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: previously called
+    // extensionManager.uninstallExtension() (fire-and-forget, no completion signal -- see
+    // ExtensionManager.uninstallExtension()'s own doc) and recorded nothing at all. This is the
+    // main Browse > Extensions uninstall path, distinct from SourceEvaluationScreenModel's
+    // runtime-health uninstall which already used exh.util.verifyAndRecordUninstall -- that fix
+    // never covered this call site. Reuses the same verified-removal-before-recording contract.
     fun uninstallExtension(extension: Extension) {
         extensionManager.uninstallExtension(extension)
+        screenModelScope.launch(ioDispatcher) {
+            exh.util.verifyAndRecordUninstall(
+                installedPackageNames = extensionManager.installedExtensionsFlow.map { installed -> installed.map { it.pkgName } },
+                pkgName = extension.pkgName,
+                isEvaluationModeEnabled = { preferences.evaluationMode().get() },
+                // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: signature/
+                // version recorded so a later reinstall follow-up can confirm the currently-available
+                // catalogue entry (resolved live, not stored here) still matches what was uninstalled.
+                signatureHash = extension.signatureHash,
+                versionCode = extension.versionCode,
+            )
+        }
     }
 
     fun findAvailableExtensions() {
-        screenModelScope.launchIO {
+        screenModelScope.launch(ioDispatcher) {
             mutableState.update { it.copy(isRefreshing = true) }
 
             extensionManager.findAvailableExtensions()
@@ -294,7 +357,7 @@ class ExtensionsScreenModel(
             .map { it.extension }
         if (toUninstall.isEmpty()) return
         mutableState.update { it.copy(isBulkUninstallingExtensions = true) }
-        screenModelScope.launchIO {
+        screenModelScope.launch(ioDispatcher) {
             try {
                 for (extension in toUninstall) {
                     uninstallExtension(extension)

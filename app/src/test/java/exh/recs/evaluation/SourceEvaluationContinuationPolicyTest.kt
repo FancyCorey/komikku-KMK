@@ -379,15 +379,23 @@ class SourceEvaluationContinuationPolicyTest {
     }
 
     // KMK v0.8.1-fix4: failed/attempted candidates still advance the stale cursor -- advanceCursor()
-    // only needs the completed-key set (which the runner populates unconditionally on handoff,
-    // regardless of success/failure), so a failing candidate cannot trap the stale queue.
+    // only needs the completed-key set as input; it has no opinion on how the runner decides what
+    // belongs in that set.
+    // KMK v0.8.15-fix1: the runner's contract for what belongs in that set changed -- it is now
+    // populated *only* when a candidate durably writes a source_evaluation row (see
+    // SourceEvaluationRunner's `_completedCandidateKeys`), not unconditionally on handoff. A
+    // candidate that *errors* still normally lands here, because recordExtensionError() itself
+    // performs a durable write (an error-kind row) unless the delete-before-upsert reconciliation
+    // step also fails -- so this test's premise (an errored candidate's key still reaches this
+    // policy) remains realistic; only the reason it reaches this policy has changed.
     @Test
     fun `stale cursor advances past a failed candidate the same as a successful one`() {
         val staleFp = fp + "|queue=stale"
         val candidates = listOf(candidate("s1", "eu.kanade.tachiyomi.extension.en.failed"), candidate("s2", "eu.kanade.tachiyomi.extension.en.ok"))
 
-        // Simulates the runner handing off both candidates -- one errors, one succeeds -- both keys
-        // still land in completedCandidateKeys (SourceEvaluationRunner records this before outcome).
+        // Simulates the runner handing off both candidates -- one errors (but still durably writes
+        // an error row via recordExtensionError()), one succeeds -- both keys land in
+        // completedCandidateKeys because both produced a durable write.
         val cursor = SourceEvaluationContinuationPolicy.advanceCursor(
             current = null,
             completedKeys = setOf(key("s1", "eu.kanade.tachiyomi.extension.en.failed"), key("s2", "eu.kanade.tachiyomi.extension.en.ok")),

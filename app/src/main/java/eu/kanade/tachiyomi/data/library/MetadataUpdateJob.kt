@@ -11,6 +11,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
@@ -124,6 +125,10 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
                                             // KMK <--
                                         ).getOrThrow()
                                     } catch (e: Throwable) {
+                                        // KMK v0.8.10-fix9: rethrow cancellation and fatal VM/system
+                                        // errors instead of ignoring them the same way as an ordinary
+                                        // per-manga metadata failure.
+                                        rethrowIfFatal(e)
                                         // Ignore errors and continue
                                         logcat(LogPriority.ERROR, e)
                                     }

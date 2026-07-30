@@ -31,6 +31,7 @@ import eu.kanade.tachiyomi.data.track.TrackStatus
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
@@ -463,6 +464,10 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                         }
                                         clearErrorFromDB(mangaId = manga.id)
                                     } catch (e: Throwable) {
+                                        // KMK v0.8.10-fix9: rethrow cancellation and fatal VM/system
+                                        // errors instead of silently recording every per-manga update
+                                        // failure the same way.
+                                        rethrowIfFatal(e)
                                         val errorMessage = when (e) {
                                             is NoChaptersException ->
                                                 context.stringResource(MR.strings.no_chapters_error)

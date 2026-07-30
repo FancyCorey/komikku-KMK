@@ -40,6 +40,9 @@ data class NonInstalledSourceSuggestion(
     val displayLang: String = source?.lang ?: extension.lang
     val displayBaseUrl: String = source?.baseUrl ?: ""
     val displayRepoName: String = extension.storeName
+    // KMK --> v0.8.19: stable key for evaluation-mode source-name obfuscation
+    val evaluationSourceKey: String = source?.id?.toString() ?: extension.pkgName
+    // KMK <--
 }
 
 /** Stable per-suggestion key for dismissal persistence. */

@@ -31,6 +31,7 @@ import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.source.model.Source
 import tachiyomi.source.local.isLocal
@@ -45,6 +46,18 @@ fun SourceIcon(
     modifier: Modifier = Modifier,
 ) {
     val icon = source.icon
+
+    // KMK --> v0.8.19: evaluation mode replaces every source icon with the same generic
+    // placeholder, so a screenshot/recording never reveals which extension is installed.
+    if (rememberEvaluationModeEnabled()) {
+        Image(
+            painter = painterResource(R.mipmap.ic_default_source),
+            contentDescription = null,
+            modifier = modifier.then(defaultModifier),
+        )
+        return
+    }
+    // KMK <--
 
     when {
         source.isStub && icon == null -> {
@@ -85,6 +98,18 @@ fun ExtensionIcon(
     modifier: Modifier = Modifier,
     density: Int = DisplayMetrics.DENSITY_DEFAULT,
 ) {
+    // KMK --> v0.8.19: evaluation mode replaces every extension icon with the same generic
+    // placeholder, matching SourceIcon's behavior.
+    if (rememberEvaluationModeEnabled()) {
+        Image(
+            painter = painterResource(R.mipmap.ic_default_source),
+            contentDescription = null,
+            modifier = modifier.then(defaultModifier),
+        )
+        return
+    }
+    // KMK <--
+
     when (extension) {
         is Extension.Available -> {
             AsyncImage(

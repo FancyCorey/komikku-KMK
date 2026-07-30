@@ -13,10 +13,10 @@ import cafe.adriel.voyager.core.screen.Screen
  * `PreferenceGroup` DSL those screens are literally built from — then filtering by
  * `title.contains(searchKey, true) || subtitle?.contains(searchKey, true)`.
  *
- * Every Recommendation Settings screen (`RecommendationForYouSettingsScreen`,
- * `RecommendationSourcePrioritySettingsScreen`, `RecommendationTasteTagsSettingsScreen`,
- * `RecommendationNonInstalledDiscoverySettingsScreen`, `RecommendationDiagnosticsSettingsScreen`,
- * plus `SourceEvaluationScreen`) is a hand-built `LazyColumn` of custom composables (reorderable
+ * Every Recommendation Settings screen (`RecommendationSourcePrioritySettingsScreen` ("For You
+ * sources"), `RecommendationTasteTagsSettingsScreen`, `RecommendationNonInstalledDiscoverySettingsScreen`,
+ * `RecommendationDiagnosticsSettingsScreen`, plus `SourceEvaluationScreen`) is a hand-built `LazyColumn`
+ * of custom composables (reorderable
  * source list, tag `FilterChip`s, suggestion cards, drag handles) — **none of it is expressed as
  * `Preference.PreferenceItem` objects**. There is nothing to flatten: `getPreferences()` would have
  * nothing real to return without rewriting every one of those screens onto the official Preference
@@ -50,7 +50,15 @@ object RecommendationSettingsSearchIndex {
         // entry only opens the destination screen (category-level fallback); the destination screen
         // may also simply not support anchor scrolling yet ("when that screen supports it").
         val anchor: String? = null,
-    )
+        // KMK v0.8.11: stable identity of the logical destination/control this entry represents,
+        // used by [search] to drop exact logical duplicates from one result list (two entries that
+        // would open the same place and communicate the same thing). Defaults to [key], which is
+        // unique per entry, so entries only dedupe when explicitly given the same dedupeKey --
+        // legitimately different controls sharing a word (e.g. "source") are never collapsed.
+        val dedupeKey: String? = null,
+    ) {
+        val effectiveDedupeKey: String get() = dedupeKey ?: key
+    }
 
     /**
      * Case-insensitive, punctuation/whitespace-normalized search over [entries]. Read-only — never
@@ -65,6 +73,9 @@ object RecommendationSettingsSearchIndex {
             .mapNotNull { entry -> scoreFor(entry, q)?.let { entry to it } }
             .sortedByDescending { it.second }
             .map { it.first }
+            // KMK v0.8.11: after ranking, keep only the best-ranked entry per logical destination/
+            // control -- distinctBy is stable and keeps the first (highest-scored) occurrence.
+            .distinctBy { it.effectiveDedupeKey }
     }
 
     private fun scoreFor(entry: Entry, q: String): Int? {

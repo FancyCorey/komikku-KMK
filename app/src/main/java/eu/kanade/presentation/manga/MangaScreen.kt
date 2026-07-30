@@ -93,8 +93,8 @@ import eu.kanade.tachiyomi.source.online.all.EHentai
 import eu.kanade.tachiyomi.source.online.all.Lanraragi
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.source.online.all.NHentai
+import eu.kanade.tachiyomi.source.online.all.Pururin
 import eu.kanade.tachiyomi.source.online.english.EightMuses
-import eu.kanade.tachiyomi.source.online.english.Pururin
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
 import eu.kanade.tachiyomi.ui.manga.MergedMangaData
@@ -147,7 +147,7 @@ fun MangaScreen(
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
 
     // For tags menu
@@ -242,7 +242,7 @@ fun MangaScreen(
             onDownloadChapter = onDownloadChapter,
             onAddToLibraryClicked = onAddToLibraryClicked,
             onWebViewClicked = onWebViewClicked,
-            onWebViewLongClicked = onWebViewLongClicked,
+            onCopyLinkClicked = onCopyLinkClicked,
             onTrackingClicked = onTrackingClicked,
             onTagSearch = onTagSearch,
             onCopyTagToClipboard = onCopyTagToClipboard,
@@ -317,7 +317,7 @@ fun MangaScreen(
             onDownloadChapter = onDownloadChapter,
             onAddToLibraryClicked = onAddToLibraryClicked,
             onWebViewClicked = onWebViewClicked,
-            onWebViewLongClicked = onWebViewLongClicked,
+            onCopyLinkClicked = onCopyLinkClicked,
             onTrackingClicked = onTrackingClicked,
             onTagSearch = onTagSearch,
             onCopyTagToClipboard = onCopyTagToClipboard,
@@ -395,7 +395,7 @@ private fun MangaScreenSmallImpl(
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
 
     // For tags menu
@@ -700,7 +700,7 @@ private fun MangaScreenSmallImpl(
                             isUserIntervalMode = state.manga.fetchInterval < 0,
                             onAddToLibraryClicked = onAddToLibraryClicked,
                             onWebViewClicked = onWebViewClicked,
-                            onWebViewLongClicked = onWebViewLongClicked,
+                            onCopyLinkClicked = onCopyLinkClicked,
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
@@ -886,7 +886,7 @@ private fun MangaScreenLargeImpl(
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
 
     // For tags menu
@@ -1177,7 +1177,7 @@ private fun MangaScreenLargeImpl(
                             isUserIntervalMode = state.manga.fetchInterval < 0,
                             onAddToLibraryClicked = onAddToLibraryClicked,
                             onWebViewClicked = onWebViewClicked,
-                            onWebViewLongClicked = onWebViewLongClicked,
+                            onCopyLinkClicked = onCopyLinkClicked,
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,

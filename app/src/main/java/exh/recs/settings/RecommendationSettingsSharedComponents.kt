@@ -2,37 +2,60 @@ package exh.recs.settings
 
 // KMK v0.8.8 -->
 // Composables shared across the per-category Recommendation Settings screens
-// (RecommendationForYouSettingsScreen, RecommendationSourcePrioritySettingsScreen,
-// RecommendationTasteTagsSettingsScreen, RecommendationNonInstalledDiscoverySettingsScreen,
-// RecommendationDiagnosticsSettingsScreen) -- extracted verbatim from the former single
+// (RecommendationSourcePrioritySettingsScreen ("For You sources"), RecommendationTasteTagsSettingsScreen,
+// RecommendationNonInstalledDiscoverySettingsScreen, RecommendationDiagnosticsSettingsScreen) --
+// extracted verbatim from the former single
 // RecommendationsSettingsScreen.kt so every screen renders pixel-identical controls with zero
 // behavior change. `internal` visibility (not `private`) so every screen in this package can use
 // them without duplication.
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DragHandle
+import androidx.compose.material.icons.outlined.FactCheck
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbUpAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -47,6 +70,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,18 +82,29 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.presentation.more.settings.widget.ListPreferenceWidget
+import eu.kanade.presentation.more.settings.widget.PreferenceGroupHeader
+import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
+import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.tachiyomi.source.Source
 import exh.recs.RecommendationSourceRunStatus
 import exh.recs.RecommendationSourceStatus
+import exh.recs.RecommendationSourceStatusExplanationPolicy
 import exh.recs.SourceFitLabel
 import exh.recs.SourceFitStats
 import exh.recs.discovery.NonInstalledSourceSuggestion
 import exh.recs.discovery.NonInstalledSuggestionReason
 import exh.recs.discovery.SourcesToTrySortMode
 import exh.recs.discovery.SuggestionConfidence
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
 import sh.calvin.reorderable.ReorderableCollectionItemScope
@@ -86,60 +121,39 @@ import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK v0.8.7: optional one-line state summary under the title (plan section 5.2). Derived from
 // state by the caller (never hardcoded) so it updates automatically whenever the underlying
-// preference/process state changes, same as any other Compose recomposition. Null preserves the
-// original title-only header exactly, so every existing call site is unaffected unless updated.
+// preference/process state changes, same as any other Compose recomposition.
+// KMK v0.8.11: delegates to the official settings PreferenceGroupHeader (secondary color,
+// bodyMedium, PrefsHorizontalPadding) instead of a bespoke bold primary-color header, so
+// Recommendation Settings sections read like every other Komikku settings group. The optional
+// summary keeps the same horizontal padding as settings widget subtitles.
 @Composable
 internal fun SectionHeader(title: String, summary: String? = null) {
-    Column(
-        modifier = Modifier.padding(
-            horizontal = MaterialTheme.padding.medium,
-            vertical = MaterialTheme.padding.small,
-        ),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
+    Column {
+        PreferenceGroupHeader(title = title)
         if (summary != null) {
             Text(
                 text = summary,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = PrefsHorizontalPadding),
             )
         }
     }
 }
 
+// KMK v0.8.11: official SwitchPreferenceWidget instead of a hand-built Row/Switch, so this row is
+// click-anywhere, single-toggle, and visually identical to every other Komikku settings switch.
 @Composable
 internal fun HideKnownMangaRow(
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(KMR.strings.rec_hide_known_manga),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = stringResource(KMR.strings.rec_hide_known_manga_summary),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(
-            checked = enabled,
-            onCheckedChange = { onToggle() },
-        )
-    }
+    SwitchPreferenceWidget(
+        title = stringResource(KMR.strings.rec_hide_known_manga),
+        subtitle = stringResource(KMR.strings.rec_hide_known_manga_summary),
+        checked = enabled,
+        onCheckedChanged = { onToggle() },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -192,7 +206,112 @@ internal fun LanguageSelectorContent(
     }
 }
 
+// KMK v0.8.10-fix9: tag preferences are now grouped by TagPreference (Preferred/Blocked/Disliked/
+// Other) instead of one continuous FlowRow, so Preferred and Blocked are both reachable near the top
+// instead of Blocked being buried behind a long Preferred list. See TagPreferenceGroupingPolicy.
+// KMK v0.8.12: reveal is now bounded (10 at a time via TasteSuggestionVisibilityPolicy) instead of
+// revealing every remaining tag at once -- see TasteSuggestionGroup for the same treatment.
+
 @OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagPreferenceGroup(
+    label: String,
+    tags: List<TagTaste>,
+    onEditClicked: (TagTaste) -> Unit,
+    onDeleteClicked: (String) -> Unit,
+    saveKey: String,
+) {
+    if (tags.isEmpty()) return
+    var visibleCount by rememberSaveable(saveKey) { mutableStateOf(TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE) }
+    val visibleTags = TasteSuggestionVisibilityPolicy.visible(tags, visibleCount)
+
+    Column(modifier = Modifier.padding(bottom = MaterialTheme.padding.small)) {
+        Text(
+            text = "$label (${tags.size})",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = MaterialTheme.padding.extraSmall),
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+        ) {
+            // KMK --> v0.8.19: evaluation mode tag-label obfuscation
+            val evaluationModeEnabled = rememberEvaluationModeEnabled()
+            // KMK <--
+            visibleTags.forEach { tag ->
+                val pref = TagPreference.fromValue(tag.preference)
+                FilterChip(
+                    selected = true,
+                    onClick = { onEditClicked(tag) },
+                    // KMK -->
+                    label = {
+                        Text(
+                            text = if (evaluationModeEnabled) {
+                                when (pref) {
+                                    TagPreference.PREFER -> EvaluationModeFormatter.likedTagLabel(tag.normalizedTag)
+                                    TagPreference.DISLIKE, TagPreference.BLOCK ->
+                                        EvaluationModeFormatter.blockedTagLabel(tag.normalizedTag)
+                                    null -> tag.displayName
+                                }
+                            } else {
+                                tag.displayName
+                            },
+                        )
+                    },
+                    // KMK <--
+                    leadingIcon = {
+                        Icon(
+                            imageVector = when (pref) {
+                                TagPreference.PREFER -> Icons.Outlined.Done
+                                TagPreference.DISLIKE -> Icons.Outlined.RemoveCircleOutline
+                                TagPreference.BLOCK -> Icons.Outlined.Block
+                                null -> Icons.Outlined.FavoriteBorder
+                            },
+                            contentDescription = null,
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { onDeleteClicked(tag.normalizedTag) }) {
+                            Icon(Icons.Outlined.Delete, contentDescription = null)
+                        }
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = when (pref) {
+                            TagPreference.PREFER -> MaterialTheme.colorScheme.primaryContainer
+                            TagPreference.DISLIKE -> MaterialTheme.colorScheme.secondaryContainer
+                            TagPreference.BLOCK -> MaterialTheme.colorScheme.errorContainer
+                            null -> MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small)) {
+            if (TasteSuggestionVisibilityPolicy.canShowMore(tags.size, visibleCount)) {
+                TextButton(onClick = { visibleCount = TasteSuggestionVisibilityPolicy.nextVisibleCount(tags.size, visibleCount) }) {
+                    Text(
+                        stringResource(
+                            KMR.strings.taste_settings_tag_group_show_n_more,
+                            TasteSuggestionVisibilityPolicy.nextVisibleCount(tags.size, visibleCount) - visibleCount,
+                        ),
+                    )
+                }
+            }
+            if (TasteSuggestionVisibilityPolicy.canShowAll(tags.size, visibleCount)) {
+                TextButton(onClick = { visibleCount = tags.size }) {
+                    Text(stringResource(KMR.strings.taste_settings_tag_group_show_all, tags.size))
+                }
+            }
+            if (TasteSuggestionVisibilityPolicy.canShowFewer(visibleCount)) {
+                TextButton(onClick = { visibleCount = TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE }) {
+                    Text(stringResource(KMR.strings.taste_settings_tag_group_show_fewer))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun TagPreferencesContent(
     tags: List<TagTaste>,
@@ -213,43 +332,37 @@ internal fun TagPreferencesContent(
                 modifier = Modifier.padding(vertical = MaterialTheme.padding.small),
             )
         } else {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-            ) {
-                tags.forEach { tag ->
-                    val pref = TagPreference.fromValue(tag.preference)
-                    FilterChip(
-                        selected = true,
-                        onClick = { onEditClicked(tag) },
-                        label = { Text(tag.displayName) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = when (pref) {
-                                    TagPreference.PREFER -> Icons.Outlined.Done
-                                    TagPreference.DISLIKE -> Icons.Outlined.RemoveCircleOutline
-                                    TagPreference.BLOCK -> Icons.Outlined.Block
-                                    null -> Icons.Outlined.FavoriteBorder
-                                },
-                                contentDescription = null,
-                            )
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = { onDeleteClicked(tag.normalizedTag) }) {
-                                Icon(Icons.Outlined.Delete, contentDescription = null)
-                            }
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = when (pref) {
-                                TagPreference.PREFER -> MaterialTheme.colorScheme.primaryContainer
-                                TagPreference.DISLIKE -> MaterialTheme.colorScheme.secondaryContainer
-                                TagPreference.BLOCK -> MaterialTheme.colorScheme.errorContainer
-                                null -> MaterialTheme.colorScheme.surfaceVariant
-                            },
-                        ),
-                    )
-                }
-            }
+            val grouped = remember(tags) { TagPreferenceGroupingPolicy.group(tags) }
+            // Preferred and Blocked are the two controls users compare most, so both are rendered
+            // first (in that order) rather than Preferred pushing Blocked out of initial view.
+            TagPreferenceGroup(
+                label = stringResource(KMR.strings.taste_pref_prefer),
+                tags = grouped.preferred,
+                onEditClicked = onEditClicked,
+                onDeleteClicked = onDeleteClicked,
+                saveKey = "tag_group_preferred",
+            )
+            TagPreferenceGroup(
+                label = stringResource(KMR.strings.taste_pref_block),
+                tags = grouped.blocked,
+                onEditClicked = onEditClicked,
+                onDeleteClicked = onDeleteClicked,
+                saveKey = "tag_group_blocked",
+            )
+            TagPreferenceGroup(
+                label = stringResource(KMR.strings.taste_pref_dislike),
+                tags = grouped.disliked,
+                onEditClicked = onEditClicked,
+                onDeleteClicked = onDeleteClicked,
+                saveKey = "tag_group_disliked",
+            )
+            TagPreferenceGroup(
+                label = stringResource(KMR.strings.taste_settings_tag_prefs),
+                tags = grouped.other,
+                onEditClicked = onEditClicked,
+                onDeleteClicked = onDeleteClicked,
+                saveKey = "tag_group_other",
+            )
         }
         TextButton(
             onClick = onAddClicked,
@@ -327,6 +440,10 @@ internal fun TagPreferenceDialog(
 }
 
 // KMK --> v0.7.8: same-manga matching setting composables
+// KMK v0.8.11: now a thin wrapper over the official ListPreferenceWidget (radio-list dialog)
+// instead of a bespoke clickable Column + DropdownMenu, so numeric choice rows look and behave
+// like every other Komikku list preference. The subtitle shows the current value on its own line
+// followed by the explanatory summary. All option lists are unchanged.
 @Composable
 internal fun SameMangaListPrefRow(
     title: String,
@@ -338,45 +455,17 @@ internal fun SameMangaListPrefRow(
     valueLabel: (Int) -> String = { "$it" },
     // KMK <--
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { expanded = true }
-            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
-    ) {
-        Text(text = title, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            text = "${valueLabel(current)} — $summary",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            options.forEach { value ->
-                DropdownMenuItem(
-                    text = { Text(valueLabel(value)) },
-                    onClick = {
-                        onSelect(value)
-                        expanded = false
-                    },
-                    trailingIcon = if (value == current) {
-                        (
-                            {
-                                Icon(Icons.Outlined.Done, contentDescription = null)
-                            }
-                            )
-                    } else {
-                        null
-                    },
-                )
-            }
-        }
-    }
+    ListPreferenceWidget(
+        value = current,
+        title = title,
+        subtitle = "${valueLabel(current)}\n$summary",
+        icon = null,
+        entries = options.associateWith(valueLabel),
+        onValueChange = onSelect,
+    )
 }
 
+// KMK v0.8.11: official SwitchPreferenceWidget -- see HideKnownMangaRow.
 @Composable
 internal fun SameMangaSwitchRow(
     title: String,
@@ -384,24 +473,12 @@ internal fun SameMangaSwitchRow(
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onToggle() }
-            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = MaterialTheme.padding.medium)) {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = enabled, onCheckedChange = { onToggle() })
-    }
+    SwitchPreferenceWidget(
+        title = title,
+        subtitle = summary,
+        checked = enabled,
+        onCheckedChanged = { onToggle() },
+    )
 }
 // KMK <--
 
@@ -445,11 +522,17 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // KMK --> v0.8.19: evaluation mode source-name obfuscation
                     Text(
-                        text = source.name,
+                        text = if (rememberEvaluationModeEnabled()) {
+                            EvaluationModeFormatter.sourceLabel(source.id)
+                        } else {
+                            source.name
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f, fill = false),
                     )
+                    // KMK <--
                     if (isBoosted) {
                         Badge(
                             modifier = Modifier.padding(start = MaterialTheme.padding.small),
@@ -553,11 +636,33 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
                         RecommendationSourceStatus.HiddenByDuplicateHandling -> stringResource(KMR.strings.rec_source_status_duplicate_hidden)
                     }
                 }
+                // KMK v0.8.17 (Phase C: diagnostic-first For You quality) -- statusText above was
+                // already a correct explanation, just crammed into this one dense line with no way to
+                // see more. Tap it to see the full plain-language explanation instead of lengthening
+                // the always-visible line.
+                var showStatusExplanation by remember { mutableStateOf(false) }
                 Text(
                     text = "${source.lang.uppercase()} · #$rank · $statusText",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (status != null) {
+                        Modifier.clickable { showStatusExplanation = true }
+                    } else {
+                        Modifier
+                    },
                 )
+                if (showStatusExplanation && status != null) {
+                    AlertDialog(
+                        onDismissRequest = { showStatusExplanation = false },
+                        title = { Text(text = stringResource(KMR.strings.rec_source_status_explain_title)) },
+                        text = { Text(text = stringResource(RecommendationSourceStatusExplanationPolicy.explanationFor(status.status))) },
+                        confirmButton = {
+                            TextButton(onClick = { showStatusExplanation = false }) {
+                                Text(text = stringResource(MR.strings.action_ok))
+                            }
+                        },
+                    )
+                }
                 if (fitStats != null && fitStats.runCount > 0 && fitStats.updatedAt > 0L) {
                     Text(
                         text = stringResource(
@@ -574,19 +679,49 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
                     )
                 }
             }
-            IconButton(onClick = onLike) {
-                Icon(
-                    imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-                    contentDescription = stringResource(KMR.strings.rec_source_preference_like_for_you),
-                    tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            // KMK v0.8.11: like/dislike-for-For-You moved from two always-visible IconButtons into
+            // one overflow menu (Phase E) -- drag handle, title, badges, and the enable switch
+            // remain immediately visible; the current preference (if any) still shows as a small
+            // badge so state isn't hidden behind the menu.
+            if (isLiked) {
+                Text(
+                    text = stringResource(KMR.strings.rec_source_preference_preferred_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = MaterialTheme.padding.extraSmall),
                 )
             }
-            IconButton(onClick = onDislike) {
-                Icon(
-                    imageVector = if (isDisliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
-                    contentDescription = stringResource(KMR.strings.rec_source_preference_dislike_for_you),
-                    tint = if (isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            var showPrefMenu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { showPrefMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Outlined.MoreVert,
+                        contentDescription = stringResource(MR.strings.action_menu_overflow_description),
+                        tint = if (isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                DropdownMenu(expanded = showPrefMenu, onDismissRequest = { showPrefMenu = false }) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (isLiked) KMR.strings.rec_source_preference_preferred_badge else KMR.strings.rec_source_preference_like_for_you,
+                                ),
+                            )
+                        },
+                        onClick = {
+                            onLike()
+                            showPrefMenu = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_source_preference_dislike_for_you)) },
+                        onClick = {
+                            onDislike()
+                            showPrefMenu = false
+                        },
+                    )
+                }
             }
             Switch(
                 checked = enabled,
@@ -674,23 +809,37 @@ internal fun SourceSuggestionItem(
                         bottom = MaterialTheme.padding.small,
                     ),
             ) {
+                // KMK --> v0.8.19: evaluation mode source/repo-name obfuscation
+                val evaluationModeEnabled = rememberEvaluationModeEnabled()
                 Text(
-                    text = suggestion.displayName,
+                    text = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(suggestion.evaluationSourceKey)
+                    } else {
+                        suggestion.displayName
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 val confidenceLabel = when (suggestion.confidence) {
                     SuggestionConfidence.LOW -> stringResource(KMR.strings.rec_suggestion_confidence_low)
                     SuggestionConfidence.MEDIUM -> stringResource(KMR.strings.rec_suggestion_confidence_medium)
                 }
+                val repoNameLabel = if (evaluationModeEnabled) {
+                    stringResource(KMR.strings.evaluation_mode_repo_label)
+                } else {
+                    suggestion.displayRepoName
+                }
                 Text(
                     text = buildString {
                         append(suggestion.displayLang.uppercase())
-                        if (suggestion.displayRepoName.isNotEmpty()) append(" · ${suggestion.displayRepoName}")
+                        if (suggestion.displayRepoName.isNotEmpty()) {
+                            append(" · $repoNameLabel")
+                        }
                         append(" · $confidenceLabel")
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // KMK <--
                 // KMK v0.8.10: every reason now renders real text -- EvaluatedExplicitHeavy/
                 // EvaluatedEcchiHeavy previously mapped to null (silently hidden) even though a
                 // suggestion carrying one of these reasons can still surface (blockExplicit only
@@ -721,66 +870,94 @@ internal fun SourceSuggestionItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
                 )
-                FlowRow(
-                    modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                ) {
-                    if (!selectionMode) {
+                // KMK v0.8.11: Install remains the sole always-visible action row; Dismiss,
+                // like/dislike, and quality marks moved into one overflow menu so a card no longer
+                // repeats five visible controls on phone width. Selection mode still hides all of
+                // this (bulk actions take over). A small badge below still shows an existing
+                // like/quality mark so that state remains visible without a fifth icon.
+                if (!selectionMode) {
+                    Row(
+                        modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                    ) {
                         Button(onClick = onInstall, enabled = !isInstalling) {
                             Text(stringResource(KMR.strings.rec_suggestion_install))
                         }
-                        OutlinedButton(onClick = onDismiss) {
-                            Text(stringResource(KMR.strings.rec_suggestion_dismiss))
-                        }
-                    }
-                    IconButton(onClick = onLike) {
-                        Icon(
-                            imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-                            contentDescription = stringResource(KMR.strings.rec_source_preference_like_source),
-                            tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(onClick = onDislike) {
-                        Icon(
-                            imageVector = if (isDisliked) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
-                            contentDescription = stringResource(KMR.strings.rec_source_preference_dislike_source),
-                            tint = if (isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    var showQualityMenu by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { showQualityMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Outlined.MoreVert,
-                                contentDescription = stringResource(KMR.strings.source_quality_mark_poor),
-                                tint = if (isQualityDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        DropdownMenu(expanded = showQualityMenu, onDismissRequest = { showQualityMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(KMR.strings.source_quality_mark_poor)) },
-                                onClick = {
-                                    onMarkQualityPoor()
-                                    showQualityMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(KMR.strings.source_quality_mark_explicit)) },
-                                onClick = {
-                                    onMarkQualityExplicit()
-                                    showQualityMenu = false
-                                },
-                            )
-                            if (isQualityDisliked || isQualityExplicit) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(KMR.strings.source_quality_clear_mark)) },
-                                    onClick = {
-                                        onClearQualityMark()
-                                        showQualityMenu = false
-                                    },
+                        var showMenu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.MoreVert,
+                                    contentDescription = stringResource(MR.strings.action_menu_overflow_description),
+                                    tint = if (isQualityDisliked || isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(KMR.strings.rec_suggestion_dismiss)) },
+                                    onClick = {
+                                        onDismiss()
+                                        showMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (isLiked) KMR.strings.rec_source_preference_preferred_badge else KMR.strings.rec_source_preference_like_source,
+                                            ),
+                                        )
+                                    },
+                                    onClick = {
+                                        onLike()
+                                        showMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(KMR.strings.rec_source_preference_dislike_source)) },
+                                    onClick = {
+                                        onDislike()
+                                        showMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(KMR.strings.source_quality_mark_poor)) },
+                                    onClick = {
+                                        onMarkQualityPoor()
+                                        showMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(KMR.strings.source_quality_mark_explicit)) },
+                                    onClick = {
+                                        onMarkQualityExplicit()
+                                        showMenu = false
+                                    },
+                                )
+                                if (isQualityDisliked || isQualityExplicit) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(KMR.strings.source_quality_clear_mark)) },
+                                        onClick = {
+                                            onClearQualityMark()
+                                            showMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        if (isLiked || isQualityDisliked || isQualityExplicit) {
+                            Text(
+                                text = stringResource(
+                                    when {
+                                        isQualityExplicit -> KMR.strings.source_quality_marked_explicit_badge
+                                        isQualityDisliked -> KMR.strings.source_quality_marked_poor_badge
+                                        else -> KMR.strings.rec_source_preference_preferred_badge
+                                    },
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isQualityDisliked || isQualityExplicit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            )
                         }
                     }
                 }
@@ -822,10 +999,67 @@ private fun TasteSuggestionRow(
     }
 }
 
+// KMK v0.8.11: one suggestion group (Preferred or Blocked), capped at
+// TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE with an independent, rememberSaveable expand
+// state per group -- so a long Preferred list can no longer push Blocked suggestions out of initial
+// view, and expanding one group never affects the other.
+@Composable
+private fun TasteSuggestionGroup(
+    label: String,
+    candidates: List<TasteSuggestionCandidate>,
+    labelColor: androidx.compose.ui.graphics.Color,
+    actionLabel: StringResource,
+    onAdd: (TasteSuggestionCandidate) -> Unit,
+    saveKey: String,
+    topPadding: androidx.compose.ui.unit.Dp,
+) {
+    if (candidates.isEmpty()) return
+    var visibleCount by rememberSaveable(saveKey) { mutableStateOf(TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE) }
+    val visible = TasteSuggestionVisibilityPolicy.visible(candidates, visibleCount)
+
+    Column(modifier = Modifier.padding(top = topPadding)) {
+        Text(
+            text = "$label (${candidates.size})",
+            style = MaterialTheme.typography.labelLarge,
+            color = labelColor,
+        )
+        visible.forEach { candidate ->
+            TasteSuggestionRow(candidate = candidate, actionLabel = actionLabel, onAdd = { onAdd(candidate) })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small)) {
+            if (TasteSuggestionVisibilityPolicy.canShowMore(candidates.size, visibleCount)) {
+                TextButton(onClick = { visibleCount = TasteSuggestionVisibilityPolicy.nextVisibleCount(candidates.size, visibleCount) }) {
+                    Text(
+                        stringResource(
+                            KMR.strings.taste_settings_tag_group_show_n_more,
+                            TasteSuggestionVisibilityPolicy.nextVisibleCount(candidates.size, visibleCount) - visibleCount,
+                        ),
+                    )
+                }
+            }
+            if (TasteSuggestionVisibilityPolicy.canShowAll(candidates.size, visibleCount)) {
+                TextButton(onClick = { visibleCount = candidates.size }) {
+                    Text(stringResource(KMR.strings.taste_settings_tag_group_show_all, candidates.size))
+                }
+            }
+            if (TasteSuggestionVisibilityPolicy.canShowFewer(visibleCount)) {
+                TextButton(onClick = { visibleCount = TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE }) {
+                    Text(stringResource(KMR.strings.taste_settings_tag_group_show_fewer))
+                }
+            }
+        }
+    }
+}
+
 /**
  * Preferred/blocked tag suggestions derived purely from the user's own rated manga -- see
  * [TasteSuggestionAggregator][tachiyomi.domain.taste.interactor.TasteSuggestionAggregator] for the
  * aggregation rules (minimum evidence count, alias resolution, exclusion of already-set tags).
+ *
+ * KMK v0.8.11: Preferred and Blocked now render as two independently capped/expandable groups (see
+ * [TasteSuggestionGroup]) instead of one continuous column, so Blocked suggestions are reachable
+ * without scrolling through a long Preferred list first -- same treatment fix9 already gave stored
+ * tag preferences (see [TagPreferenceGroup]).
  */
 @Composable
 internal fun TasteSuggestionsContent(
@@ -850,35 +1084,24 @@ internal fun TasteSuggestionsContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             else -> {
-                if (suggestions.preferred.isNotEmpty()) {
-                    Text(
-                        text = stringResource(KMR.strings.taste_suggestions_preferred_header),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    suggestions.preferred.forEach { candidate ->
-                        TasteSuggestionRow(
-                            candidate = candidate,
-                            actionLabel = KMR.strings.taste_suggestions_add_preferred,
-                            onAdd = { onAddPreferred(candidate) },
-                        )
-                    }
-                }
-                if (suggestions.blocked.isNotEmpty()) {
-                    Text(
-                        text = stringResource(KMR.strings.taste_suggestions_blocked_header),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = if (suggestions.preferred.isNotEmpty()) MaterialTheme.padding.medium else 0.dp),
-                    )
-                    suggestions.blocked.forEach { candidate ->
-                        TasteSuggestionRow(
-                            candidate = candidate,
-                            actionLabel = KMR.strings.taste_suggestions_add_blocked,
-                            onAdd = { onAddBlocked(candidate) },
-                        )
-                    }
-                }
+                TasteSuggestionGroup(
+                    label = stringResource(KMR.strings.taste_suggestions_preferred_header),
+                    candidates = suggestions.preferred,
+                    labelColor = MaterialTheme.colorScheme.primary,
+                    actionLabel = KMR.strings.taste_suggestions_add_preferred,
+                    onAdd = onAddPreferred,
+                    saveKey = "taste_suggestions_preferred",
+                    topPadding = 0.dp,
+                )
+                TasteSuggestionGroup(
+                    label = stringResource(KMR.strings.taste_suggestions_blocked_header),
+                    candidates = suggestions.blocked,
+                    labelColor = MaterialTheme.colorScheme.error,
+                    actionLabel = KMR.strings.taste_suggestions_add_blocked,
+                    onAdd = onAddBlocked,
+                    saveKey = "taste_suggestions_blocked",
+                    topPadding = if (suggestions.preferred.isNotEmpty()) MaterialTheme.padding.medium else 0.dp,
+                )
             }
         }
     }
@@ -891,6 +1114,9 @@ internal fun TasteSuggestionsContent(
  */
 @Composable
 internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
+    // KMK --> v0.8.19: evaluation mode tag-label obfuscation
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    // KMK <--
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -944,13 +1170,23 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = MaterialTheme.padding.medium),
             )
+            // KMK --> v0.8.19: evaluation mode tag-label obfuscation
             summary.preferredTagEvidence.forEach { evidence ->
                 Text(
-                    text = stringResource(KMR.strings.taste_diagnostics_tag_evidence_row, evidence.displayName, evidence.evidenceCount),
+                    text = stringResource(
+                        KMR.strings.taste_diagnostics_tag_evidence_row,
+                        if (evaluationModeEnabled) {
+                            EvaluationModeFormatter.likedTagLabel(evidence.displayName)
+                        } else {
+                            evidence.displayName
+                        },
+                        evidence.evidenceCount,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // KMK <--
         }
 
         if (summary.blockedTagEvidence.isNotEmpty()) {
@@ -960,13 +1196,23 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = MaterialTheme.padding.medium),
             )
+            // KMK --> v0.8.19: evaluation mode tag-label obfuscation
             summary.blockedTagEvidence.forEach { evidence ->
                 Text(
-                    text = stringResource(KMR.strings.taste_diagnostics_tag_evidence_row, evidence.displayName, evidence.evidenceCount),
+                    text = stringResource(
+                        KMR.strings.taste_diagnostics_tag_evidence_row,
+                        if (evaluationModeEnabled) {
+                            EvaluationModeFormatter.blockedTagLabel(evidence.displayName)
+                        } else {
+                            evidence.displayName
+                        },
+                        evidence.evidenceCount,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // KMK <--
         }
 
         Text(
@@ -977,4 +1223,250 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
         )
     }
 }
+
+// KMK v0.8.17-fix1 -->
+/**
+ * The five approved Recommendation Settings destinations, used by [RecommendationSettingsQuickAccessRow]
+ * so every detail screen can jump directly to another without backing out to
+ * [RecommendationSettingsIndexScreen]. Deliberately closed to these five -- do not add a sixth entry or
+ * reintroduce a retired destination ("For You", "Matching and versions",
+ * "Background/network/installer"); see the v0.8.14 five-section structure this mirrors.
+ */
+enum class RecommendationSettingsQuickAccessDestination {
+    ForYouSources,
+    TasteAndFilters,
+    SourceEvaluation,
+    SourcesToTry,
+    ManagementAndDiagnostics,
+}
+
+private fun RecommendationSettingsQuickAccessDestination.titleRes(): StringResource = when (this) {
+    RecommendationSettingsQuickAccessDestination.ForYouSources -> KMR.strings.rec_settings_index_for_you_sources
+    RecommendationSettingsQuickAccessDestination.TasteAndFilters -> KMR.strings.rec_settings_index_taste_filters
+    RecommendationSettingsQuickAccessDestination.SourceEvaluation -> KMR.strings.rec_settings_index_evaluation
+    RecommendationSettingsQuickAccessDestination.SourcesToTry -> KMR.strings.rec_settings_index_discovery
+    RecommendationSettingsQuickAccessDestination.ManagementAndDiagnostics -> KMR.strings.rec_settings_index_diagnostics
+}
+
+/**
+ * Builds a fresh instance of the screen for [this] destination -- used with `navigator.replace(...)`
+ * so quick-access navigation between detail screens keeps the back stack at a constant depth (back
+ * always returns to [RecommendationSettingsIndexScreen]) instead of growing with every lateral jump.
+ */
+fun RecommendationSettingsQuickAccessDestination.toScreen(): eu.kanade.presentation.util.Screen = when (this) {
+    RecommendationSettingsQuickAccessDestination.ForYouSources -> RecommendationSourcePrioritySettingsScreen()
+    RecommendationSettingsQuickAccessDestination.TasteAndFilters -> RecommendationTasteTagsSettingsScreen()
+    RecommendationSettingsQuickAccessDestination.SourceEvaluation -> exh.recs.evaluation.SourceEvaluationScreen()
+    RecommendationSettingsQuickAccessDestination.SourcesToTry -> RecommendationNonInstalledDiscoverySettingsScreen()
+    RecommendationSettingsQuickAccessDestination.ManagementAndDiagnostics -> RecommendationDiagnosticsSettingsScreen()
+}
+
+private fun RecommendationSettingsQuickAccessDestination.icon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
+    RecommendationSettingsQuickAccessDestination.ForYouSources -> Icons.Outlined.Star
+    RecommendationSettingsQuickAccessDestination.TasteAndFilters -> Icons.Outlined.Label
+    RecommendationSettingsQuickAccessDestination.SourceEvaluation -> Icons.Outlined.FactCheck
+    RecommendationSettingsQuickAccessDestination.SourcesToTry -> Icons.Outlined.ThumbUpAlt
+    RecommendationSettingsQuickAccessDestination.ManagementAndDiagnostics -> Icons.Outlined.BugReport
+}
+
+/**
+ * Horizontally-scrollable quick-access row shown near the top of every Recommendation Settings detail
+ * screen (below the app bar, before the main content), so the user can move between the five approved
+ * destinations without backing out to the index. Reuses the exact same title/icon each destination's
+ * index row already uses -- this does not duplicate any control, it is navigation only. The current
+ * destination is shown selected and is not itself clickable (tapping it would just re-push the same
+ * screen).
+ */
+@Composable
+internal fun RecommendationSettingsQuickAccessRow(
+    current: RecommendationSettingsQuickAccessDestination,
+    onNavigate: (RecommendationSettingsQuickAccessDestination) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        RecommendationSettingsQuickAccessDestination.entries.forEach { destination ->
+            val selected = destination == current
+            FilterChip(
+                selected = selected,
+                onClick = { if (!selected) onNavigate(destination) },
+                label = { Text(stringResource(destination.titleRes())) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = destination.icon(),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Samsung-edge-panel-style quick launcher with a narrow right-edge tap handle.
+ *
+ * - Opens via tap on the edge handle (swipe-to-open was judged unreliable/risky to implement safely
+ *   alongside Android's own edge-swipe back gesture -- tap-to-open only, a deliberate scope decision
+ *   carried forward unchanged from v0.8.18; swipe-to-open remains a real, separate follow-up).
+ * - Closes via tap-outside (scrim), the handle itself, or the system back gesture ([BackHandler]).
+ * - The handle region is intentionally narrow (28dp) so it never competes with Android's own
+ *   edge-swipe-back gesture area.
+ */
+@Composable
+internal fun <T> EdgeQuickAccessPanel(
+    destinations: List<T>,
+    // KMK v0.8.19: nullable -- a screen using this panel to reach a different destination set
+    // (e.g. Recommendation Settings sections from a collection screen) has no "current" entry
+    // among [destinations] to highlight.
+    current: T?,
+    title: @Composable (T) -> String,
+    icon: (T) -> androidx.compose.ui.graphics.vector.ImageVector,
+    onNavigate: (T) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = expanded) { expanded = false }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            // Scrim -- tap outside the panel to close, same convention as a modal sheet/dialog.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.32f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { expanded = false },
+                    ),
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = slideInHorizontally(tween(200)) { it },
+            exit = slideOutHorizontally(tween(200)) { it },
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight(0.7f)
+                    .wrapContentWidth(),
+                shape = MaterialTheme.shapes.large,
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(MaterialTheme.padding.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+                ) {
+                    // KMK v0.8.19: widened from 72.dp/maxLines=2 -- "Management and Diagnostics" (the
+                    // longest of the five Recommendation Settings destination titles, now also shown
+                    // in this panel since RecommendationSettingsQuickAccessPanel reuses it) was being
+                    // truncated to "Management and". 96.dp + maxLines=3 + a smaller label style fits it
+                    // without truncation while staying narrow enough for an edge panel.
+                    destinations.forEach { destination ->
+                        val selected = destination == current
+                        Column(
+                            modifier = Modifier
+                                .width(96.dp)
+                                .clickable(
+                                    onClickLabel = title(destination),
+                                ) {
+                                    expanded = false
+                                    if (!selected) onNavigate(destination)
+                                }
+                                .padding(vertical = MaterialTheme.padding.small),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(
+                                imageVector = icon(destination),
+                                contentDescription = null,
+                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = title(destination),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 3,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        // Edge handle -- narrow (28dp) so it never competes with Android's own edge-swipe-back
+        // gesture area; always visible, regardless of expanded state (tapping it while expanded
+        // closes the panel).
+        val handleDescription = stringResource(KMR.strings.rec_settings_quick_access_handle)
+        Surface(
+            onClick = { expanded = !expanded },
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(28.dp)
+                .semantics {
+                    contentDescription = handleDescription
+                },
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 3.dp,
+            shadowElevation = 3.dp,
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(64.dp)
+                    .width(28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.Close else Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+// KMK v0.8.19: RecommendationCollectionQuickAccessDestination/Panel (For You/Loved/Liked/Disliked
+// edge panel) removed -- it was fully superseded by RecommendationSettingsQuickAccessPanel above,
+// which the collection screens now use instead (jumping to the five Recommendation Settings
+// sections was the panel's originally-stated purpose; switching between For You/Loved/Liked/
+// Disliked was redundant with the tab bar already on those screens). Confirmed no remaining
+// callers before deletion.
+
+// KMK v0.8.19 -->
+/**
+ * Right-edge quick-access panel for the five Recommendation Settings sections, shown on For You,
+ * Loved, Liked, and Disliked (in addition to the Recommendation Settings detail screens
+ * themselves, which use [RecommendationSettingsQuickAccessRow] instead). This restores the
+ * panel's original stated purpose on those screens -- jumping directly into Recommendation
+ * Settings -- rather than switching between For You/Loved/Liked/Disliked, which the bottom tab
+ * bar and top tabs already cover.
+ */
+@Composable
+fun RecommendationSettingsQuickAccessPanel(
+    current: RecommendationSettingsQuickAccessDestination?,
+    onNavigate: (RecommendationSettingsQuickAccessDestination) -> Unit,
+) {
+    EdgeQuickAccessPanel(
+        destinations = RecommendationSettingsQuickAccessDestination.entries,
+        current = current,
+        title = { stringResource(it.titleRes()) },
+        icon = { it.icon() },
+        onNavigate = onNavigate,
+    )
+}
+// KMK <--
+
+// KMK <--
 // KMK <--
