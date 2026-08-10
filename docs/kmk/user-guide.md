@@ -1,6 +1,6 @@
 # KMK user guide
 
-This guide explains how to find and use KMK features. Each section starts with the actions to take, then explains the result and any important limitation.
+This guide explains how to find and use KMK features. Each section starts with the actions to take, then explains the result and any important limitation. Screenshots appear where a reviewed capture can show the feature without exposing private activity. For routes that depend on manga, chapter, source, account, or storage details, the linked diagrams show the flow instead. The [screenshot coverage table](evidence/README.md#screenshot-coverage) records every decision.
 
 ## For You
 
@@ -46,6 +46,8 @@ The app checks stored values before using them and replaces invalid values with 
 
 ## Ratings and Not Interested
 
+See the [ratings and preference diagrams](diagrams/ratings-and-groups.md) for the saved-state and undo flow.
+
 1. Open a manga.
 2. Use the preference action to choose **Love**, **Like**, **Dislike**, or **Not interested**.
 3. The main preference button changes to show your choice. Choosing Love, Like, or Dislike while Not Interested is active replaces Not Interested in one saved change.
@@ -71,6 +73,8 @@ Source Evaluation checks whether a source is suitable; For You separately checks
 
 ## Sources to try
 
+See the [source discovery diagrams](diagrams/sources-and-priority.md) for suggestion, filtering, and installation handoff states.
+
 1. Open **Recommendation Settings** and select **Sources to try**.
 2. Review compatible non-installed source suggestions based on your taste and source evaluations.
 3. Choose a suggestion to open Android's normal extension installation screen.
@@ -79,6 +83,8 @@ Source Evaluation checks whether a source is suitable; For You separately checks
 If the extension list, package, or network response is unavailable, the app shows an unavailable or failed state. Test-only sample data is not included in release builds.
 
 ## Find other versions and Best Version
+
+See the [cross-source matching diagrams](diagrams/best-version.md) for search, linking, comparison, and migration handoff.
 
 1. Open a manga and choose **Find other versions** from its actions.
 2. Review versions found through other sources and deselect incorrect matches.
@@ -89,6 +95,8 @@ If the extension list, package, or network response is unavailable, the app show
 If you cancel a search, or one source fails, versions you already accepted remain selected. Migration shows which steps succeeded and which failed. It does not claim to reverse changes that already finished or happened outside the app.
 
 ## Reader controls
+
+See the [reader-control diagrams](diagrams/reader.md) for schedule checks, completion prompts, linked-version ratings, and Jump to last read.
 
 ### Jump to last read
 
@@ -112,6 +120,8 @@ When you finish the latest available chapter, the reader waits until you exit be
 
 ## Evaluation Mode and Action History
 
+See the [evidence and export diagrams](diagrams/export-and-evidence.md) for presentation sanitization and the [ratings diagrams](diagrams/ratings-and-groups.md) for reversible actions.
+
 Evaluation Mode replaces source names and other identifying labels with neutral text for review and screenshots. It does not change saved data, actions, source requests, or network behavior.
 
 ![Browse with source names hidden by Evaluation Mode](evidence/screenshots/browse-evaluation-mode.png)
@@ -122,9 +132,13 @@ Open **Action History** to review supported reversible actions. If the same valu
 
 ## Export and cleanup
 
+See the [export and cleanup diagrams](diagrams/export-and-evidence.md) for chooser, cancellation, success, and exact-file cleanup states.
+
 Extension, recommendation, and library exports use Android's document picker. Choose the destination through the system UI. After a successful supported export, the app can offer to keep or remove exactly the document it just created. Cancellation leaves no success claim, and cleanup never scans or deletes unrelated storage.
 
 ## OCR search for downloads
+
+See the [OCR diagrams](diagrams/ocr.md) for indexing, cancellation, search, and cleanup.
 
 1. Open **OCR Search Downloads** from the app's search tools.
 2. Choose the current manga or all downloaded manga, then start indexing.
@@ -136,11 +150,15 @@ Recognition runs on the device. The extracted text stays in the local database, 
 
 ## Backup and restore
 
+See the [backup and portability diagrams](diagrams/backup-and-portability.md) for selection, encoding, partial restore, and failure handling.
+
 KMK adds supported ratings, recommendation preferences, source evaluations, linked-version state, and source-quality signals to Komikku's normal backup flow. Select the matching backup options when creating or restoring a backup. A partial restore reports what could not be restored instead of treating the entire operation as successful.
 
 OCR text is deliberately excluded because it can be regenerated from local downloads and may contain private page content. Action History is also not a promise that outside services or installed packages can be rolled back.
 
 ## Extension operations
+
+See the [extension-operation diagrams](diagrams/extension-operations.md) for isolation, consent, installation, removal, export, and cleanup.
 
 Extension installation and removal continue through Android's supported package flows. KMK isolates known unsafe or incompatible extension failures so one package does not prevent unrelated sources from loading. Extension export uses Android's document picker and acts only on packages selected by the user. After export, cleanup is limited to the exact document created by that operation.
 

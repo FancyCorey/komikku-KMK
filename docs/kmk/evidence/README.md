@@ -34,6 +34,30 @@ This screenshot shows Source Evaluation partway through a run, with progress, re
 
 These screenshots leave out specific preference choices, reading history, account information, reader pages, and menus that could reveal private manga activity.
 
+## Screenshot coverage
+
+The public guide uses a screenshot when the screen can explain the feature without exposing private activity or device configuration. When a useful screen cannot meet that rule, the feature is covered by a diagram and written steps instead. This keeps an omitted screenshot from looking like an undocumented feature.
+
+| Feature area | Public visual | Why |
+| --- | --- | --- |
+| For You | [Screenshot](screenshots/for-you-evaluation-mode.png) | Evaluation Mode hides source names while keeping the recommendations visible. |
+| Recommendation settings | [Screenshot](screenshots/recommendation-settings.png) | The settings index contains no account, manga, source, or storage details. |
+| Management and diagnostics | [Screenshot](screenshots/management-diagnostics.png) | Only grouped controls and short, non-identifying summaries are shown. |
+| Source Evaluation | [Screenshot](screenshots/source-evaluation.png) | The reviewed state contains aggregate progress and no raw source errors. |
+| Browse in Evaluation Mode | [Screenshot](screenshots/browse-evaluation-mode.png) | Source labels are neutralized without changing the normal Browse layout. |
+| Ratings and Not Interested | [Diagram](../diagrams/ratings-and-groups.md) | A real capture would join a manga identity with a personal preference. |
+| Sources to try | [Diagram](../diagrams/sources-and-priority.md) | A populated list can reveal installed-source gaps and preference context. |
+| Find other versions and Best Version | [Diagram](../diagrams/best-version.md) | The comparison depends on manga and source identities. |
+| Reader controls, schedule, completion rating, and Jump to last read | [Diagram](../diagrams/reader.md) | Reader pages, chapter names, and progress are private reading history. A current, cropped, generic schedule capture has not been approved. |
+| Action History | [Diagram](../diagrams/ratings-and-groups.md) | Real entries describe personal actions. The available empty-state captures are test or uncropped captures rather than current public evidence. |
+| Export and cleanup | [Diagram](../diagrams/export-and-evidence.md) | Extension identity and Android document-provider details can appear before or after the warning. |
+| OCR Search Downloads | [Diagram](../diagrams/ocr.md) | Recognized text, manga names, chapters, and page context are private content. |
+| Backup and restore | [Diagram](../diagrams/backup-and-portability.md) | Destinations and restored library details can expose storage and reading information. |
+| Extension operations | [Diagram](../diagrams/extension-operations.md) | Installed packages, repositories, and source configuration identify the user's setup. |
+| Security and integration boundaries | [Diagram](../diagrams/security-and-integration.md) | These behaviors are better demonstrated by bounded flows and tests than by publishing hostile inputs or private route values. |
+
+A new screenshot is not public evidence until it is cropped to the app, reviewed for private information, hashed, added to the XML manifest, and linked from the relevant guide section. Empty, loading, test-fixture, and outdated screens are not substitutes for the feature's normal state.
+
 ## XML reference files
 
 The XML files in `xml/` list each feature's screens, possible states, related code, privacy rules, and screenshot hashes. They are written references, not raw Android screen dumps, and they do not contain coordinates, device identifiers, manga titles, source names, URLs, account data, or local paths.
