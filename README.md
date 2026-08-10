@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="160" height="160" src="./docs/kmk/assets/kmk-icon.svg" alt="Komikku KMK icon" />
+<img width="160" height="160" src="./.github/readme-images/app-icon.png" alt="Komikku logo" />
 
 # Komikku KMK
 
@@ -11,7 +11,7 @@
 
 </div>
 
-Komikku KMK is based on [Komikku](https://github.com/komikku-app/komikku), TachiyomiSY, and Mihon. It is maintained independently and is not an official Komikku release. Its package name, launcher name, icon, update source, issue tracker, and release channel are separate from upstream.
+Komikku KMK is based on [Komikku](https://github.com/komikku-app/komikku), TachiyomiSY, and Mihon. It is maintained independently and is not an official Komikku release. It retains Komikku's original visual identity while using a separate package name, launcher name, update source, issue tracker, and release channel.
 
 ## Install
 
