@@ -42,10 +42,10 @@ sequenceDiagram
     participant Android as Android package flow
     participant History as Action History
     User->>App: Confirm install or removal
-    App->>Android: Request supported package operation
-    Android-->>App: Success, cancellation, or failure
-    App->>History: Record only a confirmed result
-    App-->>User: Show the result and next step
+    App->>Android: Request package operation
+    Android-->>App: Success, cancel, or failure
+    App->>History: Record confirmed result
+    App-->>User: Show outcome
 ```
 
 The app records only a confirmed Android result. Cancellation and ordinary failure remain distinct outcomes.

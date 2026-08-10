@@ -66,8 +66,8 @@ sequenceDiagram
     User->>Screen: Perform an action
     Screen->>Model: Send validated intent
     Model->>Policy: Apply feature rules
-    Policy->>Runtime: Request guarded work when needed
-    Runtime-->>Policy: Result, local failure, or cancellation
+    Policy->>Runtime: Run guarded work
+    Runtime-->>Policy: Result, failure, or cancel
     Policy->>Store: Prepare accepted update
     Store->>DB: Save state
     DB-->>Store: Confirm write

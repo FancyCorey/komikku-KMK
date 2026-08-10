@@ -45,10 +45,10 @@ sequenceDiagram
     participant OCR as On-device recognizer
     participant Index as Local OCR index
     Worker->>Files: Read one downloaded page
-    Files-->>Worker: Image bytes or typed file error
+    Files-->>Worker: Image or file error
     Worker->>OCR: Recognize text on device
-    OCR-->>Worker: Text, empty result, or typed recognition error
-    Worker->>Index: Store short status and recognized text
+    OCR-->>Worker: Text, empty, or error
+    Worker->>Index: Save status and text
 ```
 
 Each page receives a success, empty, or clear failure status. Diagnostics do not include raw error messages or page identities.

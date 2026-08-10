@@ -47,10 +47,10 @@ Cancellation and fatal errors are not disguised as empty or successful source re
 ```mermaid
 stateDiagram-v2
     [*] --> Available
-    Available --> Suppressed: Recoverable initialization failure
-    Suppressed --> Unavailable: Repeated request during suppression
+    Available --> Suppressed: Init failure
+    Suppressed --> Unavailable: Repeated request
     Unavailable --> Suppressed: No environment change
-    Suppressed --> Available: User retries or failure is cleared
+    Suppressed --> Available: Retry or clear failure
     Available --> [*]
 ```
 

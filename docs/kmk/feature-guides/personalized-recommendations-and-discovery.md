@@ -58,16 +58,16 @@ sequenceDiagram
 
     User->>Screen: Open or refresh For You
     Screen->>Model: Request recommendations
-    Model->>Settings: Read languages, filters, limits, and source order
-    Model->>Memory: Read cached candidates and visible-card history
+    Model->>Settings: Read settings
+    Model->>Memory: Read candidate memory
     loop Eligible sources
-        Model->>Runtime: Request search or recent catalogue candidates
-        Runtime-->>Model: Candidates or a source-local failure
+        Model->>Runtime: Search or latest request
+        Runtime-->>Model: Candidates or local failure
     end
-    Model->>Policy: Filter, merge, diversify, and rank
-    Policy-->>Model: Visible rows and explanations
-    Model->>Memory: Save cache, progress, and visible exposure
-    Model-->>Screen: Loaded, partial, empty, or error state
+    Model->>Policy: Filter, merge, and rank
+    Policy-->>Model: Rows and explanations
+    Model->>Memory: Save cache and exposure
+    Model-->>Screen: Ready / partial / empty / error
 ```
 
 Each source is handled independently. One failing source can produce a row-level explanation without discarding successful rows.

@@ -61,12 +61,12 @@ sequenceDiagram
     participant Screen as Destination screen
     participant Store as Saved settings
 
-    User->>Search: Enter words from a setting name or summary
+    User->>Search: Enter setting terms
     Search->>Index: Normalize and rank the query
     Index-->>Search: Matching destinations
-    Search-->>User: Show section, title, and summary
-    User->>Search: Select a result
-    Search->>Screen: Open the destination and anchor
+    Search-->>User: Show matching settings
+    User->>Search: Choose a match
+    Search->>Screen: Open setting
     Screen->>Store: Read current value
     Store-->>Screen: Validated setting state
 ```
@@ -76,12 +76,11 @@ Search results explain both the setting and the section that contains it.
 ## Quick-access panel
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Closed
-    Closed --> Open: Select edge handle
-    Open --> Destination: Select feature shortcut
-    Destination --> Closed: Open destination
-    Open --> Closed: Select outside or press Back
+flowchart LR
+    Closed([Closed]) -->|Open panel| Open([Open])
+    Open -->|Choose shortcut| Destination([Destination])
+    Destination -->|Open destination| Closed
+    Open -->|Close or Back| Closed
 ```
 
 The tablet quick-access panel provides the same destinations as the main settings index. Its handle and rows use stable touch targets and dismiss through normal Back behavior.

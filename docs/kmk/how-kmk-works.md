@@ -47,15 +47,15 @@ sequenceDiagram
 
     User->>Screen: Open or refresh For You
     Screen->>Model: Request visible rows
-    Model->>Memory: Read ratings, exclusions, exposure, and settings
-    Model->>Runtime: Request guarded source candidates
-    Runtime->>Source: Search, latest, or supported catalogue request
+    Model->>Memory: Read eligibility inputs
+    Model->>Runtime: Run guarded source work
+    Runtime->>Source: Search or latest request
     Source-->>Runtime: Candidates or local failure
     Runtime-->>Model: Isolated result
-    Model->>Policy: Filter, merge, diversify, and rerank
+    Model->>Policy: Filter, merge, and rerank
     Policy-->>Model: Stable visible result
-    Model->>Memory: Record visible exposure
-    Model-->>Screen: Loaded, empty, partial, or error state
+    Model->>Memory: Save exposure
+    Model-->>Screen: Ready / partial / empty / error
 ```
 
 Personalized matches remain the majority when enough suitable results exist. A smaller set of recent catalogue entries can add variety, but those entries must still pass language, genre, minimum-chapter, exclusion, and source checks. If a card remains visible and untouched for the configured number of days, the app moves it lower instead of deleting it. Manga in the library, manga with a preference, and known tracked manga keep their position when the app can verify that state safely.

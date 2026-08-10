@@ -35,13 +35,13 @@ sequenceDiagram
 
     User->>Screen: Choose export
     Screen->>Picker: Request destination
-    Picker-->>Screen: Created document reference or cancellation
+    Picker-->>Screen: Document or cancel
     Screen->>Exporter: Start writing
     Exporter->>Source: Read selected export input
     Exporter->>Document: Write output
-    Document-->>Exporter: Success, partial output, or failure
-    Exporter-->>Screen: Result and exact cleanup reference
-    Screen-->>User: Keep or remove the created document
+    Document-->>Exporter: Success, partial, or failure
+    Exporter-->>Screen: Result and cleanup handle
+    Screen-->>User: Keep or remove output
 ```
 
 Android creates the destination before the app writes to it. The app therefore keeps an exact reference for cleanup after failed or partial writes.

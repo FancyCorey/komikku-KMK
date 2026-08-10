@@ -54,7 +54,7 @@ sequenceDiagram
 
     User->>Screen: Choose or clear a preference
     Screen->>Model: Send preference action
-    Model->>History: Prepare previous and requested values
+    Model->>History: Stage old/new values
     Model->>Store: Save requested value
     alt Save succeeds
         Store-->>Model: Saved

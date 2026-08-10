@@ -31,14 +31,14 @@ sequenceDiagram
     participant Viewer as Reader viewer
 
     User->>Activity: Open chapter
-    Activity->>Model: Load chapter and reader settings
+    Activity->>Model: Load chapter/settings
     Model->>Loader: Request page list and pages
     Loader-->>Model: Pages or page-local failure
-    Model->>Viewer: Apply pages and viewer configuration
+    Model->>Viewer: Apply pages/config
     Viewer-->>User: Render readable content
     User->>Viewer: Navigate pages
     Viewer-->>Model: Report progress
-    Model-->>Activity: Update chapter state and controls
+    Model-->>Activity: Update chapter state
 ```
 
 A page failure stays with that page load, while reading progress continues through Komikku's existing reader flow.
