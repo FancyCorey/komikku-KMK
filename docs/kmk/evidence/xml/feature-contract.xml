@@ -121,6 +121,6 @@
     <owner>app/src/main/java/eu/kanade/tachiyomi/source/SourceRuntime.kt</owner>
     <dispatch>app/src/main/java/eu/kanade/tachiyomi/ui/deeplink/DeepLinkIntentSanitizer.kt</dispatch>
     <states>accepted rejected isolated-failure cancelled verified-mutation</states>
-    <privacy screenshot="withheld">Security boundaries are validated through source and tests; raw hostile inputs and private route values are not public evidence.</privacy>
+    <privacy screenshot="withheld">A screenshot is not useful here because hostile inputs and private route values should not be displayed.</privacy>
   </feature>
 </kmk-feature-contract>

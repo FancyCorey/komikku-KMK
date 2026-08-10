@@ -64,7 +64,7 @@ The public guide uses a screenshot when the screen can explain the feature witho
 | Find other versions | [Screenshot](screenshots/linked-versions-evaluation-mode.png) and [diagram](../diagrams/best-version.md) | The reviewed selection screen keeps the manga matches visible and hides source names. |
 | Best Version comparison | [Diagram](../diagrams/best-version.md) | The available history and comparison captures contain private manga and reading-history context. |
 | Reader controls, schedule, completion rating, and Jump to last read | [Diagram](../diagrams/reader.md) | Reader pages, chapter names, and progress are private reading history. A current, cropped, generic schedule capture has not been approved. |
-| Action History | [Diagram](../diagrams/ratings-and-groups.md) | Real entries describe personal actions. The available empty-state captures are test or uncropped captures rather than current public evidence. |
+| Action History | [Diagram](../diagrams/ratings-and-groups.md) | A populated screen can reveal personal actions, while an empty screen would not explain how restoration and conflict checks work. |
 | Export and cleanup | [Diagram](../diagrams/export-and-evidence.md) | Extension identity and Android document-provider details can appear before or after the warning. |
 | OCR Search Downloads | [Diagram](../diagrams/ocr.md) | Recognized text, manga names, chapters, and page context are private content. |
 | Backup and restore | [Diagram](../diagrams/backup-and-portability.md) | Destinations and restored library details can expose storage and reading information. |

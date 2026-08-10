@@ -22,22 +22,13 @@ Komikku continues to own navigation, the library, the reader, downloads, trackin
 
 ```mermaid
 flowchart TD
-    Screens["Compose screens and Voyager routes"] --> Models["Screen models and ReaderViewModel"]
-    Models --> Taste["Ratings and taste policies"]
-    Models --> Retrieval["Recommendation retrieval and reranking"]
-    Models --> Evaluation["Source evaluation and discovery"]
-    Models --> Matching["Cross-source matching and Best Version"]
-    Models --> Reader["Completion, timer, schedule, and chapter navigation"]
-    Models --> OCR["Local OCR indexing and search"]
-    Taste --> Persistence["Repositories, preferences, and migrations"]
-    Retrieval --> SourceRuntime["SourceRuntime isolation"]
-    Evaluation --> SourceRuntime
-    Matching --> SourceRuntime
-    Retrieval --> Persistence
-    Evaluation --> Persistence
-    Matching --> Persistence
-    Reader --> Persistence
-    OCR --> Persistence
+    Screens["Screens and navigation"] --> Owners["Screen models and reader state"]
+    Owners --> Local["Preferences, reader tools, and OCR"]
+    Owners --> SourceWork["For You, evaluation, suggestions, and matching"]
+    Local --> Storage["Repositories, settings, and database"]
+    SourceWork --> Runtime["Guarded source runtime"]
+    Runtime --> Extensions["Installed source extensions"]
+    SourceWork --> Storage
 ```
 
 Screens display information and handle navigation. Screen models hold the current feature state and coordinate the work behind each screen. `SourceRuntime` prevents one failing extension from breaking unrelated work and preserves cancellation. Data is stored through Komikku's repositories, settings, and database migrations.
@@ -110,17 +101,16 @@ flowchart TD
 
 The schedule is local, optional, and off by default. The reader checks it when it opens and whenever the app returns to the foreground. Moving to another chapter cannot bypass a restriction. The completion prompt appears only after you finish the latest available chapter, and it waits until you exit so it does not interrupt reading. The manga toolbar also shows **Jump to last read** when a valid reading position exists.
 
-## What stays private
+## Privacy and data boundaries
 
 ```mermaid
-flowchart LR
-    Source["Reviewed source and tests"] --> Public["Public fork"]
-    Docs["Current behavior documentation"] --> Public
-    Safe["Privacy-checked screenshots and written XML references"] --> Public
-    Raw["Raw logs, device captures, accounts, and private paths"] --> Hold["Private only"]
-    Stale["Superseded diagrams and stale captures"] --> Hold
+flowchart TD
+    App["Komikku KMK"] --> Local["Ratings, history, settings, and OCR index stay on the device"]
+    App --> Sources["Online catalogue work goes through installed source extensions"]
+    App --> Sharing["Evaluation Mode can hide source labels before a screenshot is shared"]
+    App --> Files["Exports and backups use Android's user-chosen document destination"]
 ```
 
-Only current files that have passed a privacy review are included in the public fork. Raw screen dumps, device identifiers, local paths, account details, source names, reading history, and manga-specific preference records remain private.
+KMK does not add a separate account or recommendation server. Ratings, recommendation settings, reading history, Action History, and the OCR index are stored locally. Installed source extensions still handle their own online catalogue requests.
 
-OCR text forms a local index that the app can rebuild from downloaded pages. It stays in the app database, is left out of backup and sync, and can be cleared without deleting those pages. Backups include KMK data that is harder to recreate, such as ratings, recommendation settings, linked versions, and source evaluations.
+Evaluation Mode changes visible source labels without changing saved identifiers, requests, or actions. OCR text can be rebuilt from downloaded pages, so it is left out of backup and sync and can be cleared without deleting those pages. Backups can include KMK data that is harder to recreate, such as ratings, recommendation settings, linked versions, and source evaluations.

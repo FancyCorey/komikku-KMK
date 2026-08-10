@@ -1,6 +1,6 @@
 # System-wide architecture diagrams
 
-These diagrams show how the feature pages share the app, save data, and keep private files out of the public repository.
+These diagrams show how the feature pages share the app, save data, and keep private information within the boundaries chosen by the user.
 
 ## System context
 
@@ -19,20 +19,13 @@ KMK runs inside the Android app and uses installed extensions. It does not add a
 
 ```mermaid
 flowchart TD
-    UI["Screens and navigation"] --> Taste["Preferences and taste"]
-    UI --> Evaluation["Evaluation and source suggestions"]
-    UI --> Matching["Groups and Best Version"]
-    UI --> Reader["Reader controls"]
-    Taste --> Retrieval["For You retrieval and ranking"]
-    SourcePolicy["Source order and eligibility"] --> Retrieval
-    Runtime["SourceRuntime isolation"] --> Retrieval
-    Runtime --> Evaluation
-    Runtime --> Matching
-    Taste --> Persistence["Repositories, settings, and database"]
-    Retrieval --> Persistence
-    Evaluation --> Persistence
-    Matching --> Persistence
-    Reader --> Persistence
+    UI["Screens and navigation"] --> Owners["Screen models and reader state"]
+    Owners --> Local["Preferences, reader controls, and OCR"]
+    Owners --> SourceWork["For You, evaluation, suggestions, and matching"]
+    Local --> Persistence["Repositories, settings, and database"]
+    SourceWork --> Runtime["Guarded source runtime"]
+    Runtime --> Extensions["Installed source extensions"]
+    SourceWork --> Persistence
 ```
 
 Screens decide what to display, policy classes make feature decisions, and repositories or settings save data that must survive a restart.
@@ -79,17 +72,14 @@ flowchart LR
 
 New stored data uses registered migrations and explicit backup behavior where the feature supports backup and restore.
 
-## What can be published
+## Privacy boundaries
 
 ```mermaid
 flowchart TD
-    Source["Reviewed source and tests"] --> Review["Publication review"]
-    Docs["Current user, architecture, and reference documentation"] --> Review
-    Evidence["Privacy-checked screenshots and written XML references"] --> Review
-    Review --> Checks{"Paths, privacy, build, tests, diagrams, and hashes pass?"}
-    Checks -->|Yes| Public["Public fork"]
-    Checks -->|No| Hold["Correct before publication"]
-    Raw["Raw logs, device data, accounts, and local paths"] --> Excluded["Excluded from public history"]
+    App["Komikku KMK"] --> Local["Local ratings, history, settings, and OCR index"]
+    App --> Sources["Catalogue requests through installed extensions"]
+    App --> Display["Optional neutral labels in Evaluation Mode"]
+    App --> Documents["User-directed exports and backups through Android"]
 ```
 
-The privacy check covers both the files being published and the Git history that will be pushed.
+KMK has no separate recommendation account or server. Local preference and reading data stays in the app unless the user explicitly includes supported data in a backup or export. Evaluation Mode affects only what is displayed; it does not redirect requests or change which source or manga an action targets.

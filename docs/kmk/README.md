@@ -29,4 +29,4 @@ KMK extends Komikku with personalized discovery, cross-source comparison, revers
 
 ## Screenshots and privacy
 
-The screenshots show the For You page in Evaluation Mode, which replaces source names with neutral labels. Covers and recommendation details stay visible so you can understand what the feature recommends. Screens that could reveal personal preferences, library activity, account information, reader content, or actual source names are described with privacy-checked XML and links to the relevant code instead.
+The screenshots show the For You page in Evaluation Mode, which replaces source names with neutral labels. Covers and recommendation details stay visible so you can understand what the feature recommends. When a screen would reveal personal preferences, library activity, account information, reader content, or actual source names, the guide uses a diagram and written explanation instead.
