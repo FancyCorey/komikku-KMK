@@ -25,4 +25,19 @@
     <state>partial-result</state>
     <sanitization>cropped-to-app; aggregate-counts-only; no-device-status; no-source-identity; no-raw-error; no-local-path</sanitization>
   </artifact>
+  <artifact id="sources-to-try-evaluation" type="screenshot" path="../screenshots/sources-to-try-evaluation-mode.png" sha256="F07CAF194100BB4B18D5C97A7D9C6F7FA032DDA227943621FED4C8F559BDDB94">
+    <route>settings/recommendations/sources-to-try</route>
+    <state>suggestions</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="not-interested-other-versions" type="screenshot" path="../screenshots/not-interested-other-versions.png" sha256="A4AFEDD5F25B9ED34518F38A315EC956B3F685424E2C27209FA81A21E31654A7">
+    <route>manga/detail/other-versions/not-interested</route>
+    <state>selected</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-title-context-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="linked-versions-evaluation" type="screenshot" path="../screenshots/linked-versions-evaluation-mode.png" sha256="5095DBE7B16E7BC253CCCCA61E9EC4018BF0669CD52214B7F0D1B215725E7FD4">
+    <route>manga/detail/other-versions</route>
+    <state>selected</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-title-context-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
 </kmk-evidence-manifest>

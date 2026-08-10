@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<kmk-feature-contract version="3" privacy="sanitized-semantic">
+<kmk-feature-contract version="4" privacy="sanitized-semantic">
   <publication application-id="app.komikku.kmk" app-name="Komikku KMK" update-repository="FancyCorey/komikku-KMK" />
   <feature id="for-you" route="browse/for-you">
     <purpose>Show personalized and exploratory manga candidates grouped by eligible source.</purpose>
@@ -31,7 +31,7 @@
     <documentation>docs/kmk/diagrams/sources-and-priority.md</documentation>
     <owner>app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt</owner>
     <states>loading suggestions empty unavailable install-handoff</states>
-    <privacy screenshot="withheld">A live suggestion list can reveal source availability and preference context.</privacy>
+    <privacy screenshot="approved">The reviewed populated state uses Evaluation Mode to replace source identities with neutral labels.</privacy>
   </feature>
   <feature id="manga-preference" route="manga/detail">
     <purpose>Treat Love, Like, Dislike, and Not Interested as peer preference actions with reversible transitions.</purpose>
@@ -39,14 +39,14 @@
     <owner>app/src/main/java/exh/recs/loved/MangaPreferencePresentationPolicy.kt</owner>
     <dispatch>app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt</dispatch>
     <states>neutral loved liked disliked not-interested</states>
-    <privacy screenshot="withheld">The active preference and manga identity are user-specific.</privacy>
+    <privacy screenshot="approved">The reviewed cross-version example retains approved manga artwork and title context while Evaluation Mode hides source identities.</privacy>
   </feature>
   <feature id="cross-source-matching" route="manga/find-other-versions">
     <purpose>Find, select, link, group, and compare versions through guarded source work.</purpose>
     <documentation>docs/kmk/diagrams/best-version.md</documentation>
     <owner>app/src/main/java/exh/recs/matching/CrossExtensionMatchScreen.kt</owner>
     <states>searching candidates selected linked empty partial-failure</states>
-    <privacy screenshot="withheld">Candidate source and manga identities are route inputs.</privacy>
+    <privacy screenshot="approved">The reviewed selection state keeps approved manga matches visible while Evaluation Mode hides source identities.</privacy>
   </feature>
   <feature id="best-version" route="manga/find-other-versions/best-version">
     <purpose>Compare linked versions and continue through the established migration workflow when the user selects another version.</purpose>

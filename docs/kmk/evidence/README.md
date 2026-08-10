@@ -32,6 +32,20 @@ This page keeps maintenance and diagnostic controls together. Its summaries show
 
 This screenshot shows Source Evaluation partway through a run, with progress, readiness information, and reassessment actions. It uses general categories instead of raw source names or error messages.
 
+## Sources to try
+
+![Sources to try with ranked suggestions and neutral source labels](screenshots/sources-to-try-evaluation-mode.png)
+
+The populated list shows ranking, sorting, installation, and selection controls. Evaluation Mode replaces the source names with neutral labels.
+
+## Preferences across versions
+
+| Not Interested | Linked-version selection |
+| --- | --- |
+| ![Not Interested selection across matching versions](screenshots/not-interested-other-versions.png) | ![Matching manga grouped under neutral source labels](screenshots/linked-versions-evaluation-mode.png) |
+
+These screens show how a preference can be applied across matching versions. The manga artwork and titles are retained to make the result understandable, while source names remain hidden.
+
 These screenshots leave out specific preference choices, reading history, account information, reader pages, and menus that could reveal private manga activity.
 
 ## Screenshot coverage
@@ -45,9 +59,10 @@ The public guide uses a screenshot when the screen can explain the feature witho
 | Management and diagnostics | [Screenshot](screenshots/management-diagnostics.png) | Only grouped controls and short, non-identifying summaries are shown. |
 | Source Evaluation | [Screenshot](screenshots/source-evaluation.png) | The reviewed state contains aggregate progress and no raw source errors. |
 | Browse in Evaluation Mode | [Screenshot](screenshots/browse-evaluation-mode.png) | Source labels are neutralized without changing the normal Browse layout. |
-| Ratings and Not Interested | [Diagram](../diagrams/ratings-and-groups.md) | A real capture would join a manga identity with a personal preference. |
-| Sources to try | [Diagram](../diagrams/sources-and-priority.md) | A populated list can reveal installed-source gaps and preference context. |
-| Find other versions and Best Version | [Diagram](../diagrams/best-version.md) | The comparison depends on manga and source identities. |
+| Ratings and Not Interested | [Screenshot](screenshots/not-interested-other-versions.png) and [diagram](../diagrams/ratings-and-groups.md) | The reviewed example uses neutral source labels and approved manga artwork to show the preference clearly. |
+| Sources to try | [Screenshot](screenshots/sources-to-try-evaluation-mode.png) and [diagram](../diagrams/sources-and-priority.md) | Evaluation Mode replaces the populated list's source identities with neutral labels. |
+| Find other versions | [Screenshot](screenshots/linked-versions-evaluation-mode.png) and [diagram](../diagrams/best-version.md) | The reviewed selection screen keeps the manga matches visible and hides source names. |
+| Best Version comparison | [Diagram](../diagrams/best-version.md) | The available history and comparison captures contain private manga and reading-history context. |
 | Reader controls, schedule, completion rating, and Jump to last read | [Diagram](../diagrams/reader.md) | Reader pages, chapter names, and progress are private reading history. A current, cropped, generic schedule capture has not been approved. |
 | Action History | [Diagram](../diagrams/ratings-and-groups.md) | Real entries describe personal actions. The available empty-state captures are test or uncropped captures rather than current public evidence. |
 | Export and cleanup | [Diagram](../diagrams/export-and-evidence.md) | Extension identity and Android document-provider details can appear before or after the warning. |

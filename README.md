@@ -60,6 +60,19 @@ KMK keeps Komikku's library, browsing, reader, themes, tracking, backup, and ext
 | <img src="docs/kmk/evidence/screenshots/management-diagnostics.png" alt="Management and diagnostics settings" width="420" /> | <img src="docs/kmk/evidence/screenshots/browse-evaluation-mode.png" alt="Browse with source names hidden by Evaluation Mode" width="420" /> |
 | Maintenance tools and short status summaries stay together. | Source names can be hidden for screenshots without changing normal Browse navigation. |
 
+#### Preferences and source discovery
+
+| Sources to try | Not Interested across versions |
+| --- | --- |
+| <img src="docs/kmk/evidence/screenshots/sources-to-try-evaluation-mode.png" alt="Sources to try with ranked suggestions and neutral source labels" width="420" /> | <img src="docs/kmk/evidence/screenshots/not-interested-other-versions.png" alt="Not Interested selection across linked manga versions" width="420" /> |
+| Explore ranked source suggestions, sort the list, and choose which ones to install. | Apply Not Interested as a visible preference to the matching versions you select. |
+
+<p align="center">
+  <img src="docs/kmk/evidence/screenshots/linked-versions-evaluation-mode.png" alt="Linked manga versions grouped under neutral source labels" width="520" />
+</p>
+
+Linked-version actions can find matching manga across sources and apply a preference to the versions you choose. Evaluation Mode keeps the source names private in this example.
+
 The [KMK feature guide](docs/kmk/README.md) includes step-by-step instructions, larger screenshots, diagrams, privacy details, and technical references.
 
 ### Komikku's unique features:

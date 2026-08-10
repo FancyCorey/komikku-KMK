@@ -48,6 +48,10 @@ The app checks stored values before using them and replaces invalid values with 
 
 See the [ratings and preference diagrams](diagrams/ratings-and-groups.md) for the saved-state and undo flow.
 
+![Not Interested selection across matching manga versions](evidence/screenshots/not-interested-other-versions.png)
+
+*Choose the matching versions that should share the Not Interested preference.*
+
 1. Open a manga.
 2. Use the preference action to choose **Love**, **Like**, **Dislike**, or **Not interested**.
 3. The main preference button changes to show your choice. Choosing Love, Like, or Dislike while Not Interested is active replaces Not Interested in one saved change.
@@ -75,6 +79,10 @@ Source Evaluation checks whether a source is suitable; For You separately checks
 
 See the [source discovery diagrams](diagrams/sources-and-priority.md) for suggestion, filtering, and installation handoff states.
 
+![Sources to try with ranked suggestions and hidden source names](evidence/screenshots/sources-to-try-evaluation-mode.png)
+
+*Sort source suggestions by fit, name, or language before choosing an installation action.*
+
 1. Open **Recommendation Settings** and select **Sources to try**.
 2. Review compatible non-installed source suggestions based on your taste and source evaluations.
 3. Choose a suggestion to open Android's normal extension installation screen.
@@ -85,6 +93,10 @@ If the extension list, package, or network response is unavailable, the app show
 ## Find other versions and Best Version
 
 See the [cross-source matching diagrams](diagrams/best-version.md) for search, linking, comparison, and migration handoff.
+
+![Matching manga versions grouped under hidden source names](evidence/screenshots/linked-versions-evaluation-mode.png)
+
+*Review the matches found across sources and keep only the versions that belong together.*
 
 1. Open a manga and choose **Find other versions** from its actions.
 2. Review versions found through other sources and deselect incorrect matches.
