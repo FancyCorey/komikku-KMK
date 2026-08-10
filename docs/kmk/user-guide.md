@@ -1,6 +1,6 @@
 # KMK user guide
 
-This guide explains how to find and use KMK features. Each section starts with the actions to take, then explains the result and any important limitation. Screenshots appear where a reviewed capture can show the feature without exposing private activity. For routes that depend on manga, chapter, source, account, or storage details, the linked diagrams show the flow instead. The [screenshot coverage table](evidence/README.md#screenshot-coverage) records every decision.
+This guide explains how to find and use KMK features. Each section starts with the actions to take, then explains the result and any important limitation. Screenshots appear where a reviewed capture can show the feature without exposing private activity. For routes that depend on manga, chapter, source, account, or storage details, the linked feature explanation describes the flow instead. The [screenshot coverage table](screenshots/README.md#screenshot-coverage) records every decision.
 
 ## For You
 
@@ -10,7 +10,7 @@ This guide explains how to find and use KMK features. Each section starts with t
 4. Select a manga card to open its details, or select the arrow at the end of a row to see more results from that source.
 5. Use refresh after changing ratings, filters, source order, or discovery settings.
 
-![For You with personalized manga rows, matching tags, and hidden source names](evidence/screenshots/for-you-evaluation-mode.png)
+![For You with personalized manga rows, matching tags, and hidden source names](screenshots/for-you-evaluation-mode.png)
 
 *For You in Evaluation Mode. The recommendations stay visible while source names are hidden.*
 
@@ -25,7 +25,7 @@ If one source fails, results from other sources remain available. When the page 
 3. Change a setting with the switches, choices, and dialogs used elsewhere in Komikku.
 4. Return to For You and refresh when the screen asks for recommendation regeneration.
 
-![Recommendation settings divided into five sections](evidence/screenshots/recommendation-settings.png)
+![Recommendation settings divided into five sections](screenshots/recommendation-settings.png)
 
 *The main settings page keeps related controls together instead of placing every option in one long list.*
 
@@ -40,15 +40,15 @@ You can configure:
 
 The app checks stored values before using them and replaces invalid values with safe limits.
 
-![Management and diagnostics settings with grouped controls](evidence/screenshots/management-diagnostics.png)
+![Management and diagnostics settings with grouped controls](screenshots/management-diagnostics.png)
 
 *Management and diagnostics keeps maintenance tools, saved-data controls, and short status summaries in one place.*
 
 ## Ratings and Not Interested
 
-See the [ratings and preference diagrams](diagrams/ratings-and-groups.md) for the saved-state and undo flow.
+See [Ratings and linked versions](features/ratings-and-linked-versions.md) for the saved-state and undo flow.
 
-![Not Interested selection across matching manga versions](evidence/screenshots/not-interested-other-versions.png)
+![Not Interested selection across matching manga versions](screenshots/not-interested-other-versions.png)
 
 *Choose the matching versions that should share the Not Interested preference.*
 
@@ -69,7 +69,7 @@ When Action History is available in Evaluation Mode, supported changes include t
 5. Review completed, skipped, weak, failed, or partial outcomes.
 6. Use reassessment when installed extensions change or when the app reports stale evaluation data.
 
-![Source Evaluation showing progress, warnings, and reassessment actions](evidence/screenshots/source-evaluation.png)
+![Source Evaluation showing progress, warnings, and reassessment actions](screenshots/source-evaluation.png)
 
 *Source Evaluation can show useful progress and partial results without displaying raw source errors.*
 
@@ -77,9 +77,9 @@ Source Evaluation checks whether a source is suitable; For You separately checks
 
 ## Sources to try
 
-See the [source discovery diagrams](diagrams/sources-and-priority.md) for suggestion, filtering, and installation handoff states.
+See [Sources to try and source priority](features/source-discovery-and-priority.md) for suggestion, filtering, and installation handoff states.
 
-![Sources to try with ranked suggestions and hidden source names](evidence/screenshots/sources-to-try-evaluation-mode.png)
+![Sources to try with ranked suggestions and hidden source names](screenshots/sources-to-try-evaluation-mode.png)
 
 *Sort source suggestions by fit, name, or language before choosing an installation action.*
 
@@ -92,9 +92,9 @@ If the extension list, package, or network response is unavailable, the app show
 
 ## Find other versions and Best Version
 
-See the [cross-source matching diagrams](diagrams/best-version.md) for search, linking, comparison, and migration handoff.
+See [Cross-source matching and Best Version](features/cross-source-matching.md) for search, linking, comparison, and migration handoff.
 
-![Matching manga versions grouped under hidden source names](evidence/screenshots/linked-versions-evaluation-mode.png)
+![Matching manga versions grouped under hidden source names](screenshots/linked-versions-evaluation-mode.png)
 
 *Review the matches found across sources and keep only the versions that belong together.*
 
@@ -108,7 +108,7 @@ If you cancel a search, or one source fails, versions you already accepted remai
 
 ## Reader controls
 
-See the [reader-control diagrams](diagrams/reader.md) for schedule checks, completion prompts, linked-version ratings, and Jump to last read.
+See [Reader tools](features/reader-tools.md) for schedule checks, completion prompts, linked-version ratings, and Jump to last read.
 
 ### Jump to last read
 
@@ -132,11 +132,11 @@ When you finish the latest available chapter, the reader waits until you exit be
 
 ## Evaluation Mode and Action History
 
-See the [evidence and export diagrams](diagrams/export-and-evidence.md) for presentation sanitization and the [ratings diagrams](diagrams/ratings-and-groups.md) for reversible actions.
+See [Evaluation Mode and exports](features/evaluation-mode-and-exports.md) for presentation privacy and [Ratings and linked versions](features/ratings-and-linked-versions.md) for reversible actions.
 
 Evaluation Mode replaces source names and other identifying labels with neutral text for review and screenshots. It does not change saved data, actions, source requests, or network behavior.
 
-![Browse with source names hidden by Evaluation Mode](evidence/screenshots/browse-evaluation-mode.png)
+![Browse with source names hidden by Evaluation Mode](screenshots/browse-evaluation-mode.png)
 
 *Browse keeps its normal layout and navigation while Evaluation Mode hides source names.*
 
@@ -144,13 +144,13 @@ Open **Action History** to review supported reversible actions. If the same valu
 
 ## Export and cleanup
 
-See the [export and cleanup diagrams](diagrams/export-and-evidence.md) for chooser, cancellation, success, and exact-file cleanup states.
+See [Evaluation Mode and exports](features/evaluation-mode-and-exports.md) for chooser, cancellation, success, and exact-file cleanup states.
 
 Extension, recommendation, and library exports use Android's document picker. Choose the destination through the system UI. After a successful supported export, the app can offer to keep or remove exactly the document it just created. Cancellation leaves no success claim, and cleanup never scans or deletes unrelated storage.
 
 ## OCR search for downloads
 
-See the [OCR diagrams](diagrams/ocr.md) for indexing, cancellation, search, and cleanup.
+See [OCR search for downloads](features/ocr-search.md) for indexing, cancellation, search, and cleanup.
 
 1. Open **OCR Search Downloads** from the app's search tools.
 2. Choose the current manga or all downloaded manga, then start indexing.
@@ -162,7 +162,7 @@ Recognition runs on the device. The extracted text stays in the local database, 
 
 ## Backup and restore
 
-See the [backup and portability diagrams](diagrams/backup-and-portability.md) for selection, encoding, partial restore, and failure handling.
+See [Backup and restore](features/backup-and-restore.md) for selection, encoding, partial restore, and failure handling.
 
 KMK adds supported ratings, recommendation preferences, source evaluations, linked-version state, and source-quality signals to Komikku's normal backup flow. Select the matching backup options when creating or restoring a backup. A partial restore reports what could not be restored instead of treating the entire operation as successful.
 
@@ -170,7 +170,7 @@ OCR text is deliberately excluded because it can be regenerated from local downl
 
 ## Extension operations
 
-See the [extension-operation diagrams](diagrams/extension-operations.md) for isolation, consent, installation, removal, export, and cleanup.
+See [Extension management](features/extension-management.md) for isolation, consent, installation, removal, export, and cleanup.
 
 Extension installation and removal continue through Android's supported package flows. KMK isolates known unsafe or incompatible extension failures so one package does not prevent unrelated sources from loading. Extension export uses Android's document picker and acts only on packages selected by the user. After export, cleanup is limited to the exact document created by that operation.
 

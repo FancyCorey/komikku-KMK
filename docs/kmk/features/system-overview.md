@@ -1,6 +1,10 @@
-# System-wide architecture diagrams
+# System overview
 
 These diagrams show how the feature pages share the app, save data, and keep private information within the boundaries chosen by the user.
+
+## What this page covers
+
+This overview connects the feature-specific pages. It shows which work belongs to Komikku screens and screen models, which work crosses into installed extensions or Android, and which state remains in local repositories, settings, and the database.
 
 ## System context
 
@@ -83,3 +87,15 @@ flowchart TD
 ```
 
 KMK has no separate recommendation account or server. Local preference and reading data stays in the app unless the user explicitly includes supported data in a backup or export. Evaluation Mode affects only what is displayed; it does not redirect requests or change which source or manga an action targets.
+
+## Implementation reference
+
+| Layer | Representative source |
+| --- | --- |
+| Android entry point and app navigation | [`MainActivity`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt) |
+| Recommendation screen ownership | [`BrowsePersonalRecommendationsScreenModel`](../../../app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt) |
+| Reader ownership | [`ReaderViewModel`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt) |
+| Guarded extension boundary | [`SourceRuntime`](../../../app/src/main/java/eu/kanade/tachiyomi/source/SourceRuntime.kt) |
+| Local persistence | Database schema and migrations under [`data`](../../../data/) together with focused repositories such as [`OcrIndexRepository`](../../../app/src/main/java/exh/ocr/OcrIndexRepository.kt) |
+
+These links are representative ownership points, not a complete class inventory. The [feature map](../feature-map.md) provides the direct owner for each public feature.

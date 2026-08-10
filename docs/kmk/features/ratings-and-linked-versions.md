@@ -1,6 +1,10 @@
-# Ratings and manga-group diagrams
+# Ratings and linked versions
 
 These diagrams cover Love, Like, Dislike, Not Interested, linked versions, group maintenance, and reversible preference changes.
+
+## Where you find it
+
+Use the preference action on a manga page to choose Love, Like, Dislike, or Not Interested. The For You menu opens the corresponding collections, while linked-version actions can apply a preference to selected matching versions.
 
 ## Preference states
 
@@ -92,3 +96,14 @@ flowchart LR
 ```
 
 Collections come from the saved preferences and linked versions, so they stay consistent across screens.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Define the visible Love, Like, Dislike, and Not Interested peer states | [`MangaPreferencePresentationPolicy`](../../../app/src/main/java/exh/recs/loved/MangaPreferencePresentationPolicy.kt) |
+| Apply preference changes from the manga screen | [`MangaScreenModel`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt) |
+| Record reversible local changes before and after a successful write | [`EvaluationModeJournalRecorder`](../../../app/src/main/java/exh/util/EvaluationModeJournalRecorder.kt) |
+| Restore a supported change only when the current value still matches | [`EvaluationModeUndoService`](../../../app/src/main/java/exh/util/EvaluationModeUndoService.kt) |
+
+Not Interested is treated as a visible preference alongside the three rating levels. It has its own collection and marker, participates in cross-version actions, and uses the same conflict-aware undo boundary.

@@ -1,4 +1,10 @@
-# OCR search diagrams
+# OCR search for downloads
+
+OCR Search Downloads builds a local text index from downloaded pages, then lets the reader search that text and return to the matching manga, chapter, and page context.
+
+## Where you find it
+
+Open **OCR Search Downloads** from the app's search tools. Index controls choose the current manga or all downloaded manga; result and cleanup controls stay within the same feature.
 
 ## Entry and indexing
 
@@ -58,3 +64,13 @@ flowchart TD
 ```
 
 The index is local and regenerable. Cleanup changes only index rows and does not delete the downloaded page files.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Own index, search, cancellation, result, and cleanup state | [`OcrSearchScreenModel`](../../../app/src/main/java/exh/ocr/OcrSearchScreenModel.kt) |
+| Present indexing progress, search results, and cleanup choices | [`OcrSearchScreen`](../../../app/src/main/java/exh/ocr/OcrSearchScreen.kt) |
+| Store and query searchable page records locally | [`OcrIndexRepository`](../../../app/src/main/java/exh/ocr/OcrIndexRepository.kt) |
+
+Recognized text remains on the device and is excluded from KMK backup and sync. Cleanup removes index records, not manga pages or downloaded files.

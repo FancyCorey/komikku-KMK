@@ -1,4 +1,10 @@
-# Backup and portability diagrams
+# Backup and restore
+
+KMK extends Komikku's established backup format with supported recommendation preferences, ratings, links, and source-quality data. The flow remains user-directed and reports partial restoration instead of presenting an incomplete restore as fully successful.
+
+## Where you find it
+
+Open **Settings > Data and storage**, then use Komikku's backup or restore actions. KMK data appears inside the supported backup categories rather than through a separate backup screen.
 
 ## Backup selection
 
@@ -60,3 +66,14 @@ flowchart LR
 ```
 
 The KMK backup leaves out data that can be rebuilt or belongs to an outside service.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Build Komikku backup content | [`BackupCreator`](../../../app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt) |
+| Add supported KMK taste and recommendation data | [`TasteBackupCreator`](../../../app/src/main/java/eu/kanade/tachiyomi/data/backup/create/creators/TasteBackupCreator.kt) |
+| Restore supported KMK data and report conflicts | [`TasteRestorer`](../../../app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/restorers/TasteRestorer.kt) |
+| Coordinate the complete restore operation | [`BackupRestorer`](../../../app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt) |
+
+OCR text, credentials, transient action history, and outside-service state are deliberately excluded. They are either regenerable, security-sensitive, or not owned by the app backup.

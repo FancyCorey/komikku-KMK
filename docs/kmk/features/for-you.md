@@ -1,6 +1,10 @@
-# For You diagrams
+# For You
 
-These diagrams explain how For You gathers recommendations, applies user settings, adds controlled variety, and remembers which cards have already been shown.
+For You gathers recommendations from eligible installed sources, applies the reader's filters and preferences, adds a controlled amount of recent discovery, and rotates repeatedly shown untouched manga lower in the same result set. The diagrams below explain each stage; the text after them explains what the stage means in the app.
+
+## Where you find it
+
+Open **Browse**, then select **For You**. The page contains topic shortcuts followed by recommendation rows for the sources that are eligible under the current settings.
 
 ## Feature overview
 
@@ -76,3 +80,14 @@ flowchart TD
 ```
 
 Exposure memory changes ordering only. It does not delete manga or override library, preference, or verified tracking state.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Own screen state, source work, refresh, and visible exposure recording | [`BrowsePersonalRecommendationsScreenModel`](../../../app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt) |
+| Render recommendation rows and loaded, partial, empty, and error states | [`BrowsePersonalRecommendationsTab`](../../../app/src/main/java/exh/recs/BrowsePersonalRecommendationsTab.kt) |
+| Apply exposure-aware display ordering and tracked-state safety | [`RecommendationDisplayReranker`](../../../app/src/main/java/exh/recs/RecommendationDisplayReranker.kt) |
+| Merge personalized and recent-discovery candidates | [`RecommendationCandidateMemoryRanker`](../../../app/src/main/java/exh/recs/memory/RecommendationCandidateMemoryRanker.kt) |
+
+The screen model coordinates the feature. The policy files keep filtering and ordering rules testable without requiring a rendered Android screen.

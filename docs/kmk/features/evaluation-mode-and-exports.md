@@ -1,6 +1,10 @@
-# Export, Evaluation Mode, and screenshot diagrams
+# Evaluation Mode and exports
 
 These diagrams explain how the app creates and cleans up exported files, hides source names in Evaluation Mode, and decides which screenshots are safe to publish.
+
+## Where you find it
+
+Evaluation Mode is available from KMK's advanced or diagnostic controls and affects supported labels throughout the app. Export actions remain next to the feature or extension data they export and use Android's document picker for the destination.
 
 ## Export sequence
 
@@ -73,3 +77,13 @@ flowchart TD
 ```
 
 Only screenshots that pass the documented privacy check are included in the public guide.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Replace identity-bearing labels at presentation time | [`EvaluationModeFormatter`](../../../app/src/main/java/exh/util/EvaluationModeFormatter.kt) |
+| Export only the chosen extension packages | [`ExtensionApkExporter`](../../../app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionApkExporter.kt) |
+| Record reviewed public screenshots and hashes | [`screenshot-manifest.xml`](../reference/screenshot-manifest.xml) |
+
+Evaluation Mode affects labels only. It does not replace saved IDs, alter requests, redirect an action, or make an otherwise unsafe screenshot publishable. Export cleanup is limited to the exact document returned by the current Android document operation.

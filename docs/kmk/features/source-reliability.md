@@ -1,6 +1,10 @@
-# Source runtime diagrams
+# Source reliability
 
 The source runtime is the boundary between KMK features and installed extensions. It keeps one extension failure from breaking unrelated work.
+
+## Where it applies
+
+This is not a separate screen. For You, Source Evaluation, Sources to try, matching, and other source-backed features use the boundary whenever they call an installed extension.
 
 ## Runtime boundary
 
@@ -57,3 +61,13 @@ flowchart TD
 ```
 
 The final batch state can contain both useful results and honest per-source failures.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Run extension work with cancellation preservation and failure isolation | [`SourceRuntime`](../../../app/src/main/java/eu/kanade/tachiyomi/source/SourceRuntime.kt) |
+| Consume guarded source results for For You | [`BrowsePersonalRecommendationsScreenModel`](../../../app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt) |
+| Consume guarded source results for evaluation | [`SourceEvaluationScreenModel`](../../../app/src/main/java/exh/recs/evaluation/SourceEvaluationScreenModel.kt) |
+
+Callers receive a success, a classified source-local failure, or cancellation. They can therefore keep useful rows while explaining which source work did not complete.

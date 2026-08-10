@@ -1,6 +1,10 @@
-# Sources to try and source-priority diagrams
+# Sources to try and source priority
 
 These flows explain how the app suggests additional sources and how source preferences influence For You.
+
+## Where you find it
+
+Open **Recommendation settings** and select **Sources to try** to review discovery suggestions. Source ordering and exposure controls are available through the related recommendation settings pages.
 
 ## Sources to try
 
@@ -60,3 +64,13 @@ flowchart LR
 ```
 
 The settings remain user-configurable and are validated before recommendation policies use them.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Build ranked suggestions from eligible non-installed sources | [`GetNonInstalledSourceSuggestions`](../../../app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt) |
+| Present source-discovery settings and saved priorities | [`settings` package](../../../app/src/main/java/exh/recs/settings/) |
+| Hand a chosen source to Android's supported installation flow | [`Installer`](../../../app/src/main/java/eu/kanade/tachiyomi/extension/installer/Installer.kt) and its Android-specific implementations |
+
+Discovery proposes candidates; it does not silently install them. Installation remains an explicit Android-mediated action, and a newly installed source is evaluated before it influences recommendations.

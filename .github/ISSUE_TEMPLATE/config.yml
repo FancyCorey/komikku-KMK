@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❌ Source or extension content issue
+  - name: Source or extension content issue
     url: https://komikku-app.github.io/docs/faq/browse/extensions
     about: Learn which source and extension problems cannot be fixed by the app.
-  - name: 📖 KMK guide and troubleshooting
+  - name: KMK guide and troubleshooting
     url: https://github.com/FancyCorey/komikku-KMK/blob/master/docs/kmk/user-guide.md
     about: Review feature instructions, privacy guidance, and common troubleshooting before filing an issue.
-  - name: 🔒 Private security report
+  - name: Private security report
     url: https://github.com/FancyCorey/komikku-KMK/security/advisories/new
     about: Report a suspected security or privacy vulnerability without disclosing it in a public issue.

@@ -1,4 +1,10 @@
-# Security and integration diagrams
+# Security boundaries
+
+These flows show where KMK accepts outside input, calls extensions, changes local state, and creates documents. Each boundary has an explicit accepted, rejected, cancelled, failed, or verified result.
+
+## Where it applies
+
+These boundaries are shared infrastructure rather than one destination. They apply when the app opens an outside link, calls an extension, records a reversible local action, or creates and removes a document.
 
 ## Navigation validation
 
@@ -57,3 +63,14 @@ flowchart TD
 ```
 
 Cleanup removes only the document created by the current action. It never searches and clears a whole folder.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Validate and normalize incoming deep-link intents | [`DeepLinkIntentSanitizer`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/deeplink/DeepLinkIntentSanitizer.kt) |
+| Isolate extension failures and preserve cancellation | [`SourceRuntime`](../../../app/src/main/java/eu/kanade/tachiyomi/source/SourceRuntime.kt) |
+| Record and restore supported conflict-safe local actions | [`EvaluationModeUndoService`](../../../app/src/main/java/exh/util/EvaluationModeUndoService.kt) |
+| Limit export cleanup to the returned document | [`ExtensionApkExporter`](../../../app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionApkExporter.kt) |
+
+The public [security policy](../../../SECURITY.md) describes responsible reporting. It intentionally does not publish hostile payloads, credentials, private routes, or device-specific evidence.

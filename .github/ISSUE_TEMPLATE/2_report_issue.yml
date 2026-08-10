@@ -1,4 +1,4 @@
-name: 🐞 Issue report
+name: Issue report
 description: Report a reproducible issue in Komikku KMK
 labels: [bug]
 body:

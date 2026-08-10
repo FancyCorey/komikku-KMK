@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<kmk-evidence-manifest version="1" hash-algorithm="SHA-256">
+<kmk-screenshot-manifest version="2" hash-algorithm="SHA-256">
   <artifact id="for-you-evaluation" type="screenshot" path="../screenshots/for-you-evaluation-mode.png" sha256="FC1ED39C020B5B315B88F7C89350762F752898B8CAEDC94965FC2F834DB4B090">
     <route>browse/for-you</route>
     <state>loaded</state>
@@ -40,4 +40,4 @@
     <state>selected</state>
     <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-title-context-approved; no-device-status; no-account; no-local-path</sanitization>
   </artifact>
-</kmk-evidence-manifest>
+</kmk-screenshot-manifest>

@@ -1,6 +1,10 @@
-# Reader-control diagrams
+# Reader tools
 
 These diagrams cover chapter loading, completion preferences, the optional schedule and timer, and Jump to last read.
+
+## Where you find it
+
+Reader timer and schedule controls appear in the reader and under **Settings > Reader**. The completion preference appears after leaving the final available chapter when enabled. **Jump to last read** appears in the manga toolbar when the chapter list contains a valid read-position target.
 
 ## Chapter reading sequence
 
@@ -88,3 +92,14 @@ flowchart TD
 ```
 
 Jump to last read changes only the list position. It does not open a chapter or modify reading history.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Own reader loading, progress, completion, timer, and schedule state | [`ReaderViewModel`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt) |
+| Present reader controls and deferred completion prompts | [`ReaderActivity`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt) |
+| Show the manga-page Jump to last read action | [`MangaToolbar`](../../../app/src/main/java/eu/kanade/presentation/manga/components/MangaToolbar.kt) |
+| Resolve the target chapter without changing chapter state | [`MangaScreenModel`](../../../app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt) |
+
+The schedule and timer remain optional. The jump action appears only when the current chapter list contains a valid last-read target, and using it changes list position only.

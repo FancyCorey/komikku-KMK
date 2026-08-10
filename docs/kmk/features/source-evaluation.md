@@ -1,6 +1,10 @@
-# Source Evaluation diagrams
+# Source Evaluation
 
 Source Evaluation checks whether an installed source can provide useful recommendations. It saves a short result and explanation instead of raw errors.
+
+## Where you find it
+
+Open **Recommendation settings**, then select **Source Evaluation**. The screen shows readiness, progress, completed results, and actions to continue or reassess when the inputs have changed.
 
 ## Evaluation overview
 
@@ -74,3 +78,13 @@ flowchart LR
 ```
 
 The screen explains the result and its confidence without exposing requests, credentials, or raw error text.
+
+## Implementation reference
+
+| Responsibility | Source |
+| --- | --- |
+| Own evaluation state, queueing, continuation, cancellation, and reassessment | [`SourceEvaluationScreenModel`](../../../app/src/main/java/exh/recs/evaluation/SourceEvaluationScreenModel.kt) |
+| Render progress, result summaries, warnings, and available actions | [`SourceEvaluationScreen`](../../../app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt) |
+| Isolate extension calls used during evaluation | [`SourceRuntime`](../../../app/src/main/java/eu/kanade/tachiyomi/source/SourceRuntime.kt) |
+
+The screen model saves structured outcomes. The screen converts those outcomes into short explanations rather than displaying raw exception text or request details.

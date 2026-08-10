@@ -30,7 +30,7 @@ KMK keeps Komikku's library, browsing, reader, themes, tracking, backup, and ext
 #### A more personal For You page
 
 <p align="center">
-  <img src="docs/kmk/evidence/screenshots/for-you-evaluation-mode.png" alt="For You with personalized manga rows, matching tags, and hidden source names" width="760" />
+  <img src="docs/kmk/screenshots/for-you-evaluation-mode.png" alt="For You with personalized manga rows, matching tags, and hidden source names" width="760" />
 </p>
 
 - `For You` builds personalized recommendation rows from the sources you choose while keeping useful results visible when one source fails.
@@ -52,64 +52,76 @@ KMK keeps Komikku's library, browsing, reader, themes, tracking, backup, and ext
 
 | Recommendation settings | Source Evaluation |
 | --- | --- |
-| <img src="docs/kmk/evidence/screenshots/recommendation-settings.png" alt="Recommendation settings divided into five sections" width="420" /> | <img src="docs/kmk/evidence/screenshots/source-evaluation.png" alt="Source Evaluation showing progress and reassessment tools" width="420" /> |
+| <img src="docs/kmk/screenshots/recommendation-settings.png" alt="Recommendation settings divided into five sections" width="420" /> | <img src="docs/kmk/screenshots/source-evaluation.png" alt="Source Evaluation showing progress and reassessment tools" width="420" /> |
 | Five clear sections keep the main settings page easy to scan. | Check source quality, review progress, and reassess sources after changes. |
 
 | Management and diagnostics | Evaluation Mode in Browse |
 | --- | --- |
-| <img src="docs/kmk/evidence/screenshots/management-diagnostics.png" alt="Management and diagnostics settings" width="420" /> | <img src="docs/kmk/evidence/screenshots/browse-evaluation-mode.png" alt="Browse with source names hidden by Evaluation Mode" width="420" /> |
+| <img src="docs/kmk/screenshots/management-diagnostics.png" alt="Management and diagnostics settings" width="420" /> | <img src="docs/kmk/screenshots/browse-evaluation-mode.png" alt="Browse with source names hidden by Evaluation Mode" width="420" /> |
 | Maintenance tools and short status summaries stay together. | Source names can be hidden for screenshots without changing normal Browse navigation. |
 
 #### Preferences and source discovery
 
 | Sources to try | Not Interested across versions |
 | --- | --- |
-| <img src="docs/kmk/evidence/screenshots/sources-to-try-evaluation-mode.png" alt="Sources to try with ranked suggestions and neutral source labels" width="420" /> | <img src="docs/kmk/evidence/screenshots/not-interested-other-versions.png" alt="Not Interested selection across linked manga versions" width="420" /> |
+| <img src="docs/kmk/screenshots/sources-to-try-evaluation-mode.png" alt="Sources to try with ranked suggestions and neutral source labels" width="420" /> | <img src="docs/kmk/screenshots/not-interested-other-versions.png" alt="Not Interested selection across linked manga versions" width="420" /> |
 | Explore ranked source suggestions, sort the list, and choose which ones to install. | Apply Not Interested as a visible preference to the matching versions you select. |
 
 <p align="center">
-  <img src="docs/kmk/evidence/screenshots/linked-versions-evaluation-mode.png" alt="Linked manga versions grouped under neutral source labels" width="520" />
+  <img src="docs/kmk/screenshots/linked-versions-evaluation-mode.png" alt="Linked manga versions grouped under neutral source labels" width="520" />
 </p>
 
 Linked-version actions can find matching manga across sources and apply a preference to the versions you choose. Evaluation Mode keeps the source names private in this example.
 
-The [KMK feature guide](docs/kmk/README.md) includes step-by-step instructions, larger screenshots, diagrams, privacy details, and technical references.
+The [KMK documentation](docs/kmk/README.md) includes step-by-step instructions, larger screenshots, feature explanations, privacy details, and implementation references.
 
-### Komikku's unique features:
-- `Suggestions` automatically showing source-website's recommendations / suggestions / related to current entry for all sources.
-- `Hidden categories` to hide yours things from *nosy* people.
-- `Auto theme color` based on each entry's cover for entry View & Reader.
-- `App custom theme` with `Color palettes` for endless color lover.
-- `Bulk-favorite` multiple entries all at once.
-- Source & Language icon on Library & various places. (Some language flags are not really accurate)
-- `Feed` now supports **all** sources, with more items (20 for now).
-- Fast browsing (for who with large library experiencing slow loading)
-- Grouped entries in Update tab (inspired by J2K).
-- Update notification with manga cover.
-- Auto `2-way sync` progress with trackers.
-- Chips for `Saved search` in source browse
-- `Panorama cover` showing wide cover in full.
-- `Merge multiple` library entries together at same time.
-- `Range-selection` for Migration.
-- Ability to `enable/disable repo`, with icon.
-- `Update Error` screen & migrating them away.
-- `to-be-updated` screen: which entries are going to be checked with smart-update?
-- `Search for sources` & Quick NSFW sources filter in Extensions, Browse & Migration screen.
-- `Feed` backup/restore/sync/re-order.
-- Long-click to add/remove single entry to/from library, everywhere.
-- Docking Read/Resume button to left/right.
-- In-app progress banner shows Library syncing / Backup restoring / Library updating progress.
-- Auto-install app update.
-- Configurable interval to refresh entries from downloaded storage.
-- Forked from SY so everything from SY.
-- Always up-to-date with Mihon & SY
-- More app themes & better UI, improvements...
+## Documentation
+
+| I want to... | Start here |
+| --- | --- |
+| Learn how to use KMK | [User guide](docs/kmk/user-guide.md) |
+| Understand how a feature behaves and where it is implemented | [Feature explanations](docs/kmk/features/README.md) |
+| View the current reviewed app screens | [Screenshots](docs/kmk/screenshots/README.md) |
+| Understand how KMK fits into Komikku | [How KMK works](docs/kmk/how-kmk-works.md) |
+| Find the code owner and supported states for a feature | [Feature map](docs/kmk/feature-map.md) |
+| Build and verify a local APK | [Build and verification](docs/kmk/build-and-verify.md) |
+| Review privacy or security behavior | [Privacy and data](docs/kmk/privacy-and-data.md) and [Security and integration](docs/kmk/security-and-integration.md) |
+
+KMK is an ongoing fork rather than a replacement for upstream Komikku. The documentation separates KMK additions from inherited Komikku and TachiyomiSY behavior, and implementation links point to the current source files responsible for each addition.
+
+## Inherited feature set
+
+KMK retains the broad feature set provided by Komikku and TachiyomiSY. The lists below separate those inherited capabilities from the KMK additions shown above.
+
+<details>
+  <summary>Additional Komikku features</summary>
+
+- Source-provided suggestions and related manga on manga pages.
+- Hidden categories for keeping selected library content out of ordinary views.
+- Cover-based theme colors for manga details and the reader.
+- Custom application themes and color palettes.
+- Bulk library actions, source and language indicators, and faster browsing for large libraries.
+- A multi-source Feed with saved searches, reordering, backup, restore, and sync support.
+- Grouped update entries, manga-cover notifications, and a view of entries selected by smart update.
+- Two-way tracker progress sync.
+- Saved-search chips in source Browse.
+- Panorama cover display.
+- Bulk merging and migration range selection.
+- Repository enable and disable controls, extension and source search, and quick adult-source filters.
+- Update-error management and migration actions.
+- Long-press library actions from supported lists.
+- Configurable Read or Resume button placement.
+- Progress banners for library sync, backup restore, and library updates.
+- Automatic application update installation and configurable downloaded-storage refresh intervals.
+- Additional themes and interface refinements inherited from the upstream application.
+
+</details>
 
 
 <details>
   <summary>Features from Mihon / Tachiyomi</summary>
 
-#### All up-to-date features from Mihon / Tachiyomi (original), include:
+### Mihon and Tachiyomi features
 
 * Online reading from a variety of sources
 * Local reading of downloaded content
@@ -126,7 +138,7 @@ The [KMK feature guide](docs/kmk/README.md) includes step-by-step instructions, 
 <details>
   <summary>Features from Tachiyomi SY</summary>
 
-#### All features from TachiyomiSY:
+### TachiyomiSY features
 * Feed tab, where you can easily view the latest entries or saved search from multiple sources at same time.
 * Automatic webtoon detection, allowing the reader to switch to webtoon mode automatically when viewing one
 * Manga recommendations, uses MAL and Anilist, as well as Neko Similar Manga for Mangadex manga (Thanks to Az, She11Shocked, Carlos, and Goldbattle)
