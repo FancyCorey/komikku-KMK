@@ -25,15 +25,30 @@ Report fork-specific problems through this repository's [issue tracker](https://
 
 <div align="left">
 
+## Features
+
 ### KMK additions
 
 This fork adds personalized discovery, source evaluation, cross-source comparison, reversible manga preferences, local OCR search, safer exports, and optional reader controls. The [KMK feature guide](docs/kmk/README.md) includes instructions, diagrams, privacy details, screenshots, and technical references.
 
+- `For You` builds personalized recommendation rows from the sources you choose while keeping useful results visible when one source fails.
+- `Recent discovery` adds a configurable selection from each source's latest catalogue. These manga still have to pass your language, genre, tag, source, and minimum-chapter rules.
+- `Recommendation rotation` moves repeatedly shown, untouched manga lower after a configurable number of days instead of removing them completely.
+- `Recommendation settings` organize source order, languages, blocked genres and tags, minimum chapters, result limits, recent discovery, matching, cache, and diagnostics into clear sections.
+- `Source Evaluation` checks whether installed sources can provide useful recommendations and shows short, privacy-aware explanations when they cannot.
+- `Sources to try` suggests compatible sources that are not installed and opens Android's normal installation flow when you choose one.
+- `Love`, `Like`, `Dislike`, and `Not Interested` work as equal manga preferences, each with its own collection and visible marker.
+- `Action History` can undo supported local preference and management changes without overwriting something you changed later.
+- `Find other versions` links matching manga across sources, while `Best Version` helps compare them before using Komikku's normal migration flow.
+- `Reader tools` add an optional reading schedule and timer, a clearer completion-rating flow, linked-version rating, and `Jump to last read` for long chapter lists.
+- `OCR Search Downloads` builds a local, searchable text index from downloaded pages without adding the recognized text to backup or sync.
+- `Evaluation Mode` hides source and repository names in screenshots without changing saved data, requests, or actions.
+- `Safer exports and extension actions` use Android's supported flows and can remove only the exact exported file created by the current action.
+- `KMK backup support` includes ratings, recommendation settings, linked versions, source quality, and source evaluation data in Komikku's normal backup flow.
+
 ![For You recommendations shown in Evaluation Mode](docs/kmk/evidence/screenshots/for-you-evaluation-mode.png)
 
 This is the For You page in Evaluation Mode. Source names are hidden, while covers and recommendation details remain visible so you can see what the page actually recommends.
-
-## Features
 
 ### Komikku's unique features:
 - `Suggestions` automatically showing source-website's recommendations / suggestions / related to current entry for all sources.
