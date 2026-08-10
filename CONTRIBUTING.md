@@ -1,16 +1,18 @@
-Looking to report an issue/bug or make a feature request? Please refer to the [README file](https://github.com/komikku-app/komikku#issues-feature-requests-and-contributing).
+Looking to report a bug or request a feature? Start with the fork's [issue forms](https://github.com/FancyCorey/komikku-KMK/issues/new/choose). The forms explain what information helps and which source or extension problems are outside the app's control.
 
 ---
 
-Thanks for your interest in contributing to Komikku!
+Thanks for your interest in contributing to Komikku KMK. This fork builds on Komikku, TachiyomiSY, and Mihon, so changes should preserve inherited behavior unless the proposal deliberately and clearly changes it.
 
 
 # Code contributions
 
 Pull requests are welcome!
 
-If you're interested in taking on [an open issue](https://github.com/komikku-app/komikku/issues), please comment on it so others are aware.
+If you're interested in taking on [an open KMK issue](https://github.com/FancyCorey/komikku-KMK/issues), please comment on it so others are aware.
 You do not need to ask for permission nor an assignment.
+
+For a large change, open or join an issue first so the expected behavior, compatibility boundary, and validation can be agreed before substantial work begins.
 
 ## Prerequisites
 
@@ -26,16 +28,17 @@ Before you start, please note that the ability to use following technologies is 
 
 ## Getting help
 
-- Join [the Discord server](https://discord.gg/85jB7V5AJR) for online help and to ask questions while developing.
+- Use a KMK issue for questions about this fork's behavior or contribution scope.
+- Use the [upstream Komikku contribution documentation](https://komikku-app.github.io/docs/contribute) for inherited project structure and general Android development guidance. Do not ask upstream maintainers to support KMK-only changes.
 
 # Translations
 
-Translations are done externally via [Weblate](https://hosted.weblate.org/engage/komikku-app/). See [our website](https://komikku-app.github.io/docs/contribute#translation) for more details.
+Translations inherited from Komikku are managed through upstream [Weblate](https://hosted.weblate.org/engage/komikku-app/). See the [upstream translation guide](https://komikku-app.github.io/docs/contribute#translation) for those strings. A pull request that adds or changes KMK-specific text must update the default string resource and preserve the existing localization structure; it must not rewrite generated upstream translations casually.
 
 
-# Forks
+# Downstream forks
 
-Forks are allowed so long as they abide by [the project's LICENSE](https://github.com/komikku-app/komikku/blob/master/LICENSE).
+Further forks are allowed so long as they abide by [the project's LICENSE](LICENSE) and the licenses of included components.
 
 When creating a fork, remember to:
 

@@ -1,14 +1,23 @@
 <!--
-  Please include a summary of the change and which issue is fixed.
-  Also make sure you've tested your code and also done a self-review of it.
-  Don't forget to check all base themes and tablet mode for relevant changes.
+  Explain what changed, why it changed, and which issue it fixes.
+  Include the tests you ran and any important limitation or follow-up.
+  Review your own diff before requesting review.
+
+  For relevant changes, check phone and tablet layouts, light and dark themes,
+  accessibility labels, back navigation, process recreation, and existing
+  Komikku behavior adjacent to the KMK feature.
+
+  Do not include private evidence, local paths, credentials, source URLs,
+  account details, device identifiers, or internal implementation plans.
   
-  If your changes are visual, please provide images below:
+  If the change is visual, provide privacy-safe before and after images below.
+  Evaluation Mode can hide source names, but you must still review manga,
+  account, notification, reader, and storage details yourself.
 
 ### Images
-| Image 1 | Image 2 |
-| ------- | ------- |
-| ![](https://github.githubassets.com/images/modules/logos_page/Octocat.png) | ![](https://github.githubassets.com/images/modules/logos_page/Octocat.png) |
+| Before | After |
+| ------ | ----- |
+|        |       |
 -->
 
 ---

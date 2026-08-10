@@ -182,13 +182,12 @@ Before reporting a new fork issue, review the [KMK guide](docs/kmk/README.md), [
 
 <details><summary>Bugs</summary>
 
-* Include version (More → About → Version)
- * If not latest, try updating, it may have already been solved
- * Preview version is equal to the number of commits as seen on the main page
-* Include steps to reproduce (if not obvious from description)
-* Include screenshot (if needed)
-* If it could be device-dependent, try reproducing on another device (if possible)
-* Don't group unrelated requests into one issue
+* Include the complete version from **More → About**. If it is not the latest release, update first because the problem may already be fixed.
+* Give the shortest reliable steps from a named starting screen, followed by the expected and actual results.
+* Include the Android version and device model when the behavior may depend on the device.
+* Add a screenshot, recording, or checked crash log when it makes the problem easier to understand.
+* Remove credentials, source URLs, storage paths, device identifiers, notifications, and private library or reader content before uploading an attachment.
+* Keep unrelated problems in separate reports so each one can be reproduced, discussed, and closed independently.
 
 Use this fork's [issue forms](https://github.com/FancyCorey/komikku-KMK/issues/new/choose) to submit a bug.
 
@@ -196,8 +195,9 @@ Use this fork's [issue forms](https://github.com/FancyCorey/komikku-KMK/issues/n
 
 <details><summary>Feature Requests</summary>
 
-* Write a detailed issue, explaining what it should do or how.
-* Include screenshot (if needed).
+* Explain the current problem or limitation before describing the preferred result.
+* Include examples, alternatives, or privacy-safe mockups when they clarify the request; a technical implementation is not required.
+* Search open and closed requests first. React to an existing request and add useful context there instead of opening a duplicate.
 </details>
 
 <details><summary>Contributing</summary>

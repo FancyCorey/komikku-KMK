@@ -1,4 +1,4 @@
-name: Feature request
+name: ⭐ Feature request
 description: Suggest a feature to improve Komikku KMK
 labels: [feature request]
 body:
@@ -6,8 +6,11 @@ body:
     id: feature-description
     attributes:
       label: Describe your suggested feature
-      description: Explain the problem and how Komikku KMK could improve it.
-      placeholder: Describe the current experience and the result you would prefer.
+      description: Explain what is difficult or missing now, then describe how you would like it to work. You do not need to propose a technical implementation.
+      placeholder: |
+        Example:
+          "When I ..., the current result is ..."
+          "It would be easier if ..."
     validations:
       required: true
 
@@ -15,26 +18,37 @@ body:
     id: other-details
     attributes:
       label: Other details
-      description: Add examples or privacy-safe images when useful.
+      description: Add alternatives you considered, examples from other apps, or anything else that clarifies the request.
+      placeholder: |
+        Add supporting details or attachments here.
+
+        Before uploading an image, hide account details, source names, library activity, local paths, and other information you do not want to share publicly.
 
   - type: checkboxes
     id: acknowledgements
     attributes:
       label: Acknowledgements
+      description: These checks help keep requests searchable, reproducible, and focused. Please complete them before submitting.
       options:
-        - label: I searched existing issues and did not find the same request.
+        - label: I searched open and closed issues and did not find the same request or an issue that should receive this information instead.
           required: true
-        - label: I wrote a short, informative title and included the relevant context.
+        - label: I wrote a short but informative title.
           required: true
         - label: I tested the latest [Komikku KMK release](https://github.com/FancyCorey/komikku-KMK/releases/latest).
+          required: true
+        - label: I filled out the requested information and explained the problem as well as the proposed result.
           required: true
 
   - type: textarea
     id: prioritisation
     attributes:
       label: Is this issue important to you?
-      description: Please leave this text unchanged so other users can vote consistently.
+      description: |
+        **Please do not modify this text area.**
+
+        Other users can add a :+1: reaction to show that the request matters to them. Reactions do not guarantee implementation order, but they help maintainers understand how widely a request is shared. If an existing request already covers your idea, react to it and add useful context there instead of opening a duplicate.
       value: |
-        Add a :+1: [reaction] if this request is important to you.
+        Add a :+1: [reaction] to [feature requests you find important].
 
         [reaction]: https://github.blog/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/
+        [feature requests you find important]: https://github.com/FancyCorey/komikku-KMK/issues?q=is%3Aissue+is%3Aopen+label%3A%22feature+request%22+sort%3Areactions-%2B1-desc
