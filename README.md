@@ -13,23 +13,25 @@
 
 Komikku KMK is based on [Komikku](https://github.com/komikku-app/komikku), TachiyomiSY, and Mihon. It is maintained independently and is not an official Komikku release. It retains Komikku's original visual identity while using a separate package name, launcher name, update source, issue tracker, and release channel.
 
-## Install
+## Download
 
 Official KMK builds, when available, are published on this fork's [Releases page](https://github.com/FancyCorey/komikku-KMK/releases). Until then, follow the [build guide](docs/kmk/build-and-verify.md) to make your own. Avoid builds labeled Komikku KMK when they come from somewhere else.
 
 Requires Android 8.0 or higher. The release application ID is `app.komikku.kmk`, so it can coexist with official Komikku.
 
-Report fork-specific problems through this repository's [issue tracker](https://github.com/FancyCorey/komikku-KMK/issues). For upstream Komikku behavior, use the upstream project's support channels.
-
-![screenshots of app](./.github/readme-images/screens.png)
-
-<div align="left">
+![Komikku library, recommendations, bulk selection, and theme customization](./.github/readme-images/screens.png)
 
 ## Features
 
 ### KMK additions
 
-This fork adds personalized discovery, source evaluation, cross-source comparison, reversible manga preferences, local OCR search, safer exports, and optional reader controls. The [KMK feature guide](docs/kmk/README.md) includes instructions, diagrams, privacy details, screenshots, and technical references.
+KMK keeps Komikku's library, browsing, reader, themes, tracking, backup, and extension features, then adds a larger set of tools for discovery and personal recommendations.
+
+#### A more personal For You page
+
+<p align="center">
+  <img src="docs/kmk/evidence/screenshots/for-you-evaluation-mode.png" alt="For You with personalized manga rows, matching tags, and hidden source names" width="760" />
+</p>
 
 - `For You` builds personalized recommendation rows from the sources you choose while keeping useful results visible when one source fails.
 - `Recent discovery` adds a configurable selection from each source's latest catalogue. These manga still have to pass your language, genre, tag, source, and minimum-chapter rules.
@@ -46,9 +48,19 @@ This fork adds personalized discovery, source evaluation, cross-source compariso
 - `Safer exports and extension actions` use Android's supported flows and can remove only the exact exported file created by the current action.
 - `KMK backup support` includes ratings, recommendation settings, linked versions, source quality, and source evaluation data in Komikku's normal backup flow.
 
-![For You recommendations shown in Evaluation Mode](docs/kmk/evidence/screenshots/for-you-evaluation-mode.png)
+#### Settings and source tools
 
-This is the For You page in Evaluation Mode. Source names are hidden, while covers and recommendation details remain visible so you can see what the page actually recommends.
+| Recommendation settings | Source Evaluation |
+| --- | --- |
+| <img src="docs/kmk/evidence/screenshots/recommendation-settings.png" alt="Recommendation settings divided into five sections" width="420" /> | <img src="docs/kmk/evidence/screenshots/source-evaluation.png" alt="Source Evaluation showing progress and reassessment tools" width="420" /> |
+| Five clear sections keep the main settings page easy to scan. | Check source quality, review progress, and reassess sources after changes. |
+
+| Management and diagnostics | Evaluation Mode in Browse |
+| --- | --- |
+| <img src="docs/kmk/evidence/screenshots/management-diagnostics.png" alt="Management and diagnostics settings" width="420" /> | <img src="docs/kmk/evidence/screenshots/browse-evaluation-mode.png" alt="Browse with source names hidden by Evaluation Mode" width="420" /> |
+| Maintenance tools and short status summaries stay together. | Source names can be hidden for screenshots without changing normal Browse navigation. |
+
+The [KMK feature guide](docs/kmk/README.md) includes step-by-step instructions, larger screenshots, diagrams, privacy details, and technical references.
 
 ### Komikku's unique features:
 - `Suggestions` automatically showing source-website's recommendations / suggestions / related to current entry for all sources.
@@ -145,6 +157,8 @@ Additional features for some extensions, features include custom description, op
 
 ## Issues, Feature Requests and Contributing
 
+Report KMK-specific problems through this repository's [issue tracker](https://github.com/FancyCorey/komikku-KMK/issues). Use upstream Komikku support only after confirming that the behavior is not specific to this fork.
+
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 <details><summary>Issues</summary>
@@ -197,7 +211,7 @@ Thank you to the Komikku, TachiyomiSY, Mihon, and KMK contributors whose work ma
 
 The developer(s) of this application does not have any affiliation with the content providers available, and this application hosts zero content.
 
-<div align="left">
+</div>
 
 ## License
 

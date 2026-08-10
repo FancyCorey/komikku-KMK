@@ -10,6 +10,10 @@ This guide explains how to find and use KMK features. Each section starts with t
 4. Select a manga card to open its details, or select the arrow at the end of a row to see more results from that source.
 5. Use refresh after changing ratings, filters, source order, or discovery settings.
 
+![For You with personalized manga rows, matching tags, and hidden source names](evidence/screenshots/for-you-evaluation-mode.png)
+
+*For You in Evaluation Mode. The recommendations stay visible while source names are hidden.*
+
 Before displaying a manga, For You checks your language, blocked genres and tags, source settings, exclusions, and minimum chapter count. Personalized matches remain the majority when enough are available. A smaller selection from each source's recent catalogue can add variety, but it must pass the same checks. If you repeatedly leave a visible card untouched for the configured number of days, the app moves it lower instead of removing it.
 
 If one source fails, results from other sources remain available. When the page is empty or incomplete, read the message on the affected row; the whole app has not necessarily failed.
@@ -21,6 +25,10 @@ If one source fails, results from other sources remain available. When the page 
 3. Change a setting with the switches, choices, and dialogs used elsewhere in Komikku.
 4. Return to For You and refresh when the screen asks for recommendation regeneration.
 
+![Recommendation settings divided into five sections](evidence/screenshots/recommendation-settings.png)
+
+*The main settings page keeps related controls together instead of placing every option in one long list.*
+
 You can configure:
 
 - Source order and languages.
@@ -31,6 +39,10 @@ You can configure:
 - Evaluation, matching, quality checks, cache, and diagnostics.
 
 The app checks stored values before using them and replaces invalid values with safe limits.
+
+![Management and diagnostics settings with grouped controls](evidence/screenshots/management-diagnostics.png)
+
+*Management and diagnostics keeps maintenance tools, saved-data controls, and short status summaries in one place.*
 
 ## Ratings and Not Interested
 
@@ -50,6 +62,10 @@ When Action History is available in Evaluation Mode, supported changes include t
 4. You can leave the screen while evaluation continues.
 5. Review completed, skipped, weak, failed, or partial outcomes.
 6. Use reassessment when installed extensions change or when the app reports stale evaluation data.
+
+![Source Evaluation showing progress, warnings, and reassessment actions](evidence/screenshots/source-evaluation.png)
+
+*Source Evaluation can show useful progress and partial results without displaying raw source errors.*
 
 Source Evaluation checks whether a source is suitable; For You separately checks whether it can retrieve recommendations. Diagnostics show short categories and counts instead of raw errors, requests, credentials, or account details.
 
@@ -97,6 +113,10 @@ When you finish the latest available chapter, the reader waits until you exit be
 ## Evaluation Mode and Action History
 
 Evaluation Mode replaces source names and other identifying labels with neutral text for review and screenshots. It does not change saved data, actions, source requests, or network behavior.
+
+![Browse with source names hidden by Evaluation Mode](evidence/screenshots/browse-evaluation-mode.png)
+
+*Browse keeps its normal layout and navigation while Evaluation Mode hides source names.*
 
 Open **Action History** to review supported reversible actions. If the same value changed again after the original action, the app refuses to undo it instead of overwriting newer data. Some outside actions, such as updates sent to a tracking service, can be listed but cannot be reversed locally.
 
