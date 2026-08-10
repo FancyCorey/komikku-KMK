@@ -1,10 +1,28 @@
-# Recommendation settings
+# Configuring personalized recommendations
 
 Recommendation settings use the same lists, sections, search, and navigation patterns as the rest of Komikku.
 
 ## Where you find it
 
 Open For You and select its settings action. On tablets, the quick-access panel reaches the same five destinations: For You sources, Taste and filters, Source Evaluation, Sources to try, and Management and diagnostics.
+
+## How the settings are organized
+
+The index follows Komikku's established settings pattern: short rows are grouped under visible section headings, each row opens a focused detail screen, and searchable terms include both the setting name and its concise summary. The index avoids placing long operational explanations under every control. Detail screens provide the additional context at the point where the reader is making the relevant choice.
+
+| Section | Main decisions |
+| --- | --- |
+| For You sources | Eligible sources, source order, result limits, recent discovery, and rotation. |
+| Taste and filters | Languages, ratings, blocked genres or tags, and minimum chapter count. |
+| Source Evaluation | Evaluation limits, reassessment, and quality results. |
+| Sources to try | Discovery suggestions and supported installation handoff. |
+| Management and diagnostics | Cache, history cleanup, diagnostic summaries, and maintenance actions. |
+
+Numeric settings are validated before persistence and before use. For example, the minimum-chapter setting affects every candidate lane, including recent discovery; a latest-catalogue candidate does not bypass it simply because it came from a different retrieval path.
+
+## Expected interaction behavior
+
+Changing a control updates saved preferences through the owning settings model. Returning to For You causes the affected retrieval or ranking policy to use the new value. Back navigation, configuration changes, theme, localization, and accessibility semantics remain those of the surrounding Komikku settings framework.
 
 ## Navigation map
 

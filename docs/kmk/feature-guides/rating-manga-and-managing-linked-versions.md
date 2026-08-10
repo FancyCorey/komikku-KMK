@@ -1,10 +1,26 @@
-# Ratings and linked versions
+# Rating manga and managing linked versions
 
 These diagrams cover Love, Like, Dislike, Not Interested, linked versions, group maintenance, and reversible preference changes.
 
 ## Where you find it
 
 Use the preference action on a manga page to choose Love, Like, Dislike, or Not Interested. The For You menu opens the corresponding collections, while linked-version actions can apply a preference to selected matching versions.
+
+## One preference model, four visible choices
+
+Love, Like, Dislike, and Not Interested are peers in the manga preference interface. Each has a distinct label, icon, selected treatment, collection, and reversible transition. Not Interested is not hidden as an unrelated “seen” flag: selecting it replaces the neutral Rate affordance, clearing it is explicit, and selecting another rating performs one coherent preference change.
+
+The collections help the reader review past choices. A manga belongs to the collection matching its current preference, while linked versions remain separate records unless the reader deliberately applies a choice to additional versions.
+
+## What Action History can restore
+
+Before a supported local preference write, KMK records the previous value. The history entry is committed only after the write succeeds. Undo first checks that the current value still matches the action being reversed; if another change occurred later, the app reports a conflict instead of overwriting the newer choice.
+
+Actions owned by Android, a remote tracker, or another outside service are not described as fully reversible local actions. The history screen distinguishes those boundaries rather than presenting every event as if the app could restore it.
+
+## Linked-version behavior
+
+Linked versions group manga that the reader has confirmed as related. The group can identify a primary version for display and comparison, but grouping does not merge source records or erase their separate chapter lists. Adding, removing, or changing the primary member validates the group before saving so an invalid reference is not silently retained.
 
 ## Preference states
 

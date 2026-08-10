@@ -1,16 +1,16 @@
 # KMK documentation
 
-KMK extends Komikku with personalized discovery, source evaluation, cross-source comparison, reversible preferences, local OCR search, safer export operations, and optional reader tools. This page is the starting point for the public documentation.
+KMK extends Komikku with personalized and group discovery, Top Picks and recommendation bundles, source evaluation and diagnostics, cross-source comparison, reversible preferences, local OCR search, safer export operations, backup portability, and optional reader tools. This page is the starting point for the public documentation.
 
 ## Choose what you need
 
 | Goal | Start here | What it contains |
 | --- | --- | --- |
 | Use KMK | [User guide](user-guide.md) | Step-by-step routes, expected results, limitations, and troubleshooting. |
-| Understand a feature | [Feature explanations](features/README.md) | Plain-language behavior, diagrams, important states, privacy boundaries, and links to the responsible code. |
-| See the app | [Reviewed screenshots](screenshots/README.md) | Current screenshots, what each one demonstrates, and why some private screens are described without an image. |
+| Understand a feature | [Feature guides](feature-guides/README.md) | Detailed, plain-language guides to what each feature does, how to use it, important states, privacy boundaries, and the responsible code. |
+| Tour the main screens | [Visual feature guide](visual-guide/README.md) | Reviewed app images arranged by workflow, with captions that explain the controls and results shown. |
 | Understand the whole system | [How KMK works](how-kmk-works.md) | Ownership, data flow, source isolation, storage, Android integration, and compatibility with Komikku. |
-| Find a feature owner | [Feature map](feature-map.md) | A compact map from each feature family to its screens, states, and implementation files. |
+| Find a feature owner | [Feature and code map](feature-and-code-map.md) | A compact map from each feature family to its screens, states, and implementation files. |
 | Build or contribute | [Build and verification](build-and-verify.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md) | Local build requirements, validation commands, issue guidance, and contribution expectations. |
 
 ## Policies and reference material
@@ -19,14 +19,14 @@ KMK extends Komikku with personalized discovery, source evaluation, cross-source
 - [Security and integration](security-and-integration.md) explains input checks, isolated failures, cancellation, and bounded local changes.
 - [Third-party components](third-party-components.md) records additional KMK dependencies and their terms.
 - [Release notes](release-notes.md) summarizes the current public feature set and compatibility boundary.
-- [Machine-readable reference](reference/README.md) explains the XML files used to map features and reviewed screenshots.
-- [Feature reference (XML)](reference/feature-reference.xml) lists routes, states, privacy rules, and implementation owners in a machine-readable form.
-- [Screenshot manifest (XML)](reference/screenshot-manifest.xml) lists every public screenshot, its review result, and its SHA-256 hash.
+- [Technical reference](technical-reference/README.md) explains the XML files used to map features and reviewed public images.
+- [Feature reference (XML)](technical-reference/feature-reference.xml) lists routes, states, privacy rules, and implementation owners in a machine-readable form.
+- [Screenshot manifest (XML)](technical-reference/screenshot-manifest.xml) lists every public screenshot, its review result, and its SHA-256 hash.
 - [Security policy](../../SECURITY.md) explains how to report a vulnerability without publishing sensitive information.
 
 ## How the documentation is organized
 
-The `features/` directory contains feature explanations, not design drafts. Each page states what the feature does, where it appears, how its important paths behave, and which source files implement it. The `screenshots/` directory contains only reviewed public images and their guide. The `reference/` directory contains machine-readable XML that supports documentation and release checks; it is not a substitute for the user guide.
+The `feature-guides/` directory contains task-oriented explanations of KMK's user-facing capabilities. Each page explains the problem being solved, the normal workflow, important states and limits, privacy behavior, and the source files that implement it. The `visual-guide/` directory is a guided tour of reviewed screens, not a raw screenshot archive. The `technical-reference/` directory contains XML indexes for maintainers and automated checks; it complements the readable guides instead of replacing them.
 
 Public filenames use lowercase words separated by hyphens. This keeps links readable, avoids spaces that require URL encoding, and matches the convention used throughout this documentation.
 
@@ -41,4 +41,4 @@ Public filenames use lowercase words separated by hyphens. This keeps links read
 
 ## Screenshots and privacy
 
-The screenshots show the For You page in Evaluation Mode, which replaces source names with neutral labels. Covers and recommendation details remain visible because they are part of the feature being shown. When a screen would reveal personal preferences, library activity, account information, reader content, or actual source names, the guide uses a diagram and written explanation instead.
+The visual guide includes discovery, settings, source-quality, cross-source matching, and Best Version workflows. Evaluation Mode replaces source names with neutral labels while leaving the manga artwork and feature result understandable. When a current capture would reveal personal preferences, reading history, account information, page content, or device configuration, the relevant feature guide explains the workflow without publishing that capture.

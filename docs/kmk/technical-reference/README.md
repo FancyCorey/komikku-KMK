@@ -1,4 +1,4 @@
-# Machine-readable reference
+# Technical reference
 
 This directory contains two small XML references that help documentation tools and release checks inspect the same feature and screenshot information described in the public guides.
 
@@ -7,7 +7,7 @@ This directory contains two small XML references that help documentation tools a
 - [`feature-reference.xml`](feature-reference.xml) maps each KMK feature to its route, purpose, visible states, privacy rule, documentation page, and primary implementation owner.
 - [`screenshot-manifest.xml`](screenshot-manifest.xml) records each reviewed public screenshot, the state it shows, its privacy checks, and its SHA-256 hash.
 
-These files are not Android UI dumps and do not contain screen coordinates, device identifiers, account details, manga titles, source names, URLs, or local storage paths. Use the [user guide](../user-guide.md) for instructions, the [feature explanations](../features/README.md) for behavior, and the [screenshot guide](../screenshots/README.md) for the images themselves.
+These files are not Android UI dumps and do not contain screen coordinates, device identifiers, account details, manga titles, source names, URLs, or local storage paths. Use the [user guide](../user-guide.md) for instructions, the [feature guides](../feature-guides/README.md) for behavior, and the [visual feature guide](../visual-guide/README.md) for the images themselves.
 
 ## Keeping the reference current
 

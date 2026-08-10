@@ -1,10 +1,23 @@
-# Extension management
+# Managing and isolating extensions
 
 Extension management keeps loading, installation, removal, and export inside Komikku's established extension and Android package boundaries. Failures are local to the affected extension or action.
 
 ## Where you find it
 
 Open **Browse > Extensions** for installed and available extension actions. Sources to try can lead to the same supported Android installation flow after the reader selects a suggestion.
+
+## Responsibilities across the flow
+
+Komikku discovers extension packages and exposes their sources. KMK adds stronger isolation and integrates suggested sources, evaluation, Action History disclosures, and exact-artifact export cleanup without replacing Android's package or document interfaces. Install and removal remain explicit actions mediated by Android; a suggestion is never treated as consent.
+
+| Operation | System owner | KMK responsibility |
+| --- | --- | --- |
+| Load installed package | Komikku extension manager | Isolate incompatible or failing packages from unrelated extensions. |
+| Install or remove | Android package flow | Request the operation, preserve cancellation, and report the confirmed result. |
+| Export package files | Android document APIs | Write selected artifacts and remember the exact created document. |
+| Evaluate a new source | Source Evaluation | Start only after installation is confirmed and the reader chooses to proceed. |
+
+Installed package names, repositories, and configured sources can identify a user's setup. Public documentation therefore explains the full operation without publishing a personal extension list.
 
 ## Load isolation
 

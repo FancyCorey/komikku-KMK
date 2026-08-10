@@ -1,10 +1,24 @@
-# Backup and restore
+# Preserving KMK data in Komikku backups
 
 KMK extends Komikku's established backup format with supported recommendation preferences, ratings, links, and source-quality data. The flow remains user-directed and reports partial restoration instead of presenting an incomplete restore as fully successful.
 
 ## Where you find it
 
 Open **Settings > Data and storage**, then use Komikku's backup or restore actions. KMK data appears inside the supported backup categories rather than through a separate backup screen.
+
+## What KMK adds to a backup
+
+Komikku remains the owner of archive creation, destination selection, scheduling, decoding, and the overall restore report. KMK contributes supported records that would otherwise make recommendation and cross-source behavior feel reset after a restore: manga preferences, recommendation settings, linked-version groups and primary choices, source-quality state, and source-evaluation results.
+
+The reader chooses which supported categories to include. KMK does not create a hidden second archive, copy credentials, or claim that app backup can reverse remote tracker or server-side changes.
+
+## How to interpret a restore result
+
+A restore can be complete, partial, cancelled, or failed. Counts from Komikku and KMK are combined into the same report, while category-specific failures remain attributable. A malformed or stale linked-version reference is skipped and reported rather than attached to the wrong manga. Cancellation remains cancellation even if earlier records were already restored.
+
+## Privacy and storage wording
+
+Settings summaries describe the selected storage location generically. Raw Storage Access Framework paths, provider identifiers, manga names, and backup contents are not used as ordinary summary text. A warning that explains what a backup can contain is displayed separately from the location control so the user can understand the privacy consequence without exposing the destination itself.
 
 ## Backup selection
 

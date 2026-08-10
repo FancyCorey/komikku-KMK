@@ -1,10 +1,22 @@
-# Sources to try and source priority
+# Finding and prioritizing sources
 
 These flows explain how the app suggests additional sources and how source preferences influence For You.
 
 ## Where you find it
 
 Open **Recommendation settings** and select **Sources to try** to review discovery suggestions. Source ordering and exposure controls are available through the related recommendation settings pages.
+
+## What Sources to Try provides
+
+Sources to Try narrows the available extension catalogue to options that are not already installed and are compatible with the reader's language, repository, and safety choices. Source Evaluation and recommendation-fit data can improve the order, but a missing evaluation does not become a fabricated positive result. An unavailable extension remains unavailable until its real condition changes.
+
+Each suggestion is informational until the reader acts. Selecting one opens Android's supported installation flow; KMK neither installs in the background nor marks a source installed before Android reports success. After a successful install, the source can be offered for evaluation and can then become eligible for For You according to the reader's source settings.
+
+## How source priority affects recommendations
+
+Priority controls the order in which source rows and bounded work are considered. It does not exempt a source from hard filters, grant it unlimited results, or allow one failure to block unrelated sources. A lower-priority source can still contribute useful candidates, and an explicitly disabled source remains excluded until re-enabled.
+
+The populated public example uses Evaluation Mode, so the ranking controls and result structure are visible while actual source identities are replaced with neutral labels.
 
 ## Sources to try
 

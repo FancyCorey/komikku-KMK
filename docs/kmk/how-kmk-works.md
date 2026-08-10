@@ -1,6 +1,6 @@
 # How KMK works
 
-This page explains how KMK fits into Komikku. Read it when you want to understand which part of the app owns a feature, where data is stored, or how failures are contained. For instructions, use the [user guide](user-guide.md). For a closer look at one feature, use the [feature explanations](features/README.md).
+This page explains how KMK fits into Komikku. Read it when you want to understand which part of the app owns a feature, where data is stored, or how failures are contained. For instructions, use the [user guide](user-guide.md). For a closer look at one feature, use the [feature guides](feature-guides/README.md).
 
 ## System boundary
 

@@ -30,60 +30,99 @@ KMK keeps Komikku's library, browsing, reader, themes, tracking, backup, and ext
 #### A more personal For You page
 
 <p align="center">
-  <img src="docs/kmk/screenshots/for-you-evaluation-mode.png" alt="For You with personalized manga rows, matching tags, and hidden source names" width="760" />
+  <img src="docs/kmk/visual-guide/for-you-evaluation-mode.png" alt="For You with personalized manga rows, matching tags, and hidden source names" width="760" />
 </p>
 
-- `For You` builds personalized recommendation rows from the sources you choose while keeping useful results visible when one source fails.
-- `Recent discovery` adds a configurable selection from each source's latest catalogue. These manga still have to pass your language, genre, tag, source, and minimum-chapter rules.
-- `Recommendation rotation` moves repeatedly shown, untouched manga lower after a configurable number of days instead of removing them completely.
-- `Recommendation settings` organize source order, languages, blocked genres and tags, minimum chapters, result limits, recent discovery, matching, cache, and diagnostics into clear sections.
-- `Source Evaluation` checks whether installed sources can provide useful recommendations and shows short, privacy-aware explanations when they cannot.
-- `Sources to try` suggests compatible sources that are not installed and opens Android's normal installation flow when you choose one.
-- `Love`, `Like`, `Dislike`, and `Not Interested` work as equal manga preferences, each with its own collection and visible marker.
-- `Action History` can undo supported local preference and management changes without overwriting something you changed later.
-- `Find other versions` links matching manga across sources, while `Best Version` helps compare them before using Komikku's normal migration flow.
-- `Reader tools` add an optional reading schedule and timer, a clearer completion-rating flow, linked-version rating, and `Jump to last read` for long chapter lists.
-- `OCR Search Downloads` builds a local, searchable text index from downloaded pages without adding the recognized text to backup or sync.
-- `Evaluation Mode` hides source and repository names in screenshots without changing saved data, requests, or actions.
-- `Safer exports and extension actions` use Android's supported flows and can remove only the exact exported file created by the current action.
-- `KMK backup support` includes ratings, recommendation settings, linked versions, source quality, and source evaluation data in Komikku's normal backup flow.
+**Personalized discovery**
+
+- `For You` builds personalized rows from eligible installed sources, preserves useful partial results when one source fails, and explains empty or filtered states without exposing raw source errors.
+- `Top Picks` combines the strongest current matches into a dedicated view. Per-source rows remain available for deeper browsing.
+- `Recent discovery` contributes a configurable number of candidates from each supported source's latest catalogue. They still pass the same language, genre, tag, source-quality, known-manga, rating, and minimum-chapter rules as personalized matches.
+- `Recommendation rotation` moves repeatedly shown, untouched manga lower after a configurable exposure window instead of deleting them. Library, rated, and tracked manga are exempt.
+- `Group recommendations` find related manga from a rated or linked group, load source rows progressively, bound concurrent work, and isolate a slow or failing source.
+- Long-press selection on For You supports Love, Like, Dislike, Not Interested, Clear Rating, opening a selected manga, and continuing to version comparison when the action applies.
+- `Recommendation bundles` can export Top Picks, an individual source row, or a rated collection and import a reviewed bundle through a validation screen, with source resolution and an explicit library-add step.
+
+**Taste, sources, and settings**
+
+- `Recommendation settings` are split into For You sources, Taste and filters, Source Evaluation, Sources to try, and Management and diagnostics. Search and quick-access navigation reach individual controls without one oversized settings page.
+- Taste controls cover languages, known and rated manga, preferred, disliked, and blocked tags, blocked genres, minimum chapters, result limits, recent discovery, matching behavior, and cache or history maintenance.
+- Rating-derived tag suggestions require support from multiple rated manga before they are offered. Taste diagnostics explain which saved signals currently influence recommendations.
+- Source priority lets readers enable, disable, reorder, boost, or lower sources. Separate source-quality marks can hide a poor or overly explicit catalogue without deleting its past evaluation history.
+- `Source Evaluation` checks catalogue access, search compatibility, metadata coverage, confidence, and recommendation usefulness. It supports bounded batches, continuation, cancellation, detailed results, failure categories, and explicit reassessment when inputs become outdated.
+- Source-quality history and diagnostics show aggregate observations and recovery actions without publishing sampled tags, raw responses, URLs, or exception text.
+- `Sources to try` ranks compatible non-installed sources, supports search and sorting, explains limited evidence honestly, and opens Android's normal installation flow only after the reader chooses one.
+
+**Preferences and versions**
+
+- `Love`, `Like`, `Dislike`, and `Not Interested` are equal manga preference states, each with its own searchable collection, selected marker, bulk actions, and explicit clear or replacement behavior.
+- `Action History` records supported local preference and management changes after success. Undo uses conflict checks so it cannot overwrite a newer choice; outside operations are labeled separately when no safe local inverse exists.
+- Linked-version groups preserve separate source records while allowing the reader to add or remove members, choose a primary version, apply preferences to selected versions, and include valid group state in backup and restore.
+- `Find other versions` searches across guarded sources and lets the reader confirm genuine matches before any link is saved.
+- `Best Version` compares the current manga with confirmed alternatives, supports chapter selection, independent preview loading and retry, full-screen samples, keeping the current version, and a separate handoff to Komikku's migration confirmation.
+
+**Reader and local-library tools**
+
+- The active-reading timer supports preset or custom durations, warnings, pause and resume with reader lifecycle, and an optional current-chapter or one-extra-chapter allowance.
+- The optional reading schedule supports recurring day and time windows, whole-day windows, editing and confirmed removal, device 12-hour or 24-hour formatting, and a reader shortcut to the same configuration.
+- The final-chapter completion flow waits until the reader exits, then offers an unambiguous preference action and can continue to rating confirmed linked versions.
+- `Jump to last read` moves a long chapter list to the resolved read position without opening a chapter or changing progress.
+- `OCR Search Downloads` builds a cancellable, on-device text index from downloaded pages, ranks matching text, opens the corresponding reading context, and can clear selected index data without deleting downloaded pages. Recognized text is excluded from backup and sync.
+
+**Privacy, portability, and maintenance**
+
+- `Evaluation Mode` replaces supported source, extension, repository, and taste labels with neutral presentation text while leaving stored identifiers, requests, and actions unchanged.
+- `Action History` distinguishes safe local undo from installs, migrations, downloads, and tracker writes that cross an outside boundary. Tracker restoration is offered only when the manga, track, login, and previous value can still be verified.
+- Recommendation and extension exports use Android's document APIs and can remove only the exact document created by the current operation. Extension exports include package files, not ratings, history, or account data.
+- `KMK backup support` extends Komikku's normal backup and restore flow with ratings, recommendation settings, linked groups and primary versions, source quality, and source evaluation state while reporting partial or malformed restores honestly.
+- A grouped, searchable in-app `KMK What's New` history explains current and earlier feature changes without replacing Komikku's own release notes.
+- Shared source-runtime and input-validation boundaries preserve cancellation, isolate ordinary extension failures, reject unsafe navigation, and keep raw URLs, local paths, private content, and exception objects out of ordinary diagnostics.
 
 #### Settings and source tools
 
 | Recommendation settings | Source Evaluation |
 | --- | --- |
-| <img src="docs/kmk/screenshots/recommendation-settings.png" alt="Recommendation settings divided into five sections" width="420" /> | <img src="docs/kmk/screenshots/source-evaluation.png" alt="Source Evaluation showing progress and reassessment tools" width="420" /> |
+| <img src="docs/kmk/visual-guide/recommendation-settings.png" alt="Recommendation settings divided into five sections" width="420" /> | <img src="docs/kmk/visual-guide/source-evaluation.png" alt="Source Evaluation showing progress and reassessment tools" width="420" /> |
 | Five clear sections keep the main settings page easy to scan. | Check source quality, review progress, and reassess sources after changes. |
 
 | Management and diagnostics | Evaluation Mode in Browse |
 | --- | --- |
-| <img src="docs/kmk/screenshots/management-diagnostics.png" alt="Management and diagnostics settings" width="420" /> | <img src="docs/kmk/screenshots/browse-evaluation-mode.png" alt="Browse with source names hidden by Evaluation Mode" width="420" /> |
+| <img src="docs/kmk/visual-guide/management-diagnostics.png" alt="Management and diagnostics settings" width="420" /> | <img src="docs/kmk/visual-guide/browse-evaluation-mode.png" alt="Browse with source names hidden by Evaluation Mode" width="420" /> |
 | Maintenance tools and short status summaries stay together. | Source names can be hidden for screenshots without changing normal Browse navigation. |
 
 #### Preferences and source discovery
 
 | Sources to try | Not Interested across versions |
 | --- | --- |
-| <img src="docs/kmk/screenshots/sources-to-try-evaluation-mode.png" alt="Sources to try with ranked suggestions and neutral source labels" width="420" /> | <img src="docs/kmk/screenshots/not-interested-other-versions.png" alt="Not Interested selection across linked manga versions" width="420" /> |
+| <img src="docs/kmk/visual-guide/sources-to-try-evaluation-mode.png" alt="Sources to try with ranked suggestions and neutral source labels" width="420" /> | <img src="docs/kmk/visual-guide/not-interested-other-versions.png" alt="Not Interested selection across linked manga versions" width="420" /> |
 | Explore ranked source suggestions, sort the list, and choose which ones to install. | Apply Not Interested as a visible preference to the matching versions you select. |
 
 <p align="center">
-  <img src="docs/kmk/screenshots/linked-versions-evaluation-mode.png" alt="Linked manga versions grouped under neutral source labels" width="520" />
+  <img src="docs/kmk/visual-guide/linked-versions-evaluation-mode.png" alt="Linked manga versions grouped under neutral source labels" width="520" />
 </p>
 
 Linked-version actions can find matching manga across sources and apply a preference to the versions you choose. Evaluation Mode keeps the source names private in this example.
 
-The [KMK documentation](docs/kmk/README.md) includes step-by-step instructions, larger screenshots, feature explanations, privacy details, and implementation references.
+#### Best Version comparison
+
+| Choose comparable chapters | Compare page previews |
+| --- | --- |
+| <img src="docs/kmk/visual-guide/best-version-chapter-selection.png" alt="Best Version chapter selection with neutral source labels" width="420" /> | <img src="docs/kmk/visual-guide/best-version-preview-comparison.png" alt="Best Version page preview comparison with neutral source labels" width="420" /> |
+| Select a useful chapter sample for each confirmed version. | Compare available previews before deciding whether to migrate. |
+
+Best Version does not change the library while the reader is comparing options. Selecting another version continues through Komikku's existing migration flow, where the final change is confirmed separately.
+
+The [KMK documentation](docs/kmk/README.md) includes step-by-step instructions, a visual feature tour, detailed feature guides, privacy information, diagrams, and implementation references.
 
 ## Documentation
 
 | I want to... | Start here |
 | --- | --- |
 | Learn how to use KMK | [User guide](docs/kmk/user-guide.md) |
-| Understand how a feature behaves and where it is implemented | [Feature explanations](docs/kmk/features/README.md) |
-| View the current reviewed app screens | [Screenshots](docs/kmk/screenshots/README.md) |
+| Understand how a feature behaves and where it is implemented | [Feature guides](docs/kmk/feature-guides/README.md) |
+| Tour the current reviewed app screens | [Visual feature guide](docs/kmk/visual-guide/README.md) |
 | Understand how KMK fits into Komikku | [How KMK works](docs/kmk/how-kmk-works.md) |
-| Find the code owner and supported states for a feature | [Feature map](docs/kmk/feature-map.md) |
+| Find the code owner and supported states for a feature | [Feature and code map](docs/kmk/feature-and-code-map.md) |
 | Build and verify a local APK | [Build and verification](docs/kmk/build-and-verify.md) |
 | Review privacy or security behavior | [Privacy and data](docs/kmk/privacy-and-data.md) and [Security and integration](docs/kmk/security-and-integration.md) |
 
