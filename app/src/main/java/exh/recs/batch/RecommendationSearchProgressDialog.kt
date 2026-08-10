@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import exh.recs.RecommendationErrorKind
+import exh.recs.recommendationErrorMessageRes
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.sy.SYMR
@@ -64,9 +66,14 @@ fun RecommendationSearchProgressDialog(
                 )
             }
             is SearchStatus.Error -> {
+                val errorKind = RecommendationErrorKind.fromStorageKey(status.message)
+                    ?: RecommendationErrorKind.Internal
                 RecommendationSearchProgressProperties(
                     title = context.stringResource(SYMR.strings.rec_error_title),
-                    text = context.stringResource(SYMR.strings.rec_error_string, status.message),
+                    text = context.stringResource(
+                        SYMR.strings.rec_error_string,
+                        context.stringResource(recommendationErrorMessageRes(errorKind)),
+                    ),
                     positiveButtonText = context.stringResource(MR.strings.action_ok),
                     positiveButton = setStatusIdle,
                 )

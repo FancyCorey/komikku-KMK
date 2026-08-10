@@ -10,9 +10,11 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.model.SManga
+import exh.recs.RecommendationErrorClassifier
 import exh.util.PackageOperationKind
 import exh.util.recordPackageOperationReceipt
 import exh.util.recordUserInitiatedInstall
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
@@ -146,11 +148,13 @@ class RecommendationBundleImportScreenModel(
     private suspend fun resolveItems(bundle: RecommendationBundle): List<ImportItemEntry> {
         val installedSnapshots = buildInstalledSnapshots()
         return bundle.items.map { item ->
-            runCatching {
+            try {
                 resolveItem(item, installedSnapshots)
-            }.getOrElse { e ->
-                logcat(LogPriority.WARN, e) { "Failed to resolve bundle item: ${item.title}" }
-                ImportItemEntry(item, RecommendationImportItemState.Error(e.message ?: "Unknown error"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "KMK recommendation bundle: failed to resolve imported item" }
+                ImportItemEntry(item, RecommendationImportItemState.Error(RecommendationErrorClassifier.classifyToStorageKey(e)))
             }
         }
     }
@@ -275,7 +279,7 @@ class RecommendationBundleImportScreenModel(
                         itemState.localManga
                             ?: entry.localManga
                     is RecommendationImportItemState.SourceInstalledNeedsResolve -> {
-                        runCatching {
+                        try {
                             val sManga = SManga.create().apply {
                                 title = entry.bundleItem.title
                                 url = entry.bundleItem.url
@@ -287,8 +291,10 @@ class RecommendationBundleImportScreenModel(
                                 status = entry.bundleItem.status ?: SManga.UNKNOWN
                             }
                             networkToLocalManga(sManga.toDomainManga(itemState.resolvedSourceId))
-                        }.getOrElse { e ->
-                            logcat(LogPriority.WARN, e) { "NetworkToLocal failed for ${entry.bundleItem.title}" }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            logcat(LogPriority.WARN) { "KMK recommendation bundle: imported item conversion failed" }
                             null
                         }
                     }
@@ -361,8 +367,10 @@ class RecommendationBundleImportScreenModel(
                             }
                         }
                     }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "Extension install failed: ${ext.name}" }
+                logcat(LogPriority.WARN) { "KMK recommendation bundle: extension installation failed" }
                 mutableState.update { s ->
                     (s as? State.Preview)?.copy(installingPkgName = null) ?: s
                 }

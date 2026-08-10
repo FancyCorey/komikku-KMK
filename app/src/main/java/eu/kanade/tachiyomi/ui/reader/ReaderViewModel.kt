@@ -19,6 +19,7 @@ import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -1227,6 +1228,21 @@ class ReaderViewModel @JvmOverloads constructor(
         if (!incognitoMode && page.status !is Page.State.Error) {
             readerChapter.chapter.last_page_read = pageIndex
 
+            val completionEntries = if (
+                readerChapter.pages?.lastIndex == pageIndex ||
+                // SY -->
+                (hasExtraPage && readerChapter.pages?.lastIndex?.minus(1) == page.index)
+                // SY <--
+            ) {
+                exh.util.ChapterUndoRecorder.buildReadEntries(
+                    sourcePreferencesForRatingPrompt,
+                    listOf(readerChapter.chapter.toDomainChapter()!!),
+                    newRead = true,
+                )
+            } else {
+                emptyList()
+            }
+
             if (readerChapter.pages?.lastIndex == pageIndex ||
                 // SY -->
                 (hasExtraPage && readerChapter.pages?.lastIndex?.minus(1) == page.index)
@@ -1247,13 +1263,16 @@ class ReaderViewModel @JvmOverloads constructor(
                 maybeShowChapterCompletionRatingPrompt(readerChapter, pageIndex, hasExtraPage, page.status is Page.State.Error)
             }
 
-            updateChapter.await(
+            val updated = updateChapter.await(
                 ChapterUpdate(
                     id = readerChapter.chapter.id!!,
                     read = readerChapter.chapter.read,
                     lastPageRead = readerChapter.chapter.last_page_read.toLong(),
                 ),
             )
+            if (updated) {
+                completionEntries.forEach(exh.util.ChapterUndoJournal::record)
+            }
 
             // SY -->
             // Check if syncing is enabled for chapter open:
@@ -1268,13 +1287,18 @@ class ReaderViewModel @JvmOverloads constructor(
         readerChapter.chapter.read = true
         // SY -->
         if (manga?.isEhBasedManga() == true) {
-            viewModelScope.launchNonCancellable {
-                val chapterUpdates = unfilteredChapterList
-                    .filter { it.sourceOrder > readerChapter.chapter.source_order }
-                    .map { chapter ->
-                        ChapterUpdate(id = chapter.id, read = true)
-                    }
-                updateChapter.awaitAll(chapterUpdates)
+            val extraChapters = unfilteredChapterList
+                .filter { it.sourceOrder > readerChapter.chapter.source_order }
+            val chapterUpdates = extraChapters.map { chapter ->
+                ChapterUpdate(id = chapter.id, read = true)
+            }
+            val undoEntries = exh.util.ChapterUndoRecorder.buildReadEntries(
+                sourcePreferencesForRatingPrompt,
+                extraChapters,
+                newRead = true,
+            )
+            if (chapterUpdates.isNotEmpty() && updateChapter.awaitAll(chapterUpdates)) {
+                undoEntries.forEach(exh.util.ChapterUndoJournal::record)
             }
         }
         // SY <--
@@ -1293,15 +1317,24 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapter.isRecognizedNumber &&
                     chapter.chapterNumber.toFloat() == readerChapter.chapter.chapter_number
                 ) {
-                    ChapterUpdate(id = chapter.id, read = true)
-                        // KMK -->
-                        .also { deleteDupChapterIfNeeded(ReaderChapter(chapter.copy(read = true))) }
+                    // KMK -->
+                    chapter.also { deleteDupChapterIfNeeded(ReaderChapter(it.copy(read = true))) }
                     // KMK <--
                 } else {
                     null
                 }
             }
-        updateChapter.awaitAll(duplicateUnreadChapters)
+        val duplicateUpdates = duplicateUnreadChapters.map { chapter ->
+            ChapterUpdate(id = chapter.id, read = true)
+        }
+        val undoEntries = exh.util.ChapterUndoRecorder.buildReadEntries(
+            sourcePreferencesForRatingPrompt,
+            duplicateUnreadChapters,
+            newRead = true,
+        )
+        if (duplicateUpdates.isNotEmpty() && updateChapter.awaitAll(duplicateUpdates)) {
+            undoEntries.forEach(exh.util.ChapterUndoJournal::record)
+        }
     }
 
     fun restartReadTimer() {
@@ -1655,7 +1688,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     eventChannel.send(Event.SavedImage(SaveImageResult.Success(uri)))
                 }
             } catch (e: Throwable) {
-                notifier.onError(e.message)
+                notifier.onError(with(context) { e.formattedMessage })
                 eventChannel.send(Event.SavedImage(SaveImageResult.Error(e)))
             }
         }
@@ -1690,7 +1723,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 )
                 eventChannel.send(Event.SavedImage(SaveImageResult.Success(uri)))
             } catch (e: Throwable) {
-                notifier.onError(e.message)
+                notifier.onError(with(context) { e.formattedMessage })
                 eventChannel.send(Event.SavedImage(SaveImageResult.Error(e)))
             }
         }
@@ -1758,8 +1791,8 @@ class ReaderViewModel @JvmOverloads constructor(
 
         val filename = generateFilename(manga, page)
 
-        try {
-            viewModelScope.launchNonCancellable {
+        viewModelScope.launchNonCancellable {
+            try {
                 destDir.deleteRecursively()
                 val uri = imageSaver.save(
                     image = Image.Page(
@@ -1769,9 +1802,11 @@ class ReaderViewModel @JvmOverloads constructor(
                     ),
                 )
                 eventChannel.send(if (copyToClipboard) Event.CopyImage(uri) else Event.ShareImage(uri, page))
+            } catch (e: Throwable) {
+                rethrowIfFatal(e)
+                logcat(LogPriority.ERROR, e)
+                eventChannel.send(Event.ShareImageFailed)
             }
-        } catch (e: Throwable) {
-            logcat(LogPriority.ERROR, e)
         }
     }
 
@@ -1789,8 +1824,8 @@ class ReaderViewModel @JvmOverloads constructor(
         val context = Injekt.get<Application>()
         val destDir = context.cacheImageDir
 
-        try {
-            viewModelScope.launchNonCancellable {
+        viewModelScope.launchNonCancellable {
+            try {
                 destDir.deleteRecursively()
                 val uri = saveImages(
                     page1 = firstPage,
@@ -1801,9 +1836,11 @@ class ReaderViewModel @JvmOverloads constructor(
                     manga = manga,
                 )
                 eventChannel.send(if (copyToClipboard) Event.CopyImage(uri) else Event.ShareImage(uri, firstPage, secondPage))
+            } catch (e: Throwable) {
+                rethrowIfFatal(e)
+                logcat(LogPriority.ERROR, e)
+                eventChannel.send(Event.ShareImageFailed)
             }
-        } catch (e: Throwable) {
-            logcat(LogPriority.ERROR, e)
         }
     }
     // SY <--
@@ -1991,6 +2028,8 @@ class ReaderViewModel @JvmOverloads constructor(
             // SY <--
         ) : Event
         data class CopyImage(val uri: Uri) : Event
+
+        data object ShareImageFailed : Event
 
         // KMK Confirmed Blocker Remediation follow-up Phase 2: sent when
         // markNotInterestedFromChapterCompletionPrompt's preference write fails (non-fatal,

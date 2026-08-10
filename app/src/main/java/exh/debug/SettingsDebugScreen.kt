@@ -52,6 +52,7 @@ import exh.util.capitalize
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -144,6 +145,8 @@ class SettingsDebugScreen : Screen() {
                                 val text = try {
                                     running = true
                                     "Function returned result:\n\n${func.call(DebugFunctions)}"
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     "Function threw exception:\n\n${Log.getStackTraceString(e)}"
                                 } finally {

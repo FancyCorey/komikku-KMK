@@ -117,16 +117,17 @@ class KmkRecsReleaseNotesTest {
     @Test
     fun `headings are in strictly descending chronological order as written (newest-first)`() {
         // The renderer relies on source order for "newest first" -- verify the file wasn't
-        // accidentally reordered. v0.8.20-fix3 is expected to be exactly first.
+        // accidentally reordered. v0.8.20-fix5 is expected to be exactly first.
         val all = headings()
-        assertEquals("v0.8.20-fix3", all[0])
-        assertEquals("v0.8.20-fix2", all[1])
-        assertEquals("v0.8.20-fix1", all[2])
-        assertEquals("v0.8.20", all[3])
-        assertEquals("v0.8.19", all[4])
-        assertEquals("v0.8.18-fix1", all[5])
-        assertEquals("v0.8.18", all[6])
-        assertEquals("v0.8.17-fix1", all[7])
+        assertEquals("v0.8.20-fix5", all[0])
+        assertEquals("v0.8.20-fix4", all[1])
+        assertEquals("v0.8.20-fix3", all[2])
+        assertEquals("v0.8.20-fix2", all[3])
+        assertEquals("v0.8.20-fix1", all[4])
+        assertEquals("v0.8.20", all[5])
+        assertEquals("v0.8.19", all[6])
+        assertEquals("v0.8.18-fix1", all[7])
+        assertEquals("v0.8.18", all[8])
     }
 
     @Test

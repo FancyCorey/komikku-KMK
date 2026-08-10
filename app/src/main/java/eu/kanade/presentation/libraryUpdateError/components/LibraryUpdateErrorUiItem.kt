@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorItem
+import exh.util.EvaluationModeFormatter
 import tachiyomi.domain.libraryUpdateError.model.LibraryUpdateErrorWithRelations
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.ListGroupHeader
@@ -43,6 +44,7 @@ import tachiyomi.presentation.core.util.selectedBackground
 
 internal fun LazyListScope.libraryUpdateErrorUiItems(
     uiModels: List<LibraryUpdateErrorUiModel>,
+    evaluationModeEnabled: Boolean,
     selectionMode: Boolean,
     onErrorSelected: (LibraryUpdateErrorItem, Boolean, Boolean) -> Unit,
     onClick: (LibraryUpdateErrorItem) -> Unit,
@@ -74,7 +76,11 @@ internal fun LazyListScope.libraryUpdateErrorUiItems(
                         modifier = Modifier.animateItemFastScroll(),
                         error = libraryUpdateErrorItem.error,
                         mangaCover = libraryUpdateErrorItem.mangaCover,
-                        sourceName = libraryUpdateErrorItem.sourceName,
+                        sourceName = if (evaluationModeEnabled) {
+                            EvaluationModeFormatter.sourceLabel(libraryUpdateErrorItem.error.mangaSource)
+                        } else {
+                            libraryUpdateErrorItem.sourceName
+                        },
                         selected = libraryUpdateErrorItem.selected,
                         onClick = {
                             when {

@@ -173,6 +173,83 @@ class RecommendationSourcePrioritySettingsScreen(
                             onPreferenceClick = { showForYouPreview = true },
                         )
                     }
+                    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: the Latest-catalogue
+                    // exploration share lives on this screen because it governs how For You uses its
+                    // *sources*, which is exactly what this destination already owns. Reuses the same
+                    // SameMangaListPrefRow widget as every other numeric recommendation setting; the
+                    // supported values and default come from RecommendationLatestBudgetPolicy, never
+                    // hardcoded here.
+                    item(key = "latest_exploration") {
+                        val offLabel = stringResource(KMR.strings.rec_latest_exploration_off)
+                        // Labels are resolved here rather than inside valueLabel because
+                        // SameMangaListPrefRow's valueLabel is a plain (Int) -> String, not a
+                        // @Composable lambda -- same pattern the minimum-chapter row already uses.
+                        val percentLabels = exh.recs.RecommendationLatestBudgetPolicy.SUPPORTED_VALUES
+                            .associateWith { percent ->
+                                if (percent == 0) {
+                                    offLabel
+                                } else {
+                                    stringResource(KMR.strings.rec_latest_exploration_percent, percent)
+                                }
+                            }
+                        SameMangaListPrefRow(
+                            title = stringResource(KMR.strings.rec_latest_exploration),
+                            summary = stringResource(KMR.strings.rec_latest_exploration_summary),
+                            current = exh.recs.RecommendationLatestBudgetPolicy.validate(state.latestExplorationPercent),
+                            options = exh.recs.RecommendationLatestBudgetPolicy.SUPPORTED_VALUES,
+                            valueLabel = { percent -> percentLabels[percent] ?: "$percent" },
+                            onSelect = screenModel::setLatestExplorationPercent,
+                        )
+                    }
+                    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: how long a
+                    // repeatedly-shown, untouched title keeps its soft ordering penalty. Placed next
+                    // to the Latest control since both govern how For You composes a source's row.
+                    item(key = "exposure_window") {
+                        val dayLabels = exh.recs.RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS
+                            .associateWith { days -> stringResource(KMR.strings.rec_exposure_window_days, days) }
+                        SameMangaListPrefRow(
+                            title = stringResource(KMR.strings.rec_exposure_window),
+                            summary = stringResource(KMR.strings.rec_exposure_window_summary),
+                            current = exh.recs.RecommendationExposurePolicy.validateWindowDays(state.exposureWindowDays),
+                            options = exh.recs.RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS,
+                            valueLabel = { days -> dayLabels[days] ?: "$days" },
+                            onSelect = screenModel::setExposureWindowDays,
+                        )
+                    }
+                    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: user-facing clear action for the
+                    // local repeat/exposure history, gated behind an explicit confirmation. The dialog
+                    // states plainly that only ordering history is removed -- ratings, library, and
+                    // tracking are untouched, which matches what clearExposureHistoryNow() actually does.
+                    item(key = "exposure_clear") {
+                        var showClearExposureDialog by remember { mutableStateOf(false) }
+                        TextPreferenceWidget(
+                            title = stringResource(KMR.strings.rec_exposure_clear),
+                            subtitle = stringResource(KMR.strings.rec_exposure_clear_summary),
+                            onPreferenceClick = { showClearExposureDialog = true },
+                        )
+                        if (showClearExposureDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showClearExposureDialog = false },
+                                title = { Text(stringResource(KMR.strings.rec_exposure_clear)) },
+                                text = { Text(stringResource(KMR.strings.rec_exposure_clear_confirm)) },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            showClearExposureDialog = false
+                                            screenModel.clearExposureHistory()
+                                        },
+                                    ) {
+                                        Text(stringResource(MR.strings.action_ok))
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showClearExposureDialog = false }) {
+                                        Text(stringResource(MR.strings.action_cancel))
+                                    }
+                                },
+                            )
+                        }
+                    }
                     item(key = "source_header") {
                         // KMK Confirmed Blocker Remediation 2026-07-28: single pure call replaces the
                         // former inline Evaluation Mode branch -- see

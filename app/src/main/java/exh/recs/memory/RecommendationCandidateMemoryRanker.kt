@@ -46,22 +46,48 @@ object RecommendationCandidateMemoryRanker {
         minChapterCount: Int = 0,
         chapterCounts: Map<Long, Long> = emptyMap(),
         // KMK <--
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: optional bounded soft
+        // reordering by local exposure history, applied AFTER scoring/filtering but BEFORE the
+        // `take(limit)` cap below -- this is what lets a less-exposed candidate be promoted into a
+        // visible slot; reranking after the cap could never do that, since a candidate cut by the cap
+        // is already gone. Defaults to a no-op (empty map -> the pre-existing plain score sort),
+        // so every caller that does not pass exposure data keeps its exact original behavior.
+        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: keyed by the full (sourceId, url) identity.
+        // A url-only map was unsafe here specifically because this function deliberately mixes
+        // remembered candidates (which carry their own originating `entry.sourceId`) with freshly
+        // searched ones, so two sources sharing a relative url could cross-penalise each other.
+        exposureByKey: Map<
+            exh.recs.RecommendationDisplayReranker.ExposureKey,
+            exh.recs.RecommendationDisplayReranker.ExposureSummary,
+            > = emptyMap(),
+        interactions: exh.recs.RecommendationDisplayReranker.InteractionSignals =
+            exh.recs.RecommendationDisplayReranker.InteractionSignals.NONE,
+        exposureNow: Long = 0L,
+        exposureWindowDays: Int = exh.recs.RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS,
     ): List<PersonalRecommendation> {
-        // Build deduped candidate set: local id → (manga, source)
-        val candidateById = mutableMapOf<Long, Pair<Manga, Long>>()
+        // Build deduped candidate set: local id → (manga, source, lane)
+        val candidateById = mutableMapOf<Long, Triple<Manga, Long, exh.recs.RecommendationDiscoveryLane>>()
 
         for ((manga, entry) in remembered) {
             if (manga.id == 0L) continue
-            candidateById[manga.id] = manga to entry.sourceId
+            // A remembered row's lane is recovered from the free-form queryStrategy column it was
+            // written with; an unknown/legacy/missing value is PERSONALIZED, never Latest.
+            val lane = exh.recs.RecommendationDiscoveryLane.fromStorageKey(entry.queryStrategy)
+                ?: exh.recs.RecommendationDiscoveryLane.PERSONALIZED
+            candidateById[manga.id] = Triple(manga, entry.sourceId, lane)
         }
         for (rec in newResults) {
             if (rec.manga.id == 0L) continue
-            candidateById[rec.manga.id] = rec.manga to rec.manga.source
+            // A fresh result supersedes a remembered row for the same manga, including its lane.
+            candidateById[rec.manga.id] = Triple(rec.manga, rec.manga.source, rec.lane)
         }
 
         // Score and filter all unique candidates. Visibility is decided by the single shared policy
         // (v0.7.41) so memory-ranked results cannot reappear past favorite/rated/seen/known/min-chapter.
-        val scored = candidateById.values.mapNotNull { (manga, _) ->
+        // Retains each accepted candidate's originating source id so exposure identity stays
+        // (sourceId, url) rather than collapsing to url.
+        val sourceIdByMangaId = HashMap<Long, Long>(candidateById.size)
+        val scored = candidateById.values.mapNotNull { (manga, candidateSourceId, lane) ->
             val visible = RecommendationCandidateVisibilityPolicy.evaluate(
                 manga = manga,
                 tasteByKey = tasteByKey,
@@ -83,14 +109,41 @@ object RecommendationCandidateMemoryRanker {
             // every merge.
             if (result.blocked || result.score <= 0.0 || result.matchedGroups.isEmpty()) return@mapNotNull null
 
+            sourceIdByMangaId[manga.id] = candidateSourceId
             PersonalRecommendation(
                 manga = manga,
                 score = result.score,
                 matchedGroups = result.matchedGroups,
+                lane = lane,
             )
         }
 
-        return scored.sortedByDescending { it.score }.take(limit)
+        val ordered = scored.sortedByDescending { it.score }
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: the reranker only permutes
+        // -- it never mutates PersonalRecommendation.score and never drops a candidate -- so applying
+        // it before the cap is safe even when exposureByKey is empty (identity permutation), and it
+        // is the only placement that can promote a less-exposed candidate into a visible slot.
+        val reranked = if (exposureByKey.isEmpty()) {
+            ordered
+        } else {
+            exh.recs.RecommendationDisplayReranker.rerank(
+                candidates = ordered,
+                exposureByKey = exposureByKey,
+                interactions = interactions,
+                now = exposureNow,
+                windowDays = exposureWindowDays,
+                keyOf = { rec ->
+                    exh.recs.RecommendationDisplayReranker.ExposureKey(
+                        sourceIdByMangaId[rec.manga.id] ?: rec.manga.source,
+                        rec.manga.url,
+                    )
+                },
+            )
+        }
+        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: the cap itself now enforces the
+        // personalized-majority invariant on the realised per-lane counts, instead of relying on the
+        // input quota arithmetic (which does not hold when the personalized lane is sparse).
+        return exh.recs.RecommendationLatestBudgetPolicy.enforcePersonalizedMajority(reranked, limit)
     }
 }
 // KMK <--

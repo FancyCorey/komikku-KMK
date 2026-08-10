@@ -2,11 +2,22 @@ package exh.util
 
 import android.content.Context
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.domain.track.model.toDbTrack
+import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.data.track.DeletableTracker
+import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import mihon.domain.migration.usecases.MigrateMangaUseCase
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.domain.chapter.interactor.GetChapter
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
@@ -228,7 +239,7 @@ private enum class JournalFamily : ActionHistorySource {
                     timestamp = event.timestamp,
                     summary = { ctx -> nonUndoableEventSummary(ctx, event) },
                     undo = null,
-                    followUp = packageFollowUpFor(event),
+                    followUp = packageFollowUpFor(event) ?: migrationFollowUpFor(event) ?: downloadFollowUpFor(event) ?: trackerFollowUpFor(event) ?: trackerBindingFollowUpFor(event),
                 )
             }
 
@@ -301,6 +312,235 @@ private enum class JournalFamily : ActionHistorySource {
             }
         }
 
+        // KMK Universal Action History Recovery Plan 2026-07-31: correlates a rendered
+        // MIGRATION_COMPLETED event back to its private MigrationReceipt twin (same shared id) and
+        // exposes a "Migrate back" follow-up -- a fresh reverse migration through the same
+        // MigrateMangaUseCase, never a database rollback, never labeled "Undo". Unlike
+        // packageFollowUpFor, MigrationFollowUpPolicy's eligibility cannot be pre-checked here:
+        // ActionHistorySource.snapshot() is a synchronous call (it drives Compose row rendering) and
+        // GetManga.await(...) is suspend, so there is no cheap synchronous manga read to gate the
+        // offer on. The follow-up is therefore always offered once a receipt exists; the full,
+        // authoritative eligibility check (fresh manga/source state, not a stale snapshot()-time
+        // read) runs inside [trigger] itself, which safely refuses (Failed, no records written) when
+        // ineligible.
+        private fun migrationFollowUpFor(event: NonUndoableEvent): ActionHistoryFollowUp? {
+            if (event.eventType != NonUndoableEventType.MIGRATION_COMPLETED) return null
+            val receipt = MigrationReceiptJournal.forId(event.id) ?: return null
+            val getManga = actionHistoryFollowUpGetMangaProvider()
+            val sourceManager = actionHistoryFollowUpSourceManagerProvider()
+            val sourcePreferences = actionHistoryFollowUpSourcePreferencesProvider()
+            val migrateMangaUseCase = actionHistoryFollowUpMigrateMangaUseCaseProvider()
+
+            return ActionHistoryFollowUp(
+                label = { ctx -> ctx.stringResource(KMR.strings.eval_undo_followup_migrate_back) },
+                trigger = trigger@{
+                    // Re-resolved fresh at trigger time (not reused from a stale snapshot()-time
+                    // read) so a conflict that appeared between rendering and tapping is still caught.
+                    val originManga = getManga.await(receipt.originMangaId)
+                    val targetManga = getManga.await(receipt.targetMangaId)
+                    val originSourceInstalled = sourceManager.get(receipt.originSourceId) != null
+                    val eligibility = MigrationFollowUpPolicy.evaluate(originManga, originSourceInstalled, targetManga)
+                    if (eligibility != MigrationFollowUpPolicy.MigrateBackFollowUp.Offered ||
+                        originManga == null || targetManga == null
+                    ) {
+                        return@trigger ActionHistoryFollowUpResult.Failed
+                    }
+                    when (
+                        val outcome = migrateMangaUseCase(
+                            current = targetManga,
+                            target = originManga,
+                            replace = receipt.replace,
+                        )
+                    ) {
+                        is mihon.domain.migration.usecases.MigrationOutcome.Success -> {
+                            if (sourcePreferences.evaluationMode().get()) {
+                                val newId = NonUndoableEvent.newId()
+                                NonUndoableEventJournal.record(
+                                    NonUndoableEvent(
+                                        id = newId,
+                                        timestamp = System.currentTimeMillis(),
+                                        eventType = NonUndoableEventType.MIGRATION_COMPLETED,
+                                    ),
+                                )
+                                MigrationReceiptJournal.record(
+                                    MigrationReceipt(
+                                        id = newId,
+                                        timestamp = System.currentTimeMillis(),
+                                        originMangaId = targetManga.id,
+                                        originSourceId = targetManga.source,
+                                        targetMangaId = originManga.id,
+                                        targetSourceId = originManga.source,
+                                        replace = receipt.replace,
+                                    ),
+                                )
+                            }
+                            ActionHistoryFollowUpResult.Started
+                        }
+                        is mihon.domain.migration.usecases.MigrationOutcome.PartialFailure,
+                        is mihon.domain.migration.usecases.MigrationOutcome.NotStarted,
+                        -> ActionHistoryFollowUpResult.Failed
+                    }
+                },
+            )
+        }
+
+        // KMK Universal Action History Recovery Plan 2026-08-01: correlates a rendered DOWNLOAD_DELETED
+        // event back to its private DownloadReceipt twin and offers a "Re-download" follow-up -- a
+        // fresh re-queue of exactly the originally-deleted chapter ids through the ordinary
+        // DownloadManager.downloadChapters() enqueue path, never a restore. Like migrationFollowUpFor,
+        // eligibility cannot be pre-checked here (snapshot() is synchronous, GetManga/GetChapter.await
+        // are suspend), so the follow-up is always offered once a receipt exists; the authoritative
+        // check runs inside trigger(). "Started" here means "successfully enqueued", not "downloaded" --
+        // downloads are asynchronous and queue-based throughout this app, matching the ordinary Download
+        // button's own UX.
+        private fun downloadFollowUpFor(event: NonUndoableEvent): ActionHistoryFollowUp? {
+            if (event.eventType != NonUndoableEventType.DOWNLOAD_DELETED) return null
+            val receipt = DownloadReceiptJournal.forId(event.id) ?: return null
+            val getManga = actionHistoryFollowUpGetMangaProvider()
+            val getChapter = actionHistoryFollowUpGetChapterProvider()
+            val sourceManager = actionHistoryFollowUpSourceManagerProvider()
+            val downloadManager = actionHistoryFollowUpDownloadManagerProvider()
+
+            return ActionHistoryFollowUp(
+                label = { ctx -> ctx.stringResource(KMR.strings.eval_undo_followup_redownload) },
+                trigger = trigger@{
+                    // Re-resolved fresh at trigger time -- see migrationFollowUpFor's own comment for why.
+                    val manga = getManga.await(receipt.mangaId)
+                    val sourceInstalled = sourceManager.get(receipt.sourceId) != null
+                    val resolvedChapters = receipt.chapterIds.mapNotNull { getChapter.await(it) }
+                    val eligibility = DownloadFollowUpPolicy.evaluate(manga, sourceInstalled, resolvedChapters)
+                    if (eligibility !is DownloadFollowUpPolicy.RedownloadFollowUp.Offered || manga == null) {
+                        return@trigger ActionHistoryFollowUpResult.Failed
+                    }
+                    downloadManager.downloadChapters(manga, eligibility.resolvedChapters)
+                    ActionHistoryFollowUpResult.Started
+                },
+            )
+        }
+
+        // KMK Universal Action History Recovery Plan 2026-08-01: correlates a tracker-write event
+        // with its private typed receipt. The trigger re-resolves the local manga/track and login state
+        // before making a fresh compensating sync; it never mutates the database directly and never
+        // labels the operation "Undo".
+        private fun trackerFollowUpFor(event: NonUndoableEvent): ActionHistoryFollowUp? {
+            if (event.eventType != NonUndoableEventType.TRACKER_WRITE_COMPLETED) return null
+            val receipt = TrackWriteReceiptJournal.forId(event.id) ?: return null
+            val getManga = actionHistoryFollowUpGetMangaProvider()
+            val getTracks = actionHistoryFollowUpGetTracksProvider()
+            val trackerManager = actionHistoryFollowUpTrackerManagerProvider()
+            val sourcePreferences = actionHistoryFollowUpSourcePreferencesProvider()
+            val label = when (receipt.field) {
+                TrackWriteField.STATUS -> KMR.strings.eval_undo_followup_tracker_status
+                TrackWriteField.SCORE -> KMR.strings.eval_undo_followup_tracker_score
+                TrackWriteField.CHAPTER_PROGRESS -> KMR.strings.eval_undo_followup_tracker_progress
+                TrackWriteField.START_DATE -> KMR.strings.eval_undo_followup_tracker_start_date
+                TrackWriteField.FINISH_DATE -> KMR.strings.eval_undo_followup_tracker_finish_date
+                TrackWriteField.PRIVATE -> KMR.strings.eval_undo_followup_tracker_private
+            }
+
+            return ActionHistoryFollowUp(
+                label = { ctx -> ctx.stringResource(label) },
+                trigger = trigger@{
+                    val manga = getManga.await(receipt.mangaId)
+                    val track = manga?.let { getTracks.await(it.id).firstOrNull { item -> item.trackerId == receipt.trackerId } }
+                    val tracker = trackerManager.get(receipt.trackerId)
+                    val trackerLoggedIn = tracker != null && trackerManager.loggedInTrackersFlow().first().any { it.id == receipt.trackerId }
+                    if (tracker == null || TrackFollowUpPolicy.evaluate(manga, track, trackerLoggedIn) !is TrackFollowUpPolicy.RestoreFollowUp.Offered) {
+                        return@trigger ActionHistoryFollowUpResult.Failed
+                    }
+                    val currentTrack = track!!
+
+                    try {
+                        when (receipt.field) {
+                            TrackWriteField.STATUS -> tracker.setRemoteStatus(
+                                currentTrack.toDbTrack(),
+                                receipt.previousStatus ?: return@trigger ActionHistoryFollowUpResult.Failed,
+                            )
+                            TrackWriteField.SCORE -> tracker.setRemoteScore(
+                                currentTrack.toDbTrack(),
+                                receipt.previousScore ?: return@trigger ActionHistoryFollowUpResult.Failed,
+                            )
+                            TrackWriteField.CHAPTER_PROGRESS -> tracker.setRemoteLastChapterRead(
+                                currentTrack.toDbTrack(),
+                                receipt.previousChapterProgress ?: return@trigger ActionHistoryFollowUpResult.Failed,
+                            )
+                            TrackWriteField.START_DATE -> tracker.setRemoteStartDate(
+                                currentTrack.toDbTrack(),
+                                receipt.previousStartDate ?: return@trigger ActionHistoryFollowUpResult.Failed,
+                            )
+                            TrackWriteField.FINISH_DATE -> tracker.setRemoteFinishDate(
+                                currentTrack.toDbTrack(),
+                                receipt.previousFinishDate ?: return@trigger ActionHistoryFollowUpResult.Failed,
+                            )
+                            TrackWriteField.PRIVATE -> tracker.setRemotePrivate(
+                                currentTrack.toDbTrack(),
+                                receipt.previousPrivate ?: return@trigger ActionHistoryFollowUpResult.Failed,
+                            )
+                        }
+                        recordSuccessfulTrackWrite(
+                            evaluationModeEnabled = sourcePreferences.evaluationMode().get(),
+                            mangaId = receipt.mangaId,
+                            trackerId = receipt.trackerId,
+                            field = receipt.field,
+                            previousStatus = currentTrack.status.takeIf { receipt.field == TrackWriteField.STATUS },
+                            previousScore = tracker.displayScore(currentTrack).takeIf { receipt.field == TrackWriteField.SCORE },
+                            previousChapterProgress = currentTrack.lastChapterRead.toInt().takeIf { receipt.field == TrackWriteField.CHAPTER_PROGRESS },
+                            previousStartDate = currentTrack.startDate.takeIf { receipt.field == TrackWriteField.START_DATE },
+                            previousFinishDate = currentTrack.finishDate.takeIf { receipt.field == TrackWriteField.FINISH_DATE },
+                            previousPrivate = currentTrack.private.takeIf { receipt.field == TrackWriteField.PRIVATE },
+                        )
+                        ActionHistoryFollowUpResult.Started
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        ActionHistoryFollowUpResult.Failed
+                    }
+                },
+            )
+        }
+
+        private fun trackerBindingFollowUpFor(event: NonUndoableEvent): ActionHistoryFollowUp? {
+            if (event.eventType != NonUndoableEventType.TRACKER_BOUND) return null
+            val receipt = TrackerBindingReceiptJournal.forId(event.id) ?: return null
+            val tracker = actionHistoryFollowUpTrackerManagerProvider().get(receipt.trackerId)
+
+            return ActionHistoryFollowUp(
+                label = { ctx -> ctx.stringResource(KMR.strings.eval_undo_followup_tracker_unbind) },
+                trigger = trigger@{
+                    val currentTrack = actionHistoryFollowUpGetTracksProvider()
+                        .await(receipt.mangaId)
+                        .firstOrNull { it.trackerId == receipt.trackerId && it.remoteId == receipt.remoteId }
+                    val decision = TrackerBindingFollowUpPolicy.evaluate(
+                        currentTrack = currentTrack,
+                        deletableTracker = tracker as? DeletableTracker,
+                        trackerLoggedIn = tracker?.isLoggedIn == true,
+                        expectedRemoteId = receipt.remoteId,
+                    )
+                    if (decision !is TrackerBindingFollowUpPolicy.Decision.Offered || tracker !is DeletableTracker) {
+                        return@trigger ActionHistoryFollowUpResult.Failed
+                    }
+                    val matchedTrack = currentTrack ?: return@trigger ActionHistoryFollowUpResult.Failed
+
+                    try {
+                        tracker.delete(matchedTrack)
+                        actionHistoryFollowUpDeleteTrackProvider().await(receipt.mangaId, receipt.trackerId)
+                        NonUndoableEventJournal.record(
+                            NonUndoableEvent(
+                                id = NonUndoableEvent.newId(),
+                                timestamp = System.currentTimeMillis(),
+                                eventType = NonUndoableEventType.TRACKER_UNBOUND,
+                            ),
+                        )
+                        ActionHistoryFollowUpResult.Started
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        ActionHistoryFollowUpResult.Failed
+                    }
+                },
+            )
+        }
+
         // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: PackageOperationJournal
         // is NonUndoableEventJournal's twin for package operations -- same events, but carrying private
         // identity/signature/version/artifact metadata for PackageOperationFollowUpPolicy instead of public
@@ -311,6 +551,12 @@ private enum class JournalFamily : ActionHistorySource {
         override fun clear() {
             NonUndoableEventJournal.clear()
             PackageOperationJournal.clear()
+            // KMK Universal Action History Recovery Plan 2026-07-31
+            MigrationReceiptJournal.clear()
+            // KMK Universal Action History Recovery Plan 2026-08-01
+            DownloadReceiptJournal.clear()
+            TrackWriteReceiptJournal.clear()
+            TrackerBindingReceiptJournal.clear()
         }
     },
 }
@@ -329,6 +575,22 @@ private enum class JournalFamily : ActionHistorySource {
 // fixture-ordering hazard.
 internal var actionHistoryFollowUpExtensionManagerProvider: () -> ExtensionManager = { Injekt.get() }
 internal var actionHistoryFollowUpSourcePreferencesProvider: () -> SourcePreferences = { Injekt.get() }
+
+// KMK Universal Action History Recovery Plan 2026-07-31: same test-seam-provider pattern as the two
+// above, for migrationFollowUpFor()'s dependencies.
+internal var actionHistoryFollowUpGetMangaProvider: () -> GetManga = { Injekt.get() }
+internal var actionHistoryFollowUpSourceManagerProvider: () -> SourceManager = { Injekt.get() }
+internal var actionHistoryFollowUpMigrateMangaUseCaseProvider: () -> MigrateMangaUseCase = { Injekt.get() }
+
+// KMK Universal Action History Recovery Plan 2026-08-01: same test-seam-provider pattern as the three
+// above, for downloadFollowUpFor()'s dependencies.
+internal var actionHistoryFollowUpGetChapterProvider: () -> GetChapter = { Injekt.get() }
+internal var actionHistoryFollowUpDownloadManagerProvider: () -> DownloadManager = { Injekt.get() }
+
+// KMK Universal Action History Recovery Plan 2026-08-01: test seams for tracker compensating sync.
+internal var actionHistoryFollowUpGetTracksProvider: () -> GetTracks = { Injekt.get() }
+internal var actionHistoryFollowUpTrackerManagerProvider: () -> TrackerManager = { Injekt.get() }
+internal var actionHistoryFollowUpDeleteTrackProvider: () -> DeleteTrack = { Injekt.get() }
 
 /**
  * Every known [ActionHistorySource] implementation, derived directly from [JournalFamily]'s own
@@ -429,5 +691,11 @@ private fun nonUndoableEventSummary(context: Context, event: NonUndoableEvent): 
     NonUndoableEventType.EXTENSION_INSTALLED -> context.stringResource(KMR.strings.eval_undo_summary_extension_installed)
     NonUndoableEventType.EXTENSION_UPDATED -> context.stringResource(KMR.strings.eval_undo_summary_extension_updated)
     NonUndoableEventType.EXTENSION_UNINSTALLED -> context.stringResource(KMR.strings.eval_undo_summary_extension_uninstalled)
+    NonUndoableEventType.BACKUP_RESTORED -> context.stringResource(KMR.strings.eval_undo_summary_backup_restored)
+    NonUndoableEventType.DOWNLOAD_DELETED -> context.stringResource(KMR.strings.eval_undo_summary_download_deleted)
+    NonUndoableEventType.TRACKER_WRITE_COMPLETED -> context.stringResource(KMR.strings.eval_undo_summary_tracker_write)
+    NonUndoableEventType.TRACKER_BOUND -> context.stringResource(KMR.strings.eval_undo_summary_tracker_bound)
+    NonUndoableEventType.TRACKER_UNBOUND -> context.stringResource(KMR.strings.eval_undo_summary_tracker_unbound)
+    NonUndoableEventType.SOURCE_EVALUATION_DATA_CLEARED -> context.stringResource(KMR.strings.eval_undo_summary_source_evaluation_data_cleared)
 }
 // KMK <--

@@ -43,6 +43,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.model.toDbTrack
 import eu.kanade.domain.track.service.TrackPreferences
@@ -54,6 +55,7 @@ import eu.kanade.presentation.track.TrackScoreSelector
 import eu.kanade.presentation.track.TrackStatusSelector
 import eu.kanade.presentation.track.TrackerSearch
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.track.DeletableTracker
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.Tracker
@@ -69,7 +71,11 @@ import eu.kanade.tachiyomi.util.system.toast
 import exh.metadata.metadata.base.TrackerIdMetadata
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
+import exh.util.TrackWriteField
+import exh.util.recordSuccessfulTrackWrite
+import exh.util.recordSuccessfulTrackerBinding
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -251,7 +257,7 @@ data class TrackInfoDialogHomeScreen(
 
             screenModelScope.launch {
                 getTracks.subscribe(mangaId)
-                    .catch { logcat(LogPriority.ERROR, it) }
+                    .catch { logcat(LogPriority.ERROR) { "Tracker list loading failed" } }
                     .distinctUntilChanged()
                     .map { it.mapToTrackItem() }
                     .collectLatest { trackItems -> mutableState.update { it.copy(trackItems = trackItems) } }
@@ -280,6 +286,12 @@ data class TrackInfoDialogHomeScreen(
                 try {
                     val matchResult = item.tracker.match(manga) ?: throw Exception()
                     item.tracker.register(matchResult, mangaId)
+                    recordSuccessfulTrackerBinding(
+                        evaluationModeEnabled = Injekt.get<SourcePreferences>().evaluationMode().get(),
+                        mangaId = mangaId,
+                        trackerId = matchResult.tracker_id,
+                        remoteId = matchResult.remote_id,
+                    )
                 } catch (_: Exception) {
                     withUIContext { Injekt.get<Application>().toast(MR.strings.error_no_match) }
                 }
@@ -336,8 +348,10 @@ data class TrackInfoDialogHomeScreen(
                         else -> null
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                logcat(LogPriority.ERROR, e) { "Failed to get tracker ID from metadata" }
+                logcat(LogPriority.ERROR) { "Tracker metadata ID lookup failed" }
                 return null
             }
         }
@@ -347,10 +361,18 @@ data class TrackInfoDialogHomeScreen(
                 try {
                     tracker.searchById(remoteId)?.let { track ->
                         tracker.register(track, mangaId)
+                        recordSuccessfulTrackerBinding(
+                            evaluationModeEnabled = Injekt.get<SourcePreferences>().evaluationMode().get(),
+                            mangaId = mangaId,
+                            trackerId = track.tracker_id,
+                            remoteId = track.remote_id,
+                        )
                         return true
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
-                    logcat(LogPriority.ERROR, e) { "Failed to register tracking by id" }
+                    logcat(LogPriority.ERROR) { "Tracker bind-by-ID failed" }
                 }
             }
             return false
@@ -364,15 +386,13 @@ data class TrackInfoDialogHomeScreen(
             refreshTracks.await(mangaId)
                 .filter { it.first != null }
                 .forEach { (track, e) ->
-                    logcat(LogPriority.ERROR, e) {
-                        "Failed to refresh track data mangaId=$mangaId for service ${track!!.id}"
-                    }
+                    logcat(LogPriority.ERROR) { "Tracker refresh failed" }
                     withUIContext {
                         context.toast(
                             context.stringResource(
                                 MR.strings.track_error,
                                 track!!.name,
-                                e.message ?: "",
+                                with(context) { e.formattedMessage },
                             ),
                         )
                     }
@@ -381,7 +401,15 @@ data class TrackInfoDialogHomeScreen(
 
         fun togglePrivate(item: TrackItem) {
             screenModelScope.launchNonCancellable {
-                item.tracker.setRemotePrivate(item.track!!.toDbTrack(), !item.track.private)
+                val track = item.track ?: return@launchNonCancellable
+                withTrackedWrite(
+                    tracker = item.tracker,
+                    track = track,
+                    field = TrackWriteField.PRIVATE,
+                    previousPrivate = track.private,
+                ) {
+                    item.tracker.setRemotePrivate(track.toDbTrack(), !track.private)
+                }
             }
         }
 
@@ -411,6 +439,52 @@ data class TrackInfoDialogHomeScreen(
             val isLoading: Boolean = false,
             // SY <--
         )
+    }
+}
+
+// KMK Universal Action History Recovery Plan 2026-08-01: the BaseTracker write path rethrows
+// ordinary remote failures after preserving its existing log/toast behavior. This helper keeps the
+// three user-initiated setter models consistent: a receipt is committed only after normal completion,
+// and ordinary failures remain visible through the existing toast without escaping the dialog scope.
+// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 6: `internal` (not
+// `private`) so WithTrackedWriteTest can exercise this exact function directly with a local fake
+// tracker write -- no other production code change, no real tracker account. [sourcePreferences] is
+// now an explicit default-Injekt parameter (matching every other Injekt dependency's convention in
+// this codebase) instead of an inline `Injekt.get()` call in the body -- Injekt's singleton caching
+// is process-global, so an inline call could observe a `SourcePreferences` instance already cached
+// by unrelated code earlier in the same test JVM; an explicit parameter lets a test substitute its
+// own instance deterministically, the same way every other test in this codebase already does.
+internal suspend fun withTrackedWrite(
+    tracker: Tracker,
+    track: Track,
+    field: TrackWriteField,
+    previousStatus: Long? = null,
+    previousScore: String? = null,
+    previousChapterProgress: Int? = null,
+    previousStartDate: Long? = null,
+    previousFinishDate: Long? = null,
+    previousPrivate: Boolean? = null,
+    sourcePreferences: SourcePreferences = Injekt.get(),
+    write: suspend () -> Unit,
+) {
+    try {
+        write()
+        recordSuccessfulTrackWrite(
+            evaluationModeEnabled = sourcePreferences.evaluationMode().get(),
+            mangaId = track.mangaId,
+            trackerId = tracker.id,
+            field = field,
+            previousStatus = previousStatus,
+            previousScore = previousScore,
+            previousChapterProgress = previousChapterProgress,
+            previousStartDate = previousStartDate,
+            previousFinishDate = previousFinishDate,
+            previousPrivate = previousPrivate,
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        // BaseTracker has already logged and surfaced the remote failure to the user.
     }
 }
 
@@ -456,7 +530,14 @@ private data class TrackStatusSelectorScreen(
 
         fun setStatus() {
             screenModelScope.launchNonCancellable {
-                tracker.setRemoteStatus(track.toDbTrack(), state.value.selection)
+                withTrackedWrite(
+                    tracker = tracker,
+                    track = track,
+                    field = TrackWriteField.STATUS,
+                    previousStatus = track.status,
+                ) {
+                    tracker.setRemoteStatus(track.toDbTrack(), state.value.selection)
+                }
             }
         }
 
@@ -515,7 +596,14 @@ private data class TrackChapterSelectorScreen(
 
         fun setChapter() {
             screenModelScope.launchNonCancellable {
-                tracker.setRemoteLastChapterRead(track.toDbTrack(), state.value.selection)
+                withTrackedWrite(
+                    tracker = tracker,
+                    track = track,
+                    field = TrackWriteField.CHAPTER_PROGRESS,
+                    previousChapterProgress = track.lastChapterRead.toInt(),
+                ) {
+                    tracker.setRemoteLastChapterRead(track.toDbTrack(), state.value.selection)
+                }
             }
         }
 
@@ -569,7 +657,14 @@ private data class TrackScoreSelectorScreen(
 
         fun setScore() {
             screenModelScope.launchNonCancellable {
-                tracker.setRemoteScore(track.toDbTrack(), state.value.selection)
+                withTrackedWrite(
+                    tracker = tracker,
+                    track = track,
+                    field = TrackWriteField.SCORE,
+                    previousScore = tracker.displayScore(track),
+                ) {
+                    tracker.setRemoteScore(track.toDbTrack(), state.value.selection)
+                }
             }
         }
 
@@ -686,10 +781,18 @@ private data class TrackDateSelectorScreen(
             // Convert to local time
             val localMillis = millis.convertEpochMillisZone(ZoneOffset.UTC, ZoneOffset.systemDefault())
             screenModelScope.launchNonCancellable {
-                if (start) {
-                    tracker.setRemoteStartDate(track.toDbTrack(), localMillis)
-                } else {
-                    tracker.setRemoteFinishDate(track.toDbTrack(), localMillis)
+                withTrackedWrite(
+                    tracker = tracker,
+                    track = track,
+                    field = if (start) TrackWriteField.START_DATE else TrackWriteField.FINISH_DATE,
+                    previousStartDate = track.startDate.takeIf { start },
+                    previousFinishDate = track.finishDate.takeIf { !start },
+                ) {
+                    if (start) {
+                        tracker.setRemoteStartDate(track.toDbTrack(), localMillis)
+                    } else {
+                        tracker.setRemoteFinishDate(track.toDbTrack(), localMillis)
+                    }
                 }
             }
         }
@@ -775,10 +878,18 @@ private data class TrackDateRemoverScreen(
 
         fun removeDate() {
             screenModelScope.launchNonCancellable {
-                if (start) {
-                    tracker.setRemoteStartDate(track.toDbTrack(), 0)
-                } else {
-                    tracker.setRemoteFinishDate(track.toDbTrack(), 0)
+                withTrackedWrite(
+                    tracker = tracker,
+                    track = track,
+                    field = if (start) TrackWriteField.START_DATE else TrackWriteField.FINISH_DATE,
+                    previousStartDate = track.startDate.takeIf { start },
+                    previousFinishDate = track.finishDate.takeIf { !start },
+                ) {
+                    if (start) {
+                        tracker.setRemoteStartDate(track.toDbTrack(), 0)
+                    } else {
+                        tracker.setRemoteFinishDate(track.toDbTrack(), 0)
+                    }
                 }
             }
         }
@@ -849,6 +960,8 @@ data class TrackerSearchScreen(
                     try {
                         val results = tracker.search(query.sanitize())
                         Result.success(results)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Throwable) {
                         Result.failure(e)
                     }
@@ -863,7 +976,21 @@ data class TrackerSearchScreen(
         }
 
         fun registerTracking(item: TrackSearch) {
-            screenModelScope.launchNonCancellable { tracker.register(item, mangaId) }
+            screenModelScope.launchNonCancellable {
+                try {
+                    tracker.register(item, mangaId)
+                    recordSuccessfulTrackerBinding(
+                        evaluationModeEnabled = Injekt.get<SourcePreferences>().evaluationMode().get(),
+                        mangaId = mangaId,
+                        trackerId = item.tracker_id,
+                        remoteId = item.remote_id,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR) { "Tracker registration failed" }
+                }
+            }
         }
 
         fun updateSelection(selected: TrackSearch) {
@@ -972,7 +1099,7 @@ private data class TrackerRemoveScreen(
                 try {
                     (tracker as DeletableTracker).delete(track)
                 } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Failed to delete entry from service" }
+                    logcat(LogPriority.ERROR) { "Remote tracker deletion failed" }
                 }
             }
         }

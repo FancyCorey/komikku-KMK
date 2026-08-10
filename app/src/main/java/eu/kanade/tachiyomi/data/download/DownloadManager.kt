@@ -2,10 +2,11 @@ package eu.kanade.tachiyomi.data.download
 
 import android.content.Context
 import com.hippo.unifile.UniFile
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
-import exh.log.xLogE
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.drop
@@ -43,6 +44,8 @@ class DownloadManager(
     private val getCategories: GetCategories = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
+    // KMK Universal Action History Recovery Plan 2026-08-01: gates DOWNLOAD_DELETED recording below
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) {
 
     /**
@@ -230,6 +233,9 @@ class DownloadManager(
      * @param chapters the list of chapters to delete.
      * @param manga the manga of the chapters.
      * @param source the source of the chapters.
+     * @return the [Job] of the launched delete -- fire-and-forget by default, but callers that need
+     * to know the delete has actually finished (e.g. to safely record it as a completed action) can
+     * `.join()` it. Existing callers that ignore the return value are unaffected.
      */
     fun deleteChapters(
         chapters: List<Chapter>,
@@ -239,8 +245,8 @@ class DownloadManager(
         /** Ignore categories exclusion */
         ignoreCategoryExclusion: Boolean = false,
         // KMK <--
-    ) {
-        launchIO {
+    ): Job {
+        return launchIO {
             val filteredChapters = getChaptersToDelete(
                 chapters,
                 manga,
@@ -255,8 +261,32 @@ class DownloadManager(
             removeFromDownloadQueue(filteredChapters)
 
             val (mangaDir, chapterDirs) = provider.findChapterDirs(filteredChapters, manga, source)
-            chapterDirs.forEach { it.delete() }
-            cache.removeChapters(filteredChapters, manga)
+            val deletedChapters = deleteChapterDirectories(chapterDirs)
+            cache.removeChapters(deletedChapters, manga)
+
+            // KMK Universal Action History Recovery Plan 2026-08-01: only recorded after the delete
+            // above has genuinely completed, and only with the exact chapter ids that were deleted --
+            // see NonUndoableEventType.DOWNLOAD_DELETED and DownloadReceipt's own doc for why
+            // deleteManga (below) never records this.
+            if (deletedChapters.isNotEmpty() && sourcePreferences.evaluationMode().get()) {
+                val id = exh.util.NonUndoableEvent.newId()
+                exh.util.NonUndoableEventJournal.record(
+                    exh.util.NonUndoableEvent(
+                        id = id,
+                        timestamp = System.currentTimeMillis(),
+                        eventType = exh.util.NonUndoableEventType.DOWNLOAD_DELETED,
+                    ),
+                )
+                exh.util.DownloadReceiptJournal.record(
+                    exh.util.DownloadReceipt(
+                        id = id,
+                        timestamp = System.currentTimeMillis(),
+                        mangaId = manga.id,
+                        sourceId = manga.source,
+                        chapterIds = deletedChapters.map { it.id },
+                    ),
+                )
+            }
 
             // Delete manga directory if empty
             if (mangaDir?.listFiles()?.isEmpty() == true) {
@@ -271,9 +301,12 @@ class DownloadManager(
      * @param manga the manga to delete.
      * @param source the source of the manga.
      * @param removeQueued whether to also remove queued downloads.
+     * @return the [Job] of the launched delete -- fire-and-forget by default, but callers that need
+     * to know the delete has actually finished can `.join()` it. Existing callers that ignore the
+     * return value are unaffected.
      */
-    fun deleteManga(manga: Manga, source: Source, removeQueued: Boolean = true) {
-        launchIO {
+    fun deleteManga(manga: Manga, source: Source, removeQueued: Boolean = true): Job {
+        return launchIO {
             if (removeQueued) {
                 downloader.removeFromQueue(manga)
             }
@@ -335,8 +368,8 @@ class DownloadManager(
         var cleaned = 0
 
         if (removeNonFavorite && !manga.favorite) {
-            val mangaFolder = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source).getOrElse { e ->
-                logcat(LogPriority.ERROR, e) { "Manga download folder doesn't exist." }
+            val mangaFolder = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source).getOrElse {
+                logcat(LogPriority.ERROR) { "Manga download folder lookup failed" }
                 return 0
             }
             cleaned += 1 + mangaFolder.listFiles().orEmpty().size
@@ -353,21 +386,21 @@ class DownloadManager(
         if (removeRead) {
             val readChapters = allChapters.filter { it.read }
             val readChapterDirs = provider.findChapterDirs(readChapters, manga, source)
-            readChapterDirs.second.forEach { it.delete() }
+            readChapterDirs.second.forEach { it.second.delete() }
             cleaned += readChapterDirs.second.size
             cache.removeChapters(readChapters, manga)
         }
 
         if (cache.getDownloadCount(manga) == 0) {
-            val mangaFolder = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source).getOrElse { e ->
-                logcat(LogPriority.ERROR, e) { "Manga download folder doesn't exist." }
+            val mangaFolder = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source).getOrElse {
+                logcat(LogPriority.ERROR) { "Manga download folder lookup failed" }
                 return cleaned
             }
             if (!mangaFolder.listFiles().isNullOrEmpty()) {
                 mangaFolder.delete()
                 cache.removeManga(manga)
             } else {
-                xLogE("Cache and download folder doesn't match for " + /* SY --> */ manga.ogTitle /* SY <-- */)
+                logcat(LogPriority.ERROR) { "Download cache and folder mismatch" }
             }
         }
         return cleaned
@@ -411,13 +444,13 @@ class DownloadManager(
         if (capitalizationChanged) {
             val tempName = newName + Downloader.TMP_DIR_SUFFIX
             if (!oldFolder.renameTo(tempName)) {
-                logcat(LogPriority.ERROR) { "Failed to rename source download folder: ${oldFolder.name}" }
+                logcat(LogPriority.ERROR) { "Source download folder rename failed" }
                 return
             }
         }
 
         if (!oldFolder.renameTo(newName)) {
-            logcat(LogPriority.ERROR) { "Failed to rename source download folder: ${oldFolder.name}" }
+            logcat(LogPriority.ERROR) { "Source download folder rename failed" }
         }
     }
 
@@ -441,7 +474,7 @@ class DownloadManager(
         if (capitalizationChanged) {
             val tempName = newName + Downloader.TMP_DIR_SUFFIX
             if (!oldFolder.renameTo(tempName)) {
-                logcat(LogPriority.ERROR) { "Failed to rename manga download folder: ${oldFolder.name}" }
+                logcat(LogPriority.ERROR) { "Manga download folder rename failed" }
                 return
             }
         }
@@ -449,7 +482,7 @@ class DownloadManager(
         if (oldFolder.renameTo(newName)) {
             cache.renameManga(manga, oldFolder, newTitle)
         } else {
-            logcat(LogPriority.ERROR) { "Failed to rename manga download folder: ${oldFolder.name}" }
+            logcat(LogPriority.ERROR) { "Manga download folder rename failed" }
         }
     }
 
@@ -463,8 +496,8 @@ class DownloadManager(
      */
     suspend fun renameChapter(source: Source, manga: Manga, oldChapter: Chapter, newChapter: Chapter) {
         val oldNames = provider.getValidChapterDirNames(oldChapter.name, oldChapter.scanlator, oldChapter.url)
-        val mangaDir = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source).getOrElse { e ->
-            logcat(LogPriority.ERROR, e) { "Manga download folder doesn't exist. Skipping renaming after source sync" }
+        val mangaDir = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source).getOrElse {
+            logcat(LogPriority.ERROR) { "Manga download folder lookup failed during source sync" }
             return
         }
 
@@ -484,7 +517,7 @@ class DownloadManager(
             cache.removeChapter(oldChapter, manga)
             cache.addChapter(newName, mangaDir, manga)
         } else {
-            logcat(LogPriority.ERROR) { "Could not rename downloaded chapter: ${oldNames.joinToString()}" }
+            logcat(LogPriority.ERROR) { "Downloaded chapter rename failed" }
         }
     }
 

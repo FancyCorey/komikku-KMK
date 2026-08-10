@@ -1,6 +1,7 @@
 package exh.recs.discovery
 
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import exh.recs.RecommendationSourceFilter
 import exh.recs.sourceprefs.RecommendationSourcePreferenceStore
@@ -38,8 +39,8 @@ class GetNonInstalledSourceSuggestions(
         // KMK --> v0.6.9: catch DB errors (e.g. missing source_evaluation table on older installs)
         // so Settings/Sources To Try render without crashing when the evaluation table is absent.
         val safeEvaluationsFlow = getSourceEvaluations.subscribeAll()
-            .catch { e ->
-                logcat(LogPriority.ERROR, e) { "source_evaluation table unavailable; falling back to empty evaluations" }
+            .catch {
+                logcat(LogPriority.ERROR) { "source_evaluation table unavailable; falling back to empty evaluations" }
                 emit(emptyList())
             }
         // KMK <--
@@ -79,7 +80,7 @@ class GetNonInstalledSourceSuggestions(
                     sourceNames = ext.sources.map { it.name },
                 )
             }
-            NonInstalledSourceSuggestionScorer.scoreAndFilter(
+            val scored = NonInstalledSourceSuggestionScorer.scoreAndFilter(
                 available = available,
                 installedHints = installedHints,
                 untrusted = untrusted,
@@ -95,6 +96,19 @@ class GetNonInstalledSourceSuggestions(
                 evaluations = evaluations,
                 // KMK <--
                 qualityDislikedKeys = qualityDislikedKeys, // KMK v0.8.1-fix4
+            )
+            SourcesToTryDebugFixture.appendSuggestion(
+                mode = SourcesToTryDebugFixtureMode.fromPrefValue(
+                    sourcePreferences.sourcesToTryFixtureMode().get(),
+                ),
+                isDebugBuild = BuildConfig.DEBUG,
+                available = available,
+                installed = installedHints.map { it.signatureHash + "|" + it.pkgName }.toSet(),
+                untrusted = untrusted.map { it.signatureHash + "|" + it.pkgName }.toSet(),
+                enabledLanguages = recLanguages,
+                showNsfw = nsfwEnabled,
+                blockExplicit = blockExplicit,
+                existing = scored,
             )
         }
     }

@@ -24,6 +24,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.presentation.browse.BrowseSourceContent
+import eu.kanade.presentation.browse.BrowseSourceTitlePolicy
 import eu.kanade.presentation.browse.components.BulkFavoriteDialogs
 import eu.kanade.presentation.browse.components.bulkSelectionButton
 import eu.kanade.presentation.components.AppBarActions
@@ -38,6 +39,7 @@ import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.toast
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import mihon.feature.migration.dialog.MigrateMangaDialog
@@ -79,6 +81,7 @@ data class MigrateSourceSearchScreen(
 
         // KMK -->
         val context = LocalContext.current
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
         val bulkFavoriteScreenModel = rememberScreenModel { BulkFavoriteScreenModel() }
         val bulkFavoriteState by bulkFavoriteScreenModel.state.collectAsState()
@@ -173,7 +176,9 @@ data class MigrateSourceSearchScreen(
                     navigator.push(
                         WebViewScreen(
                             url = source.getHomeUrl(),
-                            initialTitle = source.name,
+                            initialTitle = BrowseSourceTitlePolicy.resolve(evaluationModeEnabled, source.id) {
+                                source.name
+                            },
                             sourceId = source.id,
                         ),
                     )

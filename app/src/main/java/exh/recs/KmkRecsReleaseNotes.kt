@@ -2,8 +2,8 @@
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 781
-    const val VERSION_NAME = "KMK-Recs v0.8.20-fix3"
+    const val VERSION_CODE = 783
+    const val VERSION_NAME = "KMK-Recs v0.8.20-fix5"
 
     // KMK v0.8.10-fix9: every KMK-Recs entry, including every historical entry back to v0.4.2, now
     // follows the same official Komikku changelog structure -- version heading, one short summary
@@ -17,6 +17,29 @@ object KmkRecsReleaseNotes {
     // ...") that is now expressed by its category heading instead. See the v0.8.10-fix9
     // implementation report for the exact conversion approach and verification.
     val MARKDOWN = """
+        ## KMK-Recs v0.8.20-fix5
+
+        A visual polish follow-up that adds theme-aware empty-state illustrations to the recommendation, source-evaluation, action-history, best-version, and reader-schedule flows.
+
+        #### What's Changed
+
+        ##### New
+        - **Empty states:** added compact, theme-aware illustrations for For You, Source Evaluation, Action History, Find Best Version, and Reader Schedule without changing the underlying actions or state behavior.
+
+        ## KMK-Recs v0.8.20-fix4
+
+        A corrective follow-up that makes tracker changes visible in Evaluation Mode Action History, tightens embedded WebView URL handling, and documents the remaining externally irreversible operations honestly.
+
+        #### What's Changed
+
+        ##### New
+        - **Action History:** successful tracker status, score, and chapter-progress changes now appear as visibility-only entries with a guarded action to send the previous value back through the tracker service when the manga, track, and login state are still available.
+
+        ##### Fix
+        - **Tracker writes:** ordinary remote failures now propagate after the existing error feedback, so Action History never records a write that did not complete.
+        - **WebView:** navigation now accepts only parsed `http` and `https` URLs and rejects local, JavaScript, intent, and scheme-prefix lookalike URLs.
+        - **Action History consistency:** receipt privacy fields and download deletion results are now tested and recorded only after confirmed file deletion.
+
         ## KMK-Recs v0.8.20-fix3
 
         A corrective follow-up that makes schedule deletion explicit, keeps Evaluation Mode redaction consistent in Source Priority summaries, and exposes the metadata and tag evidence observed for each evaluated source.

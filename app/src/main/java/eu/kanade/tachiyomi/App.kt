@@ -77,9 +77,11 @@ import exh.log.EnhancedFilePrinter
 import exh.log.XLogLogcatLogger
 import exh.log.xLogD
 import exh.recs.evaluation.SourceEvaluationStartupRecovery
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import logcat.AndroidLogcatLogger
 import logcat.LogPriority
 import logcat.LogcatLogger
@@ -166,6 +168,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
         val scope = ProcessLifecycleOwner.get().lifecycleScope
 
+        // KMK_CLAUDE_SAF_BACKUP_RECOVERY_LIFECYCLE_2026-08-06: startup recovery queries
+        // WorkManager through context.workManager. Ensure the explicit fallback is complete before
+        // launching that process-scoped reconciliation coroutine; otherwise a process without the
+        // AndroidX provider's automatic initialization could lose its durable cleanup offer after
+        // the coroutine fails and never gets retried.
+        if (!WorkManager.isInitialized()) {
+            WorkManager.initialize(this, Configuration.Builder().build())
+        }
+
         // Show notification to disable Incognito Mode when it's enabled
         basePreferences.incognitoMode().changes()
             .onEach { enabled ->
@@ -226,12 +237,29 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         SourceEvaluationStartupRecovery().runAsync(scope)
         // KMK <--
 
+        // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 4: reconcile any durable
+        // backup-cleanup record left behind by a process death (e.g. the app was killed while a
+        // BackupCreateJob WorkManager job was still running) so the recovery dialog can be restored.
+        //
+        // KMK_CLAUDE_SAF_BACKUP_RECOVERY_ACTUAL_FINAL_PASS_2026-08-07: reconcileOnStartup already
+        // catches ordinary exceptions from its own WorkManager calls internally, but this outer
+        // boundary is a second, defense-in-depth safety net -- e.g. a WorkManager/database
+        // initialization failure surfacing before reconcileOnStartup's own try/catch is reached must
+        // never crash this process-scoped coroutine (which would take the whole `scope` down with it).
+        // CancellationException is rethrown, never swallowed -- process-scope cancellation must still
+        // propagate normally.
+        scope.launch {
+            try {
+                eu.kanade.tachiyomi.util.export.BackupCleanupRecoveryStore.reconcileOnStartup(this@App)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "App: backup cleanup startup reconciliation failed unexpectedly" }
+            }
+        }
+
         // Updates widget update
         WidgetManager(Injekt.get(), Injekt.get()).apply { init(scope) }
-
-        if (!WorkManager.isInitialized()) {
-            WorkManager.initialize(this, Configuration.Builder().build())
-        }
         val syncPreferences: SyncPreferences = Injekt.get()
         val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
         if (syncPreferences.isSyncEnabled() && syncTriggerOpt.syncOnAppStart) {

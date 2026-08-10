@@ -26,11 +26,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.AroundLayout
 import eu.kanade.presentation.manga.components.PagePreview
+import eu.kanade.presentation.util.formattedMessage
 import exh.pagepreview.PagePreviewState
 import exh.util.floor
 import kotlinx.collections.immutable.persistentListOf
@@ -69,7 +71,9 @@ fun PagePreviewScreen(
         },
     ) { paddingValues ->
         when (state) {
-            is PagePreviewState.Error -> EmptyScreen(state.error.message.orEmpty())
+            is PagePreviewState.Error -> EmptyScreen(
+                with(LocalContext.current) { state.error.formattedMessage },
+            )
             PagePreviewState.Loading -> LoadingScreen()
             is PagePreviewState.Success -> {
                 BoxWithConstraints(Modifier.fillMaxSize()) {

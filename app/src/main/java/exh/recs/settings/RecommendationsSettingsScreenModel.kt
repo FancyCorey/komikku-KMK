@@ -41,7 +41,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.taste.interactor.ClearRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.ClearRecommendationDiscoveryProgress
@@ -91,6 +93,8 @@ class RecommendationsSettingsScreenModel(
     private val getTasteDiagnostics: GetTasteDiagnostics = Injekt.get(),
     private val getSourceEvaluations: GetSourceEvaluations = Injekt.get(),
     // KMK <--
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: local-only exposure history clear
+    private val clearRecommendationExposure: tachiyomi.domain.taste.interactor.ClearRecommendationExposure = Injekt.get(),
 ) : StateScreenModel<RecommendationsSettingsScreenModel.State>(State()) {
 
     private val ratedVisibilityPref = sourcePreferences.recommendationRatedMangaVisibility()
@@ -109,6 +113,10 @@ class RecommendationsSettingsScreenModel(
     // KMK --> v0.8.6: initial-preview budget per extension for group recommendation rows only
     private val groupPreviewBudgetPref = sourcePreferences.groupPreviewResultBudget()
     // KMK <--
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: bounded Latest exploration share
+    private val latestExplorationPercentPref = sourcePreferences.recommendationLatestExplorationPercent()
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: exposure window
+    private val exposureWindowDaysPref = sourcePreferences.recommendationExposureWindowDays()
     private val lastSourceStatusesPref = sourcePreferences.recommendationLastSourceRunStatuses()
     // KMK --> v0.7.19
     private val sourceFitStatsPref = sourcePreferences.recommendationSourceFitStats()
@@ -149,7 +157,11 @@ class RecommendationsSettingsScreenModel(
                 ratedMangaVisibility = ratedVisibilityPref.get(),
                 hideKnownManga = hideKnownMangaPref.get(),
                 // KMK --> v0.7.26
-                minChapterCount = minChapterCountPref.get(),
+                // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: resolved on read too, so a
+                // value persisted by an older build (or corrupted storage) renders as a real labelled
+                // option instead of an unlabelled raw number -- same treatment resultBudget and
+                // groupPreviewBudget already get below.
+                minChapterCount = exh.recs.RecommendationMinChapterCountPolicy.resolve(minChapterCountPref.get()),
                 // KMK <--
                 // KMK --> v0.7.34
                 enrichmentCap = enrichmentCapPref.get(),
@@ -157,6 +169,9 @@ class RecommendationsSettingsScreenModel(
                 // KMK --> v0.8.2
                 resultBudget = ForYouResultBudgetPolicy.validate(resultBudgetPref.get()),
                 groupPreviewBudget = GroupPreviewBudgetPolicy.validate(groupPreviewBudgetPref.get()),
+                // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08
+                latestExplorationPercent = exh.recs.RecommendationLatestBudgetPolicy.validate(latestExplorationPercentPref.get()),
+                exposureWindowDays = exh.recs.RecommendationExposurePolicy.validateWindowDays(exposureWindowDaysPref.get()),
                 // KMK <--
                 recommendationLanguages = languages.toImmutableSet(),
                 availableLanguages = availableLangs.toImmutableList(),
@@ -384,11 +399,92 @@ class RecommendationsSettingsScreenModel(
     }
 
     // KMK --> v0.7.26
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: validate the write. Previously any
+    // Int was persisted and mirrored into state verbatim, so an unsupported value could reach the
+    // shared visibility policy and the For You cache fingerprint. The journal now records the same
+    // resolved value that is actually stored and displayed, so Undo restores a legitimate value too.
     fun setMinChapterCount(value: Int) {
-        journalPreferenceChange(exh.util.PreferenceJournalActionType.MIN_CHAPTER_COUNT, "minChapterCount", minChapterCountPref, value) {
-            minChapterCountPref.set(value)
+        val resolved = exh.recs.RecommendationMinChapterCountPolicy.resolve(value)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.MIN_CHAPTER_COUNT, "minChapterCount", minChapterCountPref, resolved) {
+            minChapterCountPref.set(resolved)
         }
-        mutableState.update { it.copy(minChapterCount = value) }
+        mutableState.update { it.copy(minChapterCount = resolved) }
+    }
+    // KMK <--
+
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
+    /**
+     * Persists the bounded Latest-catalogue exploration share. Validated on the way in (same
+     * contract as [setMinChapterCount] and the budget setters), so an unsupported value can never
+     * reach [exh.recs.RecommendationLatestBudgetPolicy.resolveAttempts] at refresh time. Journalled
+     * through the existing preference Action History family so the change is undoable like every
+     * other recommendation preference.
+     */
+    fun setLatestExplorationPercent(value: Int) {
+        val resolved = exh.recs.RecommendationLatestBudgetPolicy.validate(value)
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.RESULT_BUDGET,
+            "latestExplorationPercent",
+            latestExplorationPercentPref,
+            resolved,
+        ) {
+            latestExplorationPercentPref.set(resolved)
+        }
+        mutableState.update { it.copy(latestExplorationPercent = resolved) }
+    }
+    // KMK <--
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    /** Persists the local exposure-history window. Local-only preference; never journalled to Action History (exposure itself never is). */
+    fun setExposureWindowDays(value: Int) {
+        val resolved = exh.recs.RecommendationExposurePolicy.validateWindowDays(value)
+        exposureWindowDaysPref.set(resolved)
+        mutableState.update { it.copy(exposureWindowDays = resolved) }
+    }
+
+    /**
+     * Clears local exposure/ordering history only.
+     *
+     * KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: this deliberately calls **only**
+     * [ClearRecommendationExposure][tachiyomi.domain.taste.interactor.ClearRecommendationExposure],
+     * whose repository method is a single `DELETE FROM recommendation_exposure`. It therefore cannot
+     * touch ratings, library membership, tracking, taste, Not Interested, or any manga row -- those
+     * live in entirely different tables reached through entirely different interactors, none of which
+     * this ScreenModel invokes from here. The user-visible effect is only that repeat-title
+     * de-emphasis restarts from zero.
+     *
+     * Exposed as a `suspend` function so success/failure/cancellation are directly testable without
+     * driving the Compose lifecycle; [clearExposureHistory] is the fire-and-forget UI entry point.
+     *
+     * @return true when the delete completed, false when it failed. A failure is surfaced as state
+     * rather than thrown, so the settings row can report it instead of crashing the screen.
+     */
+    suspend fun clearExposureHistoryNow(): Boolean {
+        mutableState.update { it.copy(isClearingExposureHistory = true, exposureHistoryClearFailed = false) }
+        return try {
+            clearRecommendationExposure.await()
+            mutableState.update { it.copy(isClearingExposureHistory = false, exposureHistoryClearFailed = false) }
+            true
+        } catch (e: CancellationException) {
+            // Lifecycle cancellation must never be reported as a user-facing failure, and must not
+            // leave the row stuck in a spinning state.
+            mutableState.update { it.copy(isClearingExposureHistory = false) }
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Clearing recommendation exposure history failed" }
+            mutableState.update { it.copy(isClearingExposureHistory = false, exposureHistoryClearFailed = true) }
+            false
+        }
+    }
+
+    /** UI entry point for the confirmed "Clear repeat history" action. */
+    fun clearExposureHistory() {
+        screenModelScope.launch { clearExposureHistoryNow() }
+    }
+
+    /** Clears the one-shot failure flag after the UI has shown it. */
+    fun consumeExposureHistoryClearFailure() {
+        mutableState.update { it.copy(exposureHistoryClearFailed = false) }
     }
     // KMK <--
 
@@ -1005,6 +1101,13 @@ class RecommendationsSettingsScreenModel(
         // KMK v0.8.6: group-recommendation initial preview budget, independent of resultBudget above
         val groupPreviewBudget: Int = GroupPreviewBudgetPolicy.DEFAULT,
         // KMK <--
+        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: bounded Latest exploration share
+        val latestExplorationPercent: Int = exh.recs.RecommendationLatestBudgetPolicy.DEFAULT,
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08
+        val exposureWindowDays: Int = exh.recs.RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS,
+        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: clear-exposure-history action state.
+        val isClearingExposureHistory: Boolean = false,
+        val exposureHistoryClearFailed: Boolean = false,
         val recommendationLanguages: ImmutableSet<String> = persistentSetOf("en"),
         val availableLanguages: ImmutableList<String> = persistentListOf(),
         val dialog: Dialog? = null,

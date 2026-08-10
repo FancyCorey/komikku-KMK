@@ -28,6 +28,7 @@ import eu.kanade.presentation.more.LogoHeader
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.ui.more.ComingUpdatesScreen
@@ -43,6 +44,7 @@ import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.updaterEnabled
 import exh.recs.KmkRecsReleaseNotes
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withIOContext
@@ -334,8 +336,10 @@ class AboutScreen : Screen() {
                         context.toast(MR.strings.update_check_eol)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                context.toast(e.message)
+                context.toast(with(context) { e.formattedMessage })
                 logcat(LogPriority.ERROR, e)
             } finally {
                 onFinish()
@@ -360,8 +364,10 @@ class AboutScreen : Screen() {
 
                         else -> {}
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    context.toast(e.message)
+                    context.toast(with(context) { e.formattedMessage })
                     logcat(LogPriority.ERROR, e)
                 } finally {
                     onFinish()

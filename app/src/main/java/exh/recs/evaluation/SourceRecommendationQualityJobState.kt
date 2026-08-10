@@ -46,13 +46,14 @@ object SourceRecommendationQualityJobState {
     @Volatile
     var pendingTargets: List<SourceEvaluation>? = null
 
-    /** The currently running runner, if any. Used by the job to cancel on WorkManager stop. */
-    @Volatile
-    var activeRunner: SourceRecommendationQualityRunner? = null
+    // KMK: previously held the running SourceRecommendationQualityRunner (which retains a
+    // Context) here -- flagged by Android Lint's StaticFieldLeak. Confirmed unused: nothing
+    // outside SourceRecommendationQualityJob ever read this field (cancellation is invoked via
+    // the job's own local `runner` variable, not through this singleton), so it was pure dead
+    // retention with no functional purpose. Removed rather than replaced.
 
     fun reset() {
         pendingTargets = null
-        activeRunner = null
         activeQueueState.value = null
     }
 }

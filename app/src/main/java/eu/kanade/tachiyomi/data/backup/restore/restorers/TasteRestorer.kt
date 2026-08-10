@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import exh.recs.SeenRecommendationMangaStore
+import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
@@ -70,8 +71,10 @@ class TasteRestorer(
         backupMangaTastes.forEach { backup ->
             try {
                 restoreOneMangaTaste(backup, now)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Taste rating for '${backup.title}': ${e.message}")
+                errors.add("Taste rating for '${backup.title}': Unknown error")
             }
         }
         return errors
@@ -108,8 +111,10 @@ class TasteRestorer(
         backupTagTastes.forEach { backup ->
             try {
                 restoreOneTagTaste(backup, now)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Tag preference '${backup.displayName}': ${e.message}")
+                errors.add("Tag preference '${backup.displayName}': Unknown error")
             }
         }
         return errors
@@ -141,8 +146,10 @@ class TasteRestorer(
         backupTagAliases.forEach { backup ->
             try {
                 restoreOneTagAlias(backup, existingAliases)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Tag alias '${backup.alias}': ${e.message}")
+                errors.add("Tag alias '${backup.alias}': Unknown error")
             }
         }
         return errors
@@ -171,8 +178,10 @@ class TasteRestorer(
         backupDisabledSources.forEach { backup ->
             try {
                 restoreOneDisabledSource(backup, currentlyDisabled)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Disabled recommendation source ${backup.sourceId}: ${e.message}")
+                errors.add("Disabled recommendation source ${backup.sourceId}: Unknown error")
             }
         }
         return errors
@@ -218,8 +227,12 @@ class TasteRestorer(
                         ),
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Source quality signal '${backup.originTitle}' → '${backup.selectedSourceName}': ${e.message}")
+                errors.add(
+                    "Source quality signal '${backup.originTitle}' → '${backup.selectedSourceName}': Unknown error",
+                )
             }
         }
         return errors
@@ -268,8 +281,10 @@ class TasteRestorer(
                     )
                 }
                 if (toUpsert.isNotEmpty()) upsertCrossSourceMangaLinks.await(toUpsert)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Cross-source link group '$groupId': ${e.message}")
+                errors.add("Cross-source link group '$groupId': Unknown error")
             }
         }
         return errors
@@ -308,8 +323,10 @@ class TasteRestorer(
                     )
                 }
                 // else: existing primary is newer — keep it, per plan §B3.
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                errors.add("Primary version for group '$groupId': ${e.message}")
+                errors.add("Primary version for group '$groupId': Unknown error")
             }
         }
         return errors

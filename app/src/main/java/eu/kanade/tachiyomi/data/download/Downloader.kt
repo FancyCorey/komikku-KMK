@@ -268,8 +268,8 @@ class Downloader(
             }
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
-            logcat(LogPriority.ERROR, e)
-            notifier.onError(e.message)
+            logcat(LogPriority.ERROR) { "Download job failed" }
+            notifier.onError(context.stringResource(MR.strings.download_notifier_unknown_error))
             stop()
         }
     }
@@ -353,7 +353,12 @@ class Downloader(
 
         val mangaDir = provider.getMangaDir(/* SY --> */ download.manga.ogTitle /* SY <-- */, download.source).getOrElse { e ->
             download.status = Download.State.ERROR
-            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                context.stringResource(MR.strings.download_notifier_unknown_error),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
             return
         }
 
@@ -463,7 +468,12 @@ class Downloader(
             // If the page list threw, it will resume here
             logcat(LogPriority.ERROR, error)
             download.status = Download.State.ERROR
-            notifier.onError(error.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                context.stringResource(MR.strings.download_notifier_unknown_error),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
         }
     }
 
@@ -512,7 +522,12 @@ class Downloader(
             // Mark this page as error and allow to download the remaining
             page.progress = 0
             page.status = Page.State.Error(e)
-            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                context.stringResource(MR.strings.download_notifier_unknown_error),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
         }
     }
 
@@ -614,8 +629,8 @@ class Downloader(
                 imageFile,
                 filenamePrefix,
             )
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to split downloaded image" }
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Downloaded image split failed" }
         }
     }
 

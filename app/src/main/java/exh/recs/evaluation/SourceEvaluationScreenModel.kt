@@ -12,14 +12,14 @@ import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.isOnline
 import exh.recs.KmkRecsReleaseNotes
 import exh.recs.RecommendationSourceFilter
-import exh.util.PackageOperationKind
-import exh.util.recordPackageOperationReceipt
-import exh.util.recordUserInitiatedInstall
+import exh.util.NonUndoableEvent
+import exh.util.NonUndoableEventJournal
+import exh.util.NonUndoableEventType
+import exh.util.installAndRecordUserInitiated
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -303,7 +303,7 @@ class SourceEvaluationScreenModel(
         // KMK --> v0.6.9: catch DB errors so the screen opens even if source_evaluation is absent
         getSourceEvaluations.subscribeAll()
             .catch { e ->
-                logcat(LogPriority.ERROR, e) { "source_evaluation table unavailable in SourceEvaluationScreen" }
+                logcat(LogPriority.ERROR) { "source_evaluation table unavailable in SourceEvaluationScreen" }
                 emit(emptyList())
             }
             // KMK <--
@@ -320,7 +320,7 @@ class SourceEvaluationScreenModel(
         // KMK --> v0.6.16: observe unsafe sources for UI
         getSourceEvaluationUnsafeSources.subscribeAll()
             .catch { e ->
-                logcat(LogPriority.ERROR, e) { "source_evaluation_unsafe_source table unavailable in SourceEvaluationScreen" }
+                logcat(LogPriority.ERROR) { "source_evaluation_unsafe_source table unavailable in SourceEvaluationScreen" }
                 emit(emptyList())
             }
             .onEach { unsafe ->
@@ -332,7 +332,7 @@ class SourceEvaluationScreenModel(
         // KMK --> v0.6.18: observe package-level blocked packages for UI
         getUnsafeExtensionPackages.subscribeAll()
             .catch { e ->
-                logcat(LogPriority.ERROR, e) { "unsafe_extension_package table unavailable in SourceEvaluationScreen" }
+                logcat(LogPriority.ERROR) { "unsafe_extension_package table unavailable in SourceEvaluationScreen" }
                 emit(emptyList())
             }
             .onEach { blocked ->
@@ -350,8 +350,10 @@ class SourceEvaluationScreenModel(
             try {
                 val profile = getTasteProfile.await()
                 mutableState.update { it.copy(tasteConfidence = TasteProfileConfidence.from(profile)) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load taste profile for confidence check" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to load taste profile for confidence check" }
             }
         }
         // KMK <--
@@ -415,8 +417,10 @@ class SourceEvaluationScreenModel(
                 val cursorStale = SourceEvaluationContinuationPolicy.deserialize(rawStale)
                 mutableState.update { it.copy(continuationCursor = cursor, continuationCursorStale = cursorStale) }
                 // KMK <--
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load cursor" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to load cursor" }
             }
         }
         loadRecommendationFits()
@@ -442,8 +446,10 @@ class SourceEvaluationScreenModel(
                 if (pkg.isNotBlank()) {
                     mutableState.update { it.copy(leftoverPkgName = pkg) }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load leftover pkg preference" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to load leftover pkg preference" }
             }
         }
         // KMK <--
@@ -477,8 +483,10 @@ class SourceEvaluationScreenModel(
                 mutableState.update {
                     it.copy(dismissedSuggestionCount = dismissedCount, dislikedSuggestionCount = dislikedCount)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load suggestion counts" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to load suggestion counts" }
             }
         }
         // KMK <--
@@ -499,8 +507,10 @@ class SourceEvaluationScreenModel(
                         profileChangedSinceLastEval = profileChanged,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load reassessment state" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to load reassessment state" }
             }
         }
         // KMK <--
@@ -508,13 +518,13 @@ class SourceEvaluationScreenModel(
         // KMK --> v0.6.12: load candidates from broad available extension pool
         getSourceEvaluationCandidates.subscribe()
             .catch { e ->
-                logcat(LogPriority.ERROR, e) { "Failed to load source evaluation candidates" }
+                logcat(LogPriority.ERROR) { "Failed to load source evaluation candidates" }
                 mutableState.update {
                     it.copy(
                         candidates = emptyList(),
                         isLoadingCandidates = false,
                         // KMK --> v0.7.18
-                        screenError = ScreenErrorKey.CandidateLoadFailed(e.message),
+                        screenError = ScreenErrorKey.CandidateLoadFailed(SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e)),
                         // KMK <--
                     )
                 }
@@ -538,7 +548,7 @@ class SourceEvaluationScreenModel(
         try {
             refreshInstallerPolicy()
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "KMK SourceEvaluation: refreshInstallerPolicy failed in init" }
+            logcat(LogPriority.ERROR) { "KMK SourceEvaluation: refreshInstallerPolicy failed in init" }
         }
     }
 
@@ -942,7 +952,7 @@ class SourceEvaluationScreenModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: runtime-health update failed for $pkgName" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: runtime-health update failed" }
             }
         }
     }
@@ -967,28 +977,13 @@ class SourceEvaluationScreenModel(
                 // Action History event -- see exh.util.NonUndoableEventJournal's doc for why this
                 // operation can never have an Undo action. Same terminal-step check already used by
                 // SourceEvaluationRunner.installAndCheck/SourceRecommendationQualityRunner.
-                val receiptId = exh.util.NonUndoableEvent.newId()
-                extensionManager.installExtension(availableExt)
-                    .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
-                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
-                    // PackageOperationReceipt alongside the visibility-only event above -- see
-                    // ExtensionsScreenModel.installExtension() for the same pattern.
-                    .recordPackageOperationReceipt(
-                        kind = PackageOperationKind.INSTALL,
-                        packageName = pkgName,
-                        signatureHash = signatureHash,
-                        versionCode = availableExt.versionCode,
-                        artifactUri = availableExt.apkUrl,
-                        id = receiptId,
-                    ) { sourcePreferences.evaluationMode().get() }
-                    .first {
-                        it == eu.kanade.tachiyomi.extension.model.InstallStep.Installed ||
-                            it == eu.kanade.tachiyomi.extension.model.InstallStep.Error
-                    }
+                // KMK Code-Only Completion Plan 2026-07-31: routed through the shared
+                // installAndRecordUserInitiated() helper -- see its doc for why this was extracted.
+                extensionManager.installAndRecordUserInitiated(availableExt) { sourcePreferences.evaluationMode().get() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: install failed for $pkgName" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: install failed" }
             } finally {
                 mutableState.update { it.copy(installingPkgNames = it.installingPkgNames - pkgName) }
             }
@@ -996,18 +991,27 @@ class SourceEvaluationScreenModel(
     }
     // KMK <--
 
+    // KMK Code-Only Completion Plan 2026-07-31: this is a real user-initiated install action (the
+    // runtime-health recovery card's "Reinstall" button, wired from SourceEvaluationScreen.kt) --
+    // previously it called extensionManager.installExtension(...) directly, bypassing the shared
+    // recordUserInitiatedInstall()/recordPackageOperationReceipt() chain every other user-initiated
+    // install call site uses (installEvaluatedSource() above, ExtensionsScreenModel.installExtension(),
+    // RecommendationBundleImportScreenModel's install path). That meant a user recovering a broken
+    // source via Reinstall got no Action History visibility at all -- unlike every sibling install
+    // path. Fixed to route through the same shared exh.util.installAndRecordUserInitiated() helper
+    // installEvaluatedSource() above now also uses -- records only on a verified InstallStep.Installed,
+    // records nothing on cancellation/failure, and shares an id between the event and receipt for
+    // follow-up eligibility.
     fun reinstallRuntimeHealthExtension(pkgName: String) {
         val availableExt = extensionManager.availableExtensionsFlow.value.find { it.pkgName == pkgName }
             ?: return
         screenModelScope.launch {
             try {
-                extensionManager.installExtension(availableExt)
-                    .takeWhile { !it.isCompleted() }
-                    .collect()
+                extensionManager.installAndRecordUserInitiated(availableExt) { sourcePreferences.evaluationMode().get() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: runtime-health reinstall failed for $pkgName" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: runtime-health reinstall failed" }
             }
         }
     }
@@ -1085,7 +1089,14 @@ class SourceEvaluationScreenModel(
     fun confirmClearAllEvaluations() {
         mutableState.update { it.copy(showClearEvaluationsDialog = false) }
         screenModelScope.launch {
-            clearSourceEvaluations.await()
+            try {
+                clearSourceEvaluations.await()
+                recordDataClearedEventIfEligible()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "KMK SourceEvaluation: clearEvaluations failed" }
+            }
         }
     }
     // KMK <--
@@ -1261,8 +1272,10 @@ class SourceEvaluationScreenModel(
                         recQualityDiagnostics = diagnostics,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to load recommendation fits" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to load recommendation fits" }
             }
         }
     }
@@ -1334,8 +1347,7 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 val s = state.value
-                val runner = SourceEvaluationJobState.activeRunner ?: return@launch
-                val completedKeys = runner.completedCandidateKeys
+                val completedKeys = SourceEvaluationJobState.lastCompletedCandidateKeys
                 if (completedKeys.isEmpty()) return@launch
                 val fingerprint = SourceEvaluationJobState.pendingCursorFingerprint ?: return@launch
                 // KMK --> v0.8.1-fix3: route to the stale-queue cursor slot when this run was a
@@ -1399,8 +1411,10 @@ class SourceEvaluationScreenModel(
                     }
                 }
                 // KMK <--
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to update cursor" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to update cursor" }
             }
         }
     }
@@ -1421,8 +1435,10 @@ class SourceEvaluationScreenModel(
                         reassessmentBaselineCount = allTastes.size,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to update reassessment baseline" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to update reassessment baseline" }
             }
         }
     }
@@ -1507,8 +1523,11 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 clearSourceEvaluationUnsafe.await()
+                recordDataClearedEventIfEligible()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "KMK SourceEvaluation: clearUnsafe failed" }
+                logcat(LogPriority.ERROR) { "KMK SourceEvaluation: clearUnsafe failed" }
             }
         }
     }
@@ -1517,8 +1536,11 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 deleteSourceEvaluationUnsafe.await(key)
+                recordDataClearedEventIfEligible()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "KMK SourceEvaluation: deleteUnsafe($key) failed" }
+                logcat(LogPriority.ERROR) { "KMK SourceEvaluation: deleteUnsafe failed" }
             }
         }
     }
@@ -1546,8 +1568,11 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 clearUnsafeExtensionPackages.await()
+                recordDataClearedEventIfEligible()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "KMK SourceEvaluation: clearBlockedPackages failed" }
+                logcat(LogPriority.ERROR) { "KMK SourceEvaluation: clearBlockedPackages failed" }
             }
         }
     }
@@ -1556,9 +1581,28 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 deleteUnsafeExtensionPackage.await(pkgName)
+                recordDataClearedEventIfEligible()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "KMK SourceEvaluation: allowBlockedPackage($pkgName) failed" }
+                logcat(LogPriority.ERROR) { "KMK SourceEvaluation: allowBlockedPackage failed" }
             }
+        }
+    }
+
+    private fun recordDataClearedEventIfEligible() {
+        if (SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(
+                operationSucceeded = true,
+                evaluationModeEnabled = sourcePreferences.evaluationMode().get(),
+            )
+        ) {
+            NonUndoableEventJournal.record(
+                NonUndoableEvent(
+                    id = NonUndoableEvent.newId(),
+                    timestamp = System.currentTimeMillis(),
+                    eventType = NonUndoableEventType.SOURCE_EVALUATION_DATA_CLEARED,
+                ),
+            )
         }
     }
     // KMK <--
@@ -1589,6 +1633,7 @@ class SourceEvaluationScreenModel(
             shizukuPermGranted = s.shizukuState.permissionGranted,
             lastError = s.queueState.errorMessage,
             lastProbeMarker = null,
+            evaluationModeEnabled = sourcePreferences.evaluationMode().get(),
         )
         context.copyToClipboard("Source Evaluation Diagnostics", text)
     }

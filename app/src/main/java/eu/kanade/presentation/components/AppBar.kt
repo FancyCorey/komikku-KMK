@@ -172,7 +172,13 @@ fun AppBar(
             title = titleContent,
             actions = actions,
             colors = TopAppBarDefaults.topAppBarColors(
+                // Keep the app bar visually stable while a screen scrolls. Material 3 otherwise
+                // applies its default scrolledContainerColor, which shifts the bar to a tonal
+                // gray unrelated to the resolved theme/background color.
                 containerColor = backgroundColor ?: MaterialTheme.colorScheme.surfaceColorAtElevation(
+                    elevation = if (isActionMode) 3.dp else 0.dp,
+                ),
+                scrolledContainerColor = backgroundColor ?: MaterialTheme.colorScheme.surfaceColorAtElevation(
                     elevation = if (isActionMode) 3.dp else 0.dp,
                 ),
             ),

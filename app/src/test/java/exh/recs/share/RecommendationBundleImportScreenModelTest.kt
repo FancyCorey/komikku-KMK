@@ -18,6 +18,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -403,6 +404,59 @@ class RecommendationBundleImportScreenModelTest {
 
         val finalState = model.state.value as RecommendationBundleImportScreenModel.State.Preview
         assertNull(finalState.installingPkgName, "installingPkgName must be cleared once the install completes")
+    }
+
+    // KMK security-hardening pass 2026-07-31: resolveItems()/resolveItem() previously wrapped each
+    // item's resolution in `runCatching { ... }.getOrElse { ... Error(...) }`, which -- since
+    // runCatching catches Throwable -- silently converted a cancelled coroutine into a per-item
+    // Error state instead of propagating the cancellation. Fixed to an explicit try/catch that
+    // rethrows CancellationException. A CancellationException thrown inside a launched coroutine
+    // cancels that coroutine's job rather than escaping synchronously to the caller of `launch`, so
+    // this asserts the *absence* of the previous bad behavior (the item is never misreported as a
+    // per-item Error, and the model never reaches a false Preview/completed state) rather than
+    // asserting a synchronous throw.
+    @Test
+    fun `cancellation while resolving a bundle item during load never surfaces as a false per-item Error`() = runTest {
+        val sourceId = 555L
+        val getManga = mockk<GetManga>(relaxed = true)
+        coEvery { getManga.await("/manga/test-slug", sourceId) } throws
+            CancellationException("scope cancelled")
+
+        val bytes = json.encodeToString(readyToAddBundle(sourceId)).encodeToByteArray()
+        val model = buildModel(
+            context = fakeContext(bytes),
+            extensionManager = fakeExtensionManager(installed = listOf(installedExtensionWithSource(sourceId))),
+            getManga = getManga,
+        )
+
+        // load()'s coroutine was cancelled before it could call mutableState.value = State.Preview(...),
+        // so the model must still be sitting at its initial Loading state -- never a Preview whose item
+        // was silently downgraded to Error the way the pre-fix runCatching{}.getOrElse{} used to do.
+        assertTrue(
+            model.state.value is RecommendationBundleImportScreenModel.State.Loading,
+            "a cancelled load() must leave state at Loading, not a false Preview/Error, got ${model.state.value}",
+        )
+    }
+
+    @Test
+    fun `an ordinary exception while resolving a bundle item during load is reported as a per-item Error, not a crash`() = runTest {
+        val sourceId = 555L
+        val getManga = mockk<GetManga>(relaxed = true)
+        coEvery { getManga.await("/manga/test-slug", sourceId) } throws IllegalStateException("db hiccup")
+
+        val bytes = json.encodeToString(readyToAddBundle(sourceId)).encodeToByteArray()
+        val model = buildModel(
+            context = fakeContext(bytes),
+            extensionManager = fakeExtensionManager(installed = listOf(installedExtensionWithSource(sourceId))),
+            getManga = getManga,
+        )
+
+        val state = model.state.value as? RecommendationBundleImportScreenModel.State.Preview
+        assertTrue(state != null, "expected Preview state, got ${model.state.value}")
+        assertTrue(
+            state!!.items.first().itemState is RecommendationImportItemState.Error,
+            "expected a per-item Error state for the failed resolution, got ${state.items.first().itemState}",
+        )
     }
 }
 // KMK <--

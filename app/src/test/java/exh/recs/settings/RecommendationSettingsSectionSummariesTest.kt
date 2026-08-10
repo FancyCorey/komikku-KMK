@@ -49,37 +49,7 @@ class RecommendationSettingsSectionSummariesTest {
         assertEquals(2, after.preferred)
     }
 
-    // --- sourcePriorityCounts ---
-
     private val orderedSources = listOf(1L to "MangaDex", 2L to "Comick", 3L to "Batoto")
-
-    @Test
-    fun `with nothing disabled, every source is enabled and the first in order is the top source`() {
-        val counts = RecommendationSettingsSectionSummaries.sourcePriorityCounts(orderedSources, emptySet())
-        assertEquals(3, counts.enabledCount)
-        assertEquals("MangaDex", counts.topSourceName)
-    }
-
-    @Test
-    fun `disabling the top source promotes the next enabled source to top`() {
-        val counts = RecommendationSettingsSectionSummaries.sourcePriorityCounts(orderedSources, setOf(1L))
-        assertEquals(2, counts.enabledCount)
-        assertEquals("Comick", counts.topSourceName)
-    }
-
-    @Test
-    fun `disabling every source reports zero enabled and no top source`() {
-        val counts = RecommendationSettingsSectionSummaries.sourcePriorityCounts(orderedSources, setOf(1L, 2L, 3L))
-        assertEquals(0, counts.enabledCount)
-        assertEquals(null, counts.topSourceName)
-    }
-
-    @Test
-    fun `an empty source list reports zero enabled and no top source`() {
-        val counts = RecommendationSettingsSectionSummaries.sourcePriorityCounts(emptyList(), emptySet())
-        assertEquals(0, counts.enabledCount)
-        assertEquals(null, counts.topSourceName)
-    }
 
     // --- sourcePrioritySummary (KMK Confirmed Blocker Remediation 2026-07-28) ---
     // Regression coverage for the centralized privacy branch: the summary's topSourceLabel must

@@ -28,14 +28,6 @@ object RecommendationSettingsSectionSummaries {
         return TagCounts(preferred, blocked)
     }
 
-    data class SourcePriorityCounts(val enabledCount: Int, val topSourceName: String?)
-
-    /** @param orderedSourceIdsAndNames every source in its current priority order, paired with its display name. @param disabledSourceIds the currently disabled subset. */
-    fun sourcePriorityCounts(orderedSourceIdsAndNames: List<Pair<Long, String>>, disabledSourceIds: Set<Long>): SourcePriorityCounts {
-        val enabled = orderedSourceIdsAndNames.filter { (id, _) -> id !in disabledSourceIds }
-        return SourcePriorityCounts(enabled.size, enabled.firstOrNull()?.second)
-    }
-
     // KMK Confirmed Blocker Remediation 2026-07-28 -->
     /**
      * Already-safe-to-render presentation model for the "For You sources" section summary.

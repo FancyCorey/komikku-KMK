@@ -18,7 +18,7 @@ import tachiyomi.i18n.kmk.KMR
 
 // KMK --> OCR v0.1.1 (updated from v0.1.0)
 
-class OcrNotifier(private val context: Context) {
+class OcrNotifier(private val context: Context) : OcrIndexWorkerNotifier {
 
     private val openOcrIntent: PendingIntent by lazy {
         PendingIntent.getActivity(
@@ -64,15 +64,15 @@ class OcrNotifier(private val context: Context) {
         }
     }
 
-    fun updateProgress(progress: OcrIndexProgress) {
+    override fun updateProgress(progress: OcrIndexProgress) {
         context.notify(Notifications.ID_OCR_INDEX_PROGRESS, buildProgressNotification(progress).build())
     }
 
-    fun dismissProgress() {
+    override fun dismissProgress() {
         context.cancelNotification(Notifications.ID_OCR_INDEX_PROGRESS)
     }
 
-    fun showComplete(recognizedPages: Int, emptyPages: Int, failedPages: Int) {
+    override fun showComplete(recognizedPages: Int, emptyPages: Int, failedPages: Int) {
         context.cancelNotification(Notifications.ID_OCR_INDEX_PROGRESS)
         context.notify(Notifications.ID_OCR_INDEX_COMPLETE, Notifications.CHANNEL_OCR_INDEXING) {
             setSmallIcon(R.drawable.ic_komikku)

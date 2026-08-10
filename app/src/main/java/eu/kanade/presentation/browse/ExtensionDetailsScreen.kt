@@ -70,6 +70,19 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 
+/** Keeps extension-detail source rows aligned with the shared Evaluation Mode display policy. */
+internal fun extensionSourceTitle(
+    evaluationModeEnabled: Boolean,
+    sourceId: Long,
+    labelAsName: Boolean,
+    rawName: () -> String,
+    languageLabel: () -> String,
+): String = when {
+    evaluationModeEnabled -> EvaluationModeFormatter.sourceLabel(sourceId)
+    labelAsName -> rawName()
+    else -> languageLabel()
+}
+
 @Composable
 fun ExtensionDetailsScreen(
     navigateUp: () -> Unit,
@@ -470,14 +483,17 @@ private fun SourceSwitchPreference(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
     TextPreferenceWidget(
         modifier = modifier,
-        title = if (source.labelAsName) {
-            source.source.toString()
-        } else {
-            LocaleHelper.getSourceDisplayName(source.source.lang, context)
-        },
+        title = extensionSourceTitle(
+            evaluationModeEnabled = evaluationModeEnabled,
+            sourceId = source.source.id,
+            labelAsName = source.labelAsName,
+            rawName = { source.source.toString() },
+            languageLabel = { LocaleHelper.getSourceDisplayName(source.source.lang, context) },
+        ),
         widget = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

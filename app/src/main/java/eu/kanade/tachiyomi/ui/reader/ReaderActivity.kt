@@ -30,8 +30,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -82,6 +85,7 @@ import eu.kanade.presentation.reader.appbars.NavBarType
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
 import eu.kanade.presentation.theme.TachiyomiTheme
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
@@ -121,6 +125,7 @@ import exh.util.mangaType
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -313,6 +318,9 @@ class ReaderActivity : BaseActivity() {
                     }
                     is ReaderViewModel.Event.CopyImage -> {
                         onCopyImageResult(event.uri)
+                    }
+                    ReaderViewModel.Event.ShareImageFailed -> {
+                        toast(KMR.strings.reader_share_image_failed)
                     }
                     is ReaderViewModel.Event.SetCoverResult -> {
                         onSetAsCoverResult(event.result)
@@ -518,6 +526,14 @@ class ReaderActivity : BaseActivity() {
                         onResume = viewModel::resumeTimer,
                         onReset = viewModel::resetTimer,
                         onStop = viewModel::stopTimer,
+                        onConfigureSchedule = {
+                            onDismissRequest()
+                            startActivity(
+                                Intent(this@ReaderActivity, MainActivity::class.java).apply {
+                                    action = Constants.OPEN_READER_SCHEDULE_SETTINGS
+                                },
+                            )
+                        },
                     )
                 }
 
@@ -649,26 +665,41 @@ class ReaderActivity : BaseActivity() {
                         onDismissRequest = onDismissRequest,
                         title = { Text(stringResource(KMR.strings.chapter_completion_rating_title)) },
                         text = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
                                 androidx.compose.material3.TextButton(onClick = {
                                     viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LOVE)
-                                }) { Text(stringResource(KMR.strings.rated_manga_rating_love)) }
+                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                    Text(stringResource(KMR.strings.rated_manga_rating_love))
+                                }
                                 androidx.compose.material3.TextButton(onClick = {
                                     viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LIKE)
-                                }) { Text(stringResource(KMR.strings.rated_manga_rating_like)) }
+                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                    Text(stringResource(KMR.strings.rated_manga_rating_like))
+                                }
                                 androidx.compose.material3.TextButton(onClick = {
                                     viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.DISLIKE)
-                                }) { Text(stringResource(KMR.strings.rated_manga_rating_dislike)) }
+                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                    Text(stringResource(KMR.strings.rated_manga_rating_dislike))
+                                }
                             }
                         },
                         confirmButton = {
-                            androidx.compose.material3.TextButton(onClick = { viewModel.markNotInterestedFromChapterCompletionPrompt(dialog.mangaId) }) {
+                            androidx.compose.material3.TextButton(
+                                onClick = { viewModel.markNotInterestedFromChapterCompletionPrompt(dialog.mangaId) },
+                                modifier = Modifier.defaultMinSize(minWidth = 112.dp, minHeight = 48.dp),
+                            ) {
                                 Text(stringResource(KMR.strings.rated_manga_action_mark_not_interested))
                             }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = viewModel::dismissChapterCompletionPrompt) {
-                                Text(stringResource(MR.strings.action_close))
+                            androidx.compose.material3.TextButton(
+                                onClick = viewModel::dismissChapterCompletionPrompt,
+                                modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
+                            ) {
+                                Text(stringResource(MR.strings.action_cancel))
                             }
                         },
                     )
@@ -701,22 +732,28 @@ class ReaderActivity : BaseActivity() {
                         title = { Text(stringResource(titleRes)) },
                         text = { Text(stringResource(messageRes)) },
                         confirmButton = {
-                            androidx.compose.material3.TextButton(onClick = {
-                                onDismissRequest()
-                                startActivity(
-                                    Intent(this@ReaderActivity, MainActivity::class.java).apply {
-                                        action = tachiyomi.core.common.Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING
-                                        putExtra(tachiyomi.core.common.Constants.CROSS_EXTENSION_MATCH_MANGA_ID_EXTRA, dialog.mangaId)
-                                        putExtra(tachiyomi.core.common.Constants.CROSS_EXTENSION_MATCH_RATING_EXTRA, dialog.ratingValue)
-                                        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                    },
-                                )
-                            }) {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    onDismissRequest()
+                                    startActivity(
+                                        Intent(this@ReaderActivity, MainActivity::class.java).apply {
+                                            action = tachiyomi.core.common.Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING
+                                            putExtra(tachiyomi.core.common.Constants.CROSS_EXTENSION_MATCH_MANGA_ID_EXTRA, dialog.mangaId)
+                                            putExtra(tachiyomi.core.common.Constants.CROSS_EXTENSION_MATCH_RATING_EXTRA, dialog.ratingValue)
+                                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                        },
+                                    )
+                                },
+                                modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
+                            ) {
                                 Text(stringResource(MR.strings.action_ok))
                             }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = onDismissRequest) {
+                            androidx.compose.material3.TextButton(
+                                onClick = onDismissRequest,
+                                modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
+                            ) {
                                 Text(stringResource(MR.strings.action_cancel))
                             }
                         },
@@ -904,8 +941,11 @@ class ReaderActivity : BaseActivity() {
         } else {
             cropBorderContinuousVertical
         }
-        val readerBottomButtons by readerPreferences.readerBottomButtons().changes().map { it.toImmutableSet() }
-            .collectAsState(persistentSetOf())
+        // KMK: the Flow must be built once (via remember), not on every recomposition -- calling
+        // .map { } directly in composition creates a new Flow identity each time, which restarts
+        // collectAsState's underlying collection every recomposition (Lint: FlowOperatorInvokedInComposition).
+        val readerBottomButtonsFlow = remember { readerPreferences.readerBottomButtons().changes().map { it.toImmutableSet() } }
+        val readerBottomButtons by readerBottomButtonsFlow.collectAsState(persistentSetOf())
         val dualPageSplitPaged by readerPreferences.dualPageSplitPaged().collectAsState()
 
         val forceHorizontalSeekbar by readerPreferences.forceHorizontalSeekbar().collectAsState()
@@ -1337,9 +1377,9 @@ class ReaderActivity : BaseActivity() {
      * this case the activity is closed and a toast is shown to the user.
      */
     private fun setInitialChapterError(error: Throwable) {
-        logcat(LogPriority.ERROR, error)
+        logcat(LogPriority.ERROR) { "Reader initial chapter load failed" }
         finish()
-        toast(error.message)
+        toast(with(this) { error.formattedMessage })
     }
 
     /**
@@ -1501,7 +1541,7 @@ class ReaderActivity : BaseActivity() {
                 toast(MR.strings.picture_saved)
             }
             is ReaderViewModel.SaveImageResult.Error -> {
-                logcat(LogPriority.ERROR, result.error)
+                logcat(LogPriority.ERROR) { "Reader image save failed" }
             }
         }
     }
@@ -1789,8 +1829,10 @@ class ReaderActivity : BaseActivity() {
                         setScreen(this@ReaderActivity)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "Error updating Discord RPC: ${e.message}" }
+                logcat(LogPriority.ERROR) { "Reader Discord RPC update failed" }
             }
         }
     }

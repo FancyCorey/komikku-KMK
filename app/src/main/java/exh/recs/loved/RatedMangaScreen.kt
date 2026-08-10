@@ -57,12 +57,12 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.components.MangaItem
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
+import eu.kanade.presentation.components.SafArtifactCleanupDialog
 import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.BulkTasteActionType
-import exh.recs.KmkRecsReleaseNotes
 import exh.recs.RecommendsScreen
 import exh.recs.bulkTasteActionMessage
 import exh.recs.links.LinkGroupManagementScreen
@@ -70,7 +70,6 @@ import exh.recs.links.LinkedVersionListScreen
 import exh.recs.matching.CrossExtensionMatchMode
 import exh.recs.matching.CrossExtensionMatchScreen
 import exh.recs.settings.toScreen
-import exh.recs.share.RecommendationBundleExporter
 import exh.util.EvaluationModeFormatter
 import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
@@ -163,22 +162,40 @@ internal fun RatedMangaCollectionContent(
         MangaRating.DISLIKE -> "kmk_disliked_manga.json"
     }
 
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03: the export input is snapshotted at the
+    // moment the export action is pressed (before the picker even opens), not re-read from live
+    // `screenModel.state.value` after the picker returns -- the previous version discarded a
+    // non-null picker Uri (orphaning the SAF document it already created) whenever the screen state
+    // was no longer `Success` by the time the callback ran. The SAF document lifecycle (register-
+    // before-write, retain on stale/failed/cancelled, exact-Uri-only cleanup) is owned by
+    // SafExportCoordinator.
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #5): the
+    // coordinator now lives on LovedMangaScreenModel (screenModelScope-owned), not `remember`ed here.
+    var exportSnapshot by remember { mutableStateOf<LovedMangaScreenModel.State.Success?>(null) }
+    // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2: the operation is reserved at
+    // the export-click, before the picker launches -- see the export action's onClick below.
+    var exportPendingOperationId by remember { mutableStateOf<String?>(null) }
+    val exportCleanupOffer by screenModel.exportCoordinator.cleanupOffer.collectAsState()
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val snapState = screenModel.state.value as? LovedMangaScreenModel.State.Success
-            ?: return@rememberLauncherForActivityResult
-        scope.launch {
-            val exporter = RecommendationBundleExporter()
-            val bundle = exporter.buildLovedMangaBundle(
-                displayItems = snapState.displayItems,
-                linkGroupByKey = snapState.linkGroupByKey,
-                kmkVersion = KmkRecsReleaseNotes.VERSION_NAME,
+        val snapState = exportSnapshot
+        exportSnapshot = null
+        val operationId = exportPendingOperationId
+        exportPendingOperationId = null
+        if (uri == null) {
+            operationId?.let { screenModel.exportCoordinator.cancelReservation(it) }
+            return@rememberLauncherForActivityResult
+        }
+        if (operationId == null || !screenModel.exportRatedManga(context, operationId, uri, snapState)) {
+            eu.kanade.tachiyomi.util.export.handleUnregisterableUri(
+                context,
+                uri,
+                screenModel.exportCoordinator,
+                KMR.strings.saf_export_registration_failed,
+                KMR.strings.saf_export_registration_failed_retained,
+                KMR.strings.saf_export_registration_failed_unrecoverable,
             )
-            exporter.writeToUri(context, uri, bundle)
-                .onSuccess { withUIContext { context.toast(KMR.strings.rec_bundle_export_success) } }
-                .onFailure { withUIContext { context.toast(KMR.strings.rec_bundle_export_failure) } }
         }
     }
 
@@ -306,7 +323,14 @@ internal fun RatedMangaCollectionContent(
                                         onClick = {
                                             val s = screenModel.state.value
                                             if (s is LovedMangaScreenModel.State.Success && s.displayItems.isNotEmpty()) {
-                                                exportLauncher.launch(exportFilename)
+                                                val operationId = screenModel.exportCoordinator.beginOperation()
+                                                if (operationId == null) {
+                                                    scope.launch { withUIContext { context.toast(KMR.strings.saf_export_operation_pending) } }
+                                                } else {
+                                                    exportSnapshot = s
+                                                    exportPendingOperationId = operationId
+                                                    exportLauncher.launch(exportFilename)
+                                                }
                                             } else {
                                                 scope.launch { withUIContext { context.toast(KMR.strings.rec_bundle_export_empty) } }
                                             }
@@ -380,7 +404,7 @@ internal fun RatedMangaCollectionContent(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = s.error.message ?: stringResource(errorRes),
+                        text = stringResource(errorRes),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(MaterialTheme.padding.medium),
@@ -683,6 +707,26 @@ internal fun RatedMangaCollectionContent(
             },
         )
         // KMK <--
+
+        // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 Phase 2B: exact-Uri-only Remove/Keep
+        // cleanup, offered for every outcome (not only success) -- see SafExportCoordinator.
+        exportCleanupOffer?.let { offer ->
+            SafArtifactCleanupDialog(
+                context = context,
+                offer = offer,
+                successTitleRes = KMR.strings.extension_export_cleanup_title,
+                successBodyRes = KMR.strings.generic_export_cleanup_success_body,
+                incompleteTitleRes = KMR.strings.extension_export_cleanup_incomplete_title,
+                incompleteBodyRes = KMR.strings.extension_export_cleanup_incomplete_body,
+                removeRes = KMR.strings.extension_export_cleanup_remove,
+                keepRes = KMR.strings.extension_export_cleanup_keep,
+                removedRes = KMR.strings.extension_export_cleanup_removed,
+                removeFailedRes = KMR.strings.extension_export_cleanup_failed,
+                onRemoved = { screenModel.exportCoordinator.clear(offer.operationId) },
+                onKept = { screenModel.exportCoordinator.clear(offer.operationId) },
+                onDismissed = { screenModel.exportCoordinator.clear(offer.operationId) },
+            )
+        }
     }
 }
 // KMK <--

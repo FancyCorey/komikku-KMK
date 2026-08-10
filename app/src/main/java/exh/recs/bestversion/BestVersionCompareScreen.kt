@@ -67,6 +67,8 @@ import coil3.compose.AsyncImage
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.KmkEmptyStateArtwork
+import eu.kanade.presentation.components.KmkEmptyStateIllustration
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import exh.recs.RecommendationErrorKind
@@ -415,13 +417,25 @@ private fun ConfirmCandidatesContent(
                 }
             }
             if (allCandidates.isEmpty()) {
+                // Candidate search has completed before this step is shown, so an empty list is a
+                // genuine unavailable result rather than a loading placeholder.
                 item(key = "no_candidates") {
-                    Text(
-                        text = stringResource(KMR.strings.best_version_no_candidates),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(MaterialTheme.padding.medium),
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(MaterialTheme.padding.medium),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        KmkEmptyStateIllustration(
+                            artwork = KmkEmptyStateArtwork.FIND_BEST_VERSION_UNAVAILABLE,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(72.dp),
+                        )
+                        Text(
+                            text = stringResource(KMR.strings.best_version_no_candidates),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = MaterialTheme.padding.small),
+                        )
+                    }
                 }
             } else {
                 items(allCandidates, key = { "${it.source}|${it.url}" }) { manga ->

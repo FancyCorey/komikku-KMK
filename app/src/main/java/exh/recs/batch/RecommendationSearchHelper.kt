@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.log.ResettableLogger
 import exh.log.safeXLogTag
+import exh.recs.RecommendationErrorClassifier
 import exh.recs.sources.RecommendationPagingSource
 import exh.recs.sources.RecommendationSource
 import exh.recs.sources.TrackerRecommendationPagingSource
@@ -138,6 +139,8 @@ class RecommendationSearchHelper(val context: Context) {
                                     results = mutableListOf(),
                                 )
                             }.results.addAll(mangas)
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: NoResultsException) {
                         } catch (e: Exception) {
                             logger()?.e("Error while fetching recommendations for $recSourceId", e)
@@ -183,9 +186,12 @@ class RecommendationSearchHelper(val context: Context) {
                 rankedMap.isNotEmpty() -> SearchStatus.Finished.WithResults(rankedMap)
                 else -> SearchStatus.Finished.WithoutResults
             }
-        } catch (_: CancellationException) {
+        } catch (e: CancellationException) {
+            // Cancellation belongs to the Library screen-model scope. Propagate it so leaving the
+            // flow or pressing Cancel does not turn a cancelled search into a normally completed job.
+            throw e
         } catch (e: Exception) {
-            status.value = SearchStatus.Error(e.message.orEmpty())
+            status.value = SearchStatus.Error(RecommendationErrorClassifier.classifyToStorageKey(e))
             logger()?.e("Error during recommendation search", e)
             return
         } finally {

@@ -187,8 +187,14 @@ class SourcePreferences(
     fun recommendationForYouPreviewSnapshot() = preferenceStore.getString("recommendation_for_you_preview_snapshot", "")
 
     // KMK --> v0.7.26: minimum chapter count filter for For You
-    /** Minimum locally-known chapter count for a manga to appear in For You. 0 = no filter. */
-    fun recommendationMinChapterCount() = preferenceStore.getInt("recommendation_min_chapter_count", 0)
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: the raw value stored here is only a
+    // hint -- every read site resolves it through RecommendationMinChapterCountPolicy.resolve(), and
+    // RecommendationsSettingsScreenModel.setMinChapterCount() refuses to persist an unsupported
+    // value, so a corrupt/legacy/out-of-contract number can never reach the visibility policy or the
+    // cache fingerprint as an unsupported threshold.
+    /** Minimum locally-known chapter count for a manga to appear in For You. Supported: 0/5/10/20/50. 0 = no filter. */
+    fun recommendationMinChapterCount() =
+        preferenceStore.getInt("recommendation_min_chapter_count", exh.recs.RecommendationMinChapterCountPolicy.DEFAULT)
     // KMK <--
 
     // KMK --> v0.7.34: configurable enrichment cap for For You sources
@@ -201,6 +207,27 @@ class SourcePreferences(
     // fall back to ForYouResultBudgetPolicy.DEFAULT rather than crashing.
     /** Visible manga cards per ordinary For You source row. Supported: 5/10/15/20/30. Default 10. Boosted sources use max(value, 20). */
     fun recommendationResultBudget() = preferenceStore.getInt("recommendation_result_budget", 10)
+
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
+    // Both values are validated at every read site through their owning pure policy (never trusted
+    // raw), exactly like recommendationResultBudget/groupPreviewResultBudget above.
+    /**
+     * Share of a For You refresh's attempted sources that may additionally be probed for their
+     * Latest catalogue. Supported: 0/10/20/30/50 percent. Default 20. `0` switches the Latest lane
+     * off entirely and is the documented behavior kill switch -- personalized search plus the
+     * existing Popular fallback remain the default path either way.
+     */
+    fun recommendationLatestExplorationPercent() =
+        preferenceStore.getInt("recommendation_latest_exploration_percent", exh.recs.RecommendationLatestBudgetPolicy.DEFAULT)
+
+    /**
+     * How many days a locally-recorded For You exposure keeps influencing display order. Supported:
+     * 7/14/30. Default 14. Exposure history is local-only, is never included in backup/sync/export,
+     * never creates an Action History entry, and can only ever reorder -- never hide -- a candidate.
+     */
+    fun recommendationExposureWindowDays() =
+        preferenceStore.getInt("recommendation_exposure_window_days", exh.recs.RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS)
+    // KMK <--
 
     /** Semicolon-separated dismissal keys for non-installed source suggestions. Format: signatureHash|pkgName|sourceId */
     fun dismissedNonInstalledRecommendationSources() = preferenceStore.getString("dismissed_non_installed_rec_sources", "")
@@ -271,6 +298,33 @@ class SourcePreferences(
      */
     fun evaluationMode() = preferenceStore.getBoolean("evaluation_mode", false)
     // KMK <--
+
+    // KMK --> KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: private
+    // developer opt-in selecting a deterministic Source Evaluation debug fixture outcome instead of
+    // running the real installer/network pipeline. Only ever read behind `BuildConfig.DEBUG` (see
+    // SourceEvaluationJob.selectSourceEvaluationRunner) -- this preference alone cannot activate the
+    // fixture in a release-derived build. Valid values: "off" (default, real runner),
+    // "candidate_load_error", "connectivity_lost", "per_source_error" -- see
+    // SourceEvaluationDebugFixtureMode.
+    fun evaluationFixtureFailureMode() = preferenceStore.getString("evaluation_fixture_failure_mode", "off")
+    // KMK <--
+
+    // KMK --> Corrective pass 2026-08-03: private developer opt-in selecting a deterministic Browse
+    // debug fixture outcome, intentionally SEPARATE from evaluationFixtureFailureMode() above. The
+    // original Phase 1 implementation read evaluationFixtureFailureMode() from
+    // BrowseSourceScreenModel.createSourcePagingSource(), which meant any non-off Source Evaluation
+    // debug mode also silently activated the unrelated Browse failure fixture (and vice versa was a
+    // structural risk even though not observed). This preference and BrowseDebugFixtureMode exist so
+    // the two debug-only fixture systems can never cross-activate each other. Only ever read behind
+    // `BuildConfig.DEBUG` (see selectBrowseSourcePagingSource) -- this preference alone cannot
+    // activate the fixture in a release-derived build. Valid values: "off" (default, real paging
+    // source), "source_unavailable" -- see BrowseDebugFixtureMode.
+    fun browseFixtureFailureMode() = preferenceStore.getString("browse_fixture_failure_mode", "off")
+    // KMK <--
+
+    // KMK: debug-only Sources To Try fixture. The consumer also requires BuildConfig.DEBUG, so a
+    // stale preference cannot activate this path in release-derived builds.
+    fun sourcesToTryFixtureMode() = preferenceStore.getString("sources_to_try_fixture_mode", "off")
 
     // KMK --> v0.7.31: C3 — rated count at the time evaluation was last launched (for profile-changed prompt)
     /** Total rated manga count when source evaluation was last started. -1 = never run. */

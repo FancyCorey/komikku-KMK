@@ -25,6 +25,8 @@ import eu.kanade.tachiyomi.ui.browse.source.SourcesScreen
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -44,6 +46,7 @@ class SmartSearchScreen(
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val state by screenModel.state.collectAsState()
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
         LaunchedEffect(state) {
             val results = state
             if (results != null) {
@@ -79,7 +82,11 @@ class SmartSearchScreen(
         Scaffold(
             topBar = { scrollBehavior ->
                 AppBar(
-                    title = screenModel.source.name,
+                    title = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(screenModel.source.id)
+                    } else {
+                        screenModel.source.name
+                    },
                     navigateUp = navigator::pop,
                     scrollBehavior = scrollBehavior,
                 )

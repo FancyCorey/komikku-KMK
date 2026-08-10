@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CancellationException
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import tachiyomi.domain.manga.model.Manga
@@ -95,6 +96,8 @@ class Komga(id: Long) : BaseTracker(id, "Komga"), EnhancedTracker {
     override suspend fun match(manga: Manga): TrackSearch? =
         try {
             api.getTrackSearch(manga.url)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }

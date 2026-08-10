@@ -8,7 +8,9 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.core.net.toUri
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.presentation.webview.WebViewScreenContent
+import eu.kanade.presentation.webview.isAllowedWebUrl
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
 import eu.kanade.tachiyomi.data.connections.discord.DiscordScreen
@@ -59,6 +61,10 @@ class WebViewActivity : BaseActivity() {
         }
 
         val url = intent.extras?.getString(URL_KEY) ?: return
+        if (!isAllowedWebUrl(url)) {
+            finish()
+            return
+        }
         assistUrl = url
 
         // KMK v0.8.10-fix6: this is a second, separate occurrence of the exact same unsafe
@@ -124,7 +130,7 @@ class WebViewActivity : BaseActivity() {
         try {
             startActivity(url.toUri().toShareIntent(this, type = "text/plain"))
         } catch (e: Exception) {
-            toast(e.message)
+            toast(with(this) { e.formattedMessage })
         }
     }
 
@@ -134,7 +140,7 @@ class WebViewActivity : BaseActivity() {
 
     private fun clearCookies(url: String) {
         val cleared = network.cookieJar.remove(url.toHttpUrl())
-        logcat { "Cleared $cleared cookies for: $url" }
+        logcat { "Cleared $cleared WebView cookies" }
     }
 
     companion object {

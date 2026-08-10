@@ -1,5 +1,7 @@
 package exh.util
 
+import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
@@ -91,6 +93,41 @@ fun Flow<InstallStep>.recordPackageOperationReceipt(
         }
         emit(step)
     }
+}
+// KMK <--
+
+// KMK Code-Only Completion Plan 2026-07-31 -->
+/**
+ * The single, shared "install a source and record it" contract every user-initiated fresh-install
+ * call site in the app must use -- extracted after
+ * `SourceEvaluationScreenModel.reinstallRuntimeHealthExtension()` was found bypassing it entirely
+ * (see that function's own doc for the exact defect). Chains [recordUserInitiatedInstall] and
+ * [recordPackageOperationReceipt] with one shared id so the resulting event and receipt correlate,
+ * then awaits the first terminal step. Records nothing on [InstallStep.Error] or on cancellation;
+ * records exactly once even if the underlying installer flow re-emits [InstallStep.Installed] (see
+ * both operators' own dedup guard). Callers that need a distinct [NonUndoableEventType] (e.g. an
+ * *update* rather than a fresh install) should keep using the two operators directly, as
+ * `ExtensionsScreenModel.updateExtension()` already does -- this helper is deliberately scoped to
+ * the fresh-install case shared by `SourceEvaluationScreenModel.installEvaluatedSource()` and
+ * `SourceEvaluationScreenModel.reinstallRuntimeHealthExtension()`.
+ */
+suspend fun ExtensionManager.installAndRecordUserInitiated(
+    extension: Extension.Available,
+    isEvaluationModeEnabled: () -> Boolean,
+): InstallStep {
+    val receiptId = NonUndoableEvent.newId()
+    return installExtension(extension)
+        .recordUserInitiatedInstall(id = receiptId, isEvaluationModeEnabled = isEvaluationModeEnabled)
+        .recordPackageOperationReceipt(
+            kind = PackageOperationKind.INSTALL,
+            packageName = extension.pkgName,
+            signatureHash = extension.signatureHash,
+            versionCode = extension.versionCode,
+            artifactUri = extension.apkUrl,
+            id = receiptId,
+            isEvaluationModeEnabled = isEvaluationModeEnabled,
+        )
+        .first { it == InstallStep.Installed || it == InstallStep.Error }
 }
 // KMK <--
 

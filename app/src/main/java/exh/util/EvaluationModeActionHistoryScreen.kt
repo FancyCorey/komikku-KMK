@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,11 +36,24 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.KmkEmptyStateArtwork
+import eu.kanade.presentation.components.KmkEmptyStateIllustration
 import eu.kanade.presentation.util.Screen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.core.common.i18n.stringResource as contextStringResource
+
+internal suspend fun runActionHistoryFollowUpSafely(
+    trigger: suspend () -> ActionHistoryFollowUpResult,
+): ActionHistoryFollowUpResult = try {
+    trigger()
+} catch (error: CancellationException) {
+    throw error
+} catch (_: Exception) {
+    ActionHistoryFollowUpResult.Failed
+}
 
 /**
  * Evaluation Mode-only screen listing every safe in-memory undo journal (taste, group, library,
@@ -128,13 +142,23 @@ class EvaluationModeActionHistoryScreen : Screen() {
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { contentPadding ->
             if (rows.isEmpty()) {
+                // Keep the empty state visually distinct from the list of recorded actions.
                 Surface(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(stringResource(KMR.strings.eval_undo_history_empty), style = MaterialTheme.typography.bodyMedium)
+                        KmkEmptyStateIllustration(
+                            artwork = KmkEmptyStateArtwork.ACTION_HISTORY,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(96.dp),
+                        )
+                        Text(
+                            text = stringResource(KMR.strings.eval_undo_history_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 24.dp),
+                        )
                     }
                 }
             } else {
@@ -175,7 +199,7 @@ class EvaluationModeActionHistoryScreen : Screen() {
                                     TextButton(
                                         onClick = {
                                             scope.launch {
-                                                showFollowUpResult(followUp.trigger())
+                                                showFollowUpResult(runActionHistoryFollowUpSafely(followUp.trigger))
                                             }
                                         },
                                     ) {

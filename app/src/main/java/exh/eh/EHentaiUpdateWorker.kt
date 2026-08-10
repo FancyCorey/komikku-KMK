@@ -27,6 +27,7 @@ import exh.log.safeXLogTag
 import exh.metadata.metadata.EHentaiSearchMetadata
 import exh.source.ExhPreferences
 import exh.util.cancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.toList
@@ -66,27 +67,50 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
     private val updateNotifier by lazy { EHentaiUpdateNotifier(context) }
     private val libraryUpdateNotifier by lazy { LibraryUpdateNotifier(context) }
 
+    // KMK -->
+    /**
+     * This worker is enqueued with [ExistingPeriodicWorkPolicy] ([scheduleBackground]), so it is
+     * periodic work, not one-time work. WorkManager 2.7+ (this project pins 2.11.1, see
+     * `gradle/androidx.versions.toml`) supports [Result.retry] for periodic work: a retried run is
+     * re-attempted within the current period using the request's backoff policy, and only once
+     * [runAttemptCount] exceeds [MAX_RUN_ATTEMPTS] do we fall back to [Result.failure] -- which,
+     * for periodic work, only marks *this run* failed and does not cancel or unschedule future
+     * periodic runs. Silently returning [Result.success] on a real failure (the previous
+     * behavior) was untruthful: it told WorkManager the run succeeded, discarding its own
+     * retry/backoff machinery and any external observer of this work's result.
+     */
     override suspend fun doWork(): Result {
         return try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P &&
                 requiresWifiConnection(exhPreferences) &&
                 !context.isConnectedToWifi()
             ) {
-                logger()?.d("Retry again later in next periodic run due to missing Wi-Fi connection...")
-                Result.success() // retry again later in next periodic run
+                logger()?.d("Required Wi-Fi connection unavailable, retrying with WorkManager backoff...")
+                Result.retry()
             } else {
                 setForegroundSafely()
                 startUpdating()
                 logger()?.d("Update job completed!")
                 Result.success()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger()?.d("Retry again later in next periodic run!", e)
-            Result.success() // retry again later in next periodic run
+            when (EHentaiUpdateWorkerResultPolicy.classify(runAttemptCount, MAX_RUN_ATTEMPTS)) {
+                EHentaiUpdateWorkerResultPolicy.Outcome.Retry -> {
+                    logger()?.d("Update failed (attempt ${runAttemptCount + 1}/$MAX_RUN_ATTEMPTS), retrying with WorkManager backoff...", e)
+                    Result.retry()
+                }
+                EHentaiUpdateWorkerResultPolicy.Outcome.Failure -> {
+                    logger()?.e("Update failed after $MAX_RUN_ATTEMPTS attempts, giving up until the next periodic run.", e)
+                    Result.failure()
+                }
+            }
         } finally {
             updateNotifier.cancelProgressNotification()
         }
     }
+    // KMK <--
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         return ForegroundInfo(
@@ -264,6 +288,10 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
     }
 
     companion object {
+        // KMK: bound on doWork() Result.retry() attempts before falling back to Result.failure()
+        // for this periodic run -- see doWork()'s doc comment.
+        const val MAX_RUN_ATTEMPTS = 3
+
         private const val MAX_UPDATE_FAILURES = 5
 
         private val MIN_BACKGROUND_UPDATE_FREQ = 1.days.inWholeMilliseconds
@@ -344,3 +372,21 @@ object EHentaiUpdateWorkerConstants {
 
     val GALLERY_AGE_TIME = 365.days.inWholeMilliseconds
 }
+
+// KMK -->
+/**
+ * Pure decision boundary for [EHentaiUpdateWorker.doWork]'s ordinary-exception path: below the
+ * attempt cap, WorkManager should retry this periodic run with backoff; at or beyond the cap, the
+ * run should report [Result.failure] instead so [runAttemptCount] never grows unbounded and a
+ * genuinely permanent failure eventually surfaces rather than retrying forever.
+ */
+object EHentaiUpdateWorkerResultPolicy {
+    sealed interface Outcome {
+        data object Retry : Outcome
+        data object Failure : Outcome
+    }
+
+    fun classify(runAttemptCount: Int, maxAttempts: Int): Outcome =
+        if (runAttemptCount < maxAttempts) Outcome.Retry else Outcome.Failure
+}
+// KMK <--

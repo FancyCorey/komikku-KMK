@@ -21,6 +21,7 @@ import exh.util.ThrottleManager
 import exh.util.createPartialWakeLock
 import exh.util.createWifiLock
 import exh.util.ignore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,6 +122,8 @@ class FavoritesSyncHelper(val context: Context) {
         val favorites = try {
             status.value = FavoritesSyncStatus.Processing.DownloadingFavorites
             exh.fetchFavorites()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             status.value = FavoritesSyncStatus.SyncError.FailedToFetchFavorites
             logger()?.e(context.stringResource(SYMR.strings.favorites_sync_could_not_fetch), e)
@@ -164,12 +167,16 @@ class FavoritesSyncHelper(val context: Context) {
             withUIContext {
                 context.toast(SYMR.strings.favorites_sync_complete)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: IgnoredException) {
             // Do not display error as this error has already been reported
             logger()?.w(context.stringResource(SYMR.strings.favorites_sync_ignoring_exception), e)
             return
         } catch (e: Exception) {
-            status.value = FavoritesSyncStatus.SyncError.UnknownSyncError(e.message.orEmpty())
+            status.value = FavoritesSyncStatus.SyncError.UnknownSyncError(
+                context.stringResource(SYMR.strings.favorites_sync_sync_error),
+            )
             logger()?.e(context.stringResource(SYMR.strings.favorites_sync_sync_error), e)
             return
         } finally {
@@ -261,6 +268,8 @@ class FavoritesSyncHelper(val context: Context) {
                     success = true
                     break
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger()?.w(context.stringResource(SYMR.strings.favorites_sync_network_error), e)
             }

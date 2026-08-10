@@ -5,6 +5,7 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.manga.model.toDomainManga
@@ -67,14 +68,22 @@ class GroupRecommendationSeedBuilder(
         url: String,
         primaryTitle: String,
     ): GroupRecommendationSeed {
-        val link: CrossSourceMangaLink? = runCatching {
+        val link: CrossSourceMangaLink? = try {
             getCrossSourceMangaLinks.awaitBySourceUrl(sourceId, url)
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
 
         val groupMembers: List<CrossSourceMangaLink> = if (link != null) {
-            runCatching {
+            try {
                 getCrossSourceMangaLinks.awaitByGroupId(link.groupId)
-            }.getOrDefault(listOf(link))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                listOf(link)
+            }
         } else {
             emptyList()
         }
@@ -93,7 +102,13 @@ class GroupRecommendationSeedBuilder(
         // Step 1: Load local DB manga for all members (used as enrichment base)
         val mangaByKey = mutableMapOf<Pair<Long, String>, Manga>()
         for ((membSource, membUrl) in memberKeys) {
-            val manga = runCatching { getManga.await(membUrl, membSource) }.getOrNull() ?: continue
+            val manga = try {
+                getManga.await(membUrl, membSource)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            } ?: continue
             mangaByKey[membSource to membUrl] = manga
         }
 

@@ -120,6 +120,8 @@ class DownloadCache(
                         rootDownloadsDir = diskCache
                         lastRenew = System.currentTimeMillis()
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     logcat(LogPriority.ERROR, e) { "Failed to initialize from disk cache" }
                     diskCacheFile.delete()

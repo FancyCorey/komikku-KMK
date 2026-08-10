@@ -24,6 +24,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.util.ioCoroutineScope
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -44,6 +45,7 @@ import exh.source.isEhBasedSource
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -96,6 +98,20 @@ import uy.kohesive.injekt.api.get
 import xyz.nulldev.ts.api.http.serializer.FilterSerializer
 import java.time.Instant
 import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
+
+// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: see
+// BrowseSourceScreenModel.createSourcePagingSource for call site and rationale.
+internal fun selectBrowseSourcePagingSource(
+    isDebugBuild: Boolean,
+    fixtureModeEnabled: Boolean,
+    realPagingSourceProvider: () -> SourcePagingSource,
+    fixturePagingSourceProvider: () -> SourcePagingSource,
+): SourcePagingSource =
+    if (isDebugBuild && fixtureModeEnabled) {
+        fixturePagingSourceProvider()
+    } else {
+        realPagingSourceProvider()
+    }
 
 open class BrowseSourceScreenModel(
     /* KMK --> */
@@ -156,10 +172,8 @@ open class BrowseSourceScreenModel(
     private fun safeFilterList(src: Source = source): FilterList {
         return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
             getFilterList()
-        }.getOrElse { throwable ->
-            logcat(LogPriority.WARN, throwable) {
-                "BrowseSourceScreenModel[${src.name}]: getFilterList failed"
-            }
+        }.getOrElse {
+            logcat(LogPriority.WARN) { "Browse source filter loading failed" }
             FilterList()
         }
     }
@@ -469,8 +483,10 @@ open class BrowseSourceScreenModel(
                             fetchDetails = fetchMetadataOnAdd,
                             fetchChapters = fetchChaptersOnAdd,
                         ).getOrThrowSourceRuntimeException()
-                    } catch (e: Exception) {
-                        logcat(LogPriority.ERROR, e)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        logcat(LogPriority.ERROR) { "Browse metadata update failed" }
                     }
                 }
             }
@@ -515,7 +531,26 @@ open class BrowseSourceScreenModel(
 
     // SY -->
     open fun createSourcePagingSource(query: String, filters: FilterList): SourcePagingSource {
-        return getRemoteManga(sourceId, query, filters)
+        // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: pure decision
+        // extracted to selectBrowseSourcePagingSource so the debug/release gating is directly
+        // unit-testable. BuildConfig.DEBUG folds to `false` for every non-debug build type, so this
+        // is unreachable and dead-code-eliminable outside a debug build regardless of the
+        // preference value.
+        //
+        // Corrective pass 2026-08-03: this previously read
+        // SourcePreferences.evaluationFixtureFailureMode() -- the Source-Evaluation-named
+        // preference -- which meant any non-off Source Evaluation debug mode silently also
+        // activated this unrelated Browse failure fixture. Now reads the separate
+        // SourcePreferences.browseFixtureFailureMode() opt-in via BrowseDebugFixtureMode so the two
+        // debug-only fixture systems can never cross-activate each other.
+        return selectBrowseSourcePagingSource(
+            isDebugBuild = BuildConfig.DEBUG,
+            fixtureModeEnabled = BrowseDebugFixtureMode.fromPrefValue(
+                sourcePreferences.browseFixtureFailureMode().get(),
+            ) != BrowseDebugFixtureMode.OFF,
+            realPagingSourceProvider = { getRemoteManga(sourceId, query, filters) },
+            fixturePagingSourceProvider = { BrowseDeterministicFixturePagingSource() },
+        )
     }
     // SY <--
 

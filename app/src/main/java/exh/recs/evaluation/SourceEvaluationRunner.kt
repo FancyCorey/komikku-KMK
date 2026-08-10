@@ -47,6 +47,18 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 // KMK -->
+// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: minimal contract
+// extracted from SourceEvaluationRunner's existing public surface so SourceEvaluationJob can type
+// -substitute a deterministic debug-only fixture implementation
+// (SourceEvaluationDebugFixtureRunner) without touching production runner internals or requiring a
+// separate debug source set. No behavior change for the real runner.
+interface SourceEvaluationRunnerContract {
+    val state: StateFlow<SourceEvaluationQueueState>
+    val completedCandidateKeys: Set<String>
+    fun start(candidates: List<EvaluationCandidate>, options: SourceEvaluationOptions)
+    fun cancel()
+}
+
 /**
  * Orchestrates one-at-a-time evaluation of non-installed extension candidates.
  *
@@ -76,12 +88,12 @@ class SourceEvaluationRunner(
     private val upsertSourceRecommendationFit: UpsertSourceRecommendationFit = Injekt.get(),
     private val getTagAliases: GetTagAliases = Injekt.get(),
     // KMK <--
-) {
+) : SourceEvaluationRunnerContract {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var runJob: Job? = null
 
     private val _state = MutableStateFlow(SourceEvaluationQueueState())
-    val state: StateFlow<SourceEvaluationQueueState> = _state.asStateFlow()
+    override val state: StateFlow<SourceEvaluationQueueState> = _state.asStateFlow()
 
     // KMK --> v0.7.6: keys of candidates handed to the runner in this batch (for cursor advance)
     // KMK v0.8.15-fix1: narrowed contract -- this set (and therefore both stale-cursor advancement
@@ -94,10 +106,10 @@ class SourceEvaluationRunner(
     // independent guarantee that a no-write skip can never advance the cursor or count as durable
     // work.
     private val _completedCandidateKeys = mutableSetOf<String>()
-    val completedCandidateKeys: Set<String> get() = _completedCandidateKeys.toSet()
+    override val completedCandidateKeys: Set<String> get() = _completedCandidateKeys.toSet()
     // KMK <--
 
-    fun start(candidates: List<EvaluationCandidate>, options: SourceEvaluationOptions) {
+    override fun start(candidates: List<EvaluationCandidate>, options: SourceEvaluationOptions) {
         if (runJob?.isActive == true) return
 
         // KMK --> v0.6.13: compute privateAvailable once for diagnostics logging
@@ -130,6 +142,8 @@ class SourceEvaluationRunner(
                 // KMK --> v0.6.16: crash quarantine — clear any stale probe marker before batch begins
                 try {
                     clearProbeMarker.await()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) { /* ignore */ }
                 // KMK <--
                 // KMK --> v0.7.6: reset completed keys for this run
@@ -143,7 +157,13 @@ class SourceEvaluationRunner(
                 )
                 // KMK --> v0.7.42: loaded once per batch — catalogue-fit scoring now resolves tags
                 // through the same alias map PersonalRecommendationScorer uses (decision D4)
-                val aliasMap = runCatching { getTagAliases.awaitAliasMap() }.getOrDefault(emptyMap())
+                val aliasMap = try {
+                    getTagAliases.awaitAliasMap()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyMap()
+                }
                 // KMK <--
 
                 supervisorScope {
@@ -210,18 +230,18 @@ class SourceEvaluationRunner(
             } catch (e: CancellationException) {
                 _state.update { it.copy(status = SourceEvaluationQueueState.Status.Cancelled) }
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "Evaluation batch failed" }
+                logcat(LogPriority.ERROR) { "KMK SourceEvaluation: evaluation batch failed" }
                 _state.update {
                     it.copy(
                         status = SourceEvaluationQueueState.Status.Failed,
-                        errorMessage = e.message,
+                        errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e),
                     )
                 }
             }
         }
     }
 
-    fun cancel() {
+    override fun cancel() {
         _state.update { it.copy(status = SourceEvaluationQueueState.Status.Cancelling) }
         runJob?.cancel()
     }
@@ -260,12 +280,12 @@ class SourceEvaluationRunner(
             it.pkgName == ext.pkgName && it.signatureHash == ext.signatureHash
         }
         logcat(LogPriority.DEBUG) {
-            "KMK SourceEvaluation install: ext=${ext.name} pkg=${ext.pkgName} sig=${ext.signatureHash}" +
-                " mode=${options.installerMode} override=$installerOverride" +
-                " privateAvailable=$privateAvailable wasPreExisting=${preExistingInstalled != null}"
+            "KMK SourceEvaluation install: begin" +
+                " mode=${options.installerMode} privateAvailable=$privateAvailable" +
+                " wasPreExisting=${preExistingInstalled != null}"
         }
         if (preExistingInstalled != null) {
-            logcat(LogPriority.INFO) { "KMK SourceEvaluation install: skipping ${ext.name} — already installed before evaluation" }
+            logcat(LogPriority.INFO) { "KMK SourceEvaluation install: skipped pre-existing extension" }
             return recordExtensionError(ext, "Already installed before evaluation", SourceEvaluationQueueState.CleanupStatus.SkippedPreExisting)
         }
         // KMK <--
@@ -285,7 +305,7 @@ class SourceEvaluationRunner(
                 installAndWait(ext, installerOverride)
             }
             if (installResult == null) {
-                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} install timed out after 90000ms" }
+                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: install phase exceeded 90000ms" }
                 return recordExtensionError(ext, "Install timed out after 90s")
             }
             if (!installResult) {
@@ -309,12 +329,12 @@ class SourceEvaluationRunner(
 
             // KMK --> v0.6.13: log isShared after install for diagnostics
             logcat(LogPriority.DEBUG) {
-                "KMK SourceEvaluation install: post-install ${ext.name} isShared=${installedExt?.isShared}"
+                "KMK SourceEvaluation install: post-install isShared=${installedExt?.isShared}"
             }
             // KMK <--
 
             if (installedExt == null) {
-                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} loading sources timed out after 20000ms" }
+                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: source loading exceeded 20000ms" }
                 return recordExtensionError(ext, "Loading sources timed out after 20s")
             }
             // KMK <-- (closes v0.6.14 load timeout block)
@@ -334,7 +354,7 @@ class SourceEvaluationRunner(
                     addResult(ext, source, evaluation.verdict)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
-                    logcat(LogPriority.WARN, e) { "Probe failed for source ${source.name}" }
+                    logcat(LogPriority.WARN) { "KMK SourceEvaluation: source probe failed" }
                     val errRecord = SourceEvaluationScorer.errorRecord(
                         extensionName = ext.name,
                         pkgName = ext.pkgName,
@@ -364,7 +384,7 @@ class SourceEvaluationRunner(
                     // still rethrow.
                     val unwrapped = e.unwrapSourceRuntimeCause()
                     if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                    logcat(LogPriority.WARN, unwrapped) { "Probe failed for source ${source.name} (extension linkage failure)" }
+                    logcat(LogPriority.WARN) { "KMK SourceEvaluation: source probe failed due to extension linkage" }
                     val errRecord = SourceEvaluationScorer.errorRecord(
                         extensionName = ext.name,
                         pkgName = ext.pkgName,
@@ -388,7 +408,7 @@ class SourceEvaluationRunner(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Extension evaluation failed: ${ext.name}" }
+            logcat(LogPriority.ERROR) { "KMK SourceEvaluation: extension evaluation failed" }
             // KMK v0.7.46: classified key, not raw exception text — same UI path (EvaluationResultRow)
             // as the per-source probe catch above; see SourceEvaluationProbeErrorClassifier.
             return recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e))
@@ -398,7 +418,7 @@ class SourceEvaluationRunner(
             // not abort the whole evaluation run.
             val unwrapped = e.unwrapSourceRuntimeCause()
             if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-            logcat(LogPriority.ERROR, unwrapped) { "Extension evaluation failed: ${ext.name} (extension linkage failure)" }
+            logcat(LogPriority.ERROR) { "KMK SourceEvaluation: extension evaluation failed due to linkage" }
             return recordExtensionError(ext, SourceEvaluationProbeErrorClassifier.classifyToStorageKey(unwrapped))
         } finally {
             // KMK --> v0.6.16: crash quarantine — write marker before cleanup, then clear after
@@ -423,6 +443,8 @@ class SourceEvaluationRunner(
             // KMK --> v0.6.16: crash quarantine — clear marker after normal completion
             try {
                 clearProbeMarker.await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) { /* ignore DB errors in finally */ }
             // KMK <--
             // KMK --> v0.6.14: advance completedCount for all outcomes (success, fail, timeout) except pre-existing skip
@@ -457,8 +479,10 @@ class SourceEvaluationRunner(
                     batchId = batchId,
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to write probe marker for ${ext.name} phase=${phase.name}" }
+            logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to write probe marker phase=${phase.name}" }
         }
     }
     // KMK <--
@@ -518,7 +542,7 @@ class SourceEvaluationRunner(
             SourceRuntime.run(source, SourceRuntimeOperation.Popular) { getPopularManga(1) }
         }
         if (popularResult == null) {
-            logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} popular probe timed out after 30000ms" }
+            logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: popular probe exceeded 30000ms" }
             errorCount++
         } else {
             popularResult.fold(
@@ -545,7 +569,7 @@ class SourceEvaluationRunner(
                 SourceRuntime.run(source, SourceRuntimeOperation.Latest) { getLatestUpdates(1) }
             }
             if (latestResult == null) {
-                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: ${ext.name} / ${source.name} latest probe timed out after 30000ms" }
+                logcat(LogPriority.INFO) { "KMK SourceEvaluation timeout: latest probe exceeded 30000ms" }
                 errorCount++
             } else {
                 latestResult.fold(
@@ -641,12 +665,12 @@ class SourceEvaluationRunner(
                 )
                 upsertSourceRecommendationFit.await(fit)
                 logcat(LogPriority.DEBUG) {
-                    "KMK SourceEvaluation rec-fit probe: ${source.name} verdict=${verdict.serialized} score=$qualityScore"
+                    "KMK SourceEvaluation rec-fit probe completed verdict=${verdict.serialized} score=$qualityScore"
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "KMK SourceEvaluation rec-fit probe failed for ${source.name}" }
+                logcat(LogPriority.WARN) { "KMK SourceEvaluation rec-fit probe failed" }
                 // Probe failure does not affect the source evaluation verdict
             }
         }
@@ -674,7 +698,7 @@ class SourceEvaluationRunner(
             )
 
             logcat(LogPriority.DEBUG) {
-                "KMK SourceEvaluation install: cleanup ${ext.name} decision=$decision" +
+                "KMK SourceEvaluation install: cleanup decision=$decision" +
                     " isShared=${installedExt?.isShared} promptAllowed=$promptHeavyCleanupAllowed"
             }
 
@@ -691,7 +715,7 @@ class SourceEvaluationRunner(
                         extensionManager.uninstallExtension(installedExt!!)
                     } else {
                         logcat(LogPriority.INFO) {
-                            "KMK SourceEvaluation install: skipping cleanup for ${ext.name} — system-installed, prompt not allowed"
+                            "KMK SourceEvaluation install: skipping cleanup for system-installed extension; prompt not allowed"
                         }
                     }
                     SourceEvaluationQueueState.CleanupStatus.PromptRequired
@@ -700,9 +724,10 @@ class SourceEvaluationRunner(
                     SourceEvaluationQueueState.CleanupStatus.NotNeeded
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) return SourceEvaluationQueueState.CleanupStatus.Failed
-            logcat(LogPriority.WARN, e) { "Cleanup failed for ${ext.name}" }
+            logcat(LogPriority.WARN) { "KMK SourceEvaluation: cleanup failed" }
             SourceEvaluationQueueState.CleanupStatus.Failed
         }
     }
@@ -777,7 +802,7 @@ class SourceEvaluationRunner(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "KMK SourceEvaluation: failed to atomically reconcile stale package rows for ${ext.name} (pkg=${ext.pkgName})" }
+            logcat(LogPriority.WARN) { "KMK SourceEvaluation: failed to atomically reconcile stale package rows" }
             false
         }
         val outcome = SourceEvaluationExtensionErrorReconciliationPolicy.resolve(deleteSucceeded = replaceSucceeded)

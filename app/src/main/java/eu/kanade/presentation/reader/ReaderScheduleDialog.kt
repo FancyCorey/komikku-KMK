@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
@@ -30,9 +31,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.google.android.material.timepicker.MaterialTimePicker
 import com.google.android.material.timepicker.TimeFormat
+import eu.kanade.presentation.components.KmkEmptyStateArtwork
+import eu.kanade.presentation.components.KmkEmptyStateIllustration
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleMode
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleWindow
 import tachiyomi.i18n.MR
@@ -112,11 +116,23 @@ fun ReaderScheduleDialog(
                     modifier = Modifier.padding(top = MaterialTheme.padding.medium),
                 )
                 if (windows.isEmpty()) {
-                    Text(
-                        text = stringResource(KMR.strings.reading_schedule_no_windows),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // Keep this compact because the add-window action must remain immediately visible
+                    // within the dialog.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                    ) {
+                        KmkEmptyStateIllustration(
+                            artwork = KmkEmptyStateArtwork.READER_SCHEDULE,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(40.dp),
+                        )
+                        Text(
+                            text = stringResource(KMR.strings.reading_schedule_no_windows),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 windows.forEachIndexed { index, window ->
                     Row(

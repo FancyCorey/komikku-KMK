@@ -3,6 +3,7 @@ package tachiyomi.domain.manga.interactor
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.metadata.metadata.base.FlatMetadata
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.repository.MangaMetadataRepository
@@ -14,6 +15,8 @@ class InsertFlatMetadata(
     suspend fun await(flatMetadata: FlatMetadata) {
         try {
             mangaMetadataRepository.insertFlatMetadata(flatMetadata)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }
@@ -22,6 +25,8 @@ class InsertFlatMetadata(
     override suspend fun await(metadata: RaisedSearchMetadata) {
         try {
             mangaMetadataRepository.insertMetadata(metadata)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }

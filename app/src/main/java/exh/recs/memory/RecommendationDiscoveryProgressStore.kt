@@ -1,6 +1,7 @@
 package exh.recs.memory
 
 // KMK --> v0.7.39: For You rolling discovery progress
+import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.taste.interactor.GetRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.interactor.UpsertRecommendationDiscoveryProgress
 import tachiyomi.domain.taste.model.RecommendationDiscoveryProgress
@@ -22,11 +23,23 @@ class RecommendationDiscoveryProgressStore(
         sourceId: Long,
         querySignature: String,
     ): List<RecommendationDiscoveryProgress> =
-        runCatching { getProgress.awaitBySourceQuery(sourceId, querySignature) }.getOrDefault(emptyList())
+        try {
+            getProgress.awaitBySourceQuery(sourceId, querySignature)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
 
     /** Return the set of pages already evaluated for this source + query. */
     suspend fun evaluatedPages(sourceId: Long, querySignature: String): Set<Int> =
-        runCatching { getProgress.awaitEvaluatedPages(sourceId, querySignature) }.getOrDefault(emptySet())
+        try {
+            getProgress.awaitEvaluatedPages(sourceId, querySignature)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptySet()
+        }
 
     /** Record the outcome of probing a page (called for both page 1 and additional pages). */
     suspend fun recordProgress(
@@ -68,7 +81,14 @@ class RecommendationDiscoveryProgressStore(
             nextRetryAt = nextRetryAt,
             failureKind = failureKind,
         )
-        runCatching { upsertProgress.await(entry) }
+        try {
+            upsertProgress.await(entry)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best-effort progress tracking; a failed write here only means this page may be
+            // retried on a later pass, which is safe and already handled by the retry/backoff logic.
+        }
     }
 }
 // KMK <--

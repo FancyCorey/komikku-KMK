@@ -39,6 +39,8 @@ import eu.kanade.presentation.components.SourcesSearchBox
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.ui.browse.feed.FeedScreenState
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
@@ -85,6 +87,7 @@ fun FeedScreen(
     onRefresh: () -> Unit,
     getMangaState: @Composable (Manga) -> State<Manga>,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     when {
         state.isLoading -> LoadingScreen()
         state.isEmpty -> EmptyScreen(
@@ -119,8 +122,16 @@ fun FeedScreen(
                     ) { item ->
                         // KMK <--
                         GlobalSearchResultItem(
-                            title = item.title,
-                            subtitle = item.subtitle,
+                            title = if (evaluationModeEnabled && item.source != null && item.savedSearch == null) {
+                                EvaluationModeFormatter.sourceLabel(item.source.id)
+                            } else {
+                                item.title
+                            },
+                            subtitle = if (evaluationModeEnabled && item.source != null && item.savedSearch != null) {
+                                EvaluationModeFormatter.sourceLabel(item.source.id)
+                            } else {
+                                item.subtitle
+                            },
                             onLongClick = {
                                 // KMK -->
                                 onLongClickFeed(item)
@@ -190,6 +201,7 @@ fun FeedAddDialog(
     onClickAdd: (Source?) -> Unit,
 ) {
     // KMK -->
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     var query by remember { mutableStateOf("") }
     val sourceList = sources
         .filter { source ->
@@ -213,7 +225,13 @@ fun FeedAddDialog(
                 )
                 SourceIcon(source = source)
                 Spacer(modifier = Modifier.width(MaterialTheme.padding.extraSmall))
-                Text(text = it.getNameForMangaInfo())
+                Text(
+                    text = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(it.id)
+                    } else {
+                        it.getNameForMangaInfo()
+                    },
+                )
             }
         }
     // KMK <--
@@ -252,10 +270,17 @@ fun FeedAddSearchDialog(
     onDismiss: () -> Unit,
     onClickAdd: (Source, SavedSearch?) -> Unit,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     var selected by remember { mutableStateOf<Int?>(null) }
     AlertDialog(
         title = {
-            Text(text = source.name)
+            Text(
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(source.id)
+                } else {
+                    source.name
+                },
+            )
         },
         text = {
             val context = LocalContext.current

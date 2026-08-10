@@ -67,6 +67,8 @@ import eu.kanade.presentation.more.settings.LocalPreferenceMinHeight
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.model.StubSource
@@ -100,6 +102,7 @@ fun DuplicateMangaDialog(
     stopRunning: () -> Unit = {},
     // KMK <--
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     val sourceManager = remember { Injekt.get<SourceManager>() }
     val minHeight = LocalPreferenceMinHeight.current
     val horizontalPadding = PaddingValues(horizontal = TabbedDialogPaddings.Horizontal)
@@ -160,6 +163,7 @@ fun DuplicateMangaDialog(
                     DuplicateMangaListItem(
                         duplicate = it,
                         getSource = { sourceManager.getOrStub(it.manga.source) },
+                        evaluationModeEnabled = evaluationModeEnabled,
                         onMigrate = { onMigrate(it.manga) },
                         onOpenManga = { onOpenManga(it.manga) },
                     )
@@ -290,6 +294,7 @@ fun DuplicateMangaDialog(
 private fun DuplicateMangaListItem(
     duplicate: MangaWithChapterCount,
     getSource: () -> Source,
+    evaluationModeEnabled: Boolean,
     onOpenManga: () -> Unit,
     onMigrate: () -> Unit,
 ) {
@@ -425,7 +430,11 @@ private fun DuplicateMangaListItem(
                 )
             }
             Text(
-                text = source.name,
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(source.id)
+                } else {
+                    source.name
+                },
                 style = MaterialTheme.typography.labelSmall,
                 overflow = TextOverflow.Ellipsis,
                 maxLines = 1,

@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.browse.extension
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -9,11 +11,17 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.util.ExtensionApkExporter
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.export.SafArtifactOutcome
+import eu.kanade.tachiyomi.util.export.SafExportCoordinator
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import eu.kanade.tachiyomi.util.system.toast
+import exh.recs.KmkRecsReleaseNotes
 import exh.util.NonUndoableEventType
 import exh.util.PackageOperationKind
 import exh.util.recordPackageOperationReceipt
@@ -35,11 +43,13 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
+import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 class ExtensionsScreenModel(
     private val preferences: SourcePreferences = Injekt.get(),
@@ -56,6 +66,69 @@ class ExtensionsScreenModel(
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
+
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass (finding #2):
+    // screenModelScope-owned, not Composable-`remember`-owned -- the bulk extension export route
+    // (previously its own ad hoc `bulkExportCleanupUri`/`bulkExportCleanupKind` `remember` state in
+    // ExtensionsTab.kt) now shares the same lifecycle-safe coordinator/dialog every other export route
+    // in the app uses.
+    // Keep successful-artifact cleanup isolated to debug fixture builds; release exports remain
+    // non-removable through the app after a verified successful write.
+    val bulkExportCoordinator = SafExportCoordinator(allowSuccessfulRemoval = BuildConfig.DEBUG)
+
+    /**
+     * [selected] is captured by the caller (extensionsTab's launcher callback) at the moment the
+     * picker returns, from the same selection snapshot the callback already reads off `state` --
+     * this function does not re-read selection itself, since the caller's exit-selection-mode timing
+     * must stay caller-owned. [operationId] must come from a prior successful
+     * [SafExportCoordinator.beginOperation] call made by the caller before the picker was launched.
+     * Returns `false` if [operationId] could not be registered so the caller can fall back to a
+     * truthful cleanup path for [uri] instead of silently discarding it.
+     */
+    fun exportSelectedExtensions(context: Context, operationId: String, uri: Uri, selected: List<Extension.Installed>): Boolean {
+        if (!bulkExportCoordinator.registerUri(operationId, uri)) return false
+        screenModelScope.launch {
+            bulkExportCoordinator.performWrite(operationId) {
+                if (selected.isEmpty()) {
+                    SafArtifactOutcome.PARTIAL_OR_EMPTY
+                } else {
+                    val result = ExtensionApkExporter.exportMultiple(
+                        context = context,
+                        extensions = selected,
+                        destUri = uri,
+                        appVersion = eu.kanade.tachiyomi.BuildConfig.VERSION_NAME,
+                        kmkVersion = KmkRecsReleaseNotes.VERSION_NAME,
+                    )
+                    val outcome = result.fold(
+                        onSuccess = { summary ->
+                            if (summary.exportedCount > 0) SafArtifactOutcome.SUCCESS else SafArtifactOutcome.PARTIAL_OR_EMPTY
+                        },
+                        onFailure = { SafArtifactOutcome.FAILED },
+                    )
+                    withUIContext {
+                        result.fold(
+                            onSuccess = { summary ->
+                                val message = if (summary.skippedPkgNames.isEmpty()) {
+                                    context.contextStringResource(KMR.strings.extension_export_multi_success, summary.exportedCount)
+                                } else {
+                                    context.contextStringResource(
+                                        KMR.strings.extension_export_multi_partial,
+                                        summary.exportedCount,
+                                        summary.skippedPkgNames.size,
+                                    )
+                                }
+                                context.toast(message)
+                            },
+                            onFailure = { context.toast(context.contextStringResource(KMR.strings.extension_export_failed)) },
+                        )
+                    }
+                    outcome
+                }
+            }
+            exitExtensionSelectionMode()
+        }
+        return true
+    }
 
     init {
         val context = Injekt.get<Application>()

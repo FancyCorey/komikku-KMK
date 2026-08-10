@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import cafe.adriel.voyager.core.model.StateScreenModel
 import eu.kanade.presentation.more.stats.StatsScreenState
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.safeHeadersOrNull
@@ -40,7 +41,7 @@ class WebViewScreenModel(
         try {
             context.startActivity(url.toUri().toShareIntent(context, type = "text/plain"))
         } catch (e: Exception) {
-            context.toast(e.message)
+            context.toast(with(context) { e.formattedMessage })
         }
     }
 
@@ -51,7 +52,7 @@ class WebViewScreenModel(
     fun clearCookies(url: String) {
         url.toHttpUrlOrNull()?.let {
             val cleared = network.cookieJar.remove(it)
-            logcat { "Cleared $cleared cookies for: $url" }
+            logcat { "Cleared $cleared WebView cookies" }
         }
     }
 }

@@ -1,6 +1,7 @@
 package exh.recs.settings
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.taste.model.SourceEvaluation
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
@@ -115,6 +116,51 @@ class SourceMetadataTagDiagnosticsPolicyTest {
         val eval = evaluation("ext-1", 1L, "Source", 10L)
         assertEquals(0, eval.detailEnrichmentSuccessCount)
         assertEquals(0, eval.detailEnrichmentAttemptCount)
+    }
+    // KMK <--
+
+    // KMK Final Evidence Closure 2026-07-30 -->
+    // Regression coverage for SourceMetadataTagDiagnosticsPolicy.sourceLabelFor, extracted from
+    // SourceMetadataTagDiagnosticsContent's row rendering so this privacy branch is directly
+    // testable rather than only confirmed by reading the Composable's source.
+
+    @Test
+    fun `Evaluation Mode off returns the real source name`() {
+        val eval = evaluation("ext-1", 1L, "MangaDex", 10L)
+        val label = SourceMetadataTagDiagnosticsPolicy.sourceLabelFor(eval, evaluationModeEnabled = false)
+        assertEquals("MangaDex", label)
+    }
+
+    @Test
+    fun `Evaluation Mode on with a source id never returns the raw source name`() {
+        val eval = evaluation("ext-1", 1L, "MangaDex", 10L)
+        val label = SourceMetadataTagDiagnosticsPolicy.sourceLabelFor(eval, evaluationModeEnabled = true)
+        assertEquals(exh.util.EvaluationModeFormatter.sourceLabel(1L), label)
+        assertTrue(label != "MangaDex")
+    }
+
+    @Test
+    fun `Evaluation Mode on with a missing source id falls back to the evaluation key, still not the raw name`() {
+        val eval = evaluation("extension-only", null, "MangaDex", 10L)
+        val label = SourceMetadataTagDiagnosticsPolicy.sourceLabelFor(eval, evaluationModeEnabled = true)
+        assertEquals(exh.util.EvaluationModeFormatter.sourceLabel("extension-only"), label)
+        assertTrue(label != "MangaDex")
+    }
+
+    @Test
+    fun `sourceLabelFor never leaks the raw source name across every row in a latestPerSource batch`() {
+        val rows = SourceMetadataTagDiagnosticsPolicy.latestPerSource(
+            listOf(
+                evaluation("ext-1", 1L, "MangaDex", 10L),
+                evaluation("ext-2", 2L, "Comick", 10L),
+                evaluation("ext-3", null, "Batoto", 10L),
+            ),
+        )
+        val rawNames = rows.map { it.sourceName }.toSet()
+        for (row in rows) {
+            val label = SourceMetadataTagDiagnosticsPolicy.sourceLabelFor(row, evaluationModeEnabled = true)
+            assertTrue(label !in rawNames, "leaked a raw source name for ${row.evaluationKey}: $label")
+        }
     }
     // KMK <--
 }

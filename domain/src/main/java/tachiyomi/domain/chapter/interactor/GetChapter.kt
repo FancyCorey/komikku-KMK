@@ -1,5 +1,6 @@
 package tachiyomi.domain.chapter.interactor
 
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
@@ -12,6 +13,8 @@ class GetChapter(
     suspend fun await(id: Long): Chapter? {
         return try {
             chapterRepository.getChapterById(id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             null
@@ -21,6 +24,8 @@ class GetChapter(
     suspend fun await(url: String, mangaId: Long): Chapter? {
         return try {
             chapterRepository.getChapterByUrlAndMangaId(url, mangaId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             null

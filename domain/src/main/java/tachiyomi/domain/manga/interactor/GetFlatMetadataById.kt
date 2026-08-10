@@ -2,6 +2,7 @@ package tachiyomi.domain.manga.interactor
 
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import exh.metadata.metadata.base.FlatMetadata
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import logcat.LogPriority
@@ -23,6 +24,8 @@ class GetFlatMetadataById(
             } else {
                 null
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             null

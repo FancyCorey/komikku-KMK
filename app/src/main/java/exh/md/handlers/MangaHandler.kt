@@ -36,7 +36,13 @@ class MangaHandler(
             val simpleChapters = async(Dispatchers.IO) { getSimpleChapters(manga) }
             val statistics =
                 async(Dispatchers.IO) {
-                    kotlin.runCatching { service.mangasRating(mangaId) }.getOrNull()?.statistics?.get(mangaId)
+                    try {
+                        service.mangasRating(mangaId).statistics?.get(mangaId)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
             val responseData = response.await()
             val coverFileName = if (tryUsingFirstVolumeCover) {

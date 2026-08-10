@@ -93,7 +93,7 @@ class LinkedVersionListScreenModel(
     }
 
     private suspend fun load() {
-        runCatching {
+        try {
             val links = getCrossSourceMangaLinks.awaitByGroupId(groupId)
             if (links.isEmpty()) {
                 mutableState.value = State.Empty
@@ -105,11 +105,28 @@ class LinkedVersionListScreenModel(
             val members = links.map { link ->
                 // Missing/uninstalled sources must not crash — sourceManager.get() returns null
                 // for a source that isn't currently installed, which is the "missing" signal here.
-                val source = runCatching { sourceManager.get(link.source) }.getOrNull()
-                val manga = runCatching {
+                // sourceManager.get() is a synchronous lookup, not a suspend call.
+                val source = try {
+                    sourceManager.get(link.source)
+                } catch (e: Exception) {
+                    null
+                }
+                val manga = try {
                     getManga.await(link.url, link.source)
-                }.getOrNull()
-                val taste = manga?.let { m -> runCatching { getMangaTaste.await(m.id) }.getOrNull() }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                val taste = manga?.let { m ->
+                    try {
+                        getMangaTaste.await(m.id)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
                 LinkedVersionListBuilder.MemberInput(
                     link = link,
                     sourceName = source?.name,
@@ -120,8 +137,9 @@ class LinkedVersionListScreenModel(
             }
             val rows = LinkedVersionListBuilder.build(members, primary)
             mutableState.value = State.Success(groupId = groupId, rows = rows)
-        }.onFailure { e ->
-            if (e is CancellationException) throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
             mutableState.value = State.Error(e)
         }
     }
@@ -132,22 +150,46 @@ class LinkedVersionListScreenModel(
 
     fun setPrimary(key: RatedMangaKey) {
         screenModelScope.launch {
-            runCatching { setCrossSourceGroupPrimary.await(groupId, key.source, key.url) }
+            try {
+                setCrossSourceGroupPrimary.await(groupId, key.source, key.url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // load() below still runs and reflects whatever the actual persisted state is.
+            }
             load()
         }
     }
 
     fun removeFromGroup(key: RatedMangaKey) {
         screenModelScope.launch {
-            runCatching { deleteCrossSourceMangaLink.awaitBySourceUrl(key.source, key.url) }
+            try {
+                deleteCrossSourceMangaLink.awaitBySourceUrl(key.source, key.url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // load() below still runs and reflects whatever the actual persisted state is.
+            }
             load()
         }
     }
 
     fun ungroup() {
         screenModelScope.launch {
-            runCatching { deleteCrossSourceMangaLink.awaitByGroupId(groupId) }
-            runCatching { clearCrossSourceGroupPrimary.await(groupId) }
+            try {
+                deleteCrossSourceMangaLink.awaitByGroupId(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // load() below still runs and reflects whatever the actual persisted state is.
+            }
+            try {
+                clearCrossSourceGroupPrimary.await(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // load() below still runs and reflects whatever the actual persisted state is.
+            }
             load()
         }
     }

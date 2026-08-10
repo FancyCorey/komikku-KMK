@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.util.lang.htmlDecode
 import exh.log.xLogW
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import tachiyomi.i18n.MR
 import tachiyomi.domain.track.model.Track as DomainTrack
 
@@ -87,6 +88,8 @@ class MangaUpdates(id: Long) : BaseTracker(id, "MangaUpdates"), DeletableTracker
         return try {
             val (series, rating) = api.getSeriesListItem(track)
             track.copyFrom(series, rating)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             track.score = 0.0
             api.addSeriesToList(track, hasReadChapters)
@@ -155,7 +158,7 @@ class MangaUpdates(id: Long) : BaseTracker(id, "MangaUpdates"), DeletableTracker
                 api.getSeries(longId).toTrackSearch(this.id)
             }
         } catch (e: Exception) {
-            xLogW("Error during searchById '$id': ${e.message}", e)
+            xLogW("MangaUpdates search-by-ID failed")
             null
         }
     }

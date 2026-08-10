@@ -43,6 +43,7 @@ import eu.kanade.presentation.libraryUpdateError.components.libraryUpdateErrorUi
 import eu.kanade.presentation.manga.components.Button
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorItem
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreenState
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -73,6 +74,7 @@ fun LibraryUpdateErrorScreen(
     BackHandler(enabled = state.selectionMode, onBack = { onSelectAll(false) })
 
     val scope = rememberCoroutineScope()
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     val listState = rememberLazyListState()
 
     val uiModels = remember(state) { state.getUiModel() }
@@ -176,6 +178,7 @@ fun LibraryUpdateErrorScreen(
                 ) {
                     libraryUpdateErrorUiItems(
                         uiModels = uiModels,
+                        evaluationModeEnabled = evaluationModeEnabled,
                         selectionMode = state.selectionMode,
                         onErrorSelected = onErrorSelected,
                         onClick = onClick,

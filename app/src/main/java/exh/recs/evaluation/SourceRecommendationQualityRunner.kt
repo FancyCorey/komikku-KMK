@@ -101,7 +101,7 @@ class SourceRecommendationQualityRunner(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logcat(LogPriority.WARN, e) { "KMK SourceRecommendationQualityRunner: probe failed for ${evaluation.sourceName}" }
+                        logcat(LogPriority.WARN) { "KMK SourceRecommendationQualityRunner: probe failed" }
                         writeErrorFit(evaluation, PROBE_ERROR_KEY)
                     }
                     _state.update { it.copy(completedCount = index + 1) }
@@ -115,7 +115,10 @@ class SourceRecommendationQualityRunner(
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "KMK SourceRecommendationQualityRunner: batch failed" }
                 _state.update {
-                    it.copy(status = SourceRecommendationQualityQueueState.Status.Failed, errorMessage = e.message)
+                    it.copy(
+                        status = SourceRecommendationQualityQueueState.Status.Failed,
+                        errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e),
+                    )
                 }
             }
         }
@@ -263,14 +266,14 @@ class SourceRecommendationQualityRunner(
                 }
                 SourceEvaluationCleanupPolicy.CleanupDecision.PromptRequired -> {
                     logcat(LogPriority.INFO) {
-                        "KMK SourceRecommendationQualityRunner: skipping system-installed cleanup for ${ext.name}"
+                        "KMK SourceRecommendationQualityRunner: skipping system-installed cleanup"
                     }
                 }
                 else -> { /* SkipPreExisting or NotNeeded */ }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            logcat(LogPriority.WARN, e) { "KMK SourceRecommendationQualityRunner: cleanup failed for ${ext.name}" }
+            logcat(LogPriority.WARN) { "KMK SourceRecommendationQualityRunner: cleanup failed" }
         }
     }
 

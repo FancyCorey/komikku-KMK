@@ -59,6 +59,47 @@ object EvaluationModeJournalRecorder {
         }
     }
 
+    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07 -->
+    /**
+     * Builds a single journal entry covering the "Not Interested -> Love/Like/Dislike" transition:
+     * the caller is about to clear the manga's Not Interested state *and* apply [newRating]
+     * atomically. Unlike [buildRatingChange] (which always records `previousNotInterested ==
+     * newNotInterested` since it never changes that axis), this always sets `newNotInterested =
+     * false` and includes [EvaluationJournalEntry.FIELD_NOT_INTERESTED] in `changedFields`, so
+     * [EvaluationModeUndoService.restoreOne] restores both the prior rating and the prior Not
+     * Interested state from one entry. Only call this when the manga is actually currently Not
+     * Interested -- use [buildRatingChange] for the ordinary case.
+     */
+    suspend fun buildRatingChangeReplacingNotInterested(
+        sourcePreferences: SourcePreferences,
+        getMangaTaste: GetMangaTaste,
+        manga: List<Manga>,
+        newRating: Int,
+        actionType: EvaluationJournalActionType,
+    ): List<EvaluationJournalEntry> {
+        if (!sourcePreferences.evaluationMode().get() || manga.isEmpty()) return emptyList()
+        val bulkId = if (manga.size > 1) EvaluationJournalEntry.newBulkId() else null
+        return manga.map { m ->
+            val previousTaste = getMangaTaste.await(m.source, m.url)
+            EvaluationJournalEntry(
+                id = EvaluationJournalEntry.newId(),
+                timestamp = System.currentTimeMillis(),
+                actionType = actionType,
+                mangaId = m.id,
+                source = m.source,
+                url = m.url,
+                previousRating = previousTaste?.rating,
+                newRating = newRating,
+                previousNotInterested = true,
+                newNotInterested = false,
+                isBulk = manga.size > 1,
+                bulkOperationId = bulkId,
+                changedFields = setOf(EvaluationJournalEntry.FIELD_RATING, EvaluationJournalEntry.FIELD_NOT_INTERESTED),
+            )
+        }
+    }
+    // KMK <--
+
     /** Builds a Not-Interested journal entry for [manga] ahead of the caller setting the "seen" store. */
     suspend fun buildNotInterested(
         sourcePreferences: SourcePreferences,
@@ -80,6 +121,34 @@ object EvaluationModeJournalRecorder {
                 newRating = previousTaste?.rating,
                 previousNotInterested = currentSeenState(sourcePreferences, m.source, m.url),
                 newNotInterested = true,
+                isBulk = manga.size > 1,
+                bulkOperationId = bulkId,
+                changedFields = setOf(EvaluationJournalEntry.FIELD_NOT_INTERESTED),
+            )
+        }
+    }
+
+    /** Builds the inverse journal entry for removing a stored Not Interested state. */
+    suspend fun buildNotInterestedRemoval(
+        sourcePreferences: SourcePreferences,
+        getMangaTaste: GetMangaTaste,
+        manga: List<Manga>,
+    ): List<EvaluationJournalEntry> {
+        if (!sourcePreferences.evaluationMode().get() || manga.isEmpty()) return emptyList()
+        val bulkId = if (manga.size > 1) EvaluationJournalEntry.newBulkId() else null
+        return manga.map { m ->
+            val previousTaste = getMangaTaste.await(m.source, m.url)
+            EvaluationJournalEntry(
+                id = EvaluationJournalEntry.newId(),
+                timestamp = System.currentTimeMillis(),
+                actionType = EvaluationJournalActionType.NOT_INTERESTED,
+                mangaId = m.id,
+                source = m.source,
+                url = m.url,
+                previousRating = previousTaste?.rating,
+                newRating = previousTaste?.rating,
+                previousNotInterested = true,
+                newNotInterested = false,
                 isBulk = manga.size > 1,
                 bulkOperationId = bulkId,
                 changedFields = setOf(EvaluationJournalEntry.FIELD_NOT_INTERESTED),

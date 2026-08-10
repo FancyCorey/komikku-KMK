@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import eu.kanade.presentation.browse.BrowseSourceTitlePolicy
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.AppBarTitle
@@ -17,6 +18,7 @@ import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.components.RadioMenuItem
 import eu.kanade.presentation.components.SearchToolbar
 import eu.kanade.tachiyomi.source.Source
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
@@ -45,8 +47,11 @@ fun BrowseSourceToolbar(
     isRunning: Boolean,
     // KMK <--
 ) {
-    // Avoid capturing unstable source in actions lambda
-    val title = source?.name
+    // Avoid capturing unstable source in actions lambda and keep source identity private in evidence mode.
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val title = source?.let {
+        BrowseSourceTitlePolicy.resolve(evaluationModeEnabled, it.id) { it.name }
+    }
     val isLocalSource = source is LocalSource
 
     var selectingDisplayMode by remember { mutableStateOf(false) }

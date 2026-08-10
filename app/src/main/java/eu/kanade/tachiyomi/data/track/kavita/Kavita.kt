@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.sourcePreferences
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
@@ -97,6 +98,8 @@ class Kavita(id: Long) : BaseTracker(id, "Kavita"), EnhancedTracker {
     override suspend fun match(manga: Manga): TrackSearch? =
         try {
             api.getTrackSearch(manga.url)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }

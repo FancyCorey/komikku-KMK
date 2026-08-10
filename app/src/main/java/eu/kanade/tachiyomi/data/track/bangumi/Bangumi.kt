@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.injectLazy
@@ -115,6 +116,8 @@ class Bangumi(id: Long) : BaseTracker(id, "Bangumi") {
             // If no username is set, the API returns the user ID as a strings
             val username = api.getUsername()
             saveCredentials(username, oauth.accessToken)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Throwable) {
             logout()
         }

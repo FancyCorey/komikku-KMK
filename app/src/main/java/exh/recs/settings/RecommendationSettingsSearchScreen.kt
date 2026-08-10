@@ -412,6 +412,36 @@ internal fun rememberRecommendationSettingsSearchEntries(): List<RecommendationS
         // -- For You sources --
         // KMK v0.8.14-fix1: "source_priority_languages" control entry removed here -- language
         // selection moved to Management and diagnostics, see "diagnostics_languages" below.
+        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08
+        RecommendationSettingsSearchIndex.Entry(
+            key = "source_priority_latest_exploration",
+            title = stringResource(KMR.strings.rec_latest_exploration),
+            summary = stringResource(KMR.strings.rec_latest_exploration_summary),
+            category = forYouSources,
+            synonyms = listOf("latest", "new releases", "explore", "discovery"),
+            destination = RecommendationSourcePrioritySettingsScreen(anchor = "latest_exploration"),
+            anchor = "latest_exploration",
+        ),
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08
+        RecommendationSettingsSearchIndex.Entry(
+            key = "source_priority_exposure_window",
+            title = stringResource(KMR.strings.rec_exposure_window),
+            summary = stringResource(KMR.strings.rec_exposure_window_summary),
+            category = forYouSources,
+            synonyms = listOf("exposure", "cooldown", "repeat", "reorder"),
+            destination = RecommendationSourcePrioritySettingsScreen(anchor = "exposure_window"),
+            anchor = "exposure_window",
+        ),
+        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09
+        RecommendationSettingsSearchIndex.Entry(
+            key = "source_priority_exposure_clear",
+            title = stringResource(KMR.strings.rec_exposure_clear),
+            summary = stringResource(KMR.strings.rec_exposure_clear_summary),
+            category = forYouSources,
+            synonyms = listOf("clear", "reset", "exposure", "repeat", "history"),
+            destination = RecommendationSourcePrioritySettingsScreen(anchor = "exposure_clear"),
+            anchor = "exposure_clear",
+        ),
         RecommendationSettingsSearchIndex.Entry(
             key = "source_priority_reset",
             title = stringResource(KMR.strings.rec_restore_default_source_order),

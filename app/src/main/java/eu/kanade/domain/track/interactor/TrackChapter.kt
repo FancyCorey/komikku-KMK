@@ -8,6 +8,7 @@ import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.mdlist.MdList
 import exh.md.utils.FollowStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import logcat.LogPriority
@@ -44,22 +45,23 @@ class TrackChapter(
                     return@mapNotNull null
                 }
 
-                async {
-                    runCatching {
-                        try {
-                            val updatedTrack = service.refresh(track.toDbTrack())
-                                .toDomainTrack(idRequired = true)!!
-                                .copy(lastChapterRead = chapterNumber)
-                            service.update(updatedTrack.toDbTrack(), true)
-                            insertTrack.await(updatedTrack)
-                            delayedTrackingStore.remove(track.id)
-                        } catch (e: Exception) {
-                            delayedTrackingStore.add(track.id, chapterNumber)
-                            if (setupJobOnFailure) {
-                                DelayedTrackingUpdateJob.setupTask(context)
-                            }
-                            throw e
+                async<Result<Unit>> {
+                    try {
+                        val updatedTrack = service.refresh(track.toDbTrack())
+                            .toDomainTrack(idRequired = true)!!
+                            .copy(lastChapterRead = chapterNumber)
+                        service.update(updatedTrack.toDbTrack(), true)
+                        insertTrack.await(updatedTrack)
+                        delayedTrackingStore.remove(track.id)
+                        Result.success(Unit)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        delayedTrackingStore.add(track.id, chapterNumber)
+                        if (setupJobOnFailure) {
+                            DelayedTrackingUpdateJob.setupTask(context)
                         }
+                        Result.failure(e)
                     }
                 }
             }

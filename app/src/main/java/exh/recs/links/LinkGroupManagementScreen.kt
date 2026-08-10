@@ -86,7 +86,7 @@ class LinkGroupManagementScreen(private val focusedGroupId: String? = null) : Sc
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = s.error.message ?: stringResource(KMR.strings.link_group_management_error),
+                        text = stringResource(KMR.strings.link_group_management_error),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(MaterialTheme.padding.medium),

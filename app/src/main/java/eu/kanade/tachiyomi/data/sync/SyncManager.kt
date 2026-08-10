@@ -225,7 +225,7 @@ class SyncManager(
         }
 
         val backupUri = writeSyncDataToCache(context, newSyncData)
-        logcat(LogPriority.DEBUG) { "Got Backup Uri: $backupUri" }
+        logcat(LogPriority.DEBUG) { "Sync backup cache prepared" }
         if (backupUri != null) {
             BackupRestoreJob.start(
                 context,
@@ -254,7 +254,7 @@ class SyncManager(
                 Uri.fromFile(cacheFile)
             }
         } catch (e: IOException) {
-            logcat(LogPriority.ERROR, throwable = e) { "Failed to write sync data to cache" }
+            logcat(LogPriority.ERROR) { "Failed to write sync data to cache" }
             null
         }
     }
@@ -347,15 +347,11 @@ class SyncManager(
                     // Checks if the manga is in favorites and needs updating or adding
                     remoteManga.favorite -> {
                         if (localManga == null || isMangaDifferent(localManga, remoteManga)) {
-                            logcat(LogPriority.DEBUG, logTag) { "Adding to favorites: ${remoteManga.title}" }
                             favorites.add(remoteManga)
-                        } else {
-                            logcat(LogPriority.DEBUG, logTag) { "Already up-to-date favorite: ${remoteManga.title}" }
                         }
                     }
                     // Handle non-favorites
                     !remoteManga.favorite -> {
-                        logcat(LogPriority.DEBUG, logTag) { "Adding to non-favorites: ${remoteManga.title}" }
                         nonFavorites.add(remoteManga)
                     }
                 }

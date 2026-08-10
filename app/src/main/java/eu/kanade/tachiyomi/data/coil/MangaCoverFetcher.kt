@@ -263,7 +263,7 @@ class MangaCoverFetcher(
             }
             cacheFile.takeIf { it.exists() }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to write snapshot data to cover cache ${cacheFile.name}" }
+            logcat(LogPriority.ERROR) { "Manga-cover snapshot cache write failed" }
             null
         }
     }
@@ -276,7 +276,7 @@ class MangaCoverFetcher(
             }
             cacheFile.takeIf { it.exists() }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to write response data to cover cache ${cacheFile.name}" }
+            logcat(LogPriority.ERROR) { "Manga-cover response cache write failed" }
             null
         }
     }

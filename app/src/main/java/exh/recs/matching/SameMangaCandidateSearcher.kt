@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -115,6 +116,8 @@ class SameMangaCandidateSearcher(
                 lastError != null -> SameMangaCandidateResult.Error(lastError)
                 else -> SameMangaCandidateResult.Success(emptyList())
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SameMangaCandidateResult.Error(e)
         } catch (e: Error) {

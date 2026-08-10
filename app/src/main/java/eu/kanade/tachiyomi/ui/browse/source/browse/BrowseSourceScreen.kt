@@ -39,6 +39,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.presentation.browse.BrowseSourceContent
+import eu.kanade.presentation.browse.BrowseSourceTitlePolicy
 import eu.kanade.presentation.browse.MissingSourceScreen
 import eu.kanade.presentation.browse.components.BrowseSourceToolbar
 import eu.kanade.presentation.browse.components.BulkFavoriteDialogs
@@ -68,6 +69,7 @@ import exh.source.anyIs
 import exh.source.isEhBasedSource
 import exh.source.isMdBasedSource
 import exh.ui.smartsearch.SmartSearchScreen
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -120,6 +122,7 @@ data class BrowseSourceScreen(
             )
         }
         val state by screenModel.state.collectAsState()
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
         val navigator = LocalNavigator.currentOrThrow
         val navigateUp: () -> Unit = {
@@ -156,7 +159,9 @@ data class BrowseSourceScreen(
             navigator.push(
                 WebViewScreen(
                     url = source.getHomeUrl(),
-                    initialTitle = source.name,
+                    initialTitle = BrowseSourceTitlePolicy.resolve(evaluationModeEnabled, source.id) {
+                        source.name
+                    },
                     sourceId = source.id,
                 ),
             )

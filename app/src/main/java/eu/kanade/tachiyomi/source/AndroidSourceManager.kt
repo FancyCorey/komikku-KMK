@@ -158,7 +158,7 @@ class AndroidSourceManager(
             null
         }
         val newSource = if (this is HttpSource && delegate != null) {
-            xLogD("Delegating source: %s -> %s!", sourceQName, delegate.newSourceClass.qualifiedName)
+            xLogD("Delegating source")
             val enhancedSource = EnhancedHttpSource(
                 this,
                 delegate.newSourceClass.constructors.find { it.parameters.size == 2 }!!.call(this, context),
@@ -182,12 +182,7 @@ class AndroidSourceManager(
             // KMK <--
             id in BlacklistedSources.BLACKLISTED_EXT_SOURCES
         ) {
-            xLogD(
-                "Removing blacklisted source: (id: %s, name: %s, lang: %s)!",
-                id,
-                name,
-                lang,
-            )
+            xLogD("Removing blacklisted source")
             null
         } else {
             newSource

@@ -20,7 +20,7 @@ val Throwable.formattedMessage: String
                 return if (!context.isOnline()) {
                     context.stringResource(MR.strings.exception_offline)
                 } else {
-                    context.stringResource(MR.strings.exception_unknown_host, message ?: "")
+                    context.stringResource(KMR.strings.rec_error_network)
                 }
             }
 
@@ -47,8 +47,5 @@ val Throwable.formattedMessage: String
             // other unclassified internal failure rather than its raw class name.
             is UninitializedPropertyAccessException -> return context.stringResource(KMR.strings.rec_error_internal)
         }
-        return when (val className = this::class.simpleName) {
-            "Exception", "IOException" -> message ?: className
-            else -> "$className: $message"
-        }
+        return context.stringResource(KMR.strings.rec_error_internal)
     }

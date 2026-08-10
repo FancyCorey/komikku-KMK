@@ -11,6 +11,7 @@ import exh.log.xLogD
 import exh.log.xLogE
 import exh.log.xLogI
 import exh.log.xLogW
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
 import okhttp3.ConnectionPool
@@ -80,7 +81,7 @@ class WebDavSyncService(
         for (part in folderParts) {
             currentPath = "$currentPath/$part"
             if (!createSingleFolder(currentPath)) {
-                throw WebDavException("Failed to create folder: $currentPath")
+                throw WebDavException("Failed to create WebDAV folder")
             }
         }
     }
@@ -106,18 +107,20 @@ class WebDavSyncService(
 
             val finalSyncData = if (remoteData != null) {
                 assert(etag.isNotEmpty()) { "ETag should never be empty if remote data is not null" }
-                xLogD("Try update remote data with ETag(%s)", etag)
+                xLogD("WebDAV remote data available for merge")
                 mergeSyncData(syncData, remoteData)
             } else {
-                xLogD("Try overwrite remote data with ETag(%s)", etag)
+                xLogD("WebDAV remote data unavailable; using local data")
                 syncData
             }
 
             pushSyncData(finalSyncData, etag)
             return finalSyncData.backup
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            xLogE("WebDAV sync error:", e)
-            notifier.showSyncError(e.message)
+            xLogE("WebDAV sync failed")
+            notifier.showSyncError(context.getString(eu.kanade.tachiyomi.R.string.sync_error))
             return null
         }
     }
@@ -144,12 +147,12 @@ class WebDavSyncService(
                         val backup = protoBuf.decodeFromByteArray(Backup.serializer(), bytes)
                         Pair(SyncData(backup = backup), newETag)
                     } catch (e: Exception) {
-                        xLogE("Invalid backup format:", e)
+                        xLogE("WebDAV sync data format invalid")
                         Pair(null, "")
                     }
                 } else {
-                    val body = response.body.string()
-                    throw WebDavException("Failed to download: $body")
+                    response.body.string()
+                    throw WebDavException("Failed to download WebDAV sync data (HTTP ${response.code})")
                 }
             }
         }
@@ -184,8 +187,8 @@ class WebDavSyncService(
                 notifier.showSyncError(message)
             }
             else -> {
-                val bodyStr = response.body.string()
-                throw WebDavException("Upload failed: $bodyStr")
+                response.body.string()
+                throw WebDavException("Failed to upload WebDAV sync data (HTTP ${response.code})")
             }
         }
     }

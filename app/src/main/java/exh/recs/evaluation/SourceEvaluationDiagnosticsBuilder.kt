@@ -30,8 +30,16 @@ object SourceEvaluationDiagnosticsBuilder {
         shizukuPermGranted: Boolean,
         lastError: String?,
         lastProbeMarker: SourceEvaluationProbeMarker?,
+        evaluationModeEnabled: Boolean,
         now: Long = System.currentTimeMillis(),
     ): String {
+        val sanitized = SourceEvaluationDiagnosticsPolicy.sanitize(
+            evaluationModeEnabled = evaluationModeEnabled,
+            currentExtensionName = currentExtension,
+            currentSourceName = currentSource,
+            lastError = lastError,
+            lastProbeMarker = lastProbeMarker,
+        )
         val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(now))
         return buildString {
             appendLine("=== Source Evaluation Diagnostics ===")
@@ -51,23 +59,23 @@ object SourceEvaluationDiagnosticsBuilder {
             appendLine()
             appendLine("--- Queue ---")
             appendLine("Phase: $queuePhase")
-            if (currentExtension != null) appendLine("Extension: $currentExtension")
-            if (currentSource != null) appendLine("Source: $currentSource")
+            if (sanitized.currentExtensionLabel != null) appendLine("Extension: ${sanitized.currentExtensionLabel}")
+            if (sanitized.currentSourceLabel != null) appendLine("Source: ${sanitized.currentSourceLabel}")
             appendLine()
             appendLine("--- Shizuku ---")
             appendLine("Installed: $shizukuInstalled  BinderAlive: $shizukuBinderAlive  PermGranted: $shizukuPermGranted")
-            if (lastError != null) {
+            if (sanitized.errorCategory != null) {
                 appendLine()
                 appendLine("--- Last Error ---")
-                appendLine(lastError)
+                appendLine(sanitized.errorCategory)
             }
-            if (lastProbeMarker != null) {
+            if (sanitized.probeMarker != null) {
                 appendLine()
                 appendLine("--- Last Probe Marker ---")
-                appendLine("Ext: ${lastProbeMarker.extensionName} (${lastProbeMarker.extensionPkgName})")
-                appendLine("Source: ${lastProbeMarker.sourceName ?: "n/a"} (id=${lastProbeMarker.sourceId ?: "n/a"})")
-                appendLine("Phase: ${lastProbeMarker.phase}")
-                val markerTs = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(lastProbeMarker.updatedAt))
+                appendLine("Ext: ${sanitized.probeMarker.extensionLabel}")
+                appendLine("Source: ${sanitized.probeMarker.sourceLabel ?: "n/a"}")
+                appendLine("Phase: ${sanitized.probeMarker.phase}")
+                val markerTs = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(sanitized.probeMarker.updatedAt))
                 appendLine("UpdatedAt: $markerTs")
             }
         }.trimEnd()

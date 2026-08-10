@@ -19,6 +19,7 @@ import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -192,6 +193,8 @@ class CrossExtensionMatchScreenModel(
                                 updateItem(source, MatchItemResult.Success(emptyList()))
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         if (isActive) updateItem(source, MatchItemResult.Error(e))
                     } catch (e: Error) {

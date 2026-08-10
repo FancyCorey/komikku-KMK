@@ -128,10 +128,8 @@ internal class CrossExtensionGenreSearchSource(
         // failure (including an extension LinkageError) in SourceRuntimeFailureRegistry.
         val filterList = SourceRuntime.run(catalogueSource, SourceRuntimeOperation.FilterList) {
             getFilterList()
-        }.getOrElse { throwable ->
-            logcat(LogPriority.WARN, throwable) {
-                "CrossExtensionGenreSearch[${catalogueSource.name}]: getFilterList failed, falling back to empty"
-            }
+        }.getOrElse {
+            logcat(LogPriority.WARN) { "Cross-extension filter loading failed; using empty filters" }
             FilterList()
         }
 
@@ -152,9 +150,7 @@ internal class CrossExtensionGenreSearchSource(
             getSearchManga(1, searchParams.textQuery, searchParams.filters)
         }.getOrElse { throwable ->
             if (throwable !is NoResultsException) {
-                logcat(LogPriority.WARN, throwable) {
-                    "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} attempt failed"
-                }
+                logcat(LogPriority.WARN) { "Cross-extension search attempt failed" }
                 exceptionOccurred = true
             }
             null
@@ -179,7 +175,11 @@ internal class CrossExtensionGenreSearchSource(
         // raw result is treated as "useful" here so the row returns results for scoring instead of
         // silently trying every attempt; RecommendsScreenModel applies the actual relevance filter.
         lastFailureKind = RecommendationQueryFailureKind.NONE
-        return MangasPage(mangasPage.mangas, false).also { logcat(LogPriority.DEBUG) { "CrossExtensionGenreSearch[${catalogueSource.name}]: ${plan.type} raw=$rawCount enriched=$enrichedCount" } }
+        return MangasPage(mangasPage.mangas, false).also {
+            logcat(LogPriority.DEBUG) {
+                "Cross-extension search results: strategy=${plan.type}, raw=$rawCount, enriched=$enrichedCount"
+            }
+        }
     }
     // KMK <--
 
@@ -198,9 +198,7 @@ internal class CrossExtensionGenreSearchSource(
                 getSearchManga(1, title, FilterList())
             }.getOrElse { throwable ->
                 if (throwable !is NoResultsException) {
-                    logcat(LogPriority.WARN, throwable) {
-                        "CrossExtensionGenreSearch[${catalogueSource.name}]: title fallback failed for \"$title\""
-                    }
+                    logcat(LogPriority.WARN) { "Cross-extension title fallback failed" }
                 }
                 continue
             }
@@ -249,10 +247,8 @@ internal class CrossExtensionGenreSearchSource(
                                     smanga.description = details.description
                                     smanga.status = details.status
                                 },
-                                onFailure = { throwable ->
-                                    logcat(LogPriority.WARN, throwable) {
-                                        "CrossExtensionGenreSearch[${catalogueSource.name}]: getMangaDetails failed for ${smanga.title}"
-                                    }
+                                onFailure = {
+                                    logcat(LogPriority.WARN) { "Cross-extension manga enrichment failed" }
                                 },
                             )
                         }

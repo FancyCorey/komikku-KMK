@@ -112,10 +112,14 @@ class InterceptActivity : BaseActivity() {
 
     private fun processLink() {
         if (Intent.ACTION_VIEW == intent.action) {
+            val gallery = intent.dataString ?: run {
+                finish()
+                return
+            }
             lifecycleScope.launchIO {
                 // wait for sources to load
                 Injekt.get<SourceManager>().isInitialized.first { it }
-                loadGallery(intent.dataString!!)
+                loadGallery(gallery)
             }
         }
     }

@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -60,6 +62,9 @@ import eu.kanade.presentation.browse.components.GlobalSearchErrorResultItem
 import eu.kanade.presentation.browse.components.GlobalSearchLoadingResultItem
 import eu.kanade.presentation.browse.components.GlobalSearchResultItem
 import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.KmkEmptyStateArtwork
+import eu.kanade.presentation.components.KmkEmptyStateIllustration
+import eu.kanade.presentation.components.SafArtifactCleanupDialog
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.Source
@@ -68,18 +73,17 @@ import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.bestversion.BestVersionCompareScreen
 import exh.recs.loved.LovedMangaScreen
+import exh.recs.loved.NotInterestedMangaScreen
 import exh.recs.loved.RatedMangaScreen
 import exh.recs.matching.CrossExtensionMatchMode
 import exh.recs.matching.CrossExtensionMatchScreen
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.settings.RecommendationSettingsIndexScreen
 import exh.recs.settings.toScreen
-import exh.recs.share.RecommendationBundleExporter
 import exh.util.EvaluationModeFormatter
 import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
-import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.MR
@@ -116,44 +120,46 @@ fun Screen.personalRecommendationsTab(): TabContent {
     var pendingRateOtherVersions by remember { mutableStateOf<Pair<Long, MangaRating>?>(null) }
     // KMK <--
 
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03: `exportInputSnapshot` is captured at the
+    // moment the export is requested (see the two `onClick`/`onLongClickSource` sites below), before
+    // the picker even opens -- not re-read from live `screenModel.state.value` after the picker
+    // returns, so the recommendation results backing the export cannot change out from under a
+    // bundle that may already be mid-write. The SAF document lifecycle (register-before-write,
+    // retain on stale/empty/failed/cancelled, exact-Uri-only cleanup) is owned by SafExportCoordinator.
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #5): the
+    // coordinator now lives on BrowsePersonalRecommendationsScreenModel (screenModelScope-owned), not
+    // `remember`ed here.
+    var exportInputSnapshot by remember { mutableStateOf<BrowsePersonalRecommendationsScreenModel.State?>(null) }
+    // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2: the operation is reserved at
+    // the export-click, before the picker launches -- see the two export-click sites below.
+    var exportPendingOperationId by remember { mutableStateOf<String?>(null) }
+    val exportCleanupOffer by screenModel.exportCoordinator.cleanupOffer.collectAsState()
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri == null) {
-            pendingExportSource = null
-            pendingExportIsTopPicks = false
-            return@rememberLauncherForActivityResult
-        }
-        val snapState = screenModel.state.value
+        val snapState = exportInputSnapshot
         val targetSource = pendingExportSource
         val isTopPicks = pendingExportIsTopPicks
+        exportInputSnapshot = null
         pendingExportSource = null
         pendingExportIsTopPicks = false
-
-        scope.launch {
-            val exporter = RecommendationBundleExporter()
-            val bundle = when {
-                isTopPicks -> {
-                    val detail = snapState.combinedDetailResult as? PersonalRecommendationResult.Success
-                    if (detail == null || detail.result.isEmpty()) {
-                        withUIContext { context.toast(KMR.strings.rec_bundle_export_empty) }
-                        return@launch
-                    }
-                    exporter.buildTopPicksBundle(detail.result, KmkRecsReleaseNotes.VERSION_NAME)
-                }
-                targetSource != null -> {
-                    val result = snapState.items[targetSource] as? PersonalRecommendationResult.Success
-                    if (result == null || result.result.isEmpty()) {
-                        withUIContext { context.toast(KMR.strings.rec_bundle_export_empty) }
-                        return@launch
-                    }
-                    exporter.buildSourceRowBundle(targetSource.name, targetSource.lang, result.result, KmkRecsReleaseNotes.VERSION_NAME)
-                }
-                else -> return@launch
-            }
-            exporter.writeToUri(context, uri, bundle)
-                .onSuccess { withUIContext { context.toast(KMR.strings.rec_bundle_export_success) } }
-                .onFailure { withUIContext { context.toast(KMR.strings.rec_bundle_export_failure) } }
+        val operationId = exportPendingOperationId
+        exportPendingOperationId = null
+        if (uri == null) {
+            operationId?.let { screenModel.exportCoordinator.cancelReservation(it) }
+            return@rememberLauncherForActivityResult
+        }
+        if (operationId == null ||
+            !screenModel.exportRecommendationBundle(context, operationId, uri, snapState, targetSource, isTopPicks)
+        ) {
+            eu.kanade.tachiyomi.util.export.handleUnregisterableUri(
+                context,
+                uri,
+                screenModel.exportCoordinator,
+                KMR.strings.saf_export_registration_failed,
+                KMR.strings.saf_export_registration_failed_retained,
+                KMR.strings.saf_export_registration_failed_unrecoverable,
+            )
         }
     }
     // KMK <--
@@ -181,6 +187,26 @@ fun Screen.personalRecommendationsTab(): TabContent {
                     Text(stringResource(MR.strings.action_cancel))
                 }
             },
+        )
+    }
+
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 Phase 2B: exact-Uri-only Remove/Keep cleanup,
+    // offered for every outcome (not only success) -- see SafExportCoordinator.
+    exportCleanupOffer?.let { offer ->
+        SafArtifactCleanupDialog(
+            context = context,
+            offer = offer,
+            successTitleRes = KMR.strings.extension_export_cleanup_title,
+            successBodyRes = KMR.strings.generic_export_cleanup_success_body,
+            incompleteTitleRes = KMR.strings.extension_export_cleanup_incomplete_title,
+            incompleteBodyRes = KMR.strings.extension_export_cleanup_incomplete_body,
+            removeRes = KMR.strings.extension_export_cleanup_remove,
+            keepRes = KMR.strings.extension_export_cleanup_keep,
+            removedRes = KMR.strings.extension_export_cleanup_removed,
+            removeFailedRes = KMR.strings.extension_export_cleanup_failed,
+            onRemoved = { screenModel.exportCoordinator.clear(offer.operationId) },
+            onKept = { screenModel.exportCoordinator.clear(offer.operationId) },
+            onDismissed = { screenModel.exportCoordinator.clear(offer.operationId) },
         )
     }
     // KMK <--
@@ -237,6 +263,14 @@ fun Screen.personalRecommendationsTab(): TabContent {
                                 navigator.push(RatedMangaScreen(MangaRating.DISLIKE.value))
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.not_interested_manga_title)) },
+                            leadingIcon = { Icon(Icons.Outlined.VisibilityOff, contentDescription = null) },
+                            onClick = {
+                                showRatedMenu = false
+                                navigator.push(NotInterestedMangaScreen())
+                            },
+                        )
                     }
                 }
             },
@@ -250,8 +284,15 @@ fun Screen.personalRecommendationsTab(): TabContent {
             AppBar.OverflowAction(
                 title = stringResource(KMR.strings.rec_bundle_export_top_picks),
                 onClick = {
-                    pendingExportIsTopPicks = true
-                    exportLauncher.launch("kmk_top_picks.json")
+                    val operationId = screenModel.exportCoordinator.beginOperation()
+                    if (operationId == null) {
+                        context.toast(KMR.strings.saf_export_operation_pending)
+                    } else {
+                        pendingExportIsTopPicks = true
+                        exportInputSnapshot = screenModel.state.value
+                        exportPendingOperationId = operationId
+                        exportLauncher.launch("kmk_top_picks.json")
+                    }
                 },
             ),
             // KMK <--
@@ -265,6 +306,8 @@ fun Screen.personalRecommendationsTab(): TabContent {
                 PersonalRecommendationsContent(
                     state = state,
                     getManga = screenModel::getManga,
+                    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08
+                    onVisibleResultsRendered = screenModel::recordVisibleExposure,
                     onClickItem = { manga -> navigator.push(MangaScreen(manga.id, true)) },
                     onClickSource = { source ->
                         val ctx = state.searchContexts[source.id]
@@ -279,9 +322,16 @@ fun Screen.personalRecommendationsTab(): TabContent {
                     },
                     // KMK --> v0.7.5: long-press source row to export
                     onLongClickSource = { source ->
-                        pendingExportSource = source
-                        pendingExportIsTopPicks = false
-                        exportLauncher.launch("kmk_${source.name.lowercase().replace(Regex("[^a-z0-9]"), "_")}.json")
+                        val operationId = screenModel.exportCoordinator.beginOperation()
+                        if (operationId == null) {
+                            context.toast(KMR.strings.saf_export_operation_pending)
+                        } else {
+                            pendingExportSource = source
+                            pendingExportIsTopPicks = false
+                            exportInputSnapshot = screenModel.state.value
+                            exportPendingOperationId = operationId
+                            exportLauncher.launch("kmk_${source.name.lowercase().replace(Regex("[^a-z0-9]"), "_")}.json")
+                        }
                     },
                     // KMK <--
                     // KMK v0.8.16: For You long-press selection mode
@@ -362,6 +412,10 @@ fun Screen.personalRecommendationsTab(): TabContent {
 private fun PersonalRecommendationsContent(
     state: BrowsePersonalRecommendationsScreenModel.State,
     getManga: @Composable (Manga) -> State<Manga>,
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: fired at most once per
+    // [BrowsePersonalRecommendationsScreenModel.State.resultGeneration], only once every source has
+    // finished and the loaded result is non-empty -- see the LaunchedEffect below.
+    onVisibleResultsRendered: () -> Unit = {},
     onClickItem: (Manga) -> Unit,
     onClickSource: (Source) -> Unit,
     onClickTopPicks: () -> Unit,
@@ -420,10 +474,18 @@ private fun PersonalRecommendationsContent(
             }
         }
         state.profileIsEmpty -> {
-            Box(
+            // The profile is genuinely empty here: loading and offline states were handled above.
+            Column(
                 modifier = Modifier.fillMaxSize().padding(contentPadding),
-                contentAlignment = Alignment.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
+                KmkEmptyStateIllustration(
+                    artwork = KmkEmptyStateArtwork.FOR_YOU,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(96.dp),
+                )
+                Spacer(Modifier.height(MaterialTheme.padding.medium))
                 Text(stringResource(KMR.strings.taste_recommendations_empty))
             }
         }
@@ -434,6 +496,15 @@ private fun PersonalRecommendationsContent(
                 result != null && (result !is PersonalRecommendationResult.Success || !result.isEmpty)
             }
             val allDone = state.total > 0 && state.progress == state.total
+            // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: exposure is recorded
+            // only for a loaded, non-empty, fully-settled ("correct") result -- never for loading,
+            // partial, or empty states. Keying on (resultGeneration, allDone) restarts this effect
+            // exactly once per refresh, exactly when it transitions to fully loaded; a stale
+            // generation's in-flight effect is cancelled automatically when the key changes, and mere
+            // recomposition with the same key never re-fires it.
+            LaunchedEffect(state.resultGeneration, allDone) {
+                if (allDone) onVisibleResultsRendered()
+            }
             val combinedResult = state.combinedResult
             val hasCombined = combinedResult is PersonalRecommendationResult.Success &&
                 !(combinedResult as PersonalRecommendationResult.Success).isEmpty
@@ -444,10 +515,18 @@ private fun PersonalRecommendationsContent(
                 }
 
             if (hasNoResults) {
-                Box(
+                // A no-results illustration is shown only after every source has finished.
+                Column(
                     modifier = Modifier.fillMaxSize().padding(contentPadding),
-                    contentAlignment = Alignment.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
+                    KmkEmptyStateIllustration(
+                        artwork = KmkEmptyStateArtwork.FOR_YOU,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(96.dp),
+                    )
+                    Spacer(Modifier.height(MaterialTheme.padding.medium))
                     Text(stringResource(KMR.strings.taste_recommendations_empty))
                 }
             } else {

@@ -17,7 +17,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.kmk.KMR
 
 // KMK -->
-class SourceEvaluationNotifier(private val context: Context) {
+class SourceEvaluationNotifier(private val context: Context) : SourceEvaluationWorkerNotifier {
 
     // KMK --> v0.6.19 follow-up: deep link — tap notification opens Source Evaluation screen
     private val openSourceEvaluationIntent: PendingIntent by lazy {
@@ -61,18 +61,18 @@ class SourceEvaluationNotifier(private val context: Context) {
         }
     }
 
-    fun updateProgress(queueState: SourceEvaluationQueueState) {
+    override fun updateProgress(queueState: SourceEvaluationQueueState) {
         context.notify(
             Notifications.ID_SOURCE_EVALUATION_PROGRESS,
             buildProgressNotification(queueState).build(),
         )
     }
 
-    fun dismissProgress() {
+    override fun dismissProgress() {
         context.cancelNotification(Notifications.ID_SOURCE_EVALUATION_PROGRESS)
     }
 
-    fun showComplete(strongFitCount: Int) {
+    override fun showComplete(strongFitCount: Int) {
         context.cancelNotification(Notifications.ID_SOURCE_EVALUATION_PROGRESS)
         context.notify(Notifications.ID_SOURCE_EVALUATION_COMPLETE, Notifications.CHANNEL_SOURCE_EVALUATION) {
             setSmallIcon(R.drawable.ic_komikku)

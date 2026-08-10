@@ -26,15 +26,15 @@ class GetSourceEvaluationCandidates(
 ) {
     fun subscribe(): Flow<SourceEvaluationCandidateFilter.CandidatePoolResult> {
         val safeEvaluationsFlow = getSourceEvaluations.subscribeAll()
-            .catch { e ->
-                logcat(LogPriority.ERROR, e) { "source_evaluation table unavailable in GetSourceEvaluationCandidates" }
+            .catch {
+                logcat(LogPriority.ERROR) { "source_evaluation table unavailable in GetSourceEvaluationCandidates" }
                 emit(emptyList())
             }
 
         // KMK --> v0.6.16: crash quarantine — track unsafe sources reactively
         val unsafeSourcesFlow = getSourceEvaluationUnsafeSources.subscribeAll()
-            .catch { e ->
-                logcat(LogPriority.ERROR, e) { "source_evaluation_unsafe_source table unavailable in GetSourceEvaluationCandidates" }
+            .catch {
+                logcat(LogPriority.ERROR) { "source_evaluation_unsafe_source table unavailable in GetSourceEvaluationCandidates" }
                 emit(emptyList())
             }
         // KMK <--

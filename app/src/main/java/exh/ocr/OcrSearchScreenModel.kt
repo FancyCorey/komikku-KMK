@@ -3,6 +3,7 @@ package exh.ocr
 import android.content.Context
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
@@ -62,6 +63,8 @@ class OcrSearchScreenModel(
             try {
                 val stats = repository.getStats(engineVersion)
                 mutableState.update { it.copy(indexStats = stats) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // non-fatal
             }
@@ -85,6 +88,8 @@ class OcrSearchScreenModel(
                     result.copy(sourceName = name)
                 }
                 mutableState.update { it.copy(results = results, isSearching = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 mutableState.update { it.copy(isSearching = false, errorKey = OcrErrorClassifier.classify(e)) }
             }
@@ -162,6 +167,8 @@ class OcrSearchScreenModel(
                         indexStats = OcrIndexStats(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }
@@ -173,6 +180,8 @@ class OcrSearchScreenModel(
             try {
                 repository.deleteOldEngineRows(engineVersion)
                 refreshStats()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }
@@ -186,6 +195,8 @@ class OcrSearchScreenModel(
                 repository.deleteByManga(mangaId)
                 mutableState.update { it.copy(results = it.results.filterNot { r -> r.mangaId == mangaId }) }
                 refreshStats()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }
@@ -198,6 +209,8 @@ class OcrSearchScreenModel(
                 repository.deleteByChapter(chapterId)
                 mutableState.update { it.copy(results = it.results.filterNot { r -> r.chapterId == chapterId }) }
                 refreshStats()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }
@@ -209,6 +222,8 @@ class OcrSearchScreenModel(
             try {
                 repository.deleteEmptyAndFailed()
                 refreshStats()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 mutableState.update { it.copy(errorKey = OcrErrorClassifier.classify(e)) }
             }

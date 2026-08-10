@@ -119,7 +119,7 @@ class LinkedVersionListScreen(private val groupId: String) : Screen() {
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = s.error.message ?: stringResource(KMR.strings.linked_version_list_error),
+                        text = stringResource(KMR.strings.linked_version_list_error),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(MaterialTheme.padding.medium),

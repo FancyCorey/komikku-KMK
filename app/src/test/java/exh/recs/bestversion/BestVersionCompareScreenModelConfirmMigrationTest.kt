@@ -129,6 +129,31 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
     }
 
     @Test
+    fun `keepCurrentVersion reaches Done without invoking the migration use case or recording a receipt`() = runTest {
+        // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 3: direct call
+        // coverage for the "keep current" path (plan item: "candidate preview, keep-current,
+        // successful local migration..."). Previously only the resulting State shape was asserted
+        // (BestVersionOriginAndUnavailablePreviewTest); this exercises the real
+        // keepCurrentVersion() function.
+        val origin = manga(source = 1L, url = "/origin", id = 42L)
+        val sourcePreferences = SourcePreferences(FakePreferenceStore())
+        sourcePreferences.evaluationMode().set(true)
+        val migrateMangaUseCase = mockk<MigrateMangaUseCase>(relaxed = true)
+        val model = buildModel(migrateMangaUseCase = migrateMangaUseCase, sourcePreferences = sourcePreferences)
+        model.forceOriginManga(origin)
+
+        model.keepCurrentVersion()
+
+        assertEquals(BestVersionStep.Done, model.state.value.step)
+        assertTrue(model.state.value.keptCurrentVersion)
+        assertTrue(model.state.value.migrationComplete)
+        assertEquals(42L, model.state.value.completedTargetMangaId)
+        assertEquals(null, model.state.value.selectedBestKey, "keeping current must never leave a migrate-dialog target selected")
+        coVerify(exactly = 0) { migrateMangaUseCase(any(), any(), any()) }
+        assertTrue(NonUndoableEventJournal.isEmpty(), "keeping the current version is not a migration and must never record a receipt")
+    }
+
+    @Test
     fun `a successful migration reaches Done and stores the actual target manga id`() = runTest {
         val origin = manga(source = 1L, url = "/origin")
         val target = manga(source = 2L, url = "/target", id = 99L)

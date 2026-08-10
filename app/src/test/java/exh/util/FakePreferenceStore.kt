@@ -17,6 +17,8 @@ import tachiyomi.core.common.preference.PreferenceStore
  */
 class FakePreferenceStore : PreferenceStore {
 
+    var failWrites: Boolean = false
+
     private val flows = mutableMapOf<String, MutableStateFlow<Any?>>()
 
     @Suppress("UNCHECKED_CAST")
@@ -27,10 +29,12 @@ class FakePreferenceStore : PreferenceStore {
         override fun key() = key
         override fun get(): T = flowFor(key, defaultValue).value
         override fun set(value: T) {
+            check(!failWrites) { "test-injected preference write failure" }
             flowFor(key, defaultValue).value = value
         }
         override fun isSet(): Boolean = flows.containsKey(key)
         override fun delete() {
+            check(!failWrites) { "test-injected preference delete failure" }
             flowFor(key, defaultValue).value = defaultValue
         }
         override fun defaultValue(): T = defaultValue

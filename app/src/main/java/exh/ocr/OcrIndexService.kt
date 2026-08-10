@@ -57,7 +57,7 @@ class OcrIndexService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "OCR: failed to enumerate pages" }
+            logcat(LogPriority.ERROR) { "OCR: failed to enumerate pages" }
             // KMK v0.7.46: stable key, not raw exception text — see OcrErrorClassifier.
             onProgress(OcrIndexProgress(isFailed = true, lastError = OcrErrorClassifier.classifyToStorageKey(e)))
             return
@@ -97,6 +97,8 @@ class OcrIndexService(
                     engineKey = recognizer.engineKey,
                     engineVersion = recognizer.engineVersion,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 null
             }
@@ -171,10 +173,11 @@ class OcrIndexService(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // KMK v0.7.46: sanitized diagnostic — no manga title, chapter name, or OCR text in
-                // logcat. IDs are safe to log; page content and human-readable titles are not.
-                logcat(LogPriority.WARN, e) {
-                    "OCR: page error mangaId=${pageRef.manga.id} chapterId=${pageRef.chapter.id} page=${pageRef.pageIndex}"
+                // Keep bounded execution context and a stable category, never page content or
+                // user/source identifiers, in logcat.
+                val errorKey = OcrErrorClassifier.classifyToStorageKey(e)
+                logcat(LogPriority.WARN) {
+                    "OCR: page processing failed page=${pageRef.pageIndex} errorKey=$errorKey"
                 }
                 failed++
                 completed++
@@ -206,8 +209,8 @@ class OcrIndexService(
                         recognizedWordCount = 0L,
                         ocrStatus = OCR_STATUS_FAILED,
                     )
-                } catch (dbEx: Exception) {
-                    logcat(LogPriority.ERROR, dbEx) { "OCR: also failed to write error row" }
+                } catch (_: Exception) {
+                    logcat(LogPriority.ERROR) { "OCR: failed to write error row" }
                 }
             }
 

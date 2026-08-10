@@ -1,5 +1,6 @@
 package tachiyomi.domain.manga.interactor
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -13,6 +14,8 @@ class GetMergedMangaById(
     suspend fun await(id: Long): List<Manga> {
         return try {
             mangaMergeRepository.getMergedMangaById(id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()

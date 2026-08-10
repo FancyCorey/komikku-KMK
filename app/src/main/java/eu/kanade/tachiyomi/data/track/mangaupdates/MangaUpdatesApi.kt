@@ -16,6 +16,7 @@ import eu.kanade.tachiyomi.network.PUT
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
@@ -123,6 +124,8 @@ class MangaUpdatesApi(
                     .awaitSuccess()
                     .parseAs<MURating>()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }

@@ -28,6 +28,7 @@ import eu.kanade.tachiyomi.data.backup.restore.restorers.SavedSearchRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.TasteRestorer
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -68,7 +69,12 @@ class BackupRestorer(
      */
     private var sourceMapping: Map<Long, String> = emptyMap()
 
-    suspend fun restore(uri: Uri, options: RestoreOptions) {
+    // KMK Code-Only Completion Plan 2026-07-31: returns a typed BackupRestoreOutcome instead of Unit
+    // so a caller can distinguish a fully clean restore from one where individual items failed --
+    // see BackupRestoreOutcome's own doc. This does NOT change this function's existing exception
+    // propagation: restoreFromFile() still throws normally (cancellation or an unisolated-section
+    // failure) exactly as before; only the no-exception completion path now carries a typed result.
+    suspend fun restore(uri: Uri, options: RestoreOptions): BackupRestoreOutcome {
         val startTime = System.currentTimeMillis()
 
         restoreFromFile(uri, options)
@@ -84,6 +90,12 @@ class BackupRestorer(
             logFile.name,
             isSync,
         )
+
+        return if (errors.isEmpty()) {
+            BackupRestoreOutcome.Success(restoreProgress)
+        } else {
+            BackupRestoreOutcome.PartialSuccess(restoreProgress, errors.size)
+        }
     }
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
@@ -237,9 +249,11 @@ class BackupRestorer(
 
                 try {
                     mangaRestorer.restore(it, backupCategories)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     val sourceName = sourceMapping[it.source] ?: it.source.toString()
-                    errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
+                    errors.add(Date() to "${it.title} [$sourceName]: ${context.stringResource(MR.strings.unknown_error)}")
                 }
 
                 restoreProgress += 1
@@ -303,8 +317,13 @@ class BackupRestorer(
 
                 try {
                     extensionStoreRestorer(it)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    errors.add(Date() to "Error Adding Repo: ${it.name} : ${e.message}")
+                    errors.add(
+                        Date() to
+                            "Error Adding Repo: ${it.name} : ${context.stringResource(MR.strings.unknown_error)}",
+                    )
                 }
 
                 restoreProgress += 1

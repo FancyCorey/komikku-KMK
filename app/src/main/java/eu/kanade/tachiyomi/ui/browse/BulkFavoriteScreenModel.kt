@@ -24,6 +24,7 @@ import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -394,6 +395,8 @@ class BulkFavoriteScreenModel(
                             fetchDetails = fetchMetadataOnAdd,
                             fetchChapters = fetchChaptersOnAdd,
                         ).getOrThrowSourceRuntimeException()
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         // KMK v0.8.10-fix7: same reasoning as the other updateMangaFromRemote(...)
                         // call site above -- getOrThrowSourceRuntimeException() is the primary

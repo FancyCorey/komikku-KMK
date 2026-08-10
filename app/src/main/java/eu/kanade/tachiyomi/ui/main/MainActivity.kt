@@ -57,6 +57,7 @@ import eu.kanade.domain.connections.service.ConnectionsPreferences
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.presentation.components.AppStateBanners
+import eu.kanade.presentation.components.BackupCleanupRecoveryDialog
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
 import eu.kanade.presentation.components.IncognitoModeBannerBackgroundColor
 import eu.kanade.presentation.components.IndexingBannerBackgroundColor
@@ -64,6 +65,7 @@ import eu.kanade.presentation.components.RestoringBannerBackgroundColor
 import eu.kanade.presentation.components.SyncingBannerBackgroundColor
 import eu.kanade.presentation.components.UpdatingBannerBackgroundColor
 import eu.kanade.presentation.more.settings.screen.ConfigureExhDialog
+import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen.Companion.getReleaseNotes
 import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewDialog
 import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewPolicy
@@ -110,6 +112,7 @@ import exh.log.DebugModeOverlay
 import exh.recs.KmkRecsReleaseNotes
 import exh.recs.evaluation.SourceEvaluationScreen
 import exh.source.ExhPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
@@ -123,6 +126,7 @@ import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.migration.Migrator
 import mihon.core.migration.Migrator.scope
+import mihon.domain.extension.ExtensionStoreUrlPolicy
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.Preference
@@ -497,6 +501,12 @@ class MainActivity : BaseActivity() {
             // SY -->
             ConfigureExhDialog(run = runExhConfigureDialog, onRunning = { runExhConfigureDialog = false })
             // SY <--
+
+            // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 3: rendered at
+            // the application composition root -- alongside the other always-reachable dialogs above
+            // -- so a pending backup SAF cleanup offer stays visible/actionable regardless of which
+            // screen is currently active, or whether CreateBackupScreen itself has been popped.
+            BackupCleanupRecoveryDialog()
         }
 
         val startTime = System.currentTimeMillis()
@@ -553,6 +563,8 @@ class MainActivity : BaseActivity() {
                     if (!LibraryUpdateJob.isPeriodicUpdateScheduled(context)) {
                         LibraryUpdateJob.setupTask(context)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                     withContext(Dispatchers.Main) {
@@ -567,6 +579,8 @@ class MainActivity : BaseActivity() {
                     if (!BackupCreateJob.isPeriodicBackupScheduled(context)) {
                         BackupCreateJob.setupTask(context)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                     withContext(Dispatchers.Main) {
@@ -604,6 +618,8 @@ class MainActivity : BaseActivity() {
                         )
                         navigator.push(updateScreen)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                 }
@@ -614,6 +630,8 @@ class MainActivity : BaseActivity() {
         LaunchedEffect(Unit) {
             try {
                 ExtensionApi().checkForUpdates(context)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
             }
@@ -710,6 +728,11 @@ class MainActivity : BaseActivity() {
                 navigator.push(SourceEvaluationScreen())
                 null
             }
+            Constants.OPEN_READER_SCHEDULE_SETTINGS -> {
+                navigator.popUntilRoot()
+                navigator.push(SettingsReaderScreen)
+                null
+            }
             // KMK v0.8.8: chapter-completion rating prompt's "rate other versions" step. Only
             // primitives travel through the Intent (manga id + rating int) — the actual
             // CrossExtensionMatchScreen/CrossExtensionMatchMode objects are constructed fresh here,
@@ -759,16 +782,19 @@ class MainActivity : BaseActivity() {
             }
             Intent.ACTION_VIEW -> {
                 // Handling opening of backup files
-                if (intent.data.toString().endsWith(".tachibk")) {
+                val data = intent.data
+                if (BackupDeepLinkPolicy.isAllowed(data?.scheme, data?.path)) {
                     navigator.popUntilRoot()
-                    navigator.push(RestoreBackupScreen(intent.data.toString()))
+                    navigator.push(RestoreBackupScreen(data.toString()))
                 }
                 // Deep link to add extension repo
                 else if (intent.scheme == "tachiyomi" && intent.data?.host == "add-repo") {
-                    intent.data?.getQueryParameter("url")?.let { repoUrl ->
-                        navigator.popUntilRoot()
-                        navigator.push(ExtensionStoresScreen(repoUrl))
-                    }
+                    intent.data?.getQueryParameter("url")
+                        ?.takeIf(ExtensionStoreUrlPolicy::isAllowed)
+                        ?.let { repoUrl ->
+                            navigator.popUntilRoot()
+                            navigator.push(ExtensionStoresScreen(repoUrl))
+                        }
                 }
                 null
             }

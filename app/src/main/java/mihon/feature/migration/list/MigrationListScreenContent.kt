@@ -56,6 +56,8 @@ import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import eu.kanade.tachiyomi.R
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import mihon.feature.migration.list.models.MigratingManga
@@ -149,6 +151,7 @@ fun MigrationListScreenContent(
                                 .fillMaxHeight(),
                             manga = item.manga,
                             source = item.source,
+                            sourceId = item.manga.source,
                             chapterCount = item.chapterCount,
                             latestChapter = item.latestChapter,
                             onClick = { onItemClick(item.manga) },
@@ -232,10 +235,12 @@ fun MigrationListItem(
     modifier: Modifier,
     manga: Manga,
     source: String,
+    sourceId: Long,
     chapterCount: Int,
     latestChapter: Double?,
     onClick: () -> Unit,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     Column(
         modifier = modifier
             .widthIn(max = 150.dp)
@@ -286,7 +291,11 @@ fun MigrationListItem(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = source,
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(sourceId)
+                } else {
+                    source
+                },
                 overflow = TextOverflow.Ellipsis,
                 maxLines = 1,
                 style = MaterialTheme.typography.titleSmall,
@@ -354,6 +363,7 @@ fun MigrationListItemResult(
                     modifier = Modifier.fillMaxSize(),
                     manga = result.manga,
                     source = result.source,
+                    sourceId = result.manga.source,
                     chapterCount = result.chapterCount,
                     latestChapter = result.latestChapter,
                     onClick = { onItemClick(result.manga) },

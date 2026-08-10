@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -73,12 +74,12 @@ class DiscordRPCService : Service() {
             // KMK -->
             try {
                 discordScope.launchIO { setScreen(this@DiscordRPCService) }
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Error setting initial screen: ${e.message}")
+            } catch (_: Exception) {
+                Timber.tag(TAG).e("Discord initial screen update failed")
                 stopSelf()
             }
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to initialize Discord RPC: ${e.message}")
+        } catch (_: Exception) {
+            Timber.tag(TAG).e("Discord RPC initialization failed")
             connectionsPreferences.enableDiscordRPC().set(false)
             stopSelf()
         }
@@ -135,8 +136,8 @@ class DiscordRPCService : Service() {
                 setScreen(this@DiscordRPCService)
             }
             Timber.tag(TAG).i("Discord RPC restarted successfully")
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to restart Discord RPC: ${e.message}")
+        } catch (_: Exception) {
+            Timber.tag(TAG).e("Discord RPC restart failed")
             stopSelf()
         }
     }
@@ -198,8 +199,8 @@ class DiscordRPCService : Service() {
                     }
                     try {
                         context.startService(stopIntent)
-                    } catch (e: Exception) {
-                        Timber.tag(TAG).e(e, "Failed to stop Discord RPC service: ${e.message}")
+                    } catch (_: Exception) {
+                        Timber.tag(TAG).e("Discord RPC stop request failed")
                     }
                 }, delay)
             } else {
@@ -208,8 +209,8 @@ class DiscordRPCService : Service() {
                 }
                 try {
                     context.startService(stopIntent)
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Failed to stop Discord RPC service: ${e.message}")
+                } catch (_: Exception) {
+                    Timber.tag(TAG).e("Discord RPC stop request failed")
                 }
             }
         }
@@ -222,8 +223,8 @@ class DiscordRPCService : Service() {
                 }
                 try {
                     context.startForegroundService(restartIntent)
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Failed to send restart intent: ${e.message}")
+                } catch (_: Exception) {
+                    Timber.tag(TAG).e("Discord RPC restart request failed")
                     // Fallback to stop/start if service isn't running
                     stop(context, 0L)
                     handler.postDelayed({ start(context, connectionsManager) }, 1000L)
@@ -384,7 +385,7 @@ class DiscordRPCService : Service() {
             }
 
             if (readerData.thumbnailUrl == null || readerData.mangaId == null) {
-                Timber.tag(TAG).w("Missing required data for reader activity: thumbnailUrl=${readerData.thumbnailUrl}, mangaId=${readerData.mangaId}")
+                Timber.tag(TAG).w("Missing required data for reader activity")
                 return
             }
 
@@ -414,8 +415,10 @@ class DiscordRPCService : Service() {
                         )
                     }
                 }
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Error setting reader activity: ${e.message}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Timber.tag(TAG).e("Discord reader activity update failed")
             }
         }
 
@@ -484,8 +487,10 @@ class DiscordRPCService : Service() {
                             .getOrNull(1)
                             ?.let { id -> "$EXTERNAL_PREFIX$id" }
                     }
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Error getting Discord URI: ${e.message}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Timber.tag(TAG).e("Discord thumbnail resolution failed")
                 null
             }
         }

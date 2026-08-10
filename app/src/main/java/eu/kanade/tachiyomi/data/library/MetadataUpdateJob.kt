@@ -58,14 +58,15 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
             try {
                 updateMetadata()
                 Result.success()
+            } catch (e: CancellationException) {
+                // KMK: previously caught here and converted into Result.success() ("Assume
+                // success although cancelled") -- see LibraryUpdateJob.doWork() for the identical
+                // fix and its full rationale. Rethrowing lets CoroutineWorker report the run as
+                // actually cancelled instead of succeeded.
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) {
-                    // Assume success although cancelled
-                    Result.success()
-                } else {
-                    logcat(LogPriority.ERROR, e)
-                    Result.failure()
-                }
+                logcat(LogPriority.ERROR, e)
+                Result.failure()
             } finally {
                 notifier.cancelProgressNotification()
             }

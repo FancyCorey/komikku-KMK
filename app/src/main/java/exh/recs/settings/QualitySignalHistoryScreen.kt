@@ -30,6 +30,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.taste.model.MangaSourceQualitySignal
 import tachiyomi.i18n.MR
@@ -49,6 +50,7 @@ class QualitySignalHistoryScreen : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { QualitySignalHistoryScreenModel() }
         val state by screenModel.state.collectAsState()
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -106,6 +108,7 @@ class QualitySignalHistoryScreen : Screen() {
                                 item(key = "record_${record.id}") {
                                     QualitySignalRecordItem(
                                         record = record,
+                                        evaluationModeEnabled = evaluationModeEnabled,
                                         onDelete = { screenModel.deleteRecord(record.id) },
                                     )
                                 }
@@ -139,6 +142,7 @@ class QualitySignalHistoryScreen : Screen() {
 @Composable
 private fun QualitySignalRecordItem(
     record: MangaSourceQualitySignal,
+    evaluationModeEnabled: Boolean,
     onDelete: () -> Unit,
 ) {
     ElevatedCard(
@@ -159,7 +163,14 @@ private fun QualitySignalRecordItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(KMR.strings.quality_signal_history_selected_source, record.selectedSourceName),
+                    text = stringResource(
+                        KMR.strings.quality_signal_history_selected_source,
+                        QualitySignalSourceLabelPolicy.resolve(
+                            evaluationModeEnabled = evaluationModeEnabled,
+                            sourceId = record.selectedSourceId,
+                            rawName = { record.selectedSourceName },
+                        ),
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (record.selectedTitle != record.originTitle) {

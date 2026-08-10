@@ -183,6 +183,16 @@ class KMKDomainModule : InjektModule {
         addFactory { UpsertRecommendationDiscoveryProgress(get()) }
         addFactory { ClearRecommendationDiscoveryProgress(get()) }
         // KMK <--
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: local-only For You
+        // exposure history (not in backup/sync/export -- see RecommendationExposureRepository KDoc)
+        addSingletonFactory<tachiyomi.domain.taste.repository.RecommendationExposureRepository> {
+            tachiyomi.data.taste.RecommendationExposureRepositoryImpl(get())
+        }
+        addFactory { tachiyomi.domain.taste.interactor.GetRecommendationExposure(get()) }
+        addFactory { tachiyomi.domain.taste.interactor.RecordRecommendationExposure(get()) }
+        addFactory { tachiyomi.domain.taste.interactor.PruneRecommendationExposure(get()) }
+        addFactory { tachiyomi.domain.taste.interactor.ClearRecommendationExposure(get()) }
+        // KMK <--
 
         addSingletonFactory<SourceEvaluationRepository> { SourceEvaluationRepositoryImpl(get()) }
         addFactory { GetSourceEvaluations(get()) }

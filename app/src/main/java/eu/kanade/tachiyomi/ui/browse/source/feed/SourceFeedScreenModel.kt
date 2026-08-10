@@ -177,10 +177,8 @@ open class SourceFeedScreenModel(
     private fun safeFilterList(src: Source = source): FilterList {
         return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
             getFilterList()
-        }.getOrElse { throwable ->
-            logcat(LogPriority.WARN, throwable) {
-                "SourceFeedScreenModel[${src.name}]: getFilterList failed"
-            }
+        }.getOrElse {
+            logcat(LogPriority.WARN) { "Source feed filter loading failed" }
             FilterList()
         }
     }

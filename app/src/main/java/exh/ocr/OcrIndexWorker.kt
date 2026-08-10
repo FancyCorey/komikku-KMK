@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
+import androidx.work.ListenableWorker.Result
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -19,6 +20,67 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 
 // KMK --> OCR v0.1.1 (updated from v0.1.0)
+
+/**
+ * Narrow test seam over [OcrNotifier] -- covers only the methods
+ * [runOcrIndexWork] actually calls, so a fake can be substituted in a JVM unit test without
+ * constructing a real [android.content.Context] or [androidx.work.CoroutineWorker]. [OcrNotifier]
+ * implements this unchanged; production callers are unaffected.
+ */
+internal interface OcrIndexWorkerNotifier {
+    fun updateProgress(progress: OcrIndexProgress)
+    fun dismissProgress()
+    fun showComplete(recognizedPages: Int, emptyPages: Int, failedPages: Int)
+}
+
+/**
+ * The exact cancellation/failure/success control flow of [OcrIndexWorker.doWork], extracted so it
+ * can be exercised directly in a JVM unit test (see `OcrIndexWorkerCancellationTest`) without a
+ * real [androidx.work.CoroutineWorker] instance -- this project has neither Robolectric nor
+ * `androidx.work:work-testing` (confirmed absent from the dependency graph before adding this
+ * seam), and adding either was judged unnecessary once this narrow extraction made a direct test
+ * possible. [OcrIndexWorker.doWork] calls this with the real [OcrIndexService.runIndexing] and
+ * [OcrJobState] wiring, so production behavior is unchanged.
+ */
+internal suspend fun runOcrIndexWork(
+    runIndexing: suspend (onProgress: OcrProgressCallback) -> Unit,
+    notifier: OcrIndexWorkerNotifier,
+    publishProgress: (OcrIndexProgress) -> Unit,
+    markCancelled: (OcrIndexProgress) -> Unit,
+    markFailed: (OcrIndexProgress) -> Unit,
+    markNotRunning: () -> Unit,
+    logUnexpectedError: (Throwable) -> Unit,
+): Result {
+    var lastProgress = OcrIndexProgress()
+    return try {
+        runIndexing { progress ->
+            lastProgress = progress
+            notifier.updateProgress(progress)
+            publishProgress(progress)
+        }
+        if (lastProgress.isCancelled) {
+            notifier.dismissProgress()
+        } else {
+            notifier.showComplete(lastProgress.recognizedPages, lastProgress.emptyPages, lastProgress.failedPages)
+        }
+        Result.success()
+    } catch (e: CancellationException) {
+        // KMK: previously caught here and converted into Result.success() ("assume success
+        // although cancelled"), which reported a cancelled run as succeeded to WorkManager and
+        // any external observer of this work's WorkInfo. Rethrowing after the same cleanup lets
+        // CoroutineWorker's own cancellation handling report the run as actually cancelled.
+        markCancelled(lastProgress)
+        notifier.dismissProgress()
+        throw e
+    } catch (e: Exception) {
+        logUnexpectedError(e)
+        markFailed(lastProgress.copy(isFailed = true, lastError = OcrErrorClassifier.classifyToStorageKey(e)))
+        notifier.dismissProgress()
+        Result.failure()
+    } finally {
+        markNotRunning()
+    }
+}
 
 class OcrIndexWorker(
     private val context: Context,
@@ -46,32 +108,16 @@ class OcrIndexWorker(
         setForegroundSafely()
 
         val service = OcrIndexService(context)
-        var lastProgress = OcrIndexProgress()
 
-        return try {
-            service.runIndexing(scope, retryMode, maxPages) { progress ->
-                lastProgress = progress
-                notifier.updateProgress(progress)
-                OcrJobState.activeProgress.value = progress
-            }
-            if (lastProgress.isCancelled) {
-                notifier.dismissProgress()
-            } else {
-                notifier.showComplete(lastProgress.recognizedPages, lastProgress.emptyPages, lastProgress.failedPages)
-            }
-            Result.success()
-        } catch (e: CancellationException) {
-            OcrJobState.activeProgress.value = lastProgress.copy(isCancelled = true)
-            notifier.dismissProgress()
-            Result.success()
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "OcrIndexWorker: unexpected error" }
-            OcrJobState.activeProgress.value = lastProgress.copy(isFailed = true, lastError = e.message)
-            notifier.dismissProgress()
-            Result.failure()
-        } finally {
-            OcrJobState.isRunning.value = false
-        }
+        return runOcrIndexWork(
+            runIndexing = { onProgress -> service.runIndexing(scope, retryMode, maxPages, onProgress) },
+            notifier = notifier,
+            publishProgress = { OcrJobState.activeProgress.value = it },
+            markCancelled = { OcrJobState.activeProgress.value = it.copy(isCancelled = true) },
+            markFailed = { OcrJobState.activeProgress.value = it },
+            markNotRunning = { OcrJobState.isRunning.value = false },
+            logUnexpectedError = { e -> logcat(LogPriority.ERROR, e) { "OcrIndexWorker: unexpected error" } },
+        )
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {

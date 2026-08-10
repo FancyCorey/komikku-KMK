@@ -37,6 +37,34 @@ enum class NonUndoableEventType {
     // extensionManager.uninstallExtension() itself is fire-and-forget with no completion signal, so
     // this event is never recorded on the mere fact that uninstall was requested.
     EXTENSION_UNINSTALLED,
+    // KMK Code-Only Completion Plan 2026-07-31: only recorded for a manual (non-sync), fully
+    // successful restore -- BackupRestoreJob.doWork() only records this after
+    // BackupRestorer.restore() returns BackupRestoreOutcome.Success (zero item-level errors) and
+    // isSync is false. A cancelled, partially-successful, or failed restore records nothing -- see
+    // BackupRestoreOutcome's own doc for why partial success is deliberately not represented here.
+    BACKUP_RESTORED,
+    // KMK Universal Action History Recovery Plan 2026-08-01: only recorded for
+    // DownloadManager.deleteChapters() -- the chapter-list delete, which always knows exactly which
+    // chapter ids it deleted (filteredChapters). DownloadManager.deleteManga() (whole-manga/source
+    // directory cleanup, including its own internal empty-directory-cleanup call from
+    // deleteChapters()) does not record this: it has no discrete per-chapter inventory to make a
+    // truthful "Re-download these chapters" follow-up possible, and recording a manga-level event
+    // with no verifiable chapter list would misrepresent what can safely be re-queued.
+    DOWNLOAD_DELETED,
+    // KMK Universal Action History Recovery Plan 2026-08-01: a tracker field write completed through
+    // the shared Tracker API. The private TrackWriteReceipt twin contains only the prior typed value
+    // needed for a guarded compensating sync; this public event never contains tracker or manga names.
+    TRACKER_WRITE_COMPLETED,
+    // KMK Universal Action History Recovery Plan 2026-08-01: a tracker binding completed through
+    // Tracker.register(). Its private receipt contains only opaque ids needed to offer a guarded
+    // unlink follow-up when the tracker implements DeletableTracker.
+    TRACKER_BOUND,
+    // KMK Universal Action History Recovery Plan 2026-08-01: a guarded tracker unlink follow-up
+    // completed. This event has no receipt and is intentionally not itself reversible.
+    TRACKER_UNBOUND,
+    // KMK Codex continuous completion 2026-08-05: manual Source Evaluation management actions
+    // delete diagnostic/quarantine records with no safe generic inverse; retain visibility only.
+    SOURCE_EVALUATION_DATA_CLEARED,
 }
 
 data class NonUndoableEvent(

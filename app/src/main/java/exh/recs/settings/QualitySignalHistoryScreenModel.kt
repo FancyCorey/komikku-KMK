@@ -7,6 +7,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -23,7 +24,13 @@ class QualitySignalHistoryScreenModel(
 
     init {
         screenModelScope.launch {
-            val all = runCatching { getSignals.getAll() }.getOrElse { emptyList() }
+            val all = try {
+                getSignals.getAll()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
             val groups = groupByOriginTitle(all)
             mutableState.update { it.copy(groups = groups, isLoading = false) }
         }

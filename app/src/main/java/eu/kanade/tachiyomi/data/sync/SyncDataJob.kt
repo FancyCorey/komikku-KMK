@@ -19,6 +19,7 @@ import eu.kanade.tachiyomi.util.system.isOnline
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -55,9 +56,14 @@ class SyncDataJob(private val context: Context, workerParams: WorkerParameters) 
         return try {
             SyncManager(context).syncData()
             Result.success()
+        } catch (e: CancellationException) {
+            // KMK: previously caught here and converted into Result.success() -- see
+            // LibraryUpdateJob.doWork() for the identical fix and its full rationale. Rethrowing
+            // lets CoroutineWorker report the run as actually cancelled instead of succeeded.
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
-            notifier.showSyncError(e.message)
+            notifier.showSyncError(context.getString(eu.kanade.tachiyomi.R.string.sync_error))
             Result.success() // try again next time
         } finally {
             // KMK -->

@@ -22,6 +22,7 @@ import exh.source.EHENTAI_EXT_SOURCES
 import exh.source.EXHENTAI_EXT_SOURCES
 import exh.source.ExhPreferences
 import exh.source.MERGED_SOURCE_ID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -165,7 +166,7 @@ class ExtensionManager(
         return filterNot { (_, extension) ->
             extension.isBlacklisted(blacklistEnabled)
                 .also {
-                    if (it) this@ExtensionManager.xLogD("Removing blacklisted extension: (name: %s, pkgName: %s)!", extension.name, extension.pkgName)
+                    if (it) this@ExtensionManager.xLogD("Removing blacklisted extension")
                 }
         }
     }
@@ -190,8 +191,10 @@ class ExtensionManager(
     suspend fun findAvailableExtensions() {
         val extensions: List<Extension.Available> = try {
             api.findExtensions()
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Extension list loading failed" }
             withUIContext { context.toast(MR.strings.extension_api_error) }
             return
         }
@@ -386,7 +389,7 @@ class ExtensionManager(
     private fun registerNewExtension(extension: Extension.Installed) {
         // SY -->
         if (extension.isBlacklisted()) {
-            xLogD("Removing blacklisted extension: (name: String, pkgName: %s)!", extension.name, extension.pkgName)
+            xLogD("Removing blacklisted extension")
             return
         }
         // SY <--
@@ -403,7 +406,7 @@ class ExtensionManager(
     private fun registerUpdatedExtension(extension: Extension.Installed) {
         // SY -->
         if (extension.isBlacklisted()) {
-            xLogD("Removing blacklisted extension: (name: %s, pkgName: %s)!", extension.name, extension.pkgName)
+            xLogD("Removing blacklisted extension")
             return
         }
         // SY <--

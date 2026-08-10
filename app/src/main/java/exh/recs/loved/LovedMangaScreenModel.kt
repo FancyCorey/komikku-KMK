@@ -1,16 +1,24 @@
 package exh.recs.loved
 
 // KMK -->
+import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.util.export.SafArtifactOutcome
+import eu.kanade.tachiyomi.util.export.SafExportCoordinator
+import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.BulkTasteOutcome
+import exh.recs.KmkRecsReleaseNotes
 import exh.recs.SeenMangaKey
 import exh.recs.SeenRecommendationMangaStore
+import exh.recs.share.RecommendationBundleExporter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -24,6 +32,7 @@ import tachiyomi.domain.taste.interactor.SetMangaTaste
 import tachiyomi.domain.taste.interactor.UpsertCrossSourceMangaLinks
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.domain.taste.model.MangaTaste
+import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.UUID
@@ -90,6 +99,11 @@ class LovedMangaScreenModel(
     // KMK <--
 ) : StateScreenModel<LovedMangaScreenModel.State>(State.Loading) {
 
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #5):
+    // screenModelScope-owned, not Composable-`remember`-owned -- survives recomposition of
+    // RatedMangaScreen/RatedMangaCollectionContent for as long as this screen model stays alive.
+    val exportCoordinator = SafExportCoordinator()
+
     init {
         // KMK --> v0.7.29: subscribe to live updates so the screen reacts to taste changes without manual refresh
         screenModelScope.launch {
@@ -98,26 +112,73 @@ class LovedMangaScreenModel(
         // KMK <--
     }
 
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #5): [snapshot] is
+    // captured by the caller (RatedMangaCollectionContent) at the moment the export is requested,
+    // before the picker opens -- never re-read from live state here.
+    fun exportRatedManga(context: Context, operationId: String, uri: Uri, snapshot: State.Success?): Boolean {
+        if (!exportCoordinator.registerUri(operationId, uri)) return false
+        screenModelScope.launch {
+            val outcome = exportCoordinator.performWrite(operationId) {
+                if (snapshot == null || snapshot.displayItems.isEmpty()) {
+                    SafArtifactOutcome.PARTIAL_OR_EMPTY
+                } else {
+                    val exporter = RecommendationBundleExporter()
+                    val bundle = exporter.buildLovedMangaBundle(
+                        displayItems = snapshot.displayItems,
+                        linkGroupByKey = snapshot.linkGroupByKey,
+                        kmkVersion = KmkRecsReleaseNotes.VERSION_NAME,
+                    )
+                    exporter.writeToUri(context, uri, bundle).fold(
+                        onSuccess = { SafArtifactOutcome.SUCCESS },
+                        onFailure = { SafArtifactOutcome.FAILED },
+                    )
+                }
+            }
+            withUIContext {
+                when (outcome) {
+                    SafArtifactOutcome.SUCCESS -> context.toast(KMR.strings.rec_bundle_export_success)
+                    SafArtifactOutcome.FAILED -> context.toast(KMR.strings.rec_bundle_export_failure)
+                    SafArtifactOutcome.PARTIAL_OR_EMPTY -> context.toast(KMR.strings.rec_bundle_export_empty)
+                    SafArtifactOutcome.CANCELLED -> Unit
+                    SafArtifactOutcome.IN_PROGRESS -> Unit
+                    SafArtifactOutcome.UNRESOLVED -> Unit
+                }
+            }
+        }
+        return true
+    }
+
     private suspend fun load(allTastes: List<MangaTaste>) {
-        runCatching {
+        try {
             // KMK --> v0.7.3: fail-safe source id lookup; empty set → hides all rather than showing uninstalled entries
-            val installedSourceIds: Set<Long> = runCatching {
+            // sourceManager.getVisibleSources() is a synchronous, in-memory lookup, not a suspend call.
+            val installedSourceIds: Set<Long> = try {
                 sourceManager.getVisibleSources().map { it.id }.toSet()
-            }.getOrDefault(emptySet())
+            } catch (e: Exception) {
+                emptySet()
+            }
             // KMK <--
 
             // KMK --> v0.7.37: load link groups before rating filter; needed for exclusivity resolution and display grouping
-            val linkGroupByKey: Map<String, String> = runCatching {
+            val linkGroupByKey: Map<String, String> = try {
                 getCrossSourceMangaLinks.awaitAll()
                     .associate { "${it.source}|${it.url}" to it.groupId }
-            }.getOrDefault(emptyMap())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyMap()
+            }
             // KMK <--
 
             // KMK --> v0.8.0: stored primary versions, fail-safe (empty map falls back to grouper choice)
-            val primaryByGroupId: Map<String, RatedMangaKey> = runCatching {
+            val primaryByGroupId: Map<String, RatedMangaKey> = try {
                 getCrossSourceGroupPrimary.awaitAll()
                     .associate { it.groupId to RatedMangaKey(it.source, it.url) }
-            }.getOrDefault(emptyMap())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyMap()
+            }
             // KMK <--
 
             // KMK --> v0.7.35: use generalized filter; legacy path kept for LOVE default
@@ -162,8 +223,9 @@ class LovedMangaScreenModel(
                 )
             }
             // KMK <--
-        }.onFailure { e ->
-            if (e is CancellationException) throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
             mutableState.value = State.Error(e)
         }
     }
@@ -239,7 +301,7 @@ class LovedMangaScreenModel(
         )
         screenModelScope.launch {
             targets.forEachIndexed { index, entry ->
-                runCatching {
+                try {
                     setMangaTaste.await(
                         mangaId = entry.taste.mangaId,
                         source = entry.taste.source,
@@ -247,8 +309,12 @@ class LovedMangaScreenModel(
                         title = entry.manga?.title ?: entry.taste.title,
                         rating = rating,
                     )
-                }.onSuccess {
                     journalEntries.getOrNull(index)?.let { exh.util.EvaluationModeJournalRecorder.commit(listOf(it)) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Leave this entry's journal entry uncommitted; the write itself did not
+                    // succeed, so there is nothing to allow undoing for this entry.
                 }
             }
             clearSelection()
@@ -501,8 +567,21 @@ class LovedMangaScreenModel(
             // GroupUndoRecorder's build-before/commit-after contract.
             val removed = mutableListOf<Pair<exh.util.RatedLinkKey, tachiyomi.domain.taste.model.CrossSourceMangaLink>>()
             targets.forEach { key ->
-                val previous = runCatching { getCrossSourceMangaLinks.awaitBySourceUrl(key.source, key.url) }.getOrNull()
-                val deleted = runCatching { deleteCrossSourceMangaLink.awaitBySourceUrl(key.source, key.url) }.isSuccess
+                val previous = try {
+                    getCrossSourceMangaLinks.awaitBySourceUrl(key.source, key.url)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                val deleted = try {
+                    deleteCrossSourceMangaLink.awaitBySourceUrl(key.source, key.url)
+                    true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    false
+                }
                 if (deleted && previous != null) {
                     removed += exh.util.RatedLinkKey(key.source, key.url) to previous
                 }
@@ -532,8 +611,20 @@ class LovedMangaScreenModel(
         screenModelScope.launch {
             // KMK v0.8.20: snapshot the complete pre-ungroup state before the atomic delete, and only
             // commit the group-undo entry after that delete actually succeeds.
-            val previousLinks = runCatching { getCrossSourceMangaLinks.awaitByGroupId(groupId) }.getOrDefault(emptyList())
-            val previousPrimary = runCatching { getCrossSourceGroupPrimary.awaitByGroupId(groupId) }.getOrNull()
+            val previousLinks = try {
+                getCrossSourceMangaLinks.awaitByGroupId(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            val previousPrimary = try {
+                getCrossSourceGroupPrimary.awaitByGroupId(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
             val undoEntry = try {
                 deleteCrossSourceGroupCompletely.await(groupId)
                 exh.util.GroupUndoRecorder.buildUngroupEntry(sourcePreferences, groupId, previousLinks, previousPrimary)

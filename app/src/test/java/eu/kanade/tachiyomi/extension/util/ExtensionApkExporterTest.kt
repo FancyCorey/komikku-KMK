@@ -4,12 +4,17 @@ package eu.kanade.tachiyomi.extension.util
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import eu.kanade.tachiyomi.extension.model.Extension
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
@@ -34,6 +39,7 @@ class ExtensionApkExporterTest {
     @AfterEach
     fun tearDown() {
         tempDir.deleteRecursively()
+        unmockkStatic(DocumentsContract::class)
     }
 
     private fun fakeContext(): Context {
@@ -141,7 +147,7 @@ class ExtensionApkExporterTest {
     }
 
     @Test
-    fun `exportSingle reports WriteFailed with the exception message when the copy itself throws`() = runTest {
+    fun `exportSingle reports WriteFailed without exposing the exception message when the copy itself throws`() = runTest {
         val extension = installedExtensionWithFile("eu.kanade.tachiyomi.extension.en.c")
         val context = fakeContext()
         val destUri = mockk<Uri>()
@@ -152,7 +158,6 @@ class ExtensionApkExporterTest {
         val result = ExtensionApkExporter.exportSingle(context, extension, destUri)
 
         assertTrue(result is ExtensionApkExporter.ExportResult.WriteFailed)
-        assertEquals("disk full", (result as ExtensionApkExporter.ExportResult.WriteFailed).message)
     }
 
     @Test
@@ -212,6 +217,57 @@ class ExtensionApkExporterTest {
         assertEquals(listOf(missing.pkgName), summary.skippedPkgNames)
     }
 
+    // KMK_UNIFIED_REMAINING_BLOCKER_COMPLETION_PLAN_2026-08-03 C1 -->
+    @Test
+    fun `exportMultiple fails without opening the destination when no extension is exportable`() = runTest {
+        // Every selected extension is unresolvable -- this must be reported as a failure, and the
+        // destination must never even be opened, so no manifest-only zip is ever written.
+        val missingOne = installedExtension(pkgName = "eu.kanade.tachiyomi.extension.en.missing1")
+        val missingTwo = installedExtension(pkgName = "eu.kanade.tachiyomi.extension.en.missing2")
+        val context = fakeContext()
+        val resolver = mockk<ContentResolver>()
+        every { context.contentResolver } returns resolver
+
+        val result = ExtensionApkExporter.exportMultiple(
+            context = context,
+            extensions = listOf(missingOne, missingTwo),
+            destUri = mockk<Uri>(),
+            appVersion = "1.0",
+            kmkVersion = "1.0",
+        )
+
+        assertTrue(result.isFailure, "an export with zero exportable extensions must never be reported as success")
+        assertTrue(
+            result.exceptionOrNull() is ExtensionApkExporter.NoExtensionsExportableException,
+            "the failure must be typed so callers can distinguish it from a write/open failure",
+        )
+        io.mockk.verify(exactly = 0) { resolver.openOutputStream(any()) }
+    }
+
+    @Test
+    fun `exportMultiple never returns a success with exportedCount zero`() = runTest {
+        // Regression guard for the manifest-only-success edge case: no combination of inputs may
+        // ever produce Result.success(MultiExportSummary(exportedCount = 0, ...)).
+        val missing = installedExtension(pkgName = "eu.kanade.tachiyomi.extension.en.onlymissing")
+        val context = fakeContext()
+        val destUri = mockk<Uri>()
+        every { context.contentResolver } returns mockk<ContentResolver>().also {
+            every { it.openOutputStream(destUri) } returns ByteArrayOutputStream()
+        }
+
+        val result = ExtensionApkExporter.exportMultiple(
+            context = context,
+            extensions = listOf(missing),
+            destUri = destUri,
+            appVersion = "1.0",
+            kmkVersion = "1.0",
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.getOrNull() == null)
+    }
+    // KMK <--
+
     @Test
     fun `exportMultiple fails cleanly without a partial zip claim when the destination cannot be opened`() = runTest {
         val a = installedExtensionWithFile("eu.kanade.tachiyomi.extension.en.a")
@@ -265,6 +321,68 @@ class ExtensionApkExporterTest {
         )
 
         assertTrue(result.isFailure, "an interrupted mid-stream write must never be reported as success")
+    }
+    // KMK <--
+
+    // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 5 -->
+    @Test
+    fun `exportSingle rethrows CancellationException instead of reporting WriteFailed`() = runTest {
+        val extension = installedExtensionWithFile("eu.kanade.tachiyomi.extension.en.cancelled")
+        val context = fakeContext()
+        val destUri = mockk<Uri>()
+        every { context.contentResolver } returns mockk<ContentResolver>().also {
+            every { it.openOutputStream(destUri) } throws CancellationException("scope cancelled")
+        }
+
+        var thrown: CancellationException? = null
+        try {
+            ExtensionApkExporter.exportSingle(context, extension, destUri)
+        } catch (e: CancellationException) {
+            thrown = e
+        }
+
+        assertTrue(thrown != null, "a cancelled export must propagate CancellationException, not report a result")
+    }
+
+    // --- deleteExported: narrowly-scoped cleanup, offered only after a confirmed successful export ---
+
+    @Test
+    fun `deleteExported returns true when DocumentsContract deletion succeeds`() {
+        mockkStatic(DocumentsContract::class)
+        val context = fakeContext()
+        val resolver = mockk<ContentResolver>()
+        val uri = mockk<Uri>()
+        every { context.contentResolver } returns resolver
+        every { DocumentsContract.deleteDocument(resolver, uri) } returns true
+
+        assertTrue(ExtensionApkExporter.deleteExported(context, uri))
+    }
+
+    @Test
+    fun `deleteExported returns false, not a crash, when deletion fails`() {
+        mockkStatic(DocumentsContract::class)
+        val context = fakeContext()
+        val resolver = mockk<ContentResolver>()
+        val uri = mockk<Uri>()
+        every { context.contentResolver } returns resolver
+        every { DocumentsContract.deleteDocument(resolver, uri) } throws SecurityException("permission revoked")
+
+        assertFalse(ExtensionApkExporter.deleteExported(context, uri))
+    }
+
+    // --- privacy: manifest entries never carry a filesystem path or credential ---
+
+    @Test
+    fun `ManifestEntry has no field capable of carrying a filesystem path, cookie, or credential`() {
+        val fieldNames = ExtensionApkExporter.ManifestEntry::class.java.declaredFields
+            .filterNot { it.isSynthetic }
+            .map { it.name }
+            .toSet()
+        val forbidden = setOf("path", "filePath", "cookie", "cookies", "credential", "credentials", "token", "sourcePreferences")
+        assertTrue(
+            fieldNames.none { it.lowercase() in forbidden },
+            "ManifestEntry must never gain a field capable of leaking a filesystem path or credential: $fieldNames",
+        )
     }
     // KMK <--
 }

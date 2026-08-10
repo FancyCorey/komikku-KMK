@@ -123,12 +123,18 @@ class RecommendationTasteTagsSettingsScreen(
                         // kept as a list/dialog control. Options are irregularly spaced (0, 5, 10, 20,
                         // 50; no consistent step) and 0 needs the special "Off" label, neither of which
                         // maps cleanly onto a slider without changing what values are selectable.
+                        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: the supported
+                        // values are no longer hardcoded here -- they come from the shared
+                        // RecommendationMinChapterCountPolicy that the preference read boundaries and
+                        // the setter also use, so the picker can never offer a value the pipeline
+                        // rejects (or omit one it accepts). Widget, section placement, and the "Off"
+                        // label rule are unchanged.
                         SameMangaListPrefRow(
                             title = stringResource(KMR.strings.rec_min_chapter_count),
                             summary = stringResource(KMR.strings.rec_min_chapter_count_summary),
-                            current = state.minChapterCount,
-                            options = listOf(0, 5, 10, 20, 50),
-                            valueLabel = { if (it == 0) offLabel else "$it" },
+                            current = exh.recs.RecommendationMinChapterCountPolicy.resolve(state.minChapterCount),
+                            options = exh.recs.RecommendationMinChapterCountPolicy.SUPPORTED_VALUES,
+                            valueLabel = { if (it == exh.recs.RecommendationMinChapterCountPolicy.OFF) offLabel else "$it" },
                             onSelect = screenModel::setMinChapterCount,
                         )
                     }

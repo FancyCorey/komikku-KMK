@@ -3,6 +3,7 @@ package exh.recs.evaluation
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,7 +77,7 @@ class SourceEvaluationStartupRecovery(
                     recoveredExtensionName = decision.marker.extensionName
                     recoveredPhase = decision.marker.phase
                     logcat(LogPriority.WARN) {
-                        "KMK SourceEvaluation startup recovery: quarantined ${decision.marker.extensionName}" +
+                        "KMK SourceEvaluation startup recovery: quarantined marker" +
                             " (phase=${decision.marker.phase})"
                     }
                     // KMK --> SEC-01 v0.7.16: if extension is still physically installed, record it so the UI can prompt uninstall
@@ -85,8 +86,7 @@ class SourceEvaluationStartupRecovery(
                     if (isStillInstalled) {
                         sourcePreferences.sourceEvaluationLeftoverPkg().set(decision.marker.extensionPkgName)
                         logcat(LogPriority.WARN) {
-                            "KMK SourceEvaluation startup recovery: leftover extension detected" +
-                                " pkgName=${decision.marker.extensionPkgName}"
+                            "KMK SourceEvaluation startup recovery: leftover extension detected"
                         }
                     }
                     // KMK <--
@@ -97,7 +97,7 @@ class SourceEvaluationStartupRecovery(
                     markerClearedStale = true
                     logcat(LogPriority.INFO) {
                         "KMK SourceEvaluation startup recovery: cleared stale probe marker" +
-                            " for ${decision.marker.extensionName}"
+                            " for current evaluation"
                     }
                 }
 
@@ -124,9 +124,11 @@ class SourceEvaluationStartupRecovery(
                 recoveredPhase = recoveredPhase,
                 seededUnsafeCount = seededCount,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "KMK SourceEvaluation startup recovery: failed" }
-            Result(errorMessage = e.message)
+            logcat(LogPriority.ERROR) { "KMK SourceEvaluation startup recovery: failed" }
+            Result(errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e))
         }
     }
 
@@ -139,8 +141,10 @@ class SourceEvaluationStartupRecovery(
         // Read existing package-level blocks (skip if already present)
         val existingBlockedPkgs = try {
             getUnsafePackages.awaitAll().map { it.pkgName }.toSet()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) {
+            logcat(LogPriority.ERROR) {
                 "KMK SourceEvaluation startup recovery: could not read blocked packages for seed check"
             }
             emptySet()
@@ -149,8 +153,10 @@ class SourceEvaluationStartupRecovery(
         // Read existing source-eval unsafe keys (for SE candidate filter seeding)
         val existingUnsafeKeys = try {
             getUnsafeSources.awaitAll().map { it.extensionKey }.toSet()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) {
+            logcat(LogPriority.ERROR) {
                 "KMK SourceEvaluation startup recovery: could not read existing unsafe sources for seed check"
             }
             emptySet()
@@ -177,16 +183,18 @@ class SourceEvaluationStartupRecovery(
                     )
                     seededCount++
                     logcat(LogPriority.INFO) {
-                        "KMK SourceEvaluation startup recovery: seeded package-level block for ${seed.pkgName}"
+                        "KMK SourceEvaluation startup recovery: seeded package-level block"
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) {
-                        "KMK SourceEvaluation startup recovery: package-level seed failed for ${seed.pkgName}"
+                    logcat(LogPriority.ERROR) {
+                        "KMK SourceEvaluation startup recovery: package-level seed failed"
                     }
                 }
             } else {
                 logcat(LogPriority.DEBUG) {
-                    "KMK SourceEvaluation startup recovery: package-level block already present for ${seed.pkgName}"
+                    "KMK SourceEvaluation startup recovery: package-level block already present"
                 }
             }
 
@@ -194,7 +202,7 @@ class SourceEvaluationStartupRecovery(
             val signatureHash = findSignatureHash(seed.pkgName, installed, available)
             if (signatureHash == null) {
                 logcat(LogPriority.INFO) {
-                    "KMK SourceEvaluation startup recovery: SE seed skipped for ${seed.pkgName}" +
+                    "KMK SourceEvaluation startup recovery: SE seed skipped" +
                         " — extension not found in installed/available metadata (package-level block still applied)"
                 }
                 continue
@@ -203,7 +211,7 @@ class SourceEvaluationStartupRecovery(
             val extensionKey = "$signatureHash|${seed.pkgName}"
             if (extensionKey in existingUnsafeKeys) {
                 logcat(LogPriority.DEBUG) {
-                    "KMK SourceEvaluation startup recovery: SE seed already present for ${seed.pkgName}"
+                    "KMK SourceEvaluation startup recovery: SE seed already present"
                 }
                 continue
             }
@@ -224,12 +232,13 @@ class SourceEvaluationStartupRecovery(
                 )
                 markUnsafe.await(marker = syntheticMarker, reason = seed.reason, now = now)
                 logcat(LogPriority.INFO) {
-                    "KMK SourceEvaluation startup recovery: SE seeded unsafe for ${seed.pkgName}" +
-                        " sig=$signatureHash"
+                    "KMK SourceEvaluation startup recovery: SE seeded unsafe"
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) {
-                    "KMK SourceEvaluation startup recovery: SE seed failed for ${seed.pkgName}"
+                logcat(LogPriority.ERROR) {
+                    "KMK SourceEvaluation startup recovery: SE seed failed"
                 }
             }
         }

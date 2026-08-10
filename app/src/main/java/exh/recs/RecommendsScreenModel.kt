@@ -206,7 +206,13 @@ open class RecommendsScreenModel(
 
             // KMK --> v0.7.43: alias map for group-tag scoring, loaded once for the whole screen
             val aliasMap = if (groupSeed != null) {
-                runCatching { getTagAliases.awaitAliasMap() }.getOrDefault(emptyMap())
+                try {
+                    getTagAliases.awaitAliasMap()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyMap()
+                }
             } else {
                 emptyMap()
             }
@@ -223,14 +229,24 @@ open class RecommendsScreenModel(
                 emptySet()
             }
             val tasteByKey: Map<MangaTasteKey, MangaTaste> = if (groupSeed != null) {
-                runCatching { getMangaTaste.awaitAll() }.getOrDefault(emptyList())
-                    .associateBy { MangaTasteKey(it.source, it.url) }
+                try {
+                    getMangaTaste.awaitAll()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyList()
+                }.associateBy { MangaTasteKey(it.source, it.url) }
             } else {
                 emptyMap()
             }
             val visibility = sourcePreferences.recommendationRatedMangaVisibility().get()
             val hideKnownManga = sourcePreferences.recommendationHideKnownManga().get()
-            val minChapterCount = sourcePreferences.recommendationMinChapterCount().get()
+            // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: same shared supported-value
+            // resolution For You uses, so this screen and For You can never disagree about the
+            // active threshold (and so it feeds the visibility fingerprint below as a legitimate value).
+            val minChapterCount = RecommendationMinChapterCountPolicy.resolve(
+                sourcePreferences.recommendationMinChapterCount().get(),
+            )
             // KMK <--
 
             // KMK v0.8.6: single fingerprint of every recommendation-affecting input that is NOT
@@ -287,14 +303,14 @@ open class RecommendsScreenModel(
                     val cachedResult = cacheKey?.let { GroupPreviewCache.get(it) }
                     if (cachedResult != null) {
                         logcat(LogPriority.DEBUG, tag = TAG) {
-                            "GROUP_PREVIEW cache HIT source=${recSource.name} count=${cachedResult.size}"
+                            "GROUP_PREVIEW cache HIT count=${cachedResult.size}"
                         }
                         if (isActive && generationGuard.isCurrent(myGeneration)) {
                             updateItem(recSource, RecommendationItemResult.Success(cachedResult))
                         }
                         return@async
                     } else if (cacheKey != null) {
-                        logcat(LogPriority.DEBUG, tag = TAG) { "GROUP_PREVIEW cache MISS source=${recSource.name}" }
+                        logcat(LogPriority.DEBUG, tag = TAG) { "GROUP_PREVIEW cache MISS" }
                     }
 
                     try {
@@ -305,7 +321,7 @@ open class RecommendsScreenModel(
                                 }
                             } ?: run {
                                 logcat(LogPriority.WARN, tag = TAG) {
-                                    "GROUP_PREVIEW timeout source=${recSource.name} elapsedMs=${System.currentTimeMillis() - rowStartMs}"
+                                    "GROUP_PREVIEW timeout elapsedMs=${System.currentTimeMillis() - rowStartMs}"
                                 }
                                 if (isActive && generationGuard.isCurrent(myGeneration)) {
                                     updateItem(
@@ -342,12 +358,24 @@ open class RecommendsScreenModel(
                                 val seed = groupSeed
                                 if (seed != null) {
                                     val knownIds = if (hideKnownManga) {
-                                        runCatching { getKnownMangaIds.await(list.map { it.id }) }.getOrDefault(emptySet())
+                                        try {
+                                            getKnownMangaIds.await(list.map { it.id })
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            emptySet()
+                                        }
                                     } else {
                                         emptySet()
                                     }
                                     val chapterCounts = if (minChapterCount > 0) {
-                                        runCatching { getChapterCounts.await(list.map { it.id }) }.getOrDefault(emptyMap())
+                                        try {
+                                            getChapterCounts.await(list.map { it.id })
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            emptyMap()
+                                        }
                                     } else {
                                         emptyMap()
                                     }
@@ -424,7 +452,7 @@ open class RecommendsScreenModel(
                         }
 
                         logcat(LogPriority.DEBUG, tag = TAG) {
-                            "GROUP_PREVIEW source=${recSource.name} rawCount=${titles.size} finalCount=${budgeted.size} elapsedMs=${System.currentTimeMillis() - rowStartMs}"
+                            "GROUP_PREVIEW completed rawCount=${titles.size} finalCount=${budgeted.size} elapsedMs=${System.currentTimeMillis() - rowStartMs}"
                         }
 
                         if (isActive && generationGuard.isCurrent(myGeneration)) {
@@ -433,7 +461,7 @@ open class RecommendsScreenModel(
                     } catch (e: CancellationException) {
                         // KMK v0.8.6: never render cancellation as a row error; always propagate so
                         // structured concurrency (leaving the screen, a new load) can observe it.
-                        logcat(LogPriority.DEBUG, tag = TAG) { "GROUP_PREVIEW cancelled source=${recSource.name}" }
+                        logcat(LogPriority.DEBUG, tag = TAG) { "GROUP_PREVIEW cancelled" }
                         throw e
                     } catch (e: Throwable) {
                         // KMK v0.8.6: fatal VM errors (OutOfMemoryError, StackOverflowError, etc.) are
@@ -454,8 +482,8 @@ open class RecommendsScreenModel(
                         // indirection, per the fix4 plan's instruction to prefer direct SourceRuntime/
                         // classifier usage over delegation at call sites where feasible.
                         if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
-                        logcat(LogPriority.WARN, e, tag = TAG) {
-                            "GROUP_PREVIEW error source=${recSource.name} elapsedMs=${System.currentTimeMillis() - rowStartMs}"
+                        logcat(LogPriority.WARN, tag = TAG) {
+                            "GROUP_PREVIEW error elapsedMs=${System.currentTimeMillis() - rowStartMs}"
                         }
                         if (isActive && generationGuard.isCurrent(myGeneration)) {
                             updateItem(recSource, RecommendationItemResult.Error(e))

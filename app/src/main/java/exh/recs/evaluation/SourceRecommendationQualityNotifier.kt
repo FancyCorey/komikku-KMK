@@ -25,7 +25,7 @@ import tachiyomi.i18n.kmk.KMR
  * collides with a running full Source Evaluation notification. Tapping still deep-links into the
  * Source Evaluation screen, since that is where compatibility progress is displayed.
  */
-class SourceRecommendationQualityNotifier(private val context: Context) {
+class SourceRecommendationQualityNotifier(private val context: Context) : SourceRecommendationQualityWorkerNotifier {
 
     private val openSourceEvaluationIntent: PendingIntent by lazy {
         PendingIntent.getActivity(
@@ -65,18 +65,18 @@ class SourceRecommendationQualityNotifier(private val context: Context) {
         }
     }
 
-    fun updateProgress(queueState: SourceRecommendationQualityQueueState) {
+    override fun updateProgress(queueState: SourceRecommendationQualityQueueState) {
         context.notify(
             Notifications.ID_SOURCE_RECOMMENDATION_QUALITY_PROGRESS,
             buildProgressNotification(queueState).build(),
         )
     }
 
-    fun dismissProgress() {
+    override fun dismissProgress() {
         context.cancelNotification(Notifications.ID_SOURCE_RECOMMENDATION_QUALITY_PROGRESS)
     }
 
-    fun showComplete(checkedCount: Int) {
+    override fun showComplete(checkedCount: Int) {
         context.cancelNotification(Notifications.ID_SOURCE_RECOMMENDATION_QUALITY_PROGRESS)
         context.notify(
             Notifications.ID_SOURCE_RECOMMENDATION_QUALITY_COMPLETE,

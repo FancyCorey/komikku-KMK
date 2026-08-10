@@ -2,6 +2,7 @@ package tachiyomi.source.local
 
 import android.content.Context
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -57,7 +58,7 @@ class LocalSource(
     // SY -->
     private val allowHiddenFiles: () -> Boolean,
     // SY <--
-) : Source, UnmeteredSource {
+) : CatalogueSource, UnmeteredSource {
 
     private val json: Json by injectLazy()
     private val xml: XML by injectLazy()

@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CancellationException
 import tachiyomi.i18n.MR
 import tachiyomi.domain.manga.model.Manga as DomainManga
 import tachiyomi.domain.track.model.Track as DomainTrack
@@ -89,6 +90,8 @@ class Suwayomi(id: Long) : BaseTracker(id, "Suwayomi"), EnhancedTracker {
     override suspend fun match(manga: DomainManga): TrackSearch? =
         try {
             api.getTrackSearch(manga.url.getMangaId())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }

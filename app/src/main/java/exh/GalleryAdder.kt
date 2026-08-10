@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.source.online.all.EHentai
 import exh.log.ResettableLogger
 import exh.log.safeXLogStackTag
 import exh.source.getMainSource
+import kotlinx.coroutines.CancellationException
 import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.chapter.interactor.GetChapter
@@ -65,7 +66,7 @@ class GalleryAdder(
         throttleFunc: suspend () -> Unit = {},
         retry: Int = 1,
     ): GalleryAddEvent {
-        logger()?.d(context.stringResource(SYMR.strings.gallery_adder_importing_gallery, url, fav.toString(), forceSource?.toString().orEmpty()))
+        logger()?.d("Gallery import started; favorite=$fav; forcedSource=${forceSource != null}")
         try {
             val uri = url.toUri()
 
@@ -78,7 +79,7 @@ class GalleryAdder(
                         return GalleryAddEvent.Fail.UnknownSource(url, context)
                     }
                 } catch (e: Exception) {
-                    logger()?.e(context.stringResource(SYMR.strings.gallery_adder_source_uri_must_match), e)
+                    logger()?.e(context.stringResource(SYMR.strings.gallery_adder_source_uri_must_match))
                     return GalleryAddEvent.Fail.UnknownType(url, context)
                 }
             } else {
@@ -98,7 +99,7 @@ class GalleryAdder(
             val realChapterUrl = try {
                 source.mapUrlToChapterUrl(uri)
             } catch (e: Exception) {
-                logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_map_to_chapter_error), e)
+                logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_map_to_chapter_error))
                 null
             }
 
@@ -106,7 +107,7 @@ class GalleryAdder(
                 try {
                     source.cleanChapterUrl(realChapterUrl)
                 } catch (e: Exception) {
-                    logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_clean_error), e)
+                    logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_clean_error))
                     null
                 }
             } else {
@@ -122,8 +123,10 @@ class GalleryAdder(
             // Map URL to manga URL
             val realMangaUrl = try {
                 chapterMangaUrl ?: source.mapUrlToMangaUrl(uri)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_map_to_gallery_error), e)
+                logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_map_to_gallery_error))
                 null
             } ?: return GalleryAddEvent.Fail.UnknownType(url, context)
 
@@ -131,7 +134,7 @@ class GalleryAdder(
             val cleanedMangaUrl = try {
                 source.cleanMangaUrl(realMangaUrl)
             } catch (e: Exception) {
-                logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_clean_error), e)
+                logger()?.e(context.stringResource(SYMR.strings.gallery_adder_uri_clean_error))
                 null
             } ?: return GalleryAddEvent.Fail.UnknownType(url, context)
 
@@ -171,8 +174,10 @@ class GalleryAdder(
             } else {
                 GalleryAddEvent.Success(url, manga, context)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger()?.w(context.stringResource(SYMR.strings.gallery_adder_could_not_add_gallery, url), e)
+            logger()?.w("Gallery import failed")
 
             if (e is EHentai.GalleryNotFoundException) {
                 return GalleryAddEvent.Fail.NotFound(url, context)
@@ -180,7 +185,7 @@ class GalleryAdder(
 
             return GalleryAddEvent.Fail.Error(
                 url,
-                ((e.message ?: "Unknown error!") + " (Gallery: $url)").trim(),
+                context.stringResource(SYMR.strings.gallery_adder_could_not_add_gallery, url),
             )
         }
     }
@@ -193,6 +198,8 @@ class GalleryAdder(
             try {
                 result = block()
                 break
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (e is EHentai.GalleryNotFoundException) {
                     throw e

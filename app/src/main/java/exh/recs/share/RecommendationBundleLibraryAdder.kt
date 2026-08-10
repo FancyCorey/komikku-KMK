@@ -2,6 +2,8 @@ package exh.recs.share
 
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
+import exh.recs.RecommendationErrorClassifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.firstOrNull
 import logcat.LogPriority
 import mihon.domain.source.interactor.UpdateMangaFromRemote
@@ -54,7 +56,13 @@ class RecommendationBundleLibraryAdder(
         if (manga.favorite) return AddResult(manga, Outcome.AlreadyFavorite)
 
         if (!skipDuplicates) {
-            val duplicates = runCatching { getDuplicateLibraryManga(manga) }.getOrDefault(emptyList())
+            val duplicates = try {
+                getDuplicateLibraryManga(manga)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
             if (duplicates.isNotEmpty()) {
                 return AddResult(manga, Outcome.Duplicate(duplicates.map { it.manga }))
             }
@@ -76,7 +84,7 @@ class RecommendationBundleLibraryAdder(
             setMangaCategories.await(manga.id, resolvedCategories)
 
             if (libraryPreferences.fetchMetadataOnAdd().get()) {
-                runCatching {
+                try {
                     val source = sourceManager.getOrStub(manga.source)
                     updateMangaFromRemote(
                         source = source,
@@ -84,15 +92,19 @@ class RecommendationBundleLibraryAdder(
                         fetchDetails = true,
                         fetchChapters = false,
                     ).getOrThrow()
-                }.onFailure { e ->
-                    logcat(LogPriority.WARN, e) { "Metadata fetch failed for imported manga: ${manga.title}" }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN) { "KMK recommendation bundle: metadata fetch failed" }
                 }
             }
 
             AddResult(manga, Outcome.Added)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to add ${manga.title} to library" }
-            AddResult(manga, Outcome.Error(e.message ?: "Unknown error"))
+            logcat(LogPriority.ERROR) { "KMK recommendation bundle: library add failed" }
+            AddResult(manga, Outcome.Error(RecommendationErrorClassifier.classifyToStorageKey(e)))
         }
     }
 

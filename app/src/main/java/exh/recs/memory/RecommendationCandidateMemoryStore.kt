@@ -2,6 +2,7 @@ package exh.recs.memory
 
 // KMK --> v0.7.38: For You candidate discovery memory
 import exh.recs.PersonalRecommendation
+import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.taste.interactor.GetRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
@@ -67,7 +68,14 @@ class RecommendationCandidateMemoryStore(
                 profileFingerprint = profileFingerprint,
                 filteredReason = null,
             )
-            runCatching { upsertMemory.await(entry) }
+            try {
+                upsertMemory.await(entry)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Best-effort memory write; a failed upsert here is safe to skip since this
+                // candidate may simply be re-scored and re-upserted on a later discovery pass.
+            }
         }
     }
 
@@ -103,12 +111,25 @@ class RecommendationCandidateMemoryStore(
             profileFingerprint = profileFingerprint,
             filteredReason = filteredReason,
         )
-        runCatching { upsertMemory.await(entry) }
+        try {
+            upsertMemory.await(entry)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best-effort memory write; see upsertBatch's identical rationale above.
+        }
     }
 
     /** Prune stored candidates for [sourceId] if over the cap. */
     suspend fun pruneIfNeeded(sourceId: Long) {
-        runCatching { pruneMemory.awaitIfNeeded(sourceId) }
+        try {
+            pruneMemory.awaitIfNeeded(sourceId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best-effort pruning; a skipped prune here just means the table stays slightly
+            // over its cap until the next successful call.
+        }
     }
 
     companion object {

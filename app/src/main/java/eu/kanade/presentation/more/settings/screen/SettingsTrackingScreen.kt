@@ -46,6 +46,7 @@ import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.model.AutoTrackState
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -58,6 +59,7 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.source.service.SourceManager
@@ -324,9 +326,11 @@ object SettingsTrackingScreen : SearchableSettings {
             tracker.login(username, password)
             withUIContext { context.toast(MR.strings.login_success) }
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             tracker.logout()
-            withUIContext { context.toast(e.message.toString()) }
+            withUIContext { context.toast(with(context) { e.formattedMessage }) }
             false
         }
     }

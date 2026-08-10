@@ -1054,7 +1054,7 @@ class LibraryScreenModel(
                     SourceRuntime.run<Boolean>(mdex, SourceRuntimeOperation.MangaUpdate) {
                         (this as MangaDex).updateFollowStatus(MdUtil.getMangaId(manga.url), FollowStatus.READING)
                     }.onFailure { error ->
-                        xLogE("Failed to sync MangaDex status for ${manga.title}", error)
+                        xLogE("MangaDex status sync failed")
                     }
                 }
             }
@@ -1860,9 +1860,9 @@ class LibraryScreenModel(
                         .filter { it.isNotEmpty() && !it.startsWith("#") }
                         .toHashSet()
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Log the error and return an empty set if the file cannot be read.
-                xLogE("Error loading MangaDex DMCA UUIDs", e)
+                xLogE("MangaDex DMCA UUID loading failed")
                 hashSetOf()
             }
         }

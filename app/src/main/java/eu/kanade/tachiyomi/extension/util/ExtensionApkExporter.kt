@@ -4,6 +4,7 @@ package eu.kanade.tachiyomi.extension.util
 import android.content.Context
 import android.net.Uri
 import eu.kanade.tachiyomi.extension.model.Extension
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -92,23 +93,52 @@ object ExtensionApkExporter {
     sealed interface ExportResult {
         data object Success : ExportResult
         data object SourceFileMissing : ExportResult
-        data class WriteFailed(val message: String?) : ExportResult
+        data object WriteFailed : ExportResult
     }
+
+    // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 5 -->
+    /**
+     * Removes exactly the document a caller just exported, through the same SAF `Uri` the user
+     * granted write access to via the system document picker (`ACTION_CREATE_DOCUMENT` /
+     * `exportLauncher` in `ExtensionDetailsScreen`/`ExtensionsScreen`). This cannot delete outside
+     * that single already-granted document -- `ContentResolver.delete` on a SAF document Uri only
+     * ever affects the exact document the Uri identifies, the same file-provider contract
+     * [exportSingle]/[exportMultiple] already write through. Never called automatically; only ever
+     * offered as an explicit, separate user action after a confirmed successful export, so an
+     * export the user actually wanted to keep is never silently removed.
+     */
+    fun deleteExported(context: Context, destUri: Uri): Boolean {
+        return try {
+            android.provider.DocumentsContract.deleteDocument(context.contentResolver, destUri)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+    // KMK <--
 
     /** Copies one installed extension's raw APK/archive bytes, unchanged, to [destUri]. */
     suspend fun exportSingle(context: Context, extension: Extension.Installed, destUri: Uri): ExportResult {
         val sourceFile = resolveSourceFile(context, extension) ?: return ExportResult.SourceFileMissing
         return withContext(Dispatchers.IO) {
-            runCatching {
+            try {
                 context.contentResolver.openOutputStream(destUri)?.use { out ->
                     sourceFile.inputStream().use { it.copyTo(out) }
-                } ?: return@withContext ExportResult.WriteFailed(null)
+                } ?: return@withContext ExportResult.WriteFailed
                 ExportResult.Success
-            }.getOrElse { ExportResult.WriteFailed(it.message) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ExportResult.WriteFailed
+            }
         }
     }
 
     data class MultiExportSummary(val exportedCount: Int, val skippedPkgNames: List<String>)
+
+    /** Thrown (as a [Result.failure]) by [exportMultiple] when no selected extension is exportable. */
+    class NoExtensionsExportableException : Exception("None of the selected extensions could be exported")
 
     /**
      * Writes every resolvable extension's raw APK/archive bytes plus one non-sensitive
@@ -125,7 +155,7 @@ object ExtensionApkExporter {
         appVersion: String,
         kmkVersion: String,
     ): Result<MultiExportSummary> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val skipped = mutableListOf<String>()
             val exportable = extensions.mapNotNull { ext ->
                 val file = resolveSourceFile(context, ext)
@@ -135,6 +165,17 @@ object ExtensionApkExporter {
                 } else {
                     ext to file
                 }
+            }
+            // Corrective pass 2026-08-03 (C1): reject before any destination write when nothing is
+            // exportable -- `exportable` is computed above without touching `destUri`, so this
+            // return happens strictly before `context.contentResolver.openOutputStream(destUri)`.
+            // No manifest-only zip is ever written to the user-chosen SAF document, and no
+            // `MultiExportSummary` with `exportedCount == 0` can ever be returned as a success. This
+            // is the chosen resolution for the "manifest-only success" edge case: a bulk export the
+            // user cannot meaningfully use (no extension content) is reported as a failure, not a
+            // hollow success that would need its own cleanup-eligibility carve-out.
+            if (exportable.isEmpty()) {
+                return@withContext Result.failure(NoExtensionsExportableException())
             }
             val json = Json { prettyPrint = false }
             val manifest = ExportManifest(
@@ -157,7 +198,11 @@ object ExtensionApkExporter {
                     }
                 }
             }
-            MultiExportSummary(exportedCount = exportable.size, skippedPkgNames = skipped)
+            Result.success(MultiExportSummary(exportedCount = exportable.size, skippedPkgNames = skipped))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

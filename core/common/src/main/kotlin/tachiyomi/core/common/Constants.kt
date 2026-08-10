@@ -22,6 +22,7 @@ object Constants {
     // KMK -->
     const val SHORTCUT_LIBRARY_UPDATE_ERRORS = "eu.kanade.tachiyomi.SHOW_LIBRARY_UPDATE_ERRORS"
     const val OPEN_SOURCE_EVALUATION = "eu.kanade.tachiyomi.OPEN_SOURCE_EVALUATION"
+    const val OPEN_READER_SCHEDULE_SETTINGS = "eu.kanade.tachiyomi.OPEN_READER_SCHEDULE_SETTINGS"
     // KMK v0.8.8: chapter-completion rating prompt's "rate other versions" step. Extras carry only
     // primitives (manga id + rating int) — never a screen or match-mode object — through the Intent.
     const val OPEN_CROSS_EXTENSION_MATCH_FOR_RATING = "eu.kanade.tachiyomi.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING"

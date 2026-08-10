@@ -124,7 +124,7 @@ class MigrationListScreenModel(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            logcat(LogPriority.ERROR, e) { "Failed to load migration info for manga $mangaId" }
+                            logcat(LogPriority.ERROR) { "Migration information load failed" }
                             null
                             // KMK <--
                         }
@@ -269,8 +269,8 @@ class MigrationListScreenModel(
                 localManga = getManga.await(localManga.id) ?: localManga
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e)
+            } catch (_: Exception) {
+                logcat(LogPriority.ERROR) { "Migration source refresh failed" }
             }
             val chapterInfo = getChapterInfo(localManga.id)
             localManga to chapterInfo.withMatchScore(
@@ -397,9 +397,7 @@ class MigrationListScreenModel(
                                 }
                                 MigrationListItemState.RETRYABLE_FAILURE, MigrationListItemState.NOT_STARTED -> {
                                     failedCount++
-                                    logcat(LogPriority.WARN) {
-                                        "Migration did not complete for manga ${manga.manga.id}: $outcome"
-                                    }
+                                    logcat(LogPriority.WARN) { "Migration did not complete" }
                                     manga.migrationResult.value = MigratingManga.MigrationResultState.Failed(retryable = true)
                                 }
                                 MigrationListItemState.SKIPPED -> Unit
@@ -416,7 +414,7 @@ class MigrationListScreenModel(
                         }
                         failedCount++
                         manga.migrationResult.value = MigratingManga.MigrationResultState.Failed(retryable = true)
-                        logcat(LogPriority.WARN, throwable = e)
+                        logcat(LogPriority.WARN) { "Migration attempt failed" }
                     }
                     mutableState.update {
                         it.copy(dialog = Dialog.Progress((index.toFloat() / items.size).coerceAtMost(1f)))
@@ -489,7 +487,7 @@ class MigrationListScreenModel(
                         removeManga(mangaId)
                     }
                     MigrationListItemState.RETRYABLE_FAILURE, MigrationListItemState.NOT_STARTED -> {
-                        logcat(LogPriority.WARN) { "Migration did not complete for manga $mangaId: $outcome" }
+                        logcat(LogPriority.WARN) { "Migration did not complete" }
                         manga.migrationResult.value = MigratingManga.MigrationResultState.Failed(retryable = true)
                     }
                     MigrationListItemState.SKIPPED -> Unit

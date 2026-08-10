@@ -3,6 +3,7 @@ package eu.kanade.domain.track.interactor
 import eu.kanade.domain.track.model.toDbTrack
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.Tracker
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -93,6 +94,8 @@ class SyncChapterProgressWithTrack(
                 return lastRead.toInt()
             }
             // KMK <--
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             logcat(LogPriority.WARN, e)
         }

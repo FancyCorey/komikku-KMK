@@ -144,6 +144,21 @@ class ActionHistoryRegistryTest {
     }
 
     @Test
+    fun `Source Evaluation management event is visible without an Undo action`() {
+        NonUndoableEventJournal.record(
+            NonUndoableEvent(
+                id = NonUndoableEvent.newId(),
+                timestamp = 10L,
+                eventType = NonUndoableEventType.SOURCE_EVALUATION_DATA_CLEARED,
+            ),
+        )
+
+        val descriptor = ActionHistoryRegistry.snapshot().single()
+
+        assertNull(descriptor.undo)
+    }
+
+    @Test
     fun `wiring real journals reach ActionHistoryRegistry clearAll`() = runTest {
         // Seed real entries in 3 of the 7 real journals (mirroring the construction patterns already
         // used in their own dedicated *JournalTest.kt files) to prove the real, hardcoded

@@ -14,6 +14,7 @@ import exh.md.utils.asMdMap
 import exh.md.utils.mdListCall
 import exh.metadata.metadata.MangaDexSearchMetadata
 import exh.util.under
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import tachiyomi.core.common.util.lang.withIOContext
 
@@ -115,14 +116,17 @@ class FollowsHandler(
     suspend fun updateRating(track: Track): Boolean {
         return withIOContext {
             val mangaId = MdUtil.getMangaId(track.tracking_url)
-            val result = runCatching {
+            try {
                 if (track.score == 0.0) {
                     service.deleteMangaRating(mangaId)
                 } else {
                     service.updateMangaRating(mangaId, track.score.toInt())
                 }.result == "ok"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
             }
-            result.getOrDefault(false)
         }
     }
 

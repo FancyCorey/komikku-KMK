@@ -192,7 +192,7 @@ class PagePreviewFetcher(
                 null
             }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to write snapshot data to page preview cache $diskCacheKey" }
+            logcat(LogPriority.ERROR) { "Page-preview snapshot cache write failed" }
             null
         }
     }
@@ -209,7 +209,7 @@ class PagePreviewFetcher(
                 null
             }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to write response data to page preview cache $diskCacheKey" }
+            logcat(LogPriority.ERROR) { "Page-preview response cache write failed" }
             null
         }
     }

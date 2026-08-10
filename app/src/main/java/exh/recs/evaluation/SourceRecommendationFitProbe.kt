@@ -147,7 +147,7 @@ class SourceRecommendationFitProbe(
                     val errorLabel = if (throwable.javaClass.name.contains("NetworkOnMainThreadException")) {
                         "internal-threading-error"
                     } else {
-                        throwable.message?.take(60) ?: throwable.javaClass.simpleName
+                        "internal failure"
                     }
                     reasons.add("Plan ${plan.type.name}: error — $errorLabel")
                     continue
@@ -246,7 +246,7 @@ class SourceRecommendationFitProbe(
                 val errorLabel = if (e.javaClass.name.contains("NetworkOnMainThreadException")) {
                     "internal-threading-error"
                 } else {
-                    e.message?.take(60) ?: e.javaClass.simpleName
+                    "internal failure"
                 }
                 reasons.add("Plan ${plan.type.name}: error — $errorLabel")
                 // KMK <--

@@ -1,6 +1,7 @@
 package tachiyomi.domain.chapter.interactor
 
 import exh.source.MERGED_SOURCE_ID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
@@ -40,6 +41,8 @@ class GetMergedChaptersByMangaId(
                 .combine(getMergedReferencesById.subscribe(mangaId)) { chapters, references ->
                     transformMergedChapters(references, chapters, dedupe)
                 }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             flowOf(emptyList())
@@ -53,6 +56,8 @@ class GetMergedChaptersByMangaId(
     ): List<Chapter> {
         return try {
             chapterRepository.getMergedChapterByMangaId(mangaId, applyFilter)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()

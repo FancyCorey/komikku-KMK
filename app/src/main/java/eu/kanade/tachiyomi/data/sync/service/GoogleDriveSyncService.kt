@@ -18,6 +18,7 @@ import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
@@ -76,9 +77,8 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
                 val localDeviceId = syncPreferences.uniqueDeviceID()
                 val lastSyncDeviceId = remoteSData.deviceId
 
-                // Log the device IDs
                 logcat(LogPriority.DEBUG, "SyncService") {
-                    "Local device ID: $localDeviceId, Last sync device ID: $lastSyncDeviceId"
+                    "Compared local and remote sync device state"
                 }
 
                 // check if the last sync was done by the same device if so overwrite the remote data with the local data
@@ -95,8 +95,10 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
 
             pushSyncData(syncData)
             return syncData.backup
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, "SyncService") { "Error syncing: ${e.message}" }
+            logcat(LogPriority.ERROR, "SyncService") { "Google Drive sync failed" }
             return null
         }
     }
@@ -116,7 +118,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
         }
 
         val gdriveFileId = fileList[0].id
-        logcat(LogPriority.DEBUG) { "Google Drive File ID: $gdriveFileId" }
+        logcat(LogPriority.DEBUG) { "Google Drive sync file located" }
 
         try {
             drive.files().get(gdriveFileId).executeMediaAsInputStream().use { inputStream ->
@@ -128,7 +130,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
                 }
             }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, throwable = e) { "Error downloading file" }
+            logcat(LogPriority.ERROR) { "Google Drive sync download failed" }
             throw Exception("Failed to download sync data: ${e.message}", e)
         }
     }
@@ -165,7 +167,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
                         }
                         drive.files().update(fileId, fileMetadata, mediaContent).execute()
                         logcat(LogPriority.DEBUG) {
-                            "Updated existing sync data file in Google Drive with file ID: $fileId"
+                            "Updated existing Google Drive sync file"
                         }
                     } else {
                         val fileMetadata = File().apply {
@@ -174,11 +176,11 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
                             parents = listOf("appDataFolder")
                             appProperties = mapOf("deviceId" to syncData.deviceId)
                         }
-                        val uploadedFile = drive.files().create(fileMetadata, mediaContent)
+                        drive.files().create(fileMetadata, mediaContent)
                             .setFields("id")
                             .execute()
                         logcat(LogPriority.DEBUG) {
-                            "Created new sync data file in Google Drive with file ID: ${uploadedFile.id}"
+                            "Created new Google Drive sync file"
                         }
                     }
                 }
@@ -197,11 +199,11 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
                 .setFields("files(id, name, createdTime, appProperties)")
                 .execute()
                 .files
-            logcat { "AppData folder file list: $fileList" }
+            logcat { "Google Drive app-data sync file count=${fileList.size}" }
 
             return fileList
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, throwable = e) { "Error no sync data found in appData folder" }
+            logcat(LogPriority.ERROR) { "Google Drive app-data lookup failed" }
             return mutableListOf()
         }
     }
@@ -228,13 +230,13 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
                         drive.files().delete(file.id).execute()
                         this@GoogleDriveSyncService.logcat(
                             LogPriority.DEBUG,
-                        ) { "Deleted sync data file in appData folder of Google Drive with file ID: ${file.id}" }
+                        ) { "Deleted Google Drive sync file from app-data storage" }
                     }
                     DeleteSyncDataStatus.SUCCESS
                 }
             } catch (e: Exception) {
-                this@GoogleDriveSyncService.logcat(LogPriority.ERROR, throwable = e) {
-                    "Error occurred while interacting with Google Drive"
+                this@GoogleDriveSyncService.logcat(LogPriority.ERROR) {
+                    "Google Drive sync-file deletion failed"
                 }
                 DeleteSyncDataStatus.ERROR
             }
@@ -340,19 +342,19 @@ class GoogleDriveService(private val context: Context) {
         } catch (e: TokenResponseException) {
             if (e.details.error == "invalid_grant") {
                 // The refresh token is invalid, prompt the user to sign in again
-                this@GoogleDriveService.logcat(LogPriority.ERROR, throwable = e) {
-                    "Refresh token is invalid, prompt user to sign in again"
+                this@GoogleDriveService.logcat(LogPriority.ERROR) {
+                    "Google Drive refresh token is invalid"
                 }
                 throw e.message?.let { Exception(it, e) } ?: Exception("Unknown error", e)
             } else {
                 // Token refresh failed; handle this situation
-                this@GoogleDriveService.logcat(LogPriority.ERROR) { "Failed to refresh access token ${e.message}" }
+                this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive access-token refresh failed" }
                 this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive sync will be disabled" }
                 throw e.message?.let { Exception(it, e) } ?: Exception("Unknown error", e)
             }
         } catch (e: IOException) {
             // Token refresh failed; handle this situation
-            this@GoogleDriveService.logcat(LogPriority.ERROR, throwable = e) { "Failed to refresh access token" }
+            this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive access-token refresh failed" }
             this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive sync will be disabled" }
             throw e.message?.let { Exception(it, e) } ?: Exception("Unknown error", e)
         }
@@ -434,7 +436,7 @@ class GoogleDriveService(private val context: Context) {
                 onSuccess()
             }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, throwable = e) { "Failed to handle authorization code" }
+            logcat(LogPriority.ERROR) { "Google Drive authorization handling failed" }
             activity.runOnUiThread {
                 onFailure(e.localizedMessage ?: "Unknown error")
             }

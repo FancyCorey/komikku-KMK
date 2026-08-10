@@ -33,6 +33,22 @@ internal object SourceMetadataTagDiagnosticsPolicy {
         .values
         .mapNotNull { rows -> rows.maxByOrNull { it.evaluatedAt } }
         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.sourceName })
+
+    // KMK Final Evidence Closure 2026-07-30 -->
+    /**
+     * Extracted from [SourceMetadataTagDiagnosticsContent]'s row rendering so the Evaluation Mode
+     * privacy branch is directly unit-testable, mirroring
+     * [RecommendationSettingsSectionSummaries.sourcePrioritySummary]. Never returns
+     * [SourceEvaluation.sourceName] when [evaluationModeEnabled] is true.
+     */
+    fun sourceLabelFor(evaluation: SourceEvaluation, evaluationModeEnabled: Boolean): String =
+        if (evaluationModeEnabled) {
+            evaluation.sourceId?.let(EvaluationModeFormatter::sourceLabel)
+                ?: EvaluationModeFormatter.sourceLabel(evaluation.evaluationKey)
+        } else {
+            evaluation.sourceName
+        }
+    // KMK <--
 }
 
 /** Read-only, count-based diagnostics for the metadata and tag evidence observed per source. */
@@ -67,12 +83,7 @@ internal fun SourceMetadataTagDiagnosticsContent(
 
         rows.forEach { evaluation ->
             val key = evaluation.evaluationKey
-            val sourceLabel = if (evaluationModeEnabled) {
-                evaluation.sourceId?.let(EvaluationModeFormatter::sourceLabel)
-                    ?: EvaluationModeFormatter.sourceLabel(key)
-            } else {
-                evaluation.sourceName
-            }
+            val sourceLabel = SourceMetadataTagDiagnosticsPolicy.sourceLabelFor(evaluation, evaluationModeEnabled)
             val confidenceLabel = stringResource(
                 when (evaluation.catalogueMetadataConfidence) {
                     SourceEvaluationMetadataConfidence.HIGH -> KMR.strings.source_evaluation_metadata_confidence_high

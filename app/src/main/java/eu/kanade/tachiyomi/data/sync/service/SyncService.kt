@@ -206,16 +206,12 @@ abstract class SyncService(
                 local != null && remote != null -> {
                     // Compare versions to decide which manga to keep
                     if (local.version >= remote.version) {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Keeping local version of ${local.title} with merged chapters."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Keeping local manga version with merged chapters" }
                         local.chapters = mergeChapters(local.chapters, remote.chapters)
                         updateCategories(local, localCategoriesMapByOrder)
                         local
                     } else {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Keeping remote version of ${remote.title} with merged chapters."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Keeping remote manga version with merged chapters" }
                         remote.chapters = mergeChapters(local.chapters, remote.chapters)
                         updateCategories(remote, remoteCategoriesMapByOrder)
                         remote
@@ -276,17 +272,17 @@ abstract class SyncService(
             val remoteChapter = remoteChapterMap[compositeKey]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing chapter key: $compositeKey. Local chapter: ${localChapter != null}, " +
+                "Processing chapter merge candidate. Local chapter: ${localChapter != null}, " +
                     "Remote chapter: ${remoteChapter != null}"
             }
 
             when {
                 localChapter != null && remoteChapter == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Keeping local chapter: ${localChapter.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Keeping local chapter" }
                     localChapter
                 }
                 localChapter == null && remoteChapter != null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Taking remote chapter: ${remoteChapter.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Taking remote chapter" }
                     remoteChapter
                 }
                 localChapter != null && remoteChapter != null -> {
@@ -301,16 +297,12 @@ abstract class SyncService(
                         remoteChapter
                     }
                     logcat(LogPriority.DEBUG, logTag) {
-                        "Merging chapter: ${chosenChapter.name}. Chosen version from: ${
-                            if (localChapter.version >= remoteChapter.version) "Local" else "Remote"
-                        }, Local version: ${localChapter.version}, Remote version: ${remoteChapter.version}."
+                        "Merging chapter; selected=${if (localChapter.version >= remoteChapter.version) "Local" else "Remote"}"
                     }
                     chosenChapter
                 }
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) {
-                        "No chapter found for composite key: $compositeKey. Skipping."
-                    }
+                    logcat(LogPriority.DEBUG, logTag) { "No chapter merge candidate available; skipping" }
                     null
                 }
             }
@@ -385,21 +377,21 @@ abstract class SyncService(
             val remoteSource = remoteSourceMap[sourceId]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing source ID: $sourceId. Local source: ${localSource != null}, " +
+                "Processing source merge candidate. Local source: ${localSource != null}, " +
                     "Remote source: ${remoteSource != null}"
             }
 
             when {
                 localSource != null && remoteSource == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using local source: ${localSource.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using local source" }
                     localSource
                 }
                 remoteSource != null && localSource == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using remote source: ${remoteSource.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using remote source" }
                     remoteSource
                 }
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Remote and local is not empty: $sourceId. Skipping." }
+                    logcat(LogPriority.DEBUG, logTag) { "Remote and local source entries conflict; skipping" }
                     null
                 }
             }
@@ -431,21 +423,21 @@ abstract class SyncService(
             val remotePreference = remotePreferencesMap[key]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing preference key: $key. Local preference: ${localPreference != null}, " +
+                "Processing preference merge candidate. Local preference: ${localPreference != null}, " +
                     "Remote preference: ${remotePreference != null}"
             }
 
             when {
                 localPreference != null && remotePreference == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using local preference: ${localPreference.key}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using local preference" }
                     localPreference
                 }
                 remotePreference != null && localPreference == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using remote preference: ${remotePreference.key}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using remote preference" }
                     remotePreference
                 }
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Both remote and local have keys. Skipping: $key" }
+                    logcat(LogPriority.DEBUG, logTag) { "Both remote and local preferences exist; skipping" }
                     null
                 }
             }
@@ -480,22 +472,18 @@ abstract class SyncService(
                 val remoteSourcePreference = remotePreferencesMap[sourceKey]
 
                 logcat(LogPriority.DEBUG, logTag) {
-                    "Processing source preference key: $sourceKey. " +
+                    "Processing source preference merge candidate. " +
                         "Local source preference: ${localSourcePreference != null}, " +
                         "Remote source preference: ${remoteSourcePreference != null}"
                 }
 
                 when {
                     localSourcePreference != null && remoteSourcePreference == null -> {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Using local source preference: ${localSourcePreference.sourceKey}."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Using local source preference" }
                         localSourcePreference
                     }
                     remoteSourcePreference != null && localSourcePreference == null -> {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Using remote source preference: ${remoteSourcePreference.sourceKey}."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Using remote source preference" }
                         remoteSourcePreference
                     }
                     localSourcePreference != null && remoteSourcePreference != null -> {
@@ -550,24 +538,22 @@ abstract class SyncService(
             val remoteSearch = remoteSearchMap[compositeKey]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing saved search key: $compositeKey. Local search: ${localSearch != null}, " +
+                "Processing saved-search merge candidate. Local search: ${localSearch != null}, " +
                     "Remote search: ${remoteSearch != null}"
             }
 
             when {
                 localSearch != null && remoteSearch == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using local saved search: ${localSearch.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using local saved search" }
                     localSearch
                 }
                 remoteSearch != null && localSearch == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using remote saved search: ${remoteSearch.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using remote saved search" }
                     remoteSearch
                 }
 
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) {
-                        "No saved search found for composite key: $compositeKey. Skipping."
-                    }
+                    logcat(LogPriority.DEBUG, logTag) { "No saved-search merge candidate available; skipping" }
                     null
                 }
             }

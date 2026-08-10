@@ -25,9 +25,17 @@ object SourceEvaluationJobState {
     @Volatile
     var pendingOptions: SourceEvaluationOptions? = null
 
-    /** The currently running runner, if any. Used by the job to cancel on WorkManager stop. */
+    // KMK: previously held the whole `SourceEvaluationRunner` (which retains a `Context`) in this
+    // process-scoped singleton -- flagged by Android Lint's StaticFieldLeak. The runner's Context
+    // is contractually Application-level (CoroutineWorker's constructor parameter), so this was
+    // never a real leaked-Activity-context bug, but the singleton had no structural need to hold
+    // the whole runner either: the only external read of it (SourceEvaluationScreenModel's
+    // continuation-cursor update) only ever needed completedCandidateKeys, a plain snapshot.
+    // SourceEvaluationJob now copies that snapshot in directly instead of publishing the runner
+    // object itself, so this singleton never retains a Context-carrying instance at all.
+    /** Snapshot of the completed candidate keys from the run that just finished. */
     @Volatile
-    var activeRunner: SourceEvaluationRunner? = null
+    var lastCompletedCandidateKeys: Set<String> = emptySet()
 
     // KMK --> v0.7.6: continuation cursor support
     /** Filter fingerprint for the pending run. Used to advance cursor after completion. */
@@ -50,7 +58,7 @@ object SourceEvaluationJobState {
     fun reset() {
         pendingCandidates = null
         pendingOptions = null
-        activeRunner = null
+        lastCompletedCandidateKeys = emptySet()
         activeQueueState.value = null
         // KMK --> v0.7.6
         pendingCursorFingerprint = null

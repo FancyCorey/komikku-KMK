@@ -61,6 +61,8 @@ class MangaCoverScreenModel(
                     context.stringResource(MR.strings.cover_saved),
                     withDismissAction = true,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 logcat(LogPriority.ERROR, e)
                 snackbarHostState.showSnackbar(
@@ -78,6 +80,8 @@ class MangaCoverScreenModel(
                 withUIContext {
                     context.startActivity(uri.toShareIntent(context))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 logcat(LogPriority.ERROR, e)
                 snackbarHostState.showSnackbar(

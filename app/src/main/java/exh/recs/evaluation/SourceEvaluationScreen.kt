@@ -75,6 +75,8 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.KmkEmptyStateArtwork
+import eu.kanade.presentation.components.KmkEmptyStateIllustration
 import eu.kanade.presentation.util.Screen
 import exh.recs.settings.RecommendationSettingsQuickAccessDestination
 import exh.recs.settings.RecommendationSettingsQuickAccessRow
@@ -106,16 +108,34 @@ private const val REASSESSMENT_THRESHOLD = 100
 @Composable
 private fun ScreenErrorKey.toLocalString(): String = when (this) {
     is ScreenErrorKey.Offline -> stringResource(KMR.strings.source_evaluation_offline_error)
-    is ScreenErrorKey.CandidateLoadFailed -> if (detail != null) {
-        stringResource(KMR.strings.source_evaluation_error_candidate_load_failed, detail)
-    } else {
-        stringResource(KMR.strings.source_evaluation_error_candidate_load_failed_unknown)
+    is ScreenErrorKey.CandidateLoadFailed -> {
+        val kind = SourceEvaluationProbeErrorKind.fromStorageKey(detail)
+        if (kind == null) {
+            stringResource(KMR.strings.source_evaluation_error_candidate_load_failed_unknown)
+        } else {
+            stringResource(
+                when (kind) {
+                    SourceEvaluationProbeErrorKind.NETWORK_UNAVAILABLE -> KMR.strings.source_evaluation_probe_error_network
+                    SourceEvaluationProbeErrorKind.TIMEOUT -> KMR.strings.source_evaluation_probe_error_timeout
+                    SourceEvaluationProbeErrorKind.UNSUPPORTED -> KMR.strings.source_evaluation_probe_error_unsupported
+                    SourceEvaluationProbeErrorKind.EXTENSION_INCOMPATIBLE -> KMR.strings.source_evaluation_probe_error_extension_incompatible
+                    SourceEvaluationProbeErrorKind.INTERNAL -> KMR.strings.source_evaluation_probe_error_internal
+                },
+            )
+        }
     }
-    is ScreenErrorKey.CrashRecovery -> stringResource(
-        KMR.strings.source_evaluation_crash_recovery_marked_unsafe,
-        extensionName,
-        phase,
-    )
+    is ScreenErrorKey.CrashRecovery -> {
+        val display = SourceEvaluationErrorDisplayPolicy.crashRecoveryDisplay(
+            extensionName = extensionName,
+            phase = phase,
+            evaluationModeEnabled = rememberEvaluationModeEnabled(),
+        )
+        stringResource(
+            KMR.strings.source_evaluation_crash_recovery_marked_unsafe,
+            display.extensionLabel,
+            display.phase,
+        )
+    }
     // KMK --> v0.7.43
     is ScreenErrorKey.JobConflict -> when (activeJob) {
         ScreenErrorKey.ActiveJobKind.SOURCE_EVALUATION -> stringResource(
@@ -1349,6 +1369,31 @@ class SourceEvaluationScreen(
                     // KMK <--
 
                     // Past evaluations
+                    // The empty illustration belongs only to Past evaluations. Setup controls,
+                    // diagnostics, warnings, and running/summary states remain visible elsewhere.
+                    if (state.evaluations.isEmpty() && queueState.isIdle) {
+                        item(key = "past_evaluations_empty") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(MaterialTheme.padding.medium),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                KmkEmptyStateIllustration(
+                                    artwork = KmkEmptyStateArtwork.SOURCE_EVALUATION,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(96.dp),
+                                )
+                                Text(
+                                    text = stringResource(KMR.strings.source_evaluation_empty),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = MaterialTheme.padding.small),
+                                )
+                            }
+                        }
+                    }
+
                     if (state.evaluations.isNotEmpty()) {
                         item(key = "eval_header") {
                             Row(
@@ -1578,6 +1623,7 @@ private fun EvaluationProgressCard(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1593,8 +1639,9 @@ private fun EvaluationProgressCard(
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(end = MaterialTheme.padding.extraSmall))
                 Text(
-                    text = queueState.currentExtensionName
-                        ?: stringResource(KMR.strings.source_evaluation_starting),
+                    text = queueState.currentExtensionName?.let {
+                        if (evaluationModeEnabled) EvaluationModeFormatter.sourceLabel("ext:$it") else it
+                    } ?: stringResource(KMR.strings.source_evaluation_starting),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -1602,7 +1649,7 @@ private fun EvaluationProgressCard(
 
             queueState.currentSourceName?.let { sourceName ->
                 Text(
-                    text = sourceName,
+                    text = if (evaluationModeEnabled) EvaluationModeFormatter.sourceLabel(sourceName) else sourceName,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1717,6 +1764,13 @@ private fun EvaluationSummaryCard(
             }
             if (queueState.ecchiHeavyCount > 0) {
                 Text(stringResource(KMR.strings.source_evaluation_ecchi_count, queueState.ecchiHeavyCount))
+            }
+            if (queueState.errorCount > 0) {
+                Text(
+                    text = stringResource(KMR.strings.source_evaluation_error_count, queueState.errorCount),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
 
             // KMK --> v0.7.11: cleanup outcome warnings
@@ -2079,16 +2133,22 @@ private fun RuntimeHealthIssueRow(
     onDisable: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val displayLabel = if (evaluationModeEnabled) {
+        EvaluationModeFormatter.sourceLabel(issue.sourceId)
+    } else {
+        issue.extensionName ?: issue.sourceName
+    }
     Column(modifier = modifier.fillMaxWidth().padding(vertical = MaterialTheme.padding.extraSmall)) {
         Text(
-            text = issue.extensionName ?: issue.sourceName,
+            text = displayLabel,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
         )
         Text(
             text = stringResource(
                 KMR.strings.source_evaluation_runtime_health_issue_summary,
-                issue.extensionName ?: issue.sourceName,
+                displayLabel,
                 issue.sourceLang,
             ),
             style = MaterialTheme.typography.labelSmall,
@@ -2429,8 +2489,7 @@ private fun EvaluationResultRow(
     // share this classified message instead of recomputing it.
     val classifiedCatalogueErrorMessage = if (isError && !evaluation.errorMessage.isNullOrBlank()) {
         // KMK v0.7.45: errorMessage is a classified storage key for rows written after this fix
-        // (SourceEvaluationProbeErrorClassifier); older rows may still hold pre-v0.7.45 raw text —
-        // shown truncated as before for backward compatibility, since it's already a stored fact.
+        // (SourceEvaluationProbeErrorClassifier); older rows may still hold pre-v0.7.45 raw text.
         val kind = SourceEvaluationProbeErrorKind.fromStorageKey(evaluation.errorMessage)
         if (kind != null) {
             stringResource(
@@ -2443,8 +2502,9 @@ private fun EvaluationResultRow(
                 },
             )
         } else {
-            val rawMsg = evaluation.errorMessage ?: ""
-            if (rawMsg.length > 60) rawMsg.take(60) + "…" else rawMsg
+            // Legacy rows may contain the pre-classification value. Never re-render that stored
+            // exception text; older data is treated as an internal failure category.
+            stringResource(KMR.strings.source_evaluation_probe_error_internal)
         }
     } else {
         null

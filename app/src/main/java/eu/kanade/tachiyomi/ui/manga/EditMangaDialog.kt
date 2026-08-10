@@ -43,6 +43,7 @@ import eu.kanade.presentation.components.SpinnerAdapter
 import eu.kanade.presentation.manga.components.RatioSwitchToPanorama
 import eu.kanade.presentation.theme.colorscheme.AndroidViewColorScheme
 import eu.kanade.presentation.track.components.TrackLogoIcon
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.Tracker
@@ -62,6 +63,7 @@ import eu.kanade.tachiyomi.widget.materialdialogs.setTextEdit
 import eu.kanade.tachiyomi.widget.materialdialogs.setTitle
 import exh.util.dropBlank
 import exh.util.trimOrNull
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -427,13 +429,15 @@ private suspend fun autofillFromTracker(binding: EditMangaDialogBinding, track: 
         setTextIfNotBlank(binding.mangaArtist::setText, trackerMangaMetadata.artists)
         setTextIfNotBlank(binding.thumbnailUrl::setText, trackerMangaMetadata.thumbnailUrl)
         setTextIfNotBlank(binding.mangaDescription::setText, trackerMangaMetadata.description)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Throwable) {
         tracker.logcat(LogPriority.ERROR, e)
         binding.root.context.toast(
             binding.root.context.stringResource(
                 MR.strings.track_error,
                 tracker.name,
-                e.message ?: "",
+                with(binding.root.context) { e.formattedMessage },
             ),
         )
     }

@@ -319,7 +319,13 @@ class BestVersionCompareScreenModel(
         mutableState.update { it.copy(step = BestVersionStep.LoadingChapters) }
         ioCoroutineScope.launch {
             // Load origin chapters to determine default chapter
-            val originChapters = runCatching { getChaptersByMangaId.await(origin.id) }.getOrElse { emptyList() }
+            val originChapters = try {
+                getChaptersByMangaId.await(origin.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
             val defaultChapter = BestVersionChapterMatcher.selectDefaultChapter(originChapters)
             val targetChapterNumber = defaultChapter?.chapterNumber ?: originChapters.maxOfOrNull { it.chapterNumber } ?: -1.0
 
@@ -623,18 +629,36 @@ class BestVersionCompareScreenModel(
                 when (val outcome = migrateMangaUseCase(current = origin, target = target, replace = replace)) {
                     is mihon.domain.migration.usecases.MigrationOutcome.Success -> {
                         saveQualitySignal(origin, target)
-                        // KMK v0.8.20-fix1: migration has no safe inverse (see
+                        // KMK v0.8.20-fix1: migration has no safe local-database inverse (see
                         // best_version_migrate_not_undoable -- it may delete downloaded chapters and
                         // can update an external tracker this device cannot roll back), so it is
                         // recorded as a non-undoable, visibility-only Action History event rather
                         // than a fake Undo. Only recorded after the migration write above actually
                         // succeeded. See exh.util.NonUndoableEventJournal's doc for the exact scope.
+                        // KMK Universal Action History Recovery Plan 2026-07-31: a typed
+                        // MigrationReceipt is recorded alongside the event (same shared-id
+                        // correlation pattern as PackageOperationReceipt) so ActionHistoryRegistry
+                        // can offer a real "Migrate back" compensating action -- a fresh reverse
+                        // migration through the same use case, never a database rollback. See
+                        // MigrationReceipt's own doc for exactly what this can and cannot recover.
                         if (sourcePreferences.evaluationMode().get()) {
+                            val sharedId = exh.util.NonUndoableEvent.newId()
                             exh.util.NonUndoableEventJournal.record(
                                 exh.util.NonUndoableEvent(
-                                    id = exh.util.NonUndoableEvent.newId(),
+                                    id = sharedId,
                                     timestamp = System.currentTimeMillis(),
                                     eventType = exh.util.NonUndoableEventType.MIGRATION_COMPLETED,
+                                ),
+                            )
+                            exh.util.MigrationReceiptJournal.record(
+                                exh.util.MigrationReceipt(
+                                    id = sharedId,
+                                    timestamp = System.currentTimeMillis(),
+                                    originMangaId = origin.id,
+                                    originSourceId = origin.source,
+                                    targetMangaId = target.id,
+                                    targetSourceId = target.source,
+                                    replace = replace,
                                 ),
                             )
                         }
@@ -705,7 +729,12 @@ class BestVersionCompareScreenModel(
             selectedAt = System.currentTimeMillis(),
             qualitySignalVersion = 1,
         )
-        runCatching { upsertQualitySignal.insert(signal) }
+        try {
+            upsertQualitySignal.insert(signal)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+        }
     }
 
     private fun resolveSettings(): SameMangaMatchSettings {

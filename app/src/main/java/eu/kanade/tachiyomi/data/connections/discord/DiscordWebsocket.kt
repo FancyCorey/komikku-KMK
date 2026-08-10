@@ -6,6 +6,7 @@
 package eu.kanade.tachiyomi.data.connections.discord
 
 import exh.log.xLogE
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -113,14 +114,16 @@ open class DiscordWebSocketImpl(
                 op = OpCode.PRESENCE_UPDATE.value.toLong(),
                 d = presence,
             )
-            val message = json.encodeToString(response)
-            Timber.tag(TAG).d("Sending message: $message")
-            val rtn = webSocket?.send(message)
+            val encodedPresence = json.encodeToString(response)
+            Timber.tag(TAG).d("Sending Discord presence update")
+            val rtn = webSocket?.send(encodedPresence)
             if (rtn != true) xLogE("Failed to send ${OpCode.PRESENCE_UPDATE}")
         } catch (e: TimeoutCancellationException) {
-            Timber.tag(TAG).e("Timeout waiting for Discord connection - skipping activity update: ${e.message}")
+            Timber.tag(TAG).e("Discord connection wait timed out; skipping activity update")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Error sending Discord activity: ${e.message}")
+            Timber.tag(TAG).e("Discord activity update failed")
         }
     }
 
@@ -142,7 +145,7 @@ open class DiscordWebSocketImpl(
 
         @Suppress("MagicNumber")
         override fun onMessage(webSocket: WebSocket, text: String) {
-            Timber.tag(TAG).d("Message received : $text")
+            Timber.tag(TAG).d("Discord gateway message received")
 
             val map = json.decodeFromString<Res>(text)
             seq = map.s
@@ -170,14 +173,14 @@ open class DiscordWebSocketImpl(
 
         @Suppress("MagicNumber")
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            Timber.tag(TAG).i("Server Closed : $code $reason")
+            Timber.tag(TAG).i("Discord gateway closed")
             if (code == 4000) {
                 scope.cancel()
             }
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            Timber.tag(TAG).e("Failure : ${t.message}")
+            Timber.tag(TAG).e("Discord gateway failure")
             if (t.message != "Interrupt") {
                 this@DiscordWebSocketImpl.webSocket = client.newWebSocket(request, Listener())
             }

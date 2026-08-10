@@ -60,6 +60,7 @@ import eu.kanade.presentation.more.settings.screen.SettingsEhScreen
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
@@ -241,6 +242,8 @@ class MangaScreen(
                     withIOContext {
                         assistUrl = getMangaUrl(screenModel.manga, screenModel.source)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e) { "Failed to get manga URL" }
                 }
@@ -479,6 +482,10 @@ class MangaScreen(
                     ),
                 )
             },
+            // KMK_CLAUDE_JUMP_TO_LAST_READ_2026-08-09 -->
+            lastReadChapterTarget = screenModel.resolveLastReadChapterTarget(),
+            currentIndexOfChapter = screenModel::currentIndexOfChapter,
+            // KMK <--
             // KMK --> v0.7.0: Phase 3 – favorite other versions
             onFavoriteOtherVersionsClicked = {
                 navigator.push(
@@ -489,10 +496,10 @@ class MangaScreen(
                 )
             },
             // KMK <--
-            // KMK --> v0.6.20: seen manga callbacks
-            isSeen = successState.isSeen,
-            onSeenClicked = {
-                if (successState.isSeen) screenModel.clearSeen() else screenModel.markSeen()
+            // KMK --> v0.6.20: not-interested manga callbacks
+            isNotInterested = successState.isNotInterested,
+            onNotInterestedClicked = {
+                if (successState.isNotInterested) screenModel.clearSeen() else screenModel.markSeen()
             },
             onSeenOtherVersionsClicked = {
                 navigator.push(
@@ -742,7 +749,7 @@ class MangaScreen(
                 context.startActivity(intent)
             }
         } catch (e: Exception) {
-            context.toast(e.message)
+            context.toast(with(context) { e.formattedMessage })
         }
     }
 
@@ -967,7 +974,12 @@ class MangaScreen(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
 
-                context.toast(context.stringResource(SYMR.strings.failed_merge, e.message.orEmpty()))
+                context.toast(
+                    context.stringResource(
+                        SYMR.strings.failed_merge,
+                        with(context) { e.formattedMessage },
+                    ),
+                )
             }
         }
     }

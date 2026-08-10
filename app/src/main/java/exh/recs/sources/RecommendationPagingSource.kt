@@ -183,13 +183,13 @@ abstract class TrackerRecommendationPagingSource(
             } else {
                 getRecsBySearch(manga.ogTitle)
             }
-            logcat { name + " > Results: " + results.size }
+            logcat { "Recommendation results loaded count=${results.size}" }
 
             results.ifEmpty { throw NoResultsException() }
         } catch (e: Exception) {
             // 'No results' should not be logged as it happens frequently and is expected
             if (e !is NoResultsException) {
-                logcat(LogPriority.ERROR, e) { name }
+                logcat(LogPriority.ERROR) { "Recommendation results failed" }
             }
             throw e
         }

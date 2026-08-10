@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import exh.recs.PersonalRecommendation
 import exh.recs.loved.LovedDisplayItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.domain.manga.model.Manga
@@ -134,11 +135,16 @@ class RecommendationBundleExporter(
 
     fun serializeBundle(bundle: RecommendationBundle): String = json.encodeToString(bundle)
 
-    suspend fun writeToUri(context: Context, uri: Uri, bundle: RecommendationBundle): Result<Unit> = runCatching {
+    suspend fun writeToUri(context: Context, uri: Uri, bundle: RecommendationBundle): Result<Unit> = try {
         val content = serializeBundle(bundle)
         context.contentResolver.openOutputStream(uri)?.use { out ->
             out.write(content.toByteArray(Charsets.UTF_8))
         } ?: error("Could not open output stream")
+        Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 }
 

@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.connections.discord
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -43,17 +44,19 @@ class RPCExternalAsset(
             val res = client.newCall(request).await()
             if (res.code == 429) {
                 // Rate limit hit
-                Timber.tag(TAG).e("Discord API rate limit reached: ${res.body.string()}")
+                Timber.tag(TAG).e("Discord external asset request rate limited")
                 return null
             }
             if (!res.isSuccessful) {
-                Timber.tag(TAG).e("Discord API error: HTTP ${res.code} - ${res.body.string()}")
+                Timber.tag(TAG).e("Discord external asset request failed: HTTP ${res.code}")
                 return null
             }
             json.decodeFromString<List<ExternalAsset>>(res.body.string())
                 .firstOrNull()?.externalAssetPath?.let { "mp:$it" }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Exception while fetching Discord external asset: ${e.message}")
+            Timber.tag(TAG).e("Discord external asset request raised an exception")
             null
         }
     }

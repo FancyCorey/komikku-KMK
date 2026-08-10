@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.Tracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
@@ -62,6 +63,8 @@ class RefreshTracks(
                                 }
                             // KMK <--
                             null
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Throwable) {
                             service to e
                         }

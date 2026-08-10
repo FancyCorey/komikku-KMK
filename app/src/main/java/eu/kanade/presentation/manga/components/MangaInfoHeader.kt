@@ -80,6 +80,8 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -263,8 +265,8 @@ fun MangaActionRow(
     onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
     // KMK <--
     // KMK --> v0.6.20: seen manga marker
-    isSeen: Boolean = false,
-    onSeenClicked: (() -> Unit)? = null,
+    isNotInterested: Boolean = false,
+    onNotInterestedClicked: (() -> Unit)? = null,
     onSeenOtherVersionsClicked: (() -> Unit)? = null,
     // KMK <--
     // KMK --> v0.7.8: find best version action
@@ -354,57 +356,82 @@ fun MangaActionRow(
         if (onTasteClicked != null) {
             var tasteMenuExpanded by remember { mutableStateOf(false) }
             val currentRating = tachiyomi.domain.taste.model.MangaRating.fromValue(mangaTaste?.rating ?: 0)
+            // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: the primary rate action must
+            // visibly reflect Not Interested when active -- previously this derived title/icon/color
+            // from currentRating only, so a manga marked Not Interested still showed a bare "Rate"
+            // button with no indication. MangaPreferencePresentationPolicy makes the precedence
+            // (Not Interested first, then the ordinary rating) explicit and directly testable.
+            val tastePresentation = exh.recs.loved.MangaPreferencePresentationPolicy.resolve(currentRating, isNotInterested)
+            fun markerIcon(marker: exh.recs.loved.MangaPreferencePresentationPolicy.Marker) = when (marker) {
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED -> Icons.Outlined.VisibilityOff
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LOVE -> Icons.Filled.Favorite
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LIKE -> Icons.Outlined.Done
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.DISLIKE -> Icons.Outlined.Block
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.NONE -> Icons.Outlined.FavoriteBorder
+            }
+            fun markerForRating(rating: tachiyomi.domain.taste.model.MangaRating) = when (rating) {
+                tachiyomi.domain.taste.model.MangaRating.LOVE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LOVE
+                tachiyomi.domain.taste.model.MangaRating.LIKE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LIKE
+                tachiyomi.domain.taste.model.MangaRating.DISLIKE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.DISLIKE
+            }
             MangaActionButton(
-                title = when (currentRating) {
-                    tachiyomi.domain.taste.model.MangaRating.LOVE -> stringResource(KMR.strings.taste_love)
-                    tachiyomi.domain.taste.model.MangaRating.LIKE -> stringResource(KMR.strings.taste_like)
-                    tachiyomi.domain.taste.model.MangaRating.DISLIKE -> stringResource(KMR.strings.taste_dislike)
-                    null -> stringResource(KMR.strings.taste_rating)
-                },
-                icon = when (currentRating) {
-                    tachiyomi.domain.taste.model.MangaRating.LOVE -> Icons.Filled.Favorite
-                    tachiyomi.domain.taste.model.MangaRating.LIKE -> Icons.Outlined.Done
-                    tachiyomi.domain.taste.model.MangaRating.DISLIKE -> Icons.Outlined.Block
-                    null -> Icons.Outlined.FavoriteBorder
-                },
-                color = if (mangaTaste != null) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
+                title = stringResource(tastePresentation.titleRes),
+                icon = markerIcon(tastePresentation.marker),
+                color = if (tastePresentation.selected) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
                 onClick = { tasteMenuExpanded = true },
+                stateDescription = stringResource(tastePresentation.accessibilityStateDescriptionRes),
             )
+            // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: dispatches every
+            // MangaPreferenceAction through the same two existing callbacks (onTasteClicked/
+            // onNotInterestedClicked) -- the callback surface is unchanged, only the rendering below
+            // is now one shared, data-driven list instead of four independently hand-coded blocks.
+            fun dispatch(action: exh.recs.loved.MangaPreferenceAction) {
+                when (action) {
+                    is exh.recs.loved.MangaPreferenceAction.Rating -> onTasteClicked(action.value)
+                    exh.recs.loved.MangaPreferenceAction.NotInterested -> onNotInterestedClicked?.invoke()
+                    exh.recs.loved.MangaPreferenceAction.Clear -> onTasteClicked(null)
+                }
+                tasteMenuExpanded = false
+            }
             DropdownMenu(
                 expanded = tasteMenuExpanded,
                 onDismissRequest = { tasteMenuExpanded = false },
             ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(KMR.strings.taste_love)) },
-                    onClick = {
-                        onTasteClicked(tachiyomi.domain.taste.model.MangaRating.LOVE)
-                        tasteMenuExpanded = false
-                    },
-                    leadingIcon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(KMR.strings.taste_like)) },
-                    onClick = {
-                        onTasteClicked(tachiyomi.domain.taste.model.MangaRating.LIKE)
-                        tasteMenuExpanded = false
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.Done, contentDescription = null) },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(KMR.strings.taste_dislike)) },
-                    onClick = {
-                        onTasteClicked(tachiyomi.domain.taste.model.MangaRating.DISLIKE)
-                        tasteMenuExpanded = false
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
-                )
+                // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: Love, Like, Dislike, and
+                // Not Interested render from one shared list -- Not Interested is a structural peer
+                // here, not a separately hardcoded, divider-separated standalone action.
+                exh.recs.loved.MangaPreferencePresentationPolicy.dropdownActions().forEach { action ->
+                    when (action) {
+                        is exh.recs.loved.MangaPreferenceAction.Rating -> DropdownMenuItem(
+                            text = { Text(stringResource(exh.recs.loved.MangaPreferencePresentationPolicy.labelFor(action))) },
+                            onClick = { dispatch(action) },
+                            leadingIcon = { Icon(markerIcon(markerForRating(action.value)), contentDescription = null) },
+                        )
+                        exh.recs.loved.MangaPreferenceAction.NotInterested -> if (onNotInterestedClicked != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            exh.recs.loved.MangaPreferencePresentationPolicy.notInterestedToggleLabel(isNotInterested),
+                                        ),
+                                    )
+                                },
+                                onClick = { dispatch(action) },
+                                leadingIcon = {
+                                    Icon(
+                                        if (isNotInterested) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                        contentDescription = null,
+                                    )
+                                },
+                            )
+                        }
+                        exh.recs.loved.MangaPreferenceAction.Clear -> Unit
+                    }
+                }
                 if (mangaTaste != null) {
                     DropdownMenuItem(
                         text = { Text(stringResource(KMR.strings.taste_clear)) },
-                        onClick = {
-                            onTasteClicked(null)
-                            tasteMenuExpanded = false
-                        },
+                        onClick = { dispatch(exh.recs.loved.MangaPreferenceAction.Clear) },
                         leadingIcon = { Icon(Icons.Outlined.Close, contentDescription = null) },
                     )
                 }
@@ -447,31 +474,9 @@ fun MangaActionRow(
                         )
                     }
                     // KMK <--
-                }
-                // KMK --> v0.6.20: seen manga marker
-                if (onSeenClicked != null) {
-                    androidx.compose.material3.HorizontalDivider()
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (isSeen) {
-                                    stringResource(KMR.strings.rec_clear_seen)
-                                } else {
-                                    stringResource(KMR.strings.rec_mark_seen)
-                                },
-                            )
-                        },
-                        onClick = {
-                            onSeenClicked()
-                            tasteMenuExpanded = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                if (isSeen) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                contentDescription = null,
-                            )
-                        },
-                    )
+                    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: "Not interested in
+                    // other versions" is now a peer of the other three "other versions" actions in
+                    // this same group, instead of sitting behind its own second divider below.
                     if (onSeenOtherVersionsClicked != null) {
                         DropdownMenuItem(
                             text = { Text(stringResource(KMR.strings.rec_match_title_seen)) },
@@ -482,8 +487,19 @@ fun MangaActionRow(
                             leadingIcon = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
                         )
                     }
+                } else if (onSeenOtherVersionsClicked != null) {
+                    // No taste-other-versions callback set but Not Interested's "other versions" is --
+                    // still needs its own divider since the group above didn't render.
+                    androidx.compose.material3.HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_seen)) },
+                        onClick = {
+                            onSeenOtherVersionsClicked()
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
+                    )
                 }
-                // KMK <--
                 // KMK <--
             }
         }
@@ -1231,10 +1247,20 @@ private fun RowScope.MangaActionButton(
     color: Color,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: optional accessibility state
+    // description (e.g. "Selected"/"Not selected"), announced by accessibility services alongside
+    // the visible title. Defaults to none so every other MangaActionButton call site is unaffected.
+    stateDescription: String? = null,
 ) {
     TextButton(
         onClick = onClick,
-        modifier = Modifier.weight(1f),
+        modifier = Modifier.weight(1f).let { m ->
+            if (stateDescription != null) {
+                m.semantics { this.stateDescription = stateDescription }
+            } else {
+                m
+            }
+        },
         onLongClick = onLongClick,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

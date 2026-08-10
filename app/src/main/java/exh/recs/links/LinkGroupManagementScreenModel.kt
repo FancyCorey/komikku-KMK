@@ -4,6 +4,7 @@ package exh.recs.links
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import tachiyomi.domain.taste.interactor.DeleteCrossSourceMangaLink
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
@@ -37,7 +38,7 @@ class LinkGroupManagementScreenModel(
     }
 
     private suspend fun load() {
-        runCatching {
+        try {
             val links = if (focusedGroupId != null) {
                 getCrossSourceMangaLinks.awaitByGroupId(focusedGroupId)
             } else {
@@ -48,7 +49,9 @@ class LinkGroupManagementScreenModel(
                 .map { (groupId, members) -> LinkGroup(groupId, members) }
                 .sortedBy { it.primaryTitle.lowercase() }
             mutableState.value = if (groups.isEmpty()) State.Empty else State.Success(groups)
-        }.onFailure { e ->
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
             mutableState.value = State.Error(e)
         }
     }
@@ -64,8 +67,13 @@ class LinkGroupManagementScreenModel(
         val updatedGroups = current.groups.filter { it.groupId != groupId }
         mutableState.value = if (updatedGroups.isEmpty()) State.Empty else current.copy(groups = updatedGroups)
         screenModelScope.launch {
-            runCatching { deleteCrossSourceMangaLink.awaitByGroupId(groupId) }
-                .onFailure { reload() } // roll back on error
+            try {
+                deleteCrossSourceMangaLink.awaitByGroupId(groupId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reload() // roll back on error
+            }
         }
     }
 
@@ -77,8 +85,13 @@ class LinkGroupManagementScreenModel(
         }
         mutableState.value = if (updatedGroups.isEmpty()) State.Empty else current.copy(groups = updatedGroups)
         screenModelScope.launch {
-            runCatching { deleteCrossSourceMangaLink.awaitBySourceUrl(source, url) }
-                .onFailure { reload() }
+            try {
+                deleteCrossSourceMangaLink.awaitBySourceUrl(source, url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reload()
+            }
         }
     }
 

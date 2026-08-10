@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.extension.util
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.util.system.hasMiuiPackageInstaller
@@ -41,7 +42,7 @@ class ExtensionInstallActivity : Activity() {
         } catch (error: Exception) {
             // Either install package can't be found (probably bots) or there's a security exception
             // with the download manager. Nothing we can workaround.
-            toast(error.message)
+            toast(with(this) { error.formattedMessage })
         }
     }
 

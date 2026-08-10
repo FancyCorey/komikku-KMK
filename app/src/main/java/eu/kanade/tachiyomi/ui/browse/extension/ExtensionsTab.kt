@@ -15,31 +15,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.ExtensionScreen
 import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.SafArtifactCleanupDialog
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
-import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.model.Extension
-import eu.kanade.tachiyomi.extension.util.ExtensionApkExporter
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import eu.kanade.tachiyomi.util.system.toast
-import exh.recs.KmkRecsReleaseNotes
 import exh.util.EvaluationModeFormatter
 import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
-import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 @Composable
 fun extensionsTab(
@@ -55,40 +50,47 @@ fun extensionsTab(
     // KMK v0.8.18: manual extension APK export -- bulk export of the current selection as one zip
     // (raw APK/archive bytes + non-sensitive manifest.json). Never repackages/re-signs anything.
     var showBulkExportConfirmDialog by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass (finding #1 and #2):
+    // retrofitted onto the shared SafExportCoordinator, owned by ExtensionsScreenModel
+    // (screenModelScope-scoped, not this Composable's `remember`), and rendered via the shared
+    // SafArtifactCleanupDialog -- which only clears the retained offer on a *successful* deletion,
+    // fixing the previous bug where a failed Remove still cleared `bulkExportCleanupUri` and silently
+    // lost the only handle on the still-orphaned document.
+    val bulkExportCleanupOffer by extensionsScreenModel.bulkExportCoordinator.cleanupOffer.collectAsState()
+    // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 1: the selection must
+    // be captured at the same user-confirmation boundary that starts the picker, not reconstructed
+    // from live `state` inside the launcher callback -- `ActivityResultContracts.CreateDocument` is an
+    // external lifecycle boundary (the system picker UI, possibly a cross-process/cross-activity trip)
+    // and `state.selectedExtensionKeys`/`state.items` can change (or the user could, in principle,
+    // re-enter/exit selection mode) while that UI is in front. Cleared on every terminal path --
+    // null Uri (cancelled), successful handoff to the model, and never left stale across dialog
+    // reopens.
+    var selectedExtensionsForExport by remember { mutableStateOf<List<Extension.Installed>>(emptyList()) }
+    // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2: the operation is reserved at
+    // the confirm-click, before the picker launches -- see the confirm dialog's onClick below.
+    var bulkExportPendingOperationId by remember { mutableStateOf<String?>(null) }
     val bulkExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val selected = state.items.values.flatten()
-            .map { it.extension }
-            .filterIsInstance<Extension.Installed>()
-            .filter { "${it.pkgName}_${it.signatureHash}" in state.selectedExtensionKeys }
-        if (selected.isEmpty()) return@rememberLauncherForActivityResult
-        scope.launch {
-            val result = ExtensionApkExporter.exportMultiple(
-                context = context,
-                extensions = selected,
-                destUri = uri,
-                appVersion = eu.kanade.tachiyomi.BuildConfig.VERSION_NAME,
-                kmkVersion = KmkRecsReleaseNotes.VERSION_NAME,
+        val selected = selectedExtensionsForExport
+        selectedExtensionsForExport = emptyList()
+        val operationId = bulkExportPendingOperationId
+        bulkExportPendingOperationId = null
+        // A null `uri` means the user cancelled the system picker before it created anything -- no
+        // document exists, so there is nothing to offer cleanup for.
+        if (uri == null) {
+            operationId?.let { extensionsScreenModel.bulkExportCoordinator.cancelReservation(it) }
+            return@rememberLauncherForActivityResult
+        }
+        if (operationId == null || !extensionsScreenModel.exportSelectedExtensions(context, operationId, uri, selected)) {
+            eu.kanade.tachiyomi.util.export.handleUnregisterableUri(
+                context,
+                uri,
+                extensionsScreenModel.bulkExportCoordinator,
+                KMR.strings.saf_export_registration_failed,
+                KMR.strings.saf_export_registration_failed_retained,
+                KMR.strings.saf_export_registration_failed_unrecoverable,
             )
-            result.fold(
-                onSuccess = { summary ->
-                    val message = if (summary.skippedPkgNames.isEmpty()) {
-                        context.contextStringResource(KMR.strings.extension_export_multi_success, summary.exportedCount)
-                    } else {
-                        context.contextStringResource(
-                            KMR.strings.extension_export_multi_partial,
-                            summary.exportedCount,
-                            summary.skippedPkgNames.size,
-                        )
-                    }
-                    context.toast(message)
-                },
-                onFailure = { context.toast(context.contextStringResource(KMR.strings.extension_export_failed)) },
-            )
-            extensionsScreenModel.exitExtensionSelectionMode()
         }
     }
     // KMK <--
@@ -218,7 +220,24 @@ fun extensionsTab(
                         TextButton(
                             onClick = {
                                 showBulkExportConfirmDialog = false
-                                bulkExportLauncher.launch(eu.kanade.tachiyomi.extension.util.ExtensionApkExporter.suggestedZipFileName())
+                                // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2:
+                                // reserve the operation before the picker launches; if another
+                                // operation is already pending, do not launch a second picker.
+                                val operationId = extensionsScreenModel.bulkExportCoordinator.beginOperation()
+                                if (operationId == null) {
+                                    context.toast(KMR.strings.saf_export_operation_pending)
+                                } else {
+                                    // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04
+                                    // Phase 1: snapshot the selection here, at the confirm click -- the
+                                    // last point before the external picker boundary -- not inside the
+                                    // launcher callback after the picker returns.
+                                    selectedExtensionsForExport = state.items.values.flatten()
+                                        .map { it.extension }
+                                        .filterIsInstance<Extension.Installed>()
+                                        .filter { "${it.pkgName}_${it.signatureHash}" in state.selectedExtensionKeys }
+                                    bulkExportPendingOperationId = operationId
+                                    bulkExportLauncher.launch(eu.kanade.tachiyomi.extension.util.ExtensionApkExporter.suggestedZipFileName())
+                                }
                             },
                         ) {
                             Text(stringResource(KMR.strings.extension_export_confirm_action))
@@ -229,6 +248,27 @@ fun extensionsTab(
                             Text(stringResource(MR.strings.action_cancel))
                         }
                     },
+                )
+            }
+            // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass: cleanup is
+            // offered for the exact SAF `Uri` the system picker returned, for ANY outcome that leaves
+            // a real document behind -- never automatic. No extension/package/repository name or
+            // filesystem path is ever shown; the dialog is fully generic.
+            bulkExportCleanupOffer?.let { offer ->
+                SafArtifactCleanupDialog(
+                    context = context,
+                    offer = offer,
+                    successTitleRes = KMR.strings.extension_export_cleanup_bulk_title,
+                    successBodyRes = KMR.strings.extension_export_cleanup_bulk_body,
+                    incompleteTitleRes = KMR.strings.extension_export_cleanup_bulk_incomplete_title,
+                    incompleteBodyRes = KMR.strings.extension_export_cleanup_bulk_incomplete_body,
+                    removeRes = KMR.strings.extension_export_cleanup_remove,
+                    keepRes = KMR.strings.extension_export_cleanup_keep,
+                    removedRes = KMR.strings.extension_export_cleanup_removed,
+                    removeFailedRes = KMR.strings.extension_export_cleanup_failed,
+                    onRemoved = { extensionsScreenModel.bulkExportCoordinator.clear(offer.operationId) },
+                    onKept = { extensionsScreenModel.bulkExportCoordinator.clear(offer.operationId) },
+                    onDismissed = { extensionsScreenModel.bulkExportCoordinator.clear(offer.operationId) },
                 )
             }
             // KMK <--

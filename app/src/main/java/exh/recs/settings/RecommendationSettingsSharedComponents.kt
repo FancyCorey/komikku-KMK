@@ -30,11 +30,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Favorite
@@ -74,6 +77,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,9 +86,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1356,63 +1363,104 @@ internal fun <T> EdgeQuickAccessPanel(
             exit = slideOutHorizontally(tween(200)) { it },
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
+            // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: layout repair. See
+            // EdgeQuickAccessPanelLayoutPolicy for the audited defect list and why each value was
+            // chosen. Destinations, navigation, scrim, BackHandler, and the deliberately-narrow
+            // handle geometry are all unchanged -- only sizing/arrangement/semantics changed.
+            //
+            // Was: fillMaxHeight(0.7f) + top-packed unscrollable Column of fixed 96.dp/10.sp items.
+            // That reserved a fixed fraction of the screen regardless of content (dead space and
+            // poor balance on tall screens) while clipping the lower destinations entirely on short
+            // ones. Now the panel wraps its content, is bounded (not fixed) at
+            // MAX_HEIGHT_FRACTION, centers what fits, and scrolls when it does not.
+            val itemWidth = EdgeQuickAccessPanelLayoutPolicy
+                .itemWidthDp(LocalConfiguration.current.screenWidthDp).dp
             Surface(
                 modifier = Modifier
-                    .fillMaxHeight(0.7f)
+                    .fillMaxHeight(EdgeQuickAccessPanelLayoutPolicy.MAX_HEIGHT_FRACTION)
+                    .wrapContentHeight()
                     .wrapContentWidth(),
                 shape = MaterialTheme.shapes.large,
                 tonalElevation = 6.dp,
                 shadowElevation = 6.dp,
             ) {
                 Column(
-                    modifier = Modifier.padding(MaterialTheme.padding.small),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(MaterialTheme.padding.small),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // KMK v0.8.19: widened from 72.dp/maxLines=2 -- "Management and Diagnostics" (the
-                    // longest of the five Recommendation Settings destination titles, now also shown
-                    // in this panel since RecommendationSettingsQuickAccessPanel reuses it) was being
-                    // truncated to "Management and". 96.dp + maxLines=3 + a smaller label style fits it
-                    // without truncation while staying narrow enough for an edge panel.
                     destinations.forEach { destination ->
                         val selected = destination == current
+                        val destinationTitle = title(destination)
+                        val selectedLabel = stringResource(MR.strings.selected)
+                        val notSelectedLabel = stringResource(MR.strings.not_selected)
                         Column(
                             modifier = Modifier
-                                .width(96.dp)
-                                .clickable(
-                                    onClickLabel = title(destination),
-                                ) {
+                                .width(itemWidth)
+                                .heightIn(min = EdgeQuickAccessPanelLayoutPolicy.ITEM_MIN_HEIGHT_DP.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                                // Selected state is no longer conveyed by colour alone -- a container
+                                // tint plus an explicit accessibility state description carry it too.
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                                )
+                                .clickable(onClickLabel = destinationTitle) {
                                     expanded = false
                                     if (!selected) onNavigate(destination)
                                 }
-                                .padding(vertical = MaterialTheme.padding.small),
+                                .semantics {
+                                    stateDescription = if (selected) selectedLabel else notSelectedLabel
+                                }
+                                .padding(
+                                    horizontal = MaterialTheme.padding.extraSmall,
+                                    vertical = MaterialTheme.padding.small,
+                                ),
                             horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
                         ) {
                             Icon(
                                 imageVector = icon(destination),
                                 contentDescription = null,
-                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (selected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
                             Text(
-                                text = title(destination),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = destinationTitle,
+                                // Was labelSmall forced down to 10sp; the unmodified theme token is
+                                // readable and keeps the panel consistent with the rest of settings.
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                maxLines = 3,
+                                // No maxLines cap: the widened item plus wrapping content height lets
+                                // the longest destination title wrap instead of truncating.
+                                modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
                             )
                         }
                     }
                 }
             }
         }
-        // Edge handle -- narrow (28dp) so it never competes with Android's own edge-swipe-back
-        // gesture area; always visible, regardless of expanded state (tapping it while expanded
-        // closes the panel).
+        // Edge handle -- the *painted* width stays 28dp so it never competes with Android's own
+        // edge-swipe-back gesture area (deliberate v0.8.18 decision, preserved). Its *touch* target
+        // is expanded to the platform minimum via minimumInteractiveComponentSize() instead, which
+        // enlarges the interactive region without changing the drawn geometry or introducing any
+        // swipe coordinates. Always visible; tapping it while expanded closes the panel.
         val handleDescription = stringResource(KMR.strings.rec_settings_quick_access_handle)
         Surface(
             onClick = { expanded = !expanded },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .width(28.dp)
+                .minimumInteractiveComponentSize()
+                .width(EdgeQuickAccessPanelLayoutPolicy.HANDLE_VISUAL_WIDTH_DP.dp)
                 .semantics {
                     contentDescription = handleDescription
                 },
@@ -1422,8 +1470,8 @@ internal fun <T> EdgeQuickAccessPanel(
         ) {
             Box(
                 modifier = Modifier
-                    .height(64.dp)
-                    .width(28.dp),
+                    .height(EdgeQuickAccessPanelLayoutPolicy.HANDLE_VISUAL_HEIGHT_DP.dp)
+                    .width(EdgeQuickAccessPanelLayoutPolicy.HANDLE_VISUAL_WIDTH_DP.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

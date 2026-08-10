@@ -59,13 +59,10 @@ class ShizukuInstaller(private val service: Service) : Installer(service) {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
-            val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-            val packageName = intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME)
-
             if (status == PackageInstaller.STATUS_SUCCESS) {
                 continueQueue(InstallStep.Installed)
             } else {
-                logcat(LogPriority.ERROR) { "Failed to install extension $packageName: $message" }
+                logcat(LogPriority.ERROR) { "Shizuku extension installation failed" }
                 continueQueue(InstallStep.Error)
             }
         }
@@ -122,8 +119,8 @@ class ShizukuInstaller(private val service: Service) : Installer(service) {
                 ?: throw Exception("Failed to open asset file descriptor")
             // KMK <--
             service.contentResolver.delete(entry.uri, null, null)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to install extension ${entry.downloadId} ${entry.uri}" }
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Shizuku extension installation failed" }
             continueQueue(InstallStep.Error)
         }
     }

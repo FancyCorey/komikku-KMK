@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMOAuth
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.injectLazy
@@ -131,6 +132,8 @@ class Shikimori(id: Long) : BaseTracker(id, "Shikimori"), DeletableTracker {
             interceptor.newAuth(oauth)
             val user = api.getCurrentUser()
             saveCredentials(user.toString(), oauth.accessToken)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             logout()
         }

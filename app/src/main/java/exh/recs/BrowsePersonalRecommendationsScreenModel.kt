@@ -17,7 +17,10 @@ import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.rethrowIfFatal
+import eu.kanade.tachiyomi.util.export.SafArtifactOutcome
+import eu.kanade.tachiyomi.util.export.SafExportCoordinator
 import eu.kanade.tachiyomi.util.system.isOnline
+import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.RecommendationCandidateEnricher.Companion.needsEnrichment
 import exh.recs.memory.RecommendationCandidateMemoryEntry
 import exh.recs.memory.RecommendationCandidateMemoryRanker
@@ -30,6 +33,7 @@ import exh.recs.settings.RecommendationForYouPreviewRow
 import exh.recs.settings.RecommendationForYouPreviewRowType
 import exh.recs.settings.RecommendationForYouPreviewSnapshot
 import exh.recs.settings.RecommendationForYouPreviewSnapshotStore
+import exh.recs.share.RecommendationBundleExporter
 import exh.recs.sources.GenreFilterMapper
 import exh.util.EvaluationModeFormatter
 import kotlinx.collections.immutable.PersistentList
@@ -51,6 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
+import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -77,6 +82,7 @@ import tachiyomi.domain.taste.model.RecommendationCacheEntry
 import tachiyomi.domain.taste.model.RecommendationDiscoveryProgress
 import tachiyomi.domain.taste.model.TasteProfile
 import tachiyomi.domain.taste.model.normalizeTag
+import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.security.MessageDigest
@@ -85,6 +91,15 @@ data class PersonalRecommendation(
     val manga: Manga,
     val score: Double,
     val matchedGroups: List<String>,
+    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09 -->
+    /**
+     * Which discovery lane produced this candidate. Carried all the way through the merge so the
+     * personalized-majority invariant can be asserted on the **final displayed list**, not merely on
+     * the input quota arithmetic. Defaults to [RecommendationDiscoveryLane.PERSONALIZED] so every
+     * pre-existing construction site keeps its exact previous meaning.
+     */
+    val lane: RecommendationDiscoveryLane = RecommendationDiscoveryLane.PERSONALIZED,
+    // KMK <--
 )
 
 sealed interface PersonalRecommendationResult {
@@ -164,6 +179,9 @@ private fun normalizedTitleKey(title: String): String =
 class BrowsePersonalRecommendationsScreenModel(
     // KMK --> v0.7.25: connectivity check before starting For You queries
     private val context: Context = Injekt.get<Application>(),
+    // KMK_CLAUDE_LATEST_DIRECT_SCREENMODEL_VALIDATION_2026-08-09: tests can construct the real
+    // ScreenModel without starting the Android/network load before collaborators are ready.
+    private val autoLoad: Boolean = true,
     // KMK <--
     private val getTasteProfile: GetTasteProfile = Injekt.get(),
     private val getTagAliases: GetTagAliases = Injekt.get(),
@@ -194,9 +212,88 @@ class BrowsePersonalRecommendationsScreenModel(
     // KMK v0.8.17-fix1: Clear Rating for For You selection, same interactor manga detail already uses.
     private val clearMangaTaste: tachiyomi.domain.taste.interactor.ClearMangaTaste = Injekt.get(),
     // KMK <--
+    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: batched tracker lookup so a tracked title is
+    // genuinely exempt from the exposure penalty. Fails open (see resolveTrackedExposureKeys).
+    private val getTracks: tachiyomi.domain.track.interactor.GetTracks = Injekt.get(),
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: local-only For You exposure
+    // history (soft display reordering only -- see RecommendationExposureRepository KDoc)
+    private val getRecommendationExposure: tachiyomi.domain.taste.interactor.GetRecommendationExposure = Injekt.get(),
+    private val recordRecommendationExposure: tachiyomi.domain.taste.interactor.RecordRecommendationExposure = Injekt.get(),
+    private val pruneRecommendationExposure: tachiyomi.domain.taste.interactor.PruneRecommendationExposure = Injekt.get(),
 ) : StateScreenModel<BrowsePersonalRecommendationsScreenModel.State>(State()) {
 
     private val coroutineDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(5)
+
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #5):
+    // screenModelScope-owned, not Composable-`remember`-owned.
+    val exportCoordinator = SafExportCoordinator()
+
+    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #5): [snapshot],
+    // [targetSource], and [isTopPicks] are all captured by the caller (personalRecommendationsTab) at
+    // the moment the export is requested, before the picker opens.
+    fun exportRecommendationBundle(
+        context: Context,
+        operationId: String,
+        uri: android.net.Uri,
+        snapshot: State?,
+        targetSource: Source?,
+        isTopPicks: Boolean,
+    ): Boolean {
+        if (!exportCoordinator.registerUri(operationId, uri)) return false
+        screenModelScope.launch {
+            val outcome = exportCoordinator.performWrite(operationId) {
+                if (snapshot == null) {
+                    SafArtifactOutcome.PARTIAL_OR_EMPTY
+                } else {
+                    val exporter = RecommendationBundleExporter()
+                    val bundle = when {
+                        isTopPicks -> {
+                            val detail = snapshot.combinedDetailResult as? PersonalRecommendationResult.Success
+                            if (detail == null || detail.result.isEmpty()) {
+                                null
+                            } else {
+                                exporter.buildTopPicksBundle(detail.result, KmkRecsReleaseNotes.VERSION_NAME)
+                            }
+                        }
+                        targetSource != null -> {
+                            val result = snapshot.items[targetSource] as? PersonalRecommendationResult.Success
+                            if (result == null || result.result.isEmpty()) {
+                                null
+                            } else {
+                                exporter.buildSourceRowBundle(
+                                    targetSource.name,
+                                    targetSource.lang,
+                                    result.result,
+                                    KmkRecsReleaseNotes.VERSION_NAME,
+                                )
+                            }
+                        }
+                        else -> null
+                    }
+                    if (bundle == null) {
+                        SafArtifactOutcome.PARTIAL_OR_EMPTY
+                    } else {
+                        exporter.writeToUri(context, uri, bundle).fold(
+                            onSuccess = { SafArtifactOutcome.SUCCESS },
+                            onFailure = { SafArtifactOutcome.FAILED },
+                        )
+                    }
+                }
+            }
+            withUIContext {
+                when (outcome) {
+                    SafArtifactOutcome.SUCCESS -> context.toast(KMR.strings.rec_bundle_export_success)
+                    SafArtifactOutcome.FAILED -> context.toast(KMR.strings.rec_bundle_export_failure)
+                    SafArtifactOutcome.PARTIAL_OR_EMPTY -> context.toast(KMR.strings.rec_bundle_export_empty)
+                    SafArtifactOutcome.CANCELLED -> Unit
+                    SafArtifactOutcome.IN_PROGRESS -> Unit
+                    SafArtifactOutcome.UNRESOLVED -> Unit
+                }
+            }
+        }
+        return true
+    }
+
     private var searchJob: Job? = null
     private val enricher = RecommendationCandidateEnricher(networkToLocalManga, coroutineDispatcher)
     // KMK --> v0.7.38: candidate discovery memory helpers
@@ -212,6 +309,31 @@ class BrowsePersonalRecommendationsScreenModel(
 
     @Volatile private var currentBoostedSourceIds: Set<Long> = emptySet()
 
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
+    /**
+     * Latest-lane attempt budget for the *current* refresh, resolved once in [load] from
+     * [RecommendationLatestBudgetPolicy] and consumed by [tryLatestCatalogueLane].
+     *
+     * [latestAttemptsUsed] is an [AtomicInteger] because sources within a batch are searched
+     * concurrently (`batch.map { async { searchSource(...) } }`), so several coroutines can reach the
+     * lane at once; a plain `Int` would let them collectively overshoot the budget. Both are reset at
+     * the start of every refresh so a budget is per-refresh, never cumulative across refreshes.
+     */
+    @Volatile private var latestExplorationBudget: Int = 0
+    private val latestAttemptsUsed = java.util.concurrent.atomic.AtomicInteger(0)
+    // KMK <--
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    /**
+     * One wall-clock reading per refresh, used by every exposure-reranking comparison this refresh
+     * makes -- deterministic ordering requires a single `now`, never a fresh read per source/card.
+     */
+    @Volatile private var currentRefreshTimestamp: Long = 0L
+
+    /** Guards [recordVisibleExposure] against firing twice for the same [State.resultGeneration]. */
+    @Volatile private var lastExposureRecordedGeneration: Long = -1L
+    // KMK <--
+
     /** Outcome returned by [searchSource] — carries result, status, and strategy for the caller. */
     private data class SourceSearchOutcome(
         val source: Source,
@@ -222,12 +344,71 @@ class BrowsePersonalRecommendationsScreenModel(
     )
 
     init {
-        screenModelScope.launch { load(forceRefresh = false) }
+        if (autoLoad) {
+            screenModelScope.launch { load(forceRefresh = false) }
+        }
     }
 
     fun refresh() {
         screenModelScope.launch { load(forceRefresh = true) }
     }
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    /**
+     * Records that the current [State.resultGeneration]'s cards are actually visible on screen.
+     *
+     * Called from the Tab's own `LaunchedEffect`, keyed on `(resultGeneration, allSourcesFinished)`
+     * -- i.e. only once composition has actually rendered a loaded, non-empty, fully-settled result
+     * for this generation, never for loading/empty/error/partial states, and never merely because
+     * Compose recomposed. [lastExposureRecordedGeneration] is a second, defense-in-depth guard inside
+     * the ScreenModel itself against the same generation being recorded twice even if the Tab's key
+     * were ever wrong.
+     *
+     * A stale call (an old generation's coroutine still in flight when a new refresh starts) is not
+     * possible here because the Tab cancels and restarts its effect on generation change; this
+     * function is fire-and-forget from the Tab's perspective and launches its own
+     * [screenModelScope]-owned write, so a slow write can never block composition.
+     */
+    fun recordVisibleExposure() {
+        val state = mutableState.value
+        val generation = state.resultGeneration
+        val shouldRecord = RecommendationExposureCapturePolicy.shouldRecord(
+            isLoading = state.isLoading,
+            hasItems = state.items.isNotEmpty(),
+            total = state.total,
+            progress = state.progress,
+            generation = generation,
+            lastRecordedGeneration = lastExposureRecordedGeneration,
+        )
+        if (!shouldRecord) return
+        lastExposureRecordedGeneration = generation
+
+        val dedupedMap = state.dedupedItems()
+        val keys = mutableListOf<Pair<Long, String>>()
+        val mangaIds = mutableMapOf<Pair<Long, String>, Long?>()
+        dedupedMap.forEach { (source, result) ->
+            if (result is PersonalRecommendationResult.Success) {
+                result.result.forEach { rec ->
+                    val key = source.id to rec.manga.url
+                    keys += key
+                    mangaIds[key] = rec.manga.id.takeIf { it != 0L }
+                }
+            }
+        }
+        if (keys.isEmpty()) return
+
+        screenModelScope.launch {
+            try {
+                recordRecommendationExposure.await(keys, mangaIds, System.currentTimeMillis())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A failed exposure write must never change or block the visible result -- it has
+                // already been shown by the time this runs.
+            }
+        }
+    }
+    // KMK <--
 
     private suspend fun load(forceRefresh: Boolean) {
         // KMK --> v0.7.25: reset offline state when starting a new load
@@ -240,6 +421,18 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK <--
 
         clearRecommendationCache.awaitExpired()
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: prune exposure rows older
+        // than the configured window plus its grace period on every refresh -- ordering history only,
+        // never touches ratings/library/manga/taste. A failed prune must never block the refresh.
+        try {
+            val windowDays = RecommendationExposurePolicy.validateWindowDays(
+                sourcePreferences.recommendationExposureWindowDays().get(),
+            )
+            pruneRecommendationExposure.await(RecommendationExposurePolicy.pruneBefore(System.currentTimeMillis(), windowDays))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+        }
 
         val profile = getTasteProfile.await()
         if (profile.isEmpty()) {
@@ -312,7 +505,14 @@ class BrowsePersonalRecommendationsScreenModel(
         val scoringProfile = buildNotInterestedAdjustedProfile(profile, seenKeys, aliasMap)
         // KMK <--
         // KMK --> v0.7.26: minimum locally-known chapter count filter (0 = off)
-        val minChapterCount = sourcePreferences.recommendationMinChapterCount().get()
+        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: resolved through the shared
+        // supported-value policy before it reaches searchSource(), the visibility policy, the
+        // memory merge, and profileFingerprint() below -- so every consumer of this refresh uses
+        // one identical threshold and an unsupported persisted value cannot silently filter at a
+        // threshold the picker never offered.
+        val minChapterCount = RecommendationMinChapterCountPolicy.resolve(
+            sourcePreferences.recommendationMinChapterCount().get(),
+        )
         // KMK <--
         // KMK v0.8.2: visible-card budget per row; raw value, validated by ForYouResultBudgetPolicy
         val resultBudget = sourcePreferences.recommendationResultBudget().get()
@@ -336,6 +536,9 @@ class BrowsePersonalRecommendationsScreenModel(
                 searchContexts = persistentMapOf(),
                 isLoading = false,
                 profileIsEmpty = false,
+                // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: a new generation
+                // invalidates the Tab's exposure-recording effect for the previous refresh.
+                resultGeneration = it.resultGeneration + 1,
             )
         }
 
@@ -345,6 +548,18 @@ class BrowsePersonalRecommendationsScreenModel(
             var usefulCount = 0
 
             val candidateSources = orderedEnabledSources.take(MAX_SOURCE_ATTEMPTS)
+
+            // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: resolve this refresh's bounded
+            // Latest exploration budget from the number of sources actually about to be attempted,
+            // and reset the counter so budgets never accumulate across refreshes. A user-configured
+            // 0% resolves to 0 attempts, which disables the lane entirely without any other change.
+            latestExplorationBudget = RecommendationLatestBudgetPolicy.resolveAttempts(
+                configuredPercent = sourcePreferences.recommendationLatestExplorationPercent().get(),
+                attemptedSourceCount = candidateSources.size,
+            )
+            latestAttemptsUsed.set(0)
+            currentRefreshTimestamp = System.currentTimeMillis()
+
             for (batch in candidateSources.chunked(SOURCE_BATCH_SIZE)) {
                 if (!isActive) break
 
@@ -473,10 +688,22 @@ class BrowsePersonalRecommendationsScreenModel(
         resultBudget: Int = ForYouResultBudgetPolicy.DEFAULT,
     ): SourceSearchOutcome {
         // KMK --> v0.7.38: load remembered candidates before cache check so they are available for merge
-        val remembered = runCatching { memoryStore.loadForSourceQuery(source.id, queryKey) }.getOrDefault(emptyList())
+        val remembered = try {
+            memoryStore.loadForSourceQuery(source.id, queryKey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
         // KMK <--
         // KMK --> v0.7.40: load full progress records so the planner can classify retryable failures
-        val progressRecords = runCatching { progressStore.progressRecords(source.id, queryKey) }.getOrDefault(emptyList())
+        val progressRecords = try {
+            progressStore.progressRecords(source.id, queryKey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
         // KMK <--
 
         if (!forceRefresh) {
@@ -487,7 +714,13 @@ class BrowsePersonalRecommendationsScreenModel(
                 val resolvedMemory = resolveMemoryEntries(remembered)
                 val knownIdsForFilter = if (hideKnownManga && (cached.isNotEmpty() || resolvedMemory.isNotEmpty())) {
                     val allMangaIds = (cached.map { it.manga.id } + resolvedMemory.map { it.first.id }).distinct()
-                    runCatching { getKnownMangaIds.await(allMangaIds) }.getOrElse { emptySet() }
+                    try {
+                        getKnownMangaIds.await(allMangaIds)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
                 } else {
                     emptySet()
                 }
@@ -495,8 +728,12 @@ class BrowsePersonalRecommendationsScreenModel(
                 // are min-chapter filtered by the same shared policy as cached candidates.
                 val chapterCountsForFilter = if (minChapterCount > 0 && (cached.isNotEmpty() || resolvedMemory.isNotEmpty())) {
                     val allMangaIds = (cached.map { it.manga.id } + resolvedMemory.map { it.first.id }).distinct()
-                    runCatching { getChapterCounts.await(allMangaIds) }.getOrElse { error ->
-                        logcat(LogPriority.WARN, error) { "Cached-merge chapter-count lookup failed, skipping min-chapter filter" }
+                    try {
+                        getChapterCounts.await(allMangaIds)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logcat(LogPriority.WARN) { "Cached-merge chapter-count lookup failed, skipping min-chapter filter" }
                         emptyMap()
                     }
                 } else {
@@ -623,7 +860,10 @@ class BrowsePersonalRecommendationsScreenModel(
                 saveToCache(source.id, queryKey, fingerprint, recommendations.map { it.manga }, recommendations.map { it.score }, reason)
 
                 // KMK --> v0.7.38: upsert page-1 results to memory + try additional page
-                runCatching {
+                // memoryStore.upsertBatch already rethrows CancellationException and swallows
+                // ordinary exceptions internally (RecommendationCandidateMemoryStore); this
+                // try/catch only guards against a future change to that internal contract.
+                try {
                     memoryStore.upsertBatch(
                         sourceId = source.id,
                         querySignature = queryKey,
@@ -633,9 +873,12 @@ class BrowsePersonalRecommendationsScreenModel(
                         profileFingerprint = fingerprint,
                         recommendations = recommendations,
                     )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
                 }
                 // KMK --> v0.7.39: record page-1 progress so the planner can advance to page 2
-                runCatching {
+                try {
                     progressStore.recordProgress(
                         sourceId = source.id,
                         querySignature = queryKey,
@@ -654,6 +897,9 @@ class BrowsePersonalRecommendationsScreenModel(
                             else -> RecommendationDiscoveryProgress.STATUS_EMPTY
                         },
                     )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
                 }
                 // KMK <--
 
@@ -690,7 +936,10 @@ class BrowsePersonalRecommendationsScreenModel(
                     emptyList<PersonalRecommendation>() to 0
                 }
                 if (additionalResults.first.isNotEmpty()) {
-                    runCatching {
+                    // memoryStore.upsertBatch already rethrows CancellationException and swallows
+                    // ordinary exceptions internally; this try/catch only guards against a future
+                    // change to that internal contract.
+                    try {
                         memoryStore.upsertBatch(
                             sourceId = source.id,
                             querySignature = queryKey,
@@ -700,9 +949,17 @@ class BrowsePersonalRecommendationsScreenModel(
                             profileFingerprint = fingerprint,
                             recommendations = additionalResults.first,
                         )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
                     }
                 }
-                runCatching { memoryStore.pruneIfNeeded(source.id) }
+                try {
+                    memoryStore.pruneIfNeeded(source.id)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                }
 
                 // KMK v0.8.13: extracted -- identical remembered+fresh merge pipeline used by both
                 // this plan loop and the catalogue fallback (see mergeFreshAndRememberedCandidates).
@@ -710,9 +967,28 @@ class BrowsePersonalRecommendationsScreenModel(
                 // (same hide-known context as page one), so knownIds (page-1) is sufficient for the
                 // merge; no redundant DB round-trip is needed.
                 val allNew = recommendations + additionalResults.first
+                // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: bounded additive
+                // Latest augmentation -- see tryAdditiveLatestAugmentation's KDoc for why this is the
+                // structural fix for "Latest does not run when personalized results already exist".
+                // Only ever reached from this success path (mutually exclusive with the
+                // hadRawResults == false rescue path further below), and shares the same per-refresh
+                // budget pool, so total Latest source-touches per refresh stay bounded either way.
+                val latestAdditive = tryAdditiveLatestAugmentation(
+                    source, queryKey, fingerprint, topTags, profile, aliasMap, tasteByKey, visibility,
+                    seenKeys, hideKnownManga, minChapterCount, enrichLimit, displayLimit, rawCap,
+                    excludeMangaIds = allNew.mapNotNull { it.manga.id.takeIf { id -> id != 0L } }.toSet(),
+                )
+                // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: bounded soft
+                // reordering by local exposure history -- see ExposureRerankContext/
+                // RecommendationDisplayReranker. Batched once per source (not once per card); a
+                // failed lookup fails open to no reordering (ExposureRerankContext.NONE), never to
+                // hiding results. "Interacted" is derived live from favorite + existing taste data
+                // already loaded for this refresh -- not a stored copy -- so it is always current.
+                val candidatePool = allNew + latestAdditive
+                val exposureContext = buildExposureRerankContext(source.id, candidatePool, tasteByKey)
                 val mergedRecommendations = mergeFreshAndRememberedCandidates(
-                    remembered, allNew, profile, aliasMap, tasteByKey, visibility, seenKeys,
-                    knownIds, displayLimit, minChapterCount,
+                    remembered, candidatePool, profile, aliasMap, tasteByKey, visibility, seenKeys,
+                    knownIds, displayLimit, minChapterCount, exposureContext,
                 )
 
                 val status = RecommendationSourceRunStatus(
@@ -738,6 +1014,8 @@ class BrowsePersonalRecommendationsScreenModel(
                     status = status,
                     isUseful = mergedRecommendations.isNotEmpty(),
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // KMK v0.8.10-fix7: both source calls above now use
                 // getOrThrowSourceRuntimeException(), so a recoverable extension-linkage failure
@@ -763,6 +1041,24 @@ class BrowsePersonalRecommendationsScreenModel(
             }
         }
 
+        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: bounded Latest exploration lane.
+        // Deliberately placed AFTER the full personalized strict-to-lenient chain and BEFORE the
+        // existing Popular fallback, so:
+        //   - personalized relevance remains the dominant lane and is never pre-empted;
+        //   - Latest gets its chance before Popular, which is the whole point of the lane (Popular is
+        //     a historical-prominence signal and is exactly what over-exposes familiar titles);
+        //   - the existing Popular fallback contract is untouched for every source where Latest is
+        //     unsupported, empty, failing, or out of budget.
+        // Its failure can never alter `lastError` (which belongs to the personalized chain) and can
+        // never suppress the Popular fallback below.
+        val latest = tryLatestCatalogueLane(
+            source, queryKey, fingerprint, topTags, profile, aliasMap, tasteByKey, visibility,
+            seenKeys, hideKnownManga, minChapterCount, enrichLimit, displayLimit, rawCap,
+            remembered, hadRawResults, lastError,
+        )
+        if (latest.outcome != null) return latest.outcome
+        hadRawResults = latest.hadRawResults
+
         // KMK v0.8.13: extracted -- see tryCatalogueFallback's KDoc for the affected-source false
         // no-match investigation this addresses (unchanged from v0.8.12 other than the extraction
         // itself and the v0.8.13 QUERY_STRATEGY diagnostics recording added in Phase D).
@@ -776,6 +1072,321 @@ class BrowsePersonalRecommendationsScreenModel(
 
         return finalEmptyOutcome(source, hadRawResults, lastError)
     }
+
+    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
+    /**
+     * Bounded Latest-catalogue exploration probe for one source.
+     *
+     * Mirrors [tryCatalogueFallback]'s shape exactly -- same `CatalogueFallbackOutcome` contract,
+     * same reuse of [processRawCandidates]/[mergeFreshAndRememberedCandidates], so **every** existing
+     * filter still applies unchanged: blocked/adult tags, language, minimum chapters, known/rated/
+     * Not Interested filtering, metadata confidence, enrichment, the positive-taste-evidence gate,
+     * cross-source dedup, and per-source runtime isolation. Latest provenance never lets a candidate
+     * bypass an exclusion rule.
+     *
+     * Differences from the Popular fallback, all deliberate:
+     * - it runs even when the personalized attempts *did* return raw results, because its purpose is
+     *   controlled exploration rather than rescuing a false no-match (it still only *returns* an
+     *   outcome when the personalized chain produced nothing usable, so it can never displace a
+     *   personalized result set);
+     * - it is gated by [RecommendationCatalogueLanePolicy] on capability, eligibility, and the
+     *   refresh's shared [RecommendationLatestBudgetPolicy] budget;
+     * - it records itself under [RecommendationDiscoveryLane.LATEST_CATALOGUE], never under the
+     *   Popular sentinel, so the two lanes stay distinguishable in memory and diagnostics forever.
+     *
+     * Never throws for a per-source problem: cancellation and fatal errors propagate (via
+     * [SourceRuntime] and [rethrowIfFatal]); everything else becomes a bounded outcome.
+     */
+    private suspend fun tryLatestCatalogueLane(
+        source: Source,
+        queryKey: String,
+        fingerprint: String,
+        topTags: List<String>,
+        profile: TasteProfile,
+        aliasMap: Map<String, String>,
+        tasteByKey: Map<MangaTasteKey, MangaTaste>,
+        visibility: RatedMangaVisibility,
+        seenKeys: Set<SeenMangaKey>,
+        hideKnownManga: Boolean,
+        minChapterCount: Int,
+        enrichLimit: Int,
+        displayLimit: Int,
+        rawCap: Int,
+        remembered: List<RecommendationCandidateMemoryEntry>,
+        hadRawResults: Boolean,
+        lastError: Throwable?,
+    ): CatalogueFallbackOutcome {
+        // Only offer Latest when the personalized chain produced nothing usable and did not itself
+        // fail -- identical gating to the Popular fallback, so a source that already has personalized
+        // results keeps them and a malfunctioning source is not poked again.
+        if (!RecommendationCatalogueFallbackPolicy.shouldAttempt(hadRawResults, lastError != null) ||
+            !currentCoroutineContext().isActive
+        ) {
+            return CatalogueFallbackOutcome(null, hadRawResults)
+        }
+
+        val budget = latestExplorationBudget
+        val eligible = RecommendationCatalogueLanePolicy.shouldAttempt(
+            supportsLatest = source.supportsLatest,
+            sourceIsEligible = true,
+            latestAttemptsUsed = latestAttemptsUsed.get(),
+            latestBudget = budget,
+        )
+        if (!eligible) return CatalogueFallbackOutcome(null, hadRawResults)
+        // Claim the budget slot before the call so concurrent per-source coroutines in the same batch
+        // cannot collectively overshoot it.
+        if (latestAttemptsUsed.getAndIncrement() >= budget) return CatalogueFallbackOutcome(null, hadRawResults)
+
+        var rawFound = hadRawResults
+        try {
+            val pageResult = SourceRuntime.run(source, SourceRuntimeOperation.Latest, coroutineDispatcher) {
+                getLatestUpdates(RecommendationCatalogueLanePolicy.LATEST_PAGE)
+            }
+            // A recoverable per-source failure (including UnsupportedOperationException from a source
+            // that declared supportsLatest but never implemented it) is a bounded outcome, never an
+            // error for this refresh -- the Popular fallback below still gets its turn.
+            val page = pageResult.getOrElse { return CatalogueFallbackOutcome(null, rawFound) }
+
+            val rawSMangas = page.mangas
+                .filter { RecommendationCatalogueLanePolicy.isUsableEntry(it.url, it.title) }
+                .take(rawCap)
+                .distinctBy { it.url }
+            if (rawSMangas.isEmpty()) return CatalogueFallbackOutcome(null, rawFound)
+            rawFound = true
+
+            val processed = processRawCandidates(
+                source, rawSMangas, tasteByKey, visibility, seenKeys, minChapterCount,
+                hideKnownManga, enrichLimit, displayLimit, profile, aliasMap,
+            )
+            if (processed.recommendations.isEmpty()) return CatalogueFallbackOutcome(null, rawFound)
+
+            val mergedRecommendations = mergeFreshAndRememberedCandidates(
+                remembered, processed.recommendations, profile, aliasMap, tasteByKey,
+                visibility, seenKeys, processed.knownIds, displayLimit, minChapterCount,
+            )
+            if (mergedRecommendations.isEmpty()) return CatalogueFallbackOutcome(null, rawFound)
+
+            val reason = mergedRecommendations.flatMap { it.matchedGroups }
+                .distinct().take(MAX_REASON_TAGS).joinToString(", ").ifBlank { null }
+            saveToCache(source.id, queryKey, fingerprint, mergedRecommendations.map { it.manga }, mergedRecommendations.map { it.score }, reason)
+            try {
+                memoryStore.upsertBatch(
+                    sourceId = source.id,
+                    querySignature = queryKey,
+                    queryTags = topTags,
+                    queryStrategy = RecommendationDiscoveryLane.LATEST_CATALOGUE.storageKey,
+                    page = RecommendationCatalogueLanePolicy.LATEST_PAGE,
+                    profileFingerprint = fingerprint,
+                    recommendations = mergedRecommendations,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+            try {
+                progressStore.recordProgress(
+                    sourceId = source.id,
+                    querySignature = queryKey,
+                    queryTags = topTags,
+                    queryStrategy = RecommendationDiscoveryLane.LATEST_CATALOGUE.storageKey,
+                    page = RecommendationCatalogueLanePolicy.LATEST_PAGE,
+                    profileFingerprint = fingerprint,
+                    rawCount = rawSMangas.size,
+                    localizedCount = processed.localized.size,
+                    scoredCount = processed.scoredCount,
+                    visibleCount = mergedRecommendations.size,
+                    filteredCount = rawSMangas.size - processed.localized.size,
+                    status = RecommendationDiscoveryProgress.STATUS_SUCCESS,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+            return CatalogueFallbackOutcome(
+                SourceSearchOutcome(
+                    source = source,
+                    result = PersonalRecommendationResult.Success(mergedRecommendations),
+                    // Never persisted as a "successful strategy" -- Latest is a bounded exploration
+                    // probe, not one of RecommendationQueryStrategyType's tag-search strategies, so it
+                    // must never be locked in as one (same rule the Popular fallback follows).
+                    successfulStrategy = null,
+                    status = RecommendationSourceRunStatus(
+                        sourceId = source.id,
+                        status = RecommendationSourceStatus.Shown,
+                        visibleCount = mergedRecommendations.size,
+                    ),
+                    isUseful = true,
+                ),
+                rawFound,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return CatalogueFallbackOutcome(null, rawFound)
+        } catch (e: Error) {
+            // Same contract as the Popular fallback: only a recoverable per-source failure is
+            // swallowed; a fatal VM error thrown anywhere in the enrichment/scoring/merge pipeline
+            // propagates rather than masquerading as "Latest found nothing".
+            rethrowIfFatal(e)
+            return CatalogueFallbackOutcome(null, rawFound)
+        }
+    }
+    // KMK <--
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    /**
+     * Bounded, additive Latest-catalogue augmentation for a source that **already** produced usable
+     * personalized results in this refresh.
+     *
+     * ## Why this exists (structural fix, not a new feature)
+     *
+     * [tryLatestCatalogueLane] (added in the prior pass) is gated by
+     * `RecommendationCatalogueFallbackPolicy.shouldAttempt(hadRawResults, ...)`, which requires
+     * `hadRawResults == false` -- i.e. it only fires when the personalized chain found *nothing*.
+     * Because the personalized plan loop in `searchSource()` returns directly on success, that gate
+     * meant Latest never ran at all for the common case where personalized search actually worked.
+     * This function is the missing "Latest is additive even when personalized already succeeded"
+     * path: it is called from inside the personalized loop's own success branch, immediately before
+     * the final merge, so a small bounded slice of Latest candidates gets a chance to compete for
+     * display alongside the personalized ones on every successful refresh, not only on a fallback.
+     *
+     * ## Bounds
+     *
+     * - **Per-source candidate count:** [RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource]
+     *   caps how many Latest candidates are even added to the merge input pool -- this bounds Latest's
+     *   maximum possible contribution to the row regardless of how any individual candidate scores,
+     *   which is what keeps personalized results the majority (proven exhaustively in
+     *   `RecommendationLatestBudgetPolicyTest`).
+     * - **Per-refresh source-touch count:** shares the same [latestAttemptsUsed]/[latestExplorationBudget]
+     *   pool [tryLatestCatalogueLane] uses. Only one of the two functions can ever run for a given
+     *   source in a given refresh (they sit on mutually exclusive control-flow branches: this one only
+     *   when personalized succeeded, the other only when it did not), so the shared budget is never
+     *   double-spent per source and the refresh-wide ceiling still holds.
+     *
+     * ## Filter/provenance parity
+     *
+     * Reuses [processRawCandidates] exactly like every other lane -- blocked/adult tags, language,
+     * minimum chapters, known/rated/Not Interested filtering, and the positive-taste-evidence gate all
+     * apply unchanged. [excludeMangaIds] performs cross-lane dedup so a manga already present in the
+     * personalized result set cannot also be counted as a Latest slot. A non-empty result is recorded
+     * under its own [RecommendationDiscoveryLane.LATEST_CATALOGUE]-tagged
+     * `memoryStore.upsertBatch`/`progressStore.recordProgress` call, kept separate from the
+     * personalized batch's `plan.type.name`-tagged upsert, so provenance stays distinct even though
+     * the two lanes' candidates are merged together only for *display*.
+     *
+     * Never throws for a per-source problem and never returns a partial/inconsistent state:
+     * cancellation and fatal errors propagate; every other failure yields an empty list, which is a
+     * no-op for the caller's merge (fails open to personalized-only results).
+     */
+    private suspend fun tryAdditiveLatestAugmentation(
+        source: Source,
+        queryKey: String,
+        fingerprint: String,
+        topTags: List<String>,
+        profile: TasteProfile,
+        aliasMap: Map<String, String>,
+        tasteByKey: Map<MangaTasteKey, MangaTaste>,
+        visibility: RatedMangaVisibility,
+        seenKeys: Set<SeenMangaKey>,
+        hideKnownManga: Boolean,
+        minChapterCount: Int,
+        enrichLimit: Int,
+        displayLimit: Int,
+        rawCap: Int,
+        excludeMangaIds: Set<Long>,
+    ): List<PersonalRecommendation> {
+        if (!currentCoroutineContext().isActive) return emptyList()
+
+        val quota = RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource(
+            displayLimit,
+            sourcePreferences.recommendationLatestExplorationPercent().get(),
+        )
+        if (quota <= 0) return emptyList()
+
+        val budget = latestExplorationBudget
+        val eligible = RecommendationCatalogueLanePolicy.shouldAttempt(
+            supportsLatest = source.supportsLatest,
+            sourceIsEligible = true,
+            latestAttemptsUsed = latestAttemptsUsed.get(),
+            latestBudget = budget,
+        )
+        if (!eligible) return emptyList()
+        // Claim the shared budget slot before the call, same contract as tryLatestCatalogueLane.
+        if (latestAttemptsUsed.getAndIncrement() >= budget) return emptyList()
+
+        return try {
+            val pageResult = SourceRuntime.run(source, SourceRuntimeOperation.Latest, coroutineDispatcher) {
+                getLatestUpdates(RecommendationCatalogueLanePolicy.LATEST_PAGE)
+            }
+            val page = pageResult.getOrElse { return emptyList() }
+
+            val rawSMangas = page.mangas
+                .filter { RecommendationCatalogueLanePolicy.isUsableEntry(it.url, it.title) }
+                .take(rawCap)
+                .distinctBy { it.url }
+            if (rawSMangas.isEmpty()) return emptyList()
+
+            val processed = processRawCandidates(
+                source, rawSMangas, tasteByKey, visibility, seenKeys, minChapterCount,
+                hideKnownManga, enrichLimit, displayLimit, profile, aliasMap,
+            )
+            // Cross-lane dedup: a manga already present in the personalized result set for this
+            // source must never also be counted as (or displace a slot meant for) a Latest candidate.
+            val additive = processed.recommendations
+                .filter { it.manga.id == 0L || it.manga.id !in excludeMangaIds }
+                .take(quota)
+                // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: tag the lane so the shared merge can
+                // enforce the personalized-majority invariant on the realised final list.
+                .map { it.copy(lane = RecommendationDiscoveryLane.LATEST_CATALOGUE) }
+            if (additive.isEmpty()) return emptyList()
+
+            try {
+                memoryStore.upsertBatch(
+                    sourceId = source.id,
+                    querySignature = queryKey,
+                    queryTags = topTags,
+                    queryStrategy = RecommendationDiscoveryLane.LATEST_CATALOGUE.storageKey,
+                    page = RecommendationCatalogueLanePolicy.LATEST_PAGE,
+                    profileFingerprint = fingerprint,
+                    recommendations = additive,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+            try {
+                progressStore.recordProgress(
+                    sourceId = source.id,
+                    querySignature = queryKey,
+                    queryTags = topTags,
+                    queryStrategy = RecommendationDiscoveryLane.LATEST_CATALOGUE.storageKey,
+                    page = RecommendationCatalogueLanePolicy.LATEST_PAGE,
+                    profileFingerprint = fingerprint,
+                    rawCount = rawSMangas.size,
+                    localizedCount = processed.localized.size,
+                    scoredCount = processed.scoredCount,
+                    visibleCount = additive.size,
+                    filteredCount = rawSMangas.size - processed.localized.size,
+                    status = RecommendationDiscoveryProgress.STATUS_SUCCESS,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+
+            additive
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        } catch (e: Error) {
+            // Same contract as tryLatestCatalogueLane/tryCatalogueFallback: only a recoverable
+            // per-source failure is swallowed here; a fatal VM error propagates.
+            rethrowIfFatal(e)
+            emptyList()
+        }
+    }
+    // KMK <--
 
     // KMK v0.8.13 -->
     /** Result of [processRawCandidates] -- the raw-manga-to-scored-recommendations pipeline. */
@@ -812,20 +1423,24 @@ class BrowsePersonalRecommendationsScreenModel(
         val raw = rawSMangas.map { it.toDomainManga(source.id) }
         val rawLocalized = networkToLocalManga(raw)
         val chapterCounts = if (minChapterCount > 0 && rawLocalized.isNotEmpty()) {
-            runCatching {
+            try {
                 getChapterCounts.await(rawLocalized.map { it.id })
-            }.getOrElse { error ->
-                logcat(LogPriority.WARN, error) { "Chapter count lookup failed, skipping min-chapter filter" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Chapter count lookup failed, skipping min-chapter filter" }
                 emptyMap()
             }
         } else {
             emptyMap()
         }
         val knownIds = if (hideKnownManga && rawLocalized.isNotEmpty()) {
-            runCatching {
+            try {
                 getKnownMangaIds.await(rawLocalized.map { it.id })
-            }.getOrElse { error ->
-                logcat(LogPriority.WARN, error) { "Known-manga filter failed, keeping all candidates" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Known-manga filter failed, keeping all candidates" }
                 emptySet()
             }
         } else {
@@ -864,12 +1479,19 @@ class BrowsePersonalRecommendationsScreenModel(
         knownIds: Set<Long>,
         displayLimit: Int,
         minChapterCount: Int,
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: optional exposure-aware
+        // reordering, forwarded to RecommendationCandidateMemoryRanker.merge. Defaults to a no-op.
+        exposureContext: ExposureRerankContext = ExposureRerankContext.NONE,
     ): List<PersonalRecommendation> {
         val resolvedMemory = resolveMemoryEntries(remembered)
         val chapterCountsForMerge = if (minChapterCount > 0 && (newResults.isNotEmpty() || resolvedMemory.isNotEmpty())) {
             val allMangaIds = (newResults.map { it.manga.id } + resolvedMemory.map { it.first.id }).distinct()
-            runCatching { getChapterCounts.await(allMangaIds) }.getOrElse { error ->
-                logcat(LogPriority.WARN, error) { "Live-merge chapter-count lookup failed, skipping min-chapter filter" }
+            try {
+                getChapterCounts.await(allMangaIds)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Live-merge chapter-count lookup failed, skipping min-chapter filter" }
                 emptyMap()
             }
         } else {
@@ -880,8 +1502,142 @@ class BrowsePersonalRecommendationsScreenModel(
             resolvedMemory, newResults, profile, aliasMap,
             tasteByKey, visibility, seenKeys, knownIds, displayLimit,
             minChapterCount, chapterCountsForMerge,
+            exposureContext.exposureByKey, exposureContext.interactions, exposureContext.now, exposureContext.windowDays,
         )
     }
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    /** Bundles the optional exposure-reranking inputs for [mergeFreshAndRememberedCandidates]. */
+    private data class ExposureRerankContext(
+        val exposureByKey: Map<RecommendationDisplayReranker.ExposureKey, RecommendationDisplayReranker.ExposureSummary>,
+        val interactions: RecommendationDisplayReranker.InteractionSignals,
+        val now: Long,
+        val windowDays: Int,
+    ) {
+        companion object {
+            val NONE = ExposureRerankContext(
+                emptyMap(),
+                RecommendationDisplayReranker.InteractionSignals.NONE,
+                0L,
+                RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS,
+            )
+        }
+    }
+
+    /**
+     * Loads exposure history for [candidates]' `(sourceId, url)` keys and builds the reranking
+     * context.
+     *
+     * ## The three positive-interaction exemptions
+     *
+     * - **Library**: [Manga.favorite], already loaded for this refresh.
+     * - **Rated**: a taste row present in [tasteByKey], already loaded for this refresh.
+     * - **Tracked**: a real batched [GetTracks] lookup over the candidates' local manga ids.
+     *
+     * All three are live signals rather than a stored copy of interaction, so none can go stale
+     * independently of the rest of the app.
+     *
+     * ## Fail-open behavior
+     *
+     * KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: the tracker check used to be omitted entirely
+     * (hardcoded `isTracked = false`), which silently risked penalising a title the user actively
+     * tracks. It is now a real lookup. [GetTracks.await] already swallows its own failures and
+     * returns an empty map, and this call is additionally wrapped: on **any** failure the tracked set
+     * is left empty. An empty tracked set only ever means "no tracker exemption was applied", which
+     * can at worst leave a small ordering penalty in place -- it can never hide, exclude, or
+     * negatively rate a candidate. Cancellation always propagates.
+     */
+    private suspend fun buildExposureRerankContext(
+        sourceId: Long,
+        candidates: List<PersonalRecommendation>,
+        tasteByKey: Map<MangaTasteKey, MangaTaste>,
+    ): ExposureRerankContext {
+        if (candidates.isEmpty()) return ExposureRerankContext.NONE
+        val keys = candidates.map { sourceId to it.manga.url }.distinct()
+        val records = try {
+            getRecommendationExposure.awaitBySourceUrls(keys)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (records.isEmpty()) return ExposureRerankContext.NONE
+
+        val exposureByKey = records.associate {
+            RecommendationDisplayReranker.ExposureKey(it.sourceId, it.url) to
+                RecommendationDisplayReranker.ExposureSummary(it.lastExposedAt, it.exposureCount, null)
+        }
+
+        val libraryKeys = mutableSetOf<RecommendationDisplayReranker.ExposureKey>()
+        val ratedKeys = mutableSetOf<RecommendationDisplayReranker.ExposureKey>()
+        candidates.forEach { rec ->
+            val key = RecommendationDisplayReranker.ExposureKey(sourceId, rec.manga.url)
+            if (rec.manga.favorite) libraryKeys += key
+            if (tasteByKey.containsKey(MangaTasteKey(rec.manga.source, rec.manga.url))) ratedKeys += key
+        }
+
+        val trackedState = resolveTrackedExposureKeys(sourceId, candidates)
+
+        val windowDays = RecommendationExposurePolicy.validateWindowDays(
+            sourcePreferences.recommendationExposureWindowDays().get(),
+        )
+        return ExposureRerankContext(
+            exposureByKey,
+            RecommendationDisplayReranker.InteractionSignals(libraryKeys, ratedKeys, trackedState),
+            currentRefreshTimestamp,
+            windowDays,
+        )
+    }
+
+    /**
+     * One batched tracker lookup for this source's candidates, returning a **tri-state**.
+     *
+     * KMK_CLAUDE_TRACKER_SAFE_LOOKUP_2026-08-09: this previously returned a bare `Set`, collapsing
+     * "the lookup failed" into "nothing is tracked". The reranker read that empty set as a positive
+     * fact and could therefore demote a title the user actively tracks. It now returns
+     * [RecommendationDisplayReranker.TrackedState.Unknown] on any failure, which the reranker treats
+     * as "no candidate may be penalised".
+     *
+     * - Every candidate has an unresolved local id -> `Known(emptySet())`: nothing *can* be tracked,
+     *   which is a fact, not an unknown.
+     * - Lookup returns data -> `Known(<tracked keys>)`.
+     * - Lookup fails -> [RecommendationDisplayReranker.TrackedState.Unknown].
+     *
+     * Cancellation always propagates. The failure log is a fixed string: no url, title, manga id,
+     * tracker identifier, account detail, or exception object is recorded.
+     */
+    private suspend fun resolveTrackedExposureKeys(
+        sourceId: Long,
+        candidates: List<PersonalRecommendation>,
+    ): RecommendationDisplayReranker.TrackedState {
+        val idToUrl = candidates
+            .filter { it.manga.id != 0L }
+            .associate { it.manga.id to it.manga.url }
+        // No candidate is resolvable locally, so none can carry a track row. This is a known-empty
+        // result, not an unavailable one.
+        if (idToUrl.isEmpty()) return RecommendationDisplayReranker.TrackedState.Known(emptySet())
+
+        val tracksByMangaId = try {
+            getTracks.awaitOrNull(idToUrl.keys.toList())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (tracksByMangaId == null) {
+            logcat(LogPriority.WARN) { "Exposure tracker lookup unavailable; exposure reordering skipped" }
+            return RecommendationDisplayReranker.TrackedState.Unknown
+        }
+
+        val trackedKeys = tracksByMangaId
+            .asSequence()
+            .filter { it.value.isNotEmpty() }
+            .mapNotNull { entry -> idToUrl[entry.key] }
+            .map { RecommendationDisplayReranker.ExposureKey(sourceId, it) }
+            .toSet()
+        return RecommendationDisplayReranker.TrackedState.Known(trackedKeys)
+    }
+    // KMK <--
 
     /** Result of [tryCatalogueFallback]. */
     private data class CatalogueFallbackOutcome(
@@ -960,7 +1716,7 @@ class BrowsePersonalRecommendationsScreenModel(
             // from a real tag/text search strategy. Never written to
             // recommendationSourceStrategies() (successfulStrategy stays null below), so this cannot
             // be mistaken for a persisted RecommendationQueryStrategyType hint.
-            runCatching {
+            try {
                 memoryStore.upsertBatch(
                     sourceId = source.id,
                     querySignature = queryKey,
@@ -970,8 +1726,11 @@ class BrowsePersonalRecommendationsScreenModel(
                     profileFingerprint = fingerprint,
                     recommendations = mergedRecommendations,
                 )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             }
-            runCatching {
+            try {
                 progressStore.recordProgress(
                     sourceId = source.id,
                     querySignature = queryKey,
@@ -986,6 +1745,9 @@ class BrowsePersonalRecommendationsScreenModel(
                     filteredCount = rawSMangas.size - processed.localized.size,
                     status = RecommendationDiscoveryProgress.STATUS_SUCCESS,
                 )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             }
             val status = RecommendationSourceRunStatus(
                 sourceId = source.id,
@@ -1005,6 +1767,8 @@ class BrowsePersonalRecommendationsScreenModel(
                 ),
                 rawFound,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // A failed fallback probe is not itself an error worth reporting -- the search attempts
             // above already established there's no source error; fall through to the normal
@@ -1093,10 +1857,12 @@ class BrowsePersonalRecommendationsScreenModel(
         if (resolved.isEmpty()) return emptyList()
 
         val knownIds = if (hideKnownManga) {
-            runCatching {
+            try {
                 getKnownMangaIds.await(resolved.map { it.first.id })
-            }.getOrElse { error ->
-                logcat(LogPriority.WARN, error) { "Top Picks cached known-manga filter failed, keeping cached candidates" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Top Picks cached known-manga filter failed, keeping cached candidates" }
                 emptySet()
             }
         } else {
@@ -1105,10 +1871,12 @@ class BrowsePersonalRecommendationsScreenModel(
 
         // KMK --> v0.7.41: batched chapter counts only when the minimum is active; fail open on error
         val chapterCounts = if (minChapterCount > 0) {
-            runCatching {
+            try {
                 getChapterCounts.await(resolved.map { it.first.id })
-            }.getOrElse { error ->
-                logcat(LogPriority.WARN, error) { "Cached chapter-count lookup failed, skipping min-chapter filter" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Cached chapter-count lookup failed, skipping min-chapter filter" }
                 emptyMap()
             }
         } else {
@@ -1237,7 +2005,13 @@ class BrowsePersonalRecommendationsScreenModel(
 
         val penalty = mutableMapOf<String, Double>()
         for (key in seenKeys.take(NOT_INTERESTED_LOOKUP_CAP)) {
-            val manga = runCatching { getMangaInteractor.await(key.url, key.sourceId) }.getOrNull() ?: continue
+            val manga = try {
+                getMangaInteractor.await(key.url, key.sourceId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            } ?: continue
             val genres = manga.genre ?: continue
             for (genre in genres) {
                 val normalized = genre.normalizeTag()
@@ -1271,10 +2045,16 @@ class BrowsePersonalRecommendationsScreenModel(
         entries: List<RecommendationCandidateMemoryEntry>,
     ): List<Pair<Manga, RecommendationCandidateMemoryEntry>> =
         entries.mapNotNull { entry ->
-            val manga = if (entry.mangaId != null) {
-                runCatching { getMangaInteractor.await(entry.mangaId) }.getOrNull()
-            } else {
-                runCatching { getMangaInteractor.await(entry.url, entry.sourceId) }.getOrNull()
+            val manga = try {
+                if (entry.mangaId != null) {
+                    getMangaInteractor.await(entry.mangaId)
+                } else {
+                    getMangaInteractor.await(entry.url, entry.sourceId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
             }
             if (manga != null) manga to entry else null
         }
@@ -1338,100 +2118,113 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK <--
 
         // KMK --> v0.7.40: bounded timeout on additional-page search only (not page-1)
-        val result = runCatching {
-            // KMK v0.8.10-fix7: routed through SourceRuntime instead of a raw call inside
-            // withContext -- registers a recoverable failure (including an extension LinkageError)
-            // in SourceRuntimeFailureRegistry instead of only relying on this function's outer
-            // runCatching. getOrThrowSourceRuntimeException() converts a recoverable failure into
-            // RecoverableSourceRuntimeException (an Exception) rather than rethrowing a raw Error --
-            // Kotlin's runCatching does catch Throwable (including Error) so this specific call was
-            // not itself an app-crash risk, but result.exceptionOrNull() downstream should see an
-            // Exception, not a raw LinkageError, for consistency with every other migrated call
-            // site. A genuinely fatal error or CancellationException still propagates directly out
-            // of SourceRuntime.run() itself.
-            val pageResult = withTimeoutOrNull(ADDITIONAL_PAGE_TIMEOUT_MS) {
-                SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
-                    getSearchManga(nextPage, searchParams.textQuery, searchParams.filters)
-                }.getOrThrowSourceRuntimeException()
-            } ?: run {
-                // Explicit local probe timeout — a transient, retryable failure.
-                progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
-                failureKind = RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE
-                errorMessage = "Additional-page search timed out after ${ADDITIONAL_PAGE_TIMEOUT_MS}ms"
-                return@runCatching emptyList<PersonalRecommendation>() to nextPage
-            }
-            // KMK <--
-            val rawSMangas = pageResult.mangas
-                .take(RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE)
-                .distinctBy { it.url }
+        // v0.8.20: converted from runCatching to explicit try/catch -- the previous
+        // runCatching { ... }.onFailure { if (e is CancellationException) throw e ... } looked safe,
+        // but the two NESTED runCatching calls below (chapterCounts/knownIds) swallowed
+        // CancellationException internally before it could ever reach this outer rethrow. Every
+        // suspend boundary in this block now rethrows cancellation explicitly.
+        val result = try {
+            run innerRun@{
+                // KMK v0.8.10-fix7: routed through SourceRuntime instead of a raw call inside
+                // withContext -- registers a recoverable failure (including an extension
+                // LinkageError) in SourceRuntimeFailureRegistry. getOrThrowSourceRuntimeException()
+                // converts a recoverable failure into RecoverableSourceRuntimeException (an
+                // Exception) rather than rethrowing a raw Error. A genuinely fatal error or
+                // CancellationException still propagates directly out of SourceRuntime.run() itself.
+                val pageResult = withTimeoutOrNull(ADDITIONAL_PAGE_TIMEOUT_MS) {
+                    SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
+                        getSearchManga(nextPage, searchParams.textQuery, searchParams.filters)
+                    }.getOrThrowSourceRuntimeException()
+                } ?: run {
+                    // Explicit local probe timeout — a transient, retryable failure.
+                    progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
+                    failureKind = RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE
+                    errorMessage = "Additional-page search timed out after ${ADDITIONAL_PAGE_TIMEOUT_MS}ms"
+                    return@innerRun emptyList<PersonalRecommendation>() to nextPage
+                }
+                // KMK <--
+                val rawSMangas = pageResult.mangas
+                    .take(RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE)
+                    .distinctBy { it.url }
 
-            rawCount = rawSMangas.size
-            if (rawSMangas.isEmpty()) {
-                progressStatus = RecommendationDiscoveryProgress.STATUS_EMPTY
-                return@runCatching emptyList<PersonalRecommendation>() to nextPage
-            }
+                rawCount = rawSMangas.size
+                if (rawSMangas.isEmpty()) {
+                    progressStatus = RecommendationDiscoveryProgress.STATUS_EMPTY
+                    return@innerRun emptyList<PersonalRecommendation>() to nextPage
+                }
 
-            val raw = rawSMangas.map { it.toDomainManga(source.id) }
-            // KMK --> v0.7.40 Deliverable D: use shared visibility policy in extra-page path
-            val allLocalized = networkToLocalManga(raw)
-            val chapterCounts = if (minChapterCount > 0 && allLocalized.isNotEmpty()) {
-                runCatching { getChapterCounts.await(allLocalized.map { it.id }) }.getOrDefault(emptyMap())
-            } else {
-                emptyMap()
-            }
-            // KMK --> v0.7.41 follow-up: batch-load known IDs for extra-page candidates so this
-            // page uses the same hide-known context as live page-one, cache, memory, and group
-            // recommendations. Fail open (log + emptySet()) rather than crash or blank the row.
-            val knownIds = if (hideKnownManga && allLocalized.isNotEmpty()) {
-                runCatching {
-                    getKnownMangaIds.await(allLocalized.map { it.id })
-                }.getOrElse { error ->
-                    logcat(LogPriority.WARN, error) { "Additional-page known-manga filter failed, keeping all candidates" }
+                val raw = rawSMangas.map { it.toDomainManga(source.id) }
+                // KMK --> v0.7.40 Deliverable D: use shared visibility policy in extra-page path
+                val allLocalized = networkToLocalManga(raw)
+                val chapterCounts = if (minChapterCount > 0 && allLocalized.isNotEmpty()) {
+                    try {
+                        getChapterCounts.await(allLocalized.map { it.id })
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        emptyMap()
+                    }
+                } else {
+                    emptyMap()
+                }
+                // KMK --> v0.7.41 follow-up: batch-load known IDs for extra-page candidates so this
+                // page uses the same hide-known context as live page-one, cache, memory, and group
+                // recommendations. Fail open (log + emptySet()) rather than crash or blank the row.
+                val knownIds = if (hideKnownManga && allLocalized.isNotEmpty()) {
+                    try {
+                        getKnownMangaIds.await(allLocalized.map { it.id })
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logcat(LogPriority.WARN) { "Additional-page known-manga filter failed, keeping all candidates" }
+                        emptySet()
+                    }
+                } else {
                     emptySet()
                 }
-            } else {
-                emptySet()
+                // KMK <--
+                val localized = filterVisibleCandidates(
+                    allLocalized,
+                    tasteByKey,
+                    visibility,
+                    seenKeys,
+                    knownIds,
+                    minChapterCount,
+                    chapterCounts,
+                )
+                // KMK <--
+
+                localizedCount = localized.size
+                filteredCount = rawCount - localizedCount
+
+                val scored = PersonalRecommendationScorer.rankCandidates(
+                    localized,
+                    profile,
+                    aliasMap,
+                    RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE,
+                )
+                scoredCount = scored.size
+
+                val results = scored.map { PersonalRecommendation(it.manga, it.score, it.matchedGroups) }
+                visibleCount = results.size
+                progressStatus = when {
+                    results.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
+                    rawCount > 0 -> RecommendationDiscoveryProgress.STATUS_FILTERED
+                    else -> RecommendationDiscoveryProgress.STATUS_EMPTY
+                }
+                results to nextPage
             }
-            // KMK <--
-            val localized = filterVisibleCandidates(
-                allLocalized,
-                tasteByKey,
-                visibility,
-                seenKeys,
-                knownIds,
-                minChapterCount,
-                chapterCounts,
-            )
-            // KMK <--
-
-            localizedCount = localized.size
-            filteredCount = rawCount - localizedCount
-
-            val scored = PersonalRecommendationScorer.rankCandidates(
-                localized,
-                profile,
-                aliasMap,
-                RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE,
-            )
-            scoredCount = scored.size
-
-            val results = scored.map { PersonalRecommendation(it.manga, it.score, it.matchedGroups) }
-            visibleCount = results.size
-            progressStatus = when {
-                results.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
-                rawCount > 0 -> RecommendationDiscoveryProgress.STATUS_FILTERED
-                else -> RecommendationDiscoveryProgress.STATUS_EMPTY
-            }
-            results to nextPage
-        }.onFailure { e ->
+        } catch (e: CancellationException) {
             // Cancellation is never recorded as a failed retry — rethrow before any progress write.
-            if (e is CancellationException) throw e
+            throw e
+        } catch (e: Exception) {
             // KMK --> v0.7.40: classify failure kind for retry policy
             progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
-            errorMessage = e.message?.take(200)
+            errorMessage = RecommendationErrorClassifier.classifyToStorageKey(e)
             failureKind = RecommendationRetryClassifier.classify(e)
             // KMK <--
-        }.getOrDefault(emptyList<PersonalRecommendation>() to nextPage)
+            emptyList<PersonalRecommendation>() to nextPage
+        }
 
         // KMK --> v0.7.41: compute the terminal retry state after the probe resolves.
         // A retryable failure that just used its final allowed attempt persists as STATUS_EXHAUSTED
@@ -1454,7 +2247,7 @@ class BrowsePersonalRecommendationsScreenModel(
         }
 
         // Record progress with the resolved retry metadata.
-        runCatching {
+        try {
             progressStore.recordProgress(
                 sourceId = source.id,
                 querySignature = queryKey,
@@ -1473,6 +2266,9 @@ class BrowsePersonalRecommendationsScreenModel(
                 nextRetryAt = nextRetryAt,
                 failureKind = failureKind,
             )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
         }
         // KMK <--
 
@@ -1689,6 +2485,12 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.7.25: true when device has no internet at load time
         val isOffline: Boolean = false,
         // KMK <--
+        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: bumped exactly once per
+        // load()/refresh() call, at the same point `items` is reset to empty. The Tab keys its
+        // exposure-recording LaunchedEffect on this value (plus "every source finished") so a stale
+        // in-flight recording coroutine from a superseded refresh is cancelled, and recomposition
+        // alone (no generation change) never re-records.
+        val resultGeneration: Long = 0,
     ) {
         val progress: Int = items.count { it.value !is PersonalRecommendationResult.Loading }
         val total: Int = items.size

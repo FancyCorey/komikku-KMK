@@ -3,6 +3,7 @@ package eu.kanade.presentation.reader
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -43,15 +44,24 @@ fun ReaderTimerDialog(
     onResume: () -> Unit,
     onReset: () -> Unit,
     onStop: () -> Unit,
+    onConfigureSchedule: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = { Text(stringResource(KMR.strings.reading_timer_title)) },
         text = {
-            if (session.phase == ReaderTimerPhase.IDLE || session.phase == ReaderTimerPhase.EXPIRED) {
-                ReaderTimerSetupContent(onStart = onStart)
-            } else {
-                ReaderTimerRunningContent(session = session, onPause = onPause, onResume = onResume, onReset = onReset)
+            Column {
+                if (session.phase == ReaderTimerPhase.IDLE || session.phase == ReaderTimerPhase.EXPIRED) {
+                    ReaderTimerSetupContent(onStart = onStart)
+                } else {
+                    ReaderTimerRunningContent(session = session, onPause = onPause, onResume = onResume, onReset = onReset)
+                }
+                TextButton(
+                    onClick = onConfigureSchedule,
+                    modifier = Modifier.fillMaxWidth().padding(top = MaterialTheme.padding.small),
+                ) {
+                    Text(stringResource(KMR.strings.reading_schedule_configure))
+                }
             }
         },
         confirmButton = {

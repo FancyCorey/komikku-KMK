@@ -43,6 +43,7 @@ import eu.kanade.tachiyomi.ui.browse.migration.sources.MigrateSourceScreenModel
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import exh.source.ExhPreferences
 import exh.source.eHentaiSourceIds
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import tachiyomi.domain.source.model.Source
 import tachiyomi.i18n.MR
@@ -72,6 +73,7 @@ fun MigrateSourceScreen(
     // KMK <--
 ) {
     val context = LocalContext.current
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     when {
         state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
         // KMK -->
@@ -96,6 +98,7 @@ fun MigrateSourceScreen(
                 onToggleSortingDirection = onToggleSortingDirection,
                 // KMK -->
                 state = state,
+                evaluationModeEnabled = evaluationModeEnabled,
                 onChangeSearchQuery = onChangeSearchQuery,
                 // KMK <--
             )
@@ -114,6 +117,7 @@ private fun MigrateSourceList(
     onToggleSortingDirection: () -> Unit,
     // KMK -->
     state: MigrateSourceScreenModel.State,
+    evaluationModeEnabled: Boolean,
     onChangeSearchQuery: (String?) -> Unit,
     // KMK <--
 ) {
@@ -209,6 +213,7 @@ private fun MigrateSourceList(
                         // KMK <--
                         source = source,
                         count = count,
+                        evaluationModeEnabled = evaluationModeEnabled,
                         onClickItem = { onClickItem(source) },
                         onLongClickItem = { onLongClickItem(source) },
                     )
@@ -240,6 +245,7 @@ private fun MigrateSourceList(
 private fun MigrateSourceItem(
     source: Source,
     count: Long,
+    evaluationModeEnabled: Boolean,
     onClickItem: () -> Unit,
     onLongClickItem: () -> Unit,
     modifier: Modifier = Modifier,
@@ -263,7 +269,9 @@ private fun MigrateSourceItem(
                     .weight(1f),
             ) {
                 Text(
-                    text = source.name.ifBlank { source.id.toString() },
+                    text = BrowseSourceTitlePolicy.resolve(evaluationModeEnabled, source.id) {
+                        source.name.ifBlank { source.id.toString() }
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,

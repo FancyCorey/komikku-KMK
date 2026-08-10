@@ -65,7 +65,7 @@ abstract class BaseSourcePagingSource(
             getPageLoadResult(params, mangasPage)
             // SY <--
         } catch (e: Exception) {
-            xLogE("${this::class.simpleName}: Failed to load paging source", e)
+            xLogE("Source paging load failed")
             LoadResult.Error(e)
         } catch (e: Error) {
             // KMK v0.8.10-fix3: a broken/incompletely-packaged extension (e.g. a missing runtime
@@ -79,7 +79,7 @@ abstract class BaseSourcePagingSource(
             // classification decision is identical either way, not a divergent copy.
             val unwrapped = e.unwrapSourceRuntimeCause()
             if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-            xLogE("${this::class.simpleName}: Failed to load paging source (extension linkage failure)", unwrapped)
+            xLogE("Source paging linkage failure")
             LoadResult.Error(unwrapped)
         }
     }

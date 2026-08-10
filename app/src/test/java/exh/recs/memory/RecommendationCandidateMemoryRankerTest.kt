@@ -295,5 +295,241 @@ class RecommendationCandidateMemoryRankerTest {
         assertTrue(result.any { it.manga.id == 21L }) { "A remembered candidate with real matched-tag evidence must still appear" }
     }
     // KMK <--
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    // Domain C: end-to-end proof that a *persisted* minimum-chapter preference value actually changes
+    // pipeline output -- not just that RecommendationMinChapterCountPolicy.resolve() returns the
+    // right number in isolation. This exercises resolve() feeding directly into the real
+    // RecommendationCandidateMemoryRanker.merge()/PersonalRecommendationScorer pipeline the production
+    // ScreenModel calls, closing the coverage gap the prior pass's policy-only tests left open.
+
+    @Test
+    fun `a persisted 20-chapter preference hides a below-threshold candidate through the real merge pipeline`() {
+        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(20)
+        val m = actionManga(id = 30L)
+        val result = mergeWithMinChapters(listOf(rec(m)), minChapterCount = resolvedThreshold, chapterCounts = mapOf(30L to 5L))
+        assertTrue(result.none { it.manga.id == 30L }, "a 5-chapter candidate must be hidden once the persisted 20 threshold resolves and reaches merge()")
+    }
+
+    @Test
+    fun `a persisted 20-chapter preference keeps an above-threshold candidate visible through the real merge pipeline`() {
+        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(20)
+        val m = actionManga(id = 31L)
+        val result = mergeWithMinChapters(listOf(rec(m)), minChapterCount = resolvedThreshold, chapterCounts = mapOf(31L to 25L))
+        assertTrue(result.any { it.manga.id == 31L }, "a 25-chapter candidate must remain visible once the persisted 20 threshold resolves and reaches merge()")
+    }
+
+    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: the remaining supported values (0/5/10/50)
+    // exercised through the same real pipeline, so every option the settings row offers is proven,
+    // not just the representative 20.
+    @Test
+    fun `every supported threshold hides exactly the candidates below it through the real merge pipeline`() {
+        // Chapter counts chosen to straddle each supported threshold boundary.
+        val cases = listOf(
+            // threshold to (chapterCount to expectedVisible)
+            0 to (1L to true),
+            5 to (4L to false),
+            5 to (5L to true),
+            10 to (9L to false),
+            10 to (10L to true),
+            20 to (19L to false),
+            20 to (20L to true),
+            50 to (49L to false),
+            50 to (50L to true),
+        )
+        cases.forEachIndexed { index, (rawThreshold, expectation) ->
+            val (chapterCount, expectedVisible) = expectation
+            val id = 600L + index
+            val resolved = exh.recs.RecommendationMinChapterCountPolicy.resolve(rawThreshold)
+            assertEquals(rawThreshold, resolved, "supported value $rawThreshold must survive validation")
+            val result = mergeWithMinChapters(
+                listOf(rec(actionManga(id = id))),
+                minChapterCount = resolved,
+                chapterCounts = mapOf(id to chapterCount),
+            )
+            assertEquals(
+                expectedVisible,
+                result.any { it.manga.id == id },
+                "threshold=$rawThreshold chapters=$chapterCount expectedVisible=$expectedVisible",
+            )
+        }
+    }
+
+    @Test
+    fun `an unknown chapter count fails open at every supported threshold rather than hiding the candidate`() {
+        // No entry in chapterCounts at all -- the count is genuinely unknown, which must never be
+        // treated as "below the threshold".
+        listOf(0, 5, 10, 20, 50).forEachIndexed { index, threshold ->
+            val id = 700L + index
+            val resolved = exh.recs.RecommendationMinChapterCountPolicy.resolve(threshold)
+            val result = mergeWithMinChapters(
+                listOf(rec(actionManga(id = id))),
+                minChapterCount = resolved,
+                chapterCounts = emptyMap(),
+            )
+            assertTrue(
+                result.any { it.manga.id == id },
+                "threshold=$threshold: an unknown chapter count must fail open, not hide the candidate",
+            )
+        }
+    }
+
+    @Test
+    fun `a Latest-lane candidate obeys the same minimum-chapter threshold as a personalized one`() {
+        val resolved = exh.recs.RecommendationMinChapterCountPolicy.resolve(20)
+        val latest = actionManga(id = 800L)
+        val result = RecommendationCandidateMemoryRanker.merge(
+            remembered = emptyList(),
+            newResults = listOf(
+                PersonalRecommendation(
+                    manga = latest,
+                    score = 1.0,
+                    matchedGroups = emptyList(),
+                    lane = exh.recs.RecommendationDiscoveryLane.LATEST_CATALOGUE,
+                ),
+            ),
+            profile = scoringProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 100,
+            minChapterCount = resolved,
+            chapterCounts = mapOf(800L to 3L),
+        )
+        assertTrue(result.none { it.manga.id == 800L }, "the Latest lane is not exempt from the min-chapter filter")
+    }
+
+    @Test
+    fun `a malformed persisted threshold resolves to Off and never filters through the real merge pipeline`() {
+        // 7 is not a supported value (0/5/10/20/50) -- proves the malformed-value fallback actually
+        // reaches the pipeline, not only RecommendationMinChapterCountPolicyTest's isolated assertion.
+        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(7)
+        assertEquals(0, resolvedThreshold)
+        val m = actionManga(id = 32L)
+        val result = mergeWithMinChapters(listOf(rec(m)), minChapterCount = resolvedThreshold, chapterCounts = mapOf(32L to 1L))
+        assertTrue(result.any { it.manga.id == 32L }, "a malformed persisted value must resolve to Off and never hide a 1-chapter candidate")
+    }
+
+    @Test
+    fun `changing the persisted threshold from Off to 20 changes real pipeline output for the same candidate`() {
+        val m = actionManga(id = 33L)
+        val chapterCounts = mapOf(33L to 8L)
+
+        val offThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(0)
+        val visibleAtOff = mergeWithMinChapters(listOf(rec(m)), minChapterCount = offThreshold, chapterCounts = chapterCounts)
+        assertTrue(visibleAtOff.any { it.manga.id == 33L }, "candidate must be visible when the threshold is Off")
+
+        val twentyThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(20)
+        val hiddenAtTwenty = mergeWithMinChapters(listOf(rec(m)), minChapterCount = twentyThreshold, chapterCounts = chapterCounts)
+        assertTrue(hiddenAtTwenty.none { it.manga.id == 33L }, "the same candidate must be hidden once the threshold changes to 20")
+    }
+    // KMK <--
+
+    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
+    // Domain B: proves exposure-aware reranking is applied BEFORE the take(limit) cap inside the
+    // real merge() the production ScreenModel calls -- not merely that the pure reranker permutes
+    // correctly in isolation (RecommendationDisplayRerankerTest already covers that). This is what
+    // lets a less-exposed candidate be promoted into a capped row.
+
+    private val exposureNow = 1_800_000_000_000L
+
+    private fun heavilyExposed() = exh.recs.RecommendationDisplayReranker.ExposureSummary(
+        lastExposedAt = exposureNow,
+        exposureCount = 8,
+        lastInteractionAt = null,
+    )
+
+    @Test
+    fun `exposure reordering can promote a less-exposed candidate into a capped row`() {
+        // Two equally-scored candidates (same tag), one heavily exposed. With limit=1 only the
+        // reordered winner survives the cap -- proving reordering happened BEFORE take(limit), which
+        // is the exact defect this pass fixes (reordering after the cap could never promote anything).
+        val exposed = actionManga(id = 40L)
+        val fresh = actionManga(id = 41L)
+        val result = RecommendationCandidateMemoryRanker.merge(
+            remembered = emptyList(),
+            newResults = listOf(rec(exposed), rec(fresh)),
+            profile = scoringProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 1,
+            exposureByKey = mapOf(
+                exh.recs.RecommendationDisplayReranker.ExposureKey(exposed.source, exposed.url) to heavilyExposed(),
+            ),
+            exposureNow = exposureNow,
+        )
+        assertEquals(listOf(41L), result.map { it.manga.id }, "the less-exposed candidate should occupy the single capped slot")
+    }
+
+    @Test
+    fun `an empty exposure map leaves merge output identical to the pre-existing plain-score behavior`() {
+        val a = actionManga(id = 42L)
+        val b = actionManga(id = 43L)
+        val withoutExposure = mergeWithMinChapters(listOf(rec(a), rec(b)), minChapterCount = 0, chapterCounts = emptyMap())
+        val withEmptyExposureMap = RecommendationCandidateMemoryRanker.merge(
+            remembered = emptyList(),
+            newResults = listOf(rec(a), rec(b)),
+            profile = scoringProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 100,
+            exposureByKey = emptyMap(),
+        )
+        assertEquals(withoutExposure.map { it.manga.id }, withEmptyExposureMap.map { it.manga.id })
+    }
+
+    @Test
+    fun `exposure reordering never changes the candidate set, only their order`() {
+        val exposed = actionManga(id = 44L)
+        val fresh = actionManga(id = 45L)
+        val result = RecommendationCandidateMemoryRanker.merge(
+            remembered = emptyList(),
+            newResults = listOf(rec(exposed), rec(fresh)),
+            profile = scoringProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 100,
+            exposureByKey = mapOf(
+                exh.recs.RecommendationDisplayReranker.ExposureKey(exposed.source, exposed.url) to heavilyExposed(),
+            ),
+            exposureNow = exposureNow,
+        )
+        assertEquals(setOf(44L, 45L), result.map { it.manga.id }.toSet())
+    }
+
+    @Test
+    fun `an interacted (favorited) candidate is excluded before reranking even runs, exactly as without exposure`() {
+        // Favorite exclusion is a hard filter that happens before scoring/reranking -- confirms
+        // exposure data cannot resurrect a candidate the existing hard rules already excluded.
+        val fav = manga(id = 46L, genres = listOf("action"), favorite = true)
+        val result = RecommendationCandidateMemoryRanker.merge(
+            remembered = emptyList(),
+            newResults = listOf(rec(fav)),
+            profile = scoringProfile,
+            aliasMap = emptyAliasMap,
+            tasteByKey = emptyTasteByKey,
+            visibility = defaultVisibility,
+            seenKeys = emptySet(),
+            knownIds = emptySet(),
+            limit = 100,
+            exposureByKey = mapOf(
+                exh.recs.RecommendationDisplayReranker.ExposureKey(fav.source, fav.url) to heavilyExposed(),
+            ),
+            exposureNow = exposureNow,
+        )
+        assertTrue(result.none { it.manga.id == 46L })
+    }
+    // KMK <--
 }
 // KMK <--

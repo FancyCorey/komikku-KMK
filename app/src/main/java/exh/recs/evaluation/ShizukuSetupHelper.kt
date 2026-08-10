@@ -64,8 +64,8 @@ object ShizukuSetupHelper {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(SHIZUKU_DOWNLOAD_URL))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Could not open Shizuku download page" }
+        } catch (_: Exception) {
+            logcat(LogPriority.WARN) { "Could not open Shizuku download page" }
         }
     }
 
@@ -78,8 +78,8 @@ object ShizukuSetupHelper {
         return try {
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             true
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Could not open Shizuku app" }
+        } catch (_: Exception) {
+            logcat(LogPriority.WARN) { "Could not open Shizuku app" }
             false
         }
     }
@@ -96,8 +96,8 @@ object ShizukuSetupHelper {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
             true
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Could not launch Shizuku uninstall intent" }
+        } catch (_: Exception) {
+            logcat(LogPriority.WARN) { "Could not launch Shizuku uninstall intent" }
             false
         }
     }
