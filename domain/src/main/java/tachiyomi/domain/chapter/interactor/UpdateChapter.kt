@@ -1,5 +1,6 @@
 package tachiyomi.domain.chapter.interactor
 
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -9,19 +10,27 @@ class UpdateChapter(
     private val chapterRepository: ChapterRepository,
 ) {
 
-    suspend fun await(chapterUpdate: ChapterUpdate) {
+    suspend fun await(chapterUpdate: ChapterUpdate): Boolean {
         try {
             chapterRepository.update(chapterUpdate)
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            return false
         }
     }
 
-    suspend fun awaitAll(chapterUpdates: List<ChapterUpdate>) {
+    suspend fun awaitAll(chapterUpdates: List<ChapterUpdate>): Boolean {
         try {
             chapterRepository.updateAll(chapterUpdates)
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            return false
         }
     }
 }

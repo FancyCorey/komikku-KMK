@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kmk-evidence-manifest version="1" hash-algorithm="SHA-256">
+  <artifact id="for-you-evaluation" type="screenshot" path="../screenshots/for-you-evaluation-mode.png" sha256="FC1ED39C020B5B315B88F7C89350762F752898B8CAEDC94965FC2F834DB4B090">
+    <route>browse/for-you</route>
+    <state>loaded</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-recommendation-context-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="browse-evaluation" type="screenshot" path="../screenshots/browse-evaluation-mode.png" sha256="DB12AEA430C8075E1721DCF49BF88BB74ACD8C0259293E2014938726D477D484">
+    <route>browse/sources</route>
+    <state>loaded</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="recommendation-settings" type="screenshot" path="../screenshots/recommendation-settings.png" sha256="1C1BBF44001AAE8A83382AFF19DB08ABC2C0045E2A00C8608FB88EE8D9DA489A">
+    <route>settings/recommendations</route>
+    <state>loaded</state>
+    <sanitization>cropped-to-app; no-device-status; no-account; no-title-content; no-local-path</sanitization>
+  </artifact>
+  <artifact id="management-diagnostics" type="screenshot" path="../screenshots/management-diagnostics.png" sha256="3F34636F48373F5F37EA5FFCCD05B0729D1FB3C0C7B005306979371269874EAB">
+    <route>settings/recommendations/management</route>
+    <state>loaded</state>
+    <sanitization>cropped-to-app; generic-settings-only; no-device-status; no-account; no-title-content; no-local-path</sanitization>
+  </artifact>
+  <artifact id="source-evaluation" type="screenshot" path="../screenshots/source-evaluation.png" sha256="3D85D1C55E9AFCDBEB4D79428927A833384943E622C5DBA62881CE71DA5D7ED5">
+    <route>settings/recommendations/source-evaluation</route>
+    <state>partial-result</state>
+    <sanitization>cropped-to-app; aggregate-counts-only; no-device-status; no-source-identity; no-raw-error; no-local-path</sanitization>
+  </artifact>
+</kmk-evidence-manifest>

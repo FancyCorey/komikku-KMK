@@ -4,6 +4,7 @@ import eu.kanade.domain.extension.model.Extensions
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import exh.source.ExplicitSourceClassifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -14,6 +15,9 @@ class GetExtensionsByType(
 
     fun subscribe(): Flow<Extensions> {
         val showNsfwSources = preferences.showNsfwSource().get()
+        // KMK -->
+        val blockExplicit = preferences.blockExplicitPornHentaiSources().get()
+        // KMK <--
 
         return combine(
             preferences.enabledLanguages().changes(),
@@ -47,7 +51,10 @@ class GetExtensionsByType(
                                 // KMK <--
                                 it.pkgName == extension.pkgName
                         } &&
-                        (showNsfwSources || !extension.isNsfw)
+                        (showNsfwSources || !extension.isNsfw) &&
+                        // KMK -->
+                        !(blockExplicit && ExplicitSourceClassifier.isExplicitExtension(extension))
+                    // KMK <--
                 }
                 .flatMap { ext ->
                     ext.sources.filter { it.lang in enabledLanguages }

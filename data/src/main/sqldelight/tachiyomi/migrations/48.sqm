@@ -1,0 +1,45 @@
+-- KMK --> v0.6.9 source_evaluation table for existing installs (v0.6.8 added the table but no migration)
+
+CREATE TABLE IF NOT EXISTS source_evaluation (
+    evaluation_key TEXT NOT NULL PRIMARY KEY,
+    source_id INTEGER,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    base_url TEXT,
+    repo_name TEXT,
+    source_count INTEGER NOT NULL,
+    is_nsfw INTEGER NOT NULL,
+    evaluation_version INTEGER NOT NULL,
+    evaluated_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    sample_count INTEGER NOT NULL,
+    popular_count INTEGER NOT NULL,
+    latest_count INTEGER NOT NULL,
+    search_count INTEGER NOT NULL,
+    search_success_count INTEGER NOT NULL,
+    liked_title_match_count INTEGER NOT NULL,
+    preferred_tag_match_count INTEGER NOT NULL,
+    blocked_tag_match_count INTEGER NOT NULL,
+    explicit_signal_count INTEGER NOT NULL,
+    ecchi_signal_count INTEGER NOT NULL,
+    error_count INTEGER NOT NULL,
+    quality_score REAL NOT NULL,
+    recommendation_fit_score REAL NOT NULL,
+    search_reliability_score REAL NOT NULL,
+    explicit_score REAL NOT NULL,
+    ecchi_score REAL NOT NULL,
+    verdict TEXT NOT NULL,
+    sampled_titles_json TEXT,
+    sampled_tags_json TEXT,
+    error_message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS source_evaluation_source_id_index ON source_evaluation(source_id);
+CREATE INDEX IF NOT EXISTS source_evaluation_pkg_index ON source_evaluation(extension_pkg_name);
+CREATE INDEX IF NOT EXISTS source_evaluation_verdict_index ON source_evaluation(verdict);
+CREATE INDEX IF NOT EXISTS source_evaluation_evaluated_at_index ON source_evaluation(evaluated_at);
+
+-- KMK <--

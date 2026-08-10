@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.source.online.all
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -115,11 +116,18 @@ class MergedSource : HttpSource() {
                                 try {
                                     val (source, loadedManga, reference) = it.load()
                                     if (loadedManga != null && reference.getChapterUpdates) {
+                                        // KMK v0.8.10-fix7: this was a genuine hole -- the surrounding
+                                        // catch(e: Exception) below does NOT catch Error/LinkageError,
+                                        // so a raw NoClassDefFoundError from .getOrThrow() would have
+                                        // escaped uncaught through this async{} and crashed the merged
+                                        // chapter update. UpdateMangaFromRemote stores the raw
+                                        // unwrapped throwable in Result.failure(...), so
+                                        // getOrThrowSourceRuntimeException() is required here.
                                         val results = updateMangaFromRemote(
                                             source = source,
                                             manga = loadedManga,
                                             fetchChapters = true,
-                                        ).getOrThrow().newChapters
+                                        ).getOrThrowSourceRuntimeException().newChapters
 
                                         if (downloadChapters && reference.downloadChapters) {
                                             val chaptersToDownload = filterChaptersForDownload.await(manga, results)
@@ -160,11 +168,13 @@ class MergedSource : HttpSource() {
                     url = mangaUrl,
                 ),
             )
+            // KMK v0.8.10-fix7: same reasoning as the fetchChapters call above -- load() is called
+            // from inside a catch(e: Exception)-only scope, so a raw Error must not escape here.
             manga = updateMangaFromRemote(
                 source = source,
                 manga = newManga,
                 fetchDetails = true,
-            ).getOrThrow().manga
+            ).getOrThrowSourceRuntimeException().manga
         }
         return LoadedMangaSource(source, manga, this)
     }

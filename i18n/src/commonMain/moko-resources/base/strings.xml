@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Komikku</string>
+    <string name="app_name" translatable="false">Komikku KMK</string>
 
     <!-- Generic strings -->
     <string name="on">On</string>
@@ -506,6 +506,7 @@
     <string name="pref_remove_exclude_categories">Excluded categories</string>
     <string name="no_location_set">No storage location set</string>
     <string name="invalid_location">Invalid location: %s</string>
+    <string name="storage_location_configured">Storage location configured</string>
     <string name="storage_failed_to_create_download_directory">Failed to create download directory</string>
     <string name="storage_failed_to_create_directory">Failed to create directory: %s</string>
     <string name="disabled">Disabled</string>
@@ -566,6 +567,15 @@
     <string name="backup_choice">What do you want to backup?</string>
     <string name="app_settings">App settings</string>
     <string name="source_settings">Source settings</string>
+    <string name="extensionStores">Extension stores</string>
+    <string name="extensionStoresScreen.emptyLabel">You haven\'t added an extension store yet</string>
+    <string name="extensionStoresScreen.addStore.title">Add extension store</string>
+    <string name="extensionStoresScreen.addStore.alreadyExists">This extension store already exists</string>
+    <string name="extensionStoresScreen.addStore.processing">Processing…</string>
+    <string name="extensionStoresScreen.addStoreInput.inputLabel">Store index URL</string>
+    <string name="extensionStoresScreen.addStoreDeeplink.bodyText">Do you wish to add the extension store below?</string>
+    <string name="extensionStoresScreen.deleteStore.title">Remove extension store</string>
+    <string name="extensionStoresScreen.deleteStore.body">Do you wish to remove the extension store \"%1$s\" (%2$s)?</string>
     <string name="private_settings">Include sensitive settings (e.g., tracker login tokens)</string>
     <string name="non_library_settings">All read entries</string>
     <string name="creating_backup">Creating backup</string>

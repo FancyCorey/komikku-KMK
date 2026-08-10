@@ -40,6 +40,8 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.toast
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
@@ -193,6 +195,7 @@ class ClearDatabaseScreen : Screen() {
         isSelected: Boolean,
         onClickSelect: () -> Unit,
     ) {
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
         Row(
             modifier = Modifier
                 .selectedBackground(isSelected)
@@ -208,7 +211,11 @@ class ClearDatabaseScreen : Screen() {
                     .weight(1f),
             ) {
                 Text(
-                    text = source.visualName,
+                    text = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(source.id)
+                    } else {
+                        source.visualName
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(text = stringResource(MR.strings.clear_database_source_item_count, count))

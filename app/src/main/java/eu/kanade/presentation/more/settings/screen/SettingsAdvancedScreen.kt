@@ -39,6 +39,7 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.download.DownloadCache
@@ -77,6 +78,7 @@ import exh.source.ExhPreferences
 import exh.util.toAnnotatedString
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -770,9 +772,89 @@ object SettingsAdvancedScreen : SearchableSettings {
         val exhPreferences = remember { Injekt.get<ExhPreferences>() }
         val delegateSourcePreferences = remember { Injekt.get<DelegateSourcePreferences>() }
         val securityPreferences = remember { Injekt.get<SecurityPreferences>() }
+        // KMK v0.8.19: gates the Action Undo Journal nav row below.
+        val evaluationModeEnabled = exh.util.rememberEvaluationModeEnabled()
         return Preference.PreferenceGroup(
             title = stringResource(SYMR.strings.developer_tools),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOfNotNull(
+                // KMK -->
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = sourcePreferences.evaluationMode(),
+                    title = stringResource(KMR.strings.evaluation_mode_title),
+                    subtitle = stringResource(KMR.strings.evaluation_mode_summary),
+                ),
+                // KMK v0.8.19: Evaluation Mode Action Undo Journal entry point -- only shown while
+                // Evaluation Mode is on; normal users (Evaluation Mode off) never see this row at all,
+                // matching the feature's explicit "no UI, no behavior change when disabled" requirement.
+                if (evaluationModeEnabled) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.eval_undo_history_nav_title),
+                        subtitle = stringResource(KMR.strings.eval_undo_history_nav_summary),
+                        onClick = { navigator.push(exh.util.EvaluationModeActionHistoryScreen()) },
+                    )
+                } else {
+                    null
+                },
+                // KMK <--
+                // KMK: debug-build-only deterministic Source Evaluation fixture selector. BuildConfig.DEBUG
+                // is a compile-time-per-variant constant that is `false` for every non-debug build
+                // type, so this row (and the preference-read branch that consumes it in
+                // SourceEvaluationJob.selectSourceEvaluationRunner) is unreachable outside a debug
+                // build; the preference value alone cannot activate the fixture path.
+                if (BuildConfig.DEBUG) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = sourcePreferences.evaluationFixtureFailureMode(),
+                        title = stringResource(KMR.strings.source_evaluation_debug_fixture_mode_title),
+                        subtitle = stringResource(KMR.strings.source_evaluation_debug_fixture_mode_summary),
+                        entries = persistentMapOf(
+                            exh.recs.evaluation.SourceEvaluationDebugFixtureMode.OFF.prefValue to
+                                stringResource(KMR.strings.source_evaluation_debug_fixture_mode_off),
+                            exh.recs.evaluation.SourceEvaluationDebugFixtureMode.CANDIDATE_LOAD_ERROR.prefValue to
+                                stringResource(KMR.strings.source_evaluation_debug_fixture_mode_candidate_load_error),
+                            exh.recs.evaluation.SourceEvaluationDebugFixtureMode.CONNECTIVITY_LOST.prefValue to
+                                stringResource(KMR.strings.source_evaluation_debug_fixture_mode_connectivity_lost),
+                            exh.recs.evaluation.SourceEvaluationDebugFixtureMode.PER_SOURCE_ERROR.prefValue to
+                                stringResource(KMR.strings.source_evaluation_debug_fixture_mode_per_source_error),
+                        ),
+                    )
+                } else {
+                    null
+                },
+                // KMK: separate debug-build-only fixture selector for the
+                // Browse paging source. Deliberately its own preference/row (not a reuse of the
+                // Source Evaluation fixture above) -- see SourcePreferences.browseFixtureFailureMode
+                // and BrowseSourceScreenModel.createSourcePagingSource for why the two must stay
+                // decoupled.
+                if (BuildConfig.DEBUG) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = sourcePreferences.browseFixtureFailureMode(),
+                        title = stringResource(KMR.strings.browse_debug_fixture_mode_title),
+                        subtitle = stringResource(KMR.strings.browse_debug_fixture_mode_summary),
+                        entries = persistentMapOf(
+                            eu.kanade.tachiyomi.ui.browse.source.browse.BrowseDebugFixtureMode.OFF.prefValue to
+                                stringResource(KMR.strings.browse_debug_fixture_mode_off),
+                            eu.kanade.tachiyomi.ui.browse.source.browse.BrowseDebugFixtureMode.SOURCE_UNAVAILABLE.prefValue to
+                                stringResource(KMR.strings.browse_debug_fixture_mode_source_unavailable),
+                        ),
+                    )
+                } else {
+                    null
+                },
+                if (BuildConfig.DEBUG) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = sourcePreferences.sourcesToTryFixtureMode(),
+                        title = stringResource(KMR.strings.sources_to_try_debug_fixture_mode_title),
+                        subtitle = stringResource(KMR.strings.sources_to_try_debug_fixture_mode_summary),
+                        entries = persistentMapOf(
+                            exh.recs.discovery.SourcesToTryDebugFixtureMode.OFF.prefValue to
+                                stringResource(KMR.strings.sources_to_try_debug_fixture_mode_off),
+                            exh.recs.discovery.SourcesToTryDebugFixtureMode.SUGGESTION_VISIBLE.prefValue to
+                                stringResource(KMR.strings.sources_to_try_debug_fixture_mode_suggestion_visible),
+                        ),
+                    )
+                } else {
+                    null
+                },
                 Preference.PreferenceItem.SwitchPreference(
                     preference = exhPreferences.isHentaiEnabled(),
                     title = stringResource(SYMR.strings.toggle_hentai_features),
@@ -795,8 +877,10 @@ object SettingsAdvancedScreen : SearchableSettings {
                     subtitle = stringResource(
                         SYMR.strings.toggle_delegated_sources_summary,
                         stringResource(MR.strings.app_name),
-                        AndroidSourceManager.DELEGATED_SOURCES.map { it.sourceName }.distinct()
-                            .joinToString(),
+                        exh.util.EvaluationModeDelegatedSourceSummaryPolicy.displayNames(
+                            sourceNames = AndroidSourceManager.DELEGATED_SOURCES.map { it.sourceName },
+                            evaluationModeEnabled = evaluationModeEnabled,
+                        ),
                     ),
                 ),
                 Preference.PreferenceItem.ListPreference(
@@ -870,7 +954,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     },
                     onClick = { navigator.push(SettingsDebugScreen()) },
                 ),
-            ),
+            ).toImmutableList(),
         )
     }
 

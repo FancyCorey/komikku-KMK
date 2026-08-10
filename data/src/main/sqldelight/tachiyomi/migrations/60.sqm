@@ -1,0 +1,9 @@
+-- KMK --> v0.7.42: Add catalogue metadata confidence to source_evaluation. Source Evaluation
+-- previously pooled Popular/Latest catalogue samples with tag-search results into one score; this
+-- release splits them, and Popular/Latest metadata is frequently missing genre tags (the same
+-- issue v0.7.13 already fixed on the search side). This column records how much of the sampled
+-- catalogue evidence actually had usable tags, distinct from the fit score itself, so missing
+-- metadata is never silently read as "no matching tags = low fit". Nullable-safe default for
+-- existing rows evaluated before this column existed.
+ALTER TABLE source_evaluation ADD COLUMN catalogue_metadata_confidence TEXT NOT NULL DEFAULT 'unknown';
+-- KMK <--

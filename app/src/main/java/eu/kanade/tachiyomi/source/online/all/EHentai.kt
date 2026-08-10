@@ -394,7 +394,7 @@ class EHentai(
                     break
                 }
             } else {
-                this@EHentai.xLogD("Parent cache hit: %s!", gid)
+                this@EHentai.xLogD("EHentai parent cache hit")
                 url = EHentaiSearchMetadata.idAndTokenToUrl(
                     cachedParent.gId,
                     cachedParent.gToken,
@@ -790,7 +790,7 @@ class EHentai(
                     lastUpdateCheck - datePosted!! > EHentaiUpdateWorkerConstants.GALLERY_AGE_TIME
                 ) {
                     aged = true
-                    this@EHentai.xLogD("aged %s - too old", title)
+                    this@EHentai.xLogD("EHentai gallery age threshold reached")
                 }
 
                 // Parse ratings
@@ -973,7 +973,7 @@ class EHentai(
                     // KMK -->
                     ?.associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
                 val newCookies = cookiesHeader(cfCookies ?: emptyMap())
-                xLogI("Overwritten Cookie: $newCookies")
+                xLogI("EHentai cookie header rebuilt")
                 // KMK <--
 
                 val newReq =
@@ -1122,7 +1122,7 @@ class EHentai(
             stringBuilder.append(" ")
         }
 
-        return stringBuilder.toString().trim().also { xLogD(it) }
+        return stringBuilder.toString().trim().also { xLogD("EHentai advanced search parsed") }
     }
 
     data class AdvSearchEntry(val search: Pair<String?, String>, val exclude: Boolean, val or: Boolean)

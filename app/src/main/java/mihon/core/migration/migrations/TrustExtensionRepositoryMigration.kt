@@ -1,6 +1,7 @@
 package mihon.core.migration.migrations
 
 import eu.kanade.domain.source.service.SourcePreferences
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import mihon.core.migration.Migration
 import mihon.core.migration.MigrationContext
@@ -24,7 +25,8 @@ class TrustExtensionRepositoryMigration : Migration {
                     name = "Repo #${index + 1}",
                 )
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "Error Migrating Extension Repo with baseUrl: $source" }
+                if (e is CancellationException) throw e
+                logcat(LogPriority.ERROR) { "Extension repository migration failed" }
             }
         }
         sourcePreferences.extensionRepos().delete()

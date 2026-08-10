@@ -59,6 +59,8 @@ import eu.kanade.presentation.components.SOURCE_SEARCH_BOX_HEIGHT
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.update
 import mihon.feature.migration.list.MigrationListScreen
@@ -101,6 +103,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
 
         val screenModel = rememberScreenModel { ScreenModel() }
         val state by screenModel.state.collectAsState()
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
         // KMK -->
         var searchQuery by remember { mutableStateOf("") }
@@ -259,6 +262,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                                 lastItem = index == (sources.size - 1),
                                 source = item,
                                 showLanguage = showLanguage,
+                                evaluationModeEnabled = evaluationModeEnabled,
                                 dragEnabled = selectedSourceList && sources.size > 1,
                                 state = reorderableState,
                                 key = { if (selectedSourceList) it.id else "available-${it.id}" },
@@ -310,6 +314,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
         lastItem: Boolean,
         source: MigrationSource,
         showLanguage: Boolean,
+        evaluationModeEnabled: Boolean,
         dragEnabled: Boolean,
         state: ReorderableLazyListState,
         key: (MigrationSource) -> Any,
@@ -335,6 +340,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                 SourceItem(
                     source = source,
                     showLanguage = showLanguage,
+                    evaluationModeEnabled = evaluationModeEnabled,
                     dragEnabled = dragEnabled,
                     scope = this@ReorderableItem,
                     onClick = onClick,
@@ -351,6 +357,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
     private fun SourceItem(
         source: MigrationSource,
         showLanguage: Boolean,
+        evaluationModeEnabled: Boolean,
         dragEnabled: Boolean,
         scope: ReorderableCollectionItemScope,
         onClick: () -> Unit,
@@ -363,7 +370,11 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                 ) {
                     SourceIcon(source = source.source)
                     Text(
-                        text = source.name,
+                        text = if (evaluationModeEnabled) {
+                            EvaluationModeFormatter.sourceLabel(source.source.id)
+                        } else {
+                            source.name
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,

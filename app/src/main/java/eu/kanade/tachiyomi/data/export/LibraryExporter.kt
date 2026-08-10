@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.data.export
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import tachiyomi.domain.manga.model.Manga
@@ -14,21 +15,37 @@ object LibraryExporter {
         val includeArtist: Boolean,
     )
 
+    // KMK -->
+    // KMK: `exportToCsv` previously called its
+    // `onExportComplete` success callback unconditionally, even when `openOutputStream(uri)` returned
+    // null (a real, truthful destination-open failure) -- reporting "library exported" for a write
+    // that never happened. Now returns a typed result the caller must inspect instead of an
+    // always-fired callback, and rethrows `CancellationException` rather than letting a cancelled
+    // write silently report either outcome.
+    sealed interface ExportOutcome {
+        data object Success : ExportOutcome
+        data object WriteFailed : ExportOutcome
+    }
+
     suspend fun exportToCsv(
         context: Context,
         uri: Uri,
         favorites: List<Manga>,
         options: ExportOptions,
-        onExportComplete: () -> Unit,
-    ) {
-        withContext(Dispatchers.IO) {
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+    ): ExportOutcome = withContext(Dispatchers.IO) {
+        try {
+            val wrote = context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                 val csvData = generateCsvData(favorites, options)
                 outputStream.write(csvData.toByteArray())
-            }
-            onExportComplete()
+            } != null
+            if (wrote) ExportOutcome.Success else ExportOutcome.WriteFailed
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ExportOutcome.WriteFailed
         }
     }
+    // KMK <--
 
     private val escapeRequired = listOf("\r", "\n", "\"", ",")
 

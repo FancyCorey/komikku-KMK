@@ -1,0 +1,8 @@
+-- KMK --> v0.7.42: Add version/expiry columns to source_recommendation_fit for staleness parity
+-- with source_evaluation (which already has evaluation_version + expires_at, migration 47/51).
+-- Existing rows default to version 0, which is below the new SourceRecommendationFit.CURRENT_VERSION
+-- (1), so historical fit records computed under the old pooled-scoring rules are correctly
+-- treated as stale once a staleness check for this table is wired up, without a manual backfill.
+ALTER TABLE source_recommendation_fit ADD COLUMN evaluation_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE source_recommendation_fit ADD COLUMN expires_at INTEGER;
+-- KMK <--

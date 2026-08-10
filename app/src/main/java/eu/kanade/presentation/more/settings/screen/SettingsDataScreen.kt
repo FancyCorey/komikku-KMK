@@ -29,6 +29,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.net.toUri
+import cafe.adriel.voyager.core.model.ScreenModel
+import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.google.zxing.client.android.Intents
@@ -47,6 +51,7 @@ import com.hippo.unifile.UniFile
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import eu.kanade.domain.sync.SyncPreferences
+import eu.kanade.presentation.components.SafArtifactCleanupDialog
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.SettingsSecurityScreen.PasswordDialog
 import eu.kanade.presentation.more.settings.screen.data.CreateBackupScreen
@@ -69,16 +74,16 @@ import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.data.sync.SyncManager
 import eu.kanade.tachiyomi.data.sync.service.GoogleDriveService
 import eu.kanade.tachiyomi.data.sync.service.GoogleDriveSyncService
+import eu.kanade.tachiyomi.util.export.SafArtifactOutcome
+import eu.kanade.tachiyomi.util.export.SafExportCoordinator
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.core.common.storage.displayablePath
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
@@ -197,10 +202,7 @@ object SettingsDataScreen : SearchableSettings {
             return stringResource(MR.strings.no_location_set)
         }
 
-        return remember(storageDir) {
-            val file = UniFile.fromUri(context, storageDir.toUri())
-            file?.displayablePath
-        } ?: stringResource(MR.strings.invalid_location, storageDir)
+        return stringResource(MR.strings.storage_location_configured)
     }
 
     @Composable
@@ -321,8 +323,10 @@ object SettingsDataScreen : SearchableSettings {
                     },
                 ),
                 Preference.PreferenceItem.InfoPreference(
-                    stringResource(MR.strings.backup_info) + "\n\n" +
-                        stringResource(MR.strings.last_auto_backup_info, relativeTimeSpanString(lastAutoBackup)),
+                    stringResource(MR.strings.last_auto_backup_info, relativeTimeSpanString(lastAutoBackup)),
+                ),
+                Preference.PreferenceItem.InfoPreference(
+                    stringResource(MR.strings.backup_info),
                 ),
                 // KMK -->
                 Preference.PreferenceItem.SwitchPreference(
@@ -425,30 +429,62 @@ object SettingsDataScreen : SearchableSettings {
         }
 
         val context = LocalContext.current
-        val scope = rememberCoroutineScope()
+        // KMK: CSV export
+        // lifecycle ownership moved off this Composable's `remember`/`rememberCoroutineScope()` and
+        // onto `SettingsDataScreenModel` (screenModelScope-owned). `SettingsDataScreen` is itself a
+        // Voyager `Screen` (`SearchableSettings : Screen`, pushed via the settings navigator) rather
+        // than a bare stateless object rendered inline -- `rememberScreenModel` therefore correctly
+        // scopes this model's lifetime to that Screen staying on the back stack, exactly like every
+        // other CreateDocument writer in this app (TopPicksScreen, RatedMangaScreen,
+        // BrowsePersonalRecommendationsTab, ExtensionDetailsScreen, ExtensionsTab, CreateBackupScreen).
+        // There is no "stateless settings object" exception left: this route now has a real
+        // lifecycle-safe owner like every other route.
+        val screenModel = rememberScreenModel { SettingsDataScreenModel() }
+        val exportCleanupOffer by screenModel.exportCoordinator.cleanupOffer.collectAsState()
         val getFavorites = remember { Injekt.get<GetFavorites>() }
         var favorites by remember { mutableStateOf<List<Manga>>(emptyList()) }
         LaunchedEffect(Unit) {
             favorites = getFavorites.await()
         }
 
+        // KMK: the favorite
+        // list and export options are snapshotted into `exportSnapshot` at the same
+        // ColumnSelectionDialog confirm click that launches the picker (the last point before the
+        // external CreateDocument boundary), not re-read from live `favorites`/`exportOptions` state
+        // inside the launcher callback after the picker returns -- mirroring the Phase 1 bulk-export
+        // selection-snapshot fix.
+        var exportSnapshot by remember { mutableStateOf<Pair<List<Manga>, ExportOptions>?>(null) }
+        // KMK: the operation is reserved
+        // at the ColumnSelectionDialog confirm click, before the picker launches -- see onConfirm below.
+        var exportPendingOperationId by remember { mutableStateOf<String?>(null) }
         val saveFileLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.CreateDocument("text/csv"),
         ) { uri ->
-            uri?.let {
-                scope.launch {
-                    LibraryExporter.exportToCsv(
-                        context = context,
-                        uri = it,
-                        favorites = favorites,
-                        options = exportOptions,
-                        onExportComplete = {
-                            scope.launch(Dispatchers.Main) {
-                                context.toast(MR.strings.library_exported)
-                            }
-                        },
-                    )
-                }
+            val snapshot = exportSnapshot
+            exportSnapshot = null
+            val operationId = exportPendingOperationId
+            exportPendingOperationId = null
+            if (uri == null) {
+                operationId?.let { screenModel.exportCoordinator.cancelReservation(it) }
+                return@rememberLauncherForActivityResult
+            }
+            if (operationId == null ||
+                !screenModel.exportLibraryCsv(
+                    context = context,
+                    operationId = operationId,
+                    uri = uri,
+                    favorites = snapshot?.first.orEmpty(),
+                    options = snapshot?.second ?: exportOptions,
+                )
+            ) {
+                eu.kanade.tachiyomi.util.export.handleUnregisterableUri(
+                    context,
+                    uri,
+                    screenModel.exportCoordinator,
+                    KMR.strings.saf_export_registration_failed,
+                    KMR.strings.saf_export_registration_failed_retained,
+                    KMR.strings.saf_export_registration_failed_unrecoverable,
+                )
             }
         }
 
@@ -456,12 +492,51 @@ object SettingsDataScreen : SearchableSettings {
             ColumnSelectionDialog(
                 options = exportOptions,
                 onConfirm = { options ->
-                    exportOptions = options
-                    saveFileLauncher.launch("komikku_library.csv")
+                    val operationId = screenModel.exportCoordinator.beginOperation()
+                    if (operationId == null) {
+                        context.toast(KMR.strings.saf_export_operation_pending)
+                    } else {
+                        exportOptions = options
+                        exportSnapshot = favorites to options
+                        exportPendingOperationId = operationId
+                        saveFileLauncher.launch("komikku_library.csv")
+                    }
                 },
                 onDismissRequest = { showDialog = false },
             )
         }
+
+        // KMK: exact-Uri-only Remove/Keep
+        // cleanup for the CSV export, offered for every outcome (not only success) -- see
+        // SafExportCoordinator.
+        exportCleanupOffer?.let { offer ->
+            SafArtifactCleanupDialog(
+                context = context,
+                offer = offer,
+                successTitleRes = KMR.strings.extension_export_cleanup_title,
+                successBodyRes = KMR.strings.generic_export_cleanup_success_body,
+                incompleteTitleRes = KMR.strings.extension_export_cleanup_incomplete_title,
+                incompleteBodyRes = KMR.strings.extension_export_cleanup_incomplete_body,
+                removeRes = KMR.strings.extension_export_cleanup_remove,
+                keepRes = KMR.strings.extension_export_cleanup_keep,
+                removedRes = KMR.strings.extension_export_cleanup_removed,
+                removeFailedRes = KMR.strings.extension_export_cleanup_failed,
+                onRemoved = { screenModel.exportCoordinator.clear(offer.operationId) },
+                onKept = { screenModel.exportCoordinator.clear(offer.operationId) },
+                onDismissed = { screenModel.exportCoordinator.clear(offer.operationId) },
+            )
+        }
+
+        // KMK --> v0.7.5: import recommendation bundle
+        val navigator = LocalNavigator.currentOrThrow
+        val importBundleLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent(),
+        ) { uri ->
+            if (uri != null) {
+                navigator.push(exh.recs.share.RecommendationBundleImportScreen(uri.toString()))
+            }
+        }
+        // KMK <--
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.export),
@@ -470,6 +545,12 @@ object SettingsDataScreen : SearchableSettings {
                     title = stringResource(MR.strings.library_list),
                     onClick = { showDialog = true },
                 ),
+                // KMK --> v0.7.5: import recommendation bundle
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(KMR.strings.rec_bundle_import_settings_title),
+                    onClick = { importBundleLauncher.launch("application/json") },
+                ),
+                // KMK <--
             ),
         )
     }
@@ -915,4 +996,41 @@ object SettingsDataScreen : SearchableSettings {
         )
     }
     // SY <--
+}
+
+// KMK: real lifecycle owner
+// for the library CSV export route -- screenModelScope-scoped, not Composable-`remember`-owned.
+// `SettingsDataScreen` (the enclosing `object`) is itself the `Screen` this model is scoped to (see
+// `SearchableSettings : Screen`), so this model's lifetime matches every other CreateDocument writer
+// in the app: it survives recomposition and stays alive for as long as the Data & Storage settings
+// screen remains on the navigation back stack, and is disposed only when that screen is popped --
+// the same guarantee `CreateBackupScreenModel`/`ExtensionsScreenModel`/`ExtensionDetailsScreenModel`
+// already have.
+private class SettingsDataScreenModel : ScreenModel {
+    val exportCoordinator = SafExportCoordinator()
+
+    /**
+     * [favorites] and [options] are captured by the caller (`getExportGroup`'s
+     * `ColumnSelectionDialog` onConfirm) at the moment the export is confirmed, before the picker
+     * opens -- never re-read from live Composable state here.
+     */
+    fun exportLibraryCsv(context: Context, operationId: String, uri: Uri, favorites: List<Manga>, options: ExportOptions): Boolean {
+        if (!exportCoordinator.registerUri(operationId, uri)) return false
+        screenModelScope.launch {
+            val outcome = exportCoordinator.performWrite(operationId) {
+                when (LibraryExporter.exportToCsv(context, uri, favorites, options)) {
+                    LibraryExporter.ExportOutcome.Success -> SafArtifactOutcome.SUCCESS
+                    LibraryExporter.ExportOutcome.WriteFailed -> SafArtifactOutcome.FAILED
+                }
+            }
+            withUIContext {
+                when (outcome) {
+                    SafArtifactOutcome.SUCCESS -> context.toast(MR.strings.library_exported)
+                    SafArtifactOutcome.FAILED -> context.toast(KMR.strings.library_export_failed)
+                    SafArtifactOutcome.PARTIAL_OR_EMPTY, SafArtifactOutcome.CANCELLED, SafArtifactOutcome.IN_PROGRESS, SafArtifactOutcome.UNRESOLVED -> Unit
+                }
+            }
+        }
+        return true
+    }
 }

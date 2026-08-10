@@ -26,21 +26,29 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +85,7 @@ import eu.kanade.presentation.reader.appbars.NavBarType
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
 import eu.kanade.presentation.theme.TachiyomiTheme
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.connections.discord.DiscordRPCService
@@ -116,6 +125,7 @@ import exh.util.mangaType
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -229,6 +239,9 @@ class ReaderActivity : BaseActivity() {
         setContentView(binding.root)
         binding.setComposeOverlay()
 
+        // KMK v0.8.5: evaluate the optional reading schedule as soon as the reader opens.
+        viewModel.evaluateSchedule()
+
         if (viewModel.needsInit()) {
             val manga = intent.extras?.getLong("manga", -1) ?: -1L
             val chapter = intent.extras?.getLong("chapter", -1) ?: -1L
@@ -306,9 +319,17 @@ class ReaderActivity : BaseActivity() {
                     is ReaderViewModel.Event.CopyImage -> {
                         onCopyImageResult(event.uri)
                     }
+                    ReaderViewModel.Event.ShareImageFailed -> {
+                        toast(KMR.strings.reader_share_image_failed)
+                    }
                     is ReaderViewModel.Event.SetCoverResult -> {
                         onSetAsCoverResult(event.result)
                     }
+                    // KMK -->
+                    ReaderViewModel.Event.ChapterCompletionActionFailed -> {
+                        toast(KMR.strings.chapter_completion_action_failed)
+                    }
+                    // KMK <--
                 }
             }
             .launchIn(lifecycleScope)
@@ -350,6 +371,45 @@ class ReaderActivity : BaseActivity() {
                 ContentOverlay(state = state)
 
                 AppBars(state = state)
+
+                // KMK v0.8.7-fix1: full-screen block when this reader session's schedule
+                // entitlement forbids reading (opened while restricted, or its chapter-grace
+                // allowance has been used up). Placed last in this Box so it draws on top of and
+                // consumes touch input over both the page content and the app bars beneath it —
+                // there is no way to "swipe past" this overlay to reach a page. See
+                // ReaderViewModel.isReadingBlockedBySchedule / ReaderScheduleEntitlement.
+                val isBlockedBySchedule by viewModel.isReadingBlockedBySchedule.collectAsState()
+                if (isBlockedBySchedule) {
+                    androidx.compose.foundation.layout.Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null,
+                            ) { /* consumes all touches over the blocked reader; intentionally does nothing */ }
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = stringResource(KMR.strings.reading_schedule_blocked_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 8.dp))
+                        androidx.compose.material3.Text(
+                            text = stringResource(KMR.strings.reading_schedule_blocked_message),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 16.dp))
+                        androidx.compose.material3.Button(onClick = { onBackPressedDispatcher.onBackPressed() }) {
+                            androidx.compose.material3.Text(stringResource(MR.strings.action_close))
+                        }
+                    }
+                }
+                // KMK <--
             }
 
             // KMK -->
@@ -363,6 +423,67 @@ class ReaderActivity : BaseActivity() {
                 },
             )
             // KMK <--
+
+            // KMK v0.8.4: reading-timer warning toast. Diffs firedWarningMinutes against its
+            // previous value so a threshold is announced exactly once, in-reader (a Toast), never
+            // as a system notification.
+            val timerState by viewModel.timerState.collectAsState()
+            var lastFiredWarnings by rememberSaveable { mutableStateOf(setOf<Int>()) }
+            LaunchedEffect(timerState.firedWarningMinutes) {
+                val newlyFired = timerState.firedWarningMinutes - lastFiredWarnings
+                if (newlyFired.isNotEmpty()) {
+                    val minute = newlyFired.max()
+                    toast(stringResource(KMR.strings.reading_timer_warning_toast, minute))
+                }
+                lastFiredWarnings = timerState.firedWarningMinutes
+            }
+            var lastExpiredNotified by rememberSaveable { mutableStateOf(false) }
+            LaunchedEffect(timerState.phase) {
+                if (timerState.phase == eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase.EXPIRED && !lastExpiredNotified) {
+                    toast(KMR.strings.reading_timer_expired_toast)
+                    lastExpiredNotified = true
+                } else if (timerState.phase != eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase.EXPIRED) {
+                    lastExpiredNotified = false
+                }
+            }
+            // KMK <--
+
+            // KMK v0.8.5: reading-schedule restriction banner (in-reader Toast, never a system
+            // notification). The grace/expiry mechanics are identical to the timer's own — see
+            // ReaderViewModel.scheduleGraceCoordinator — so only the messaging differs here.
+            val scheduleGraceState by viewModel.scheduleGraceState.collectAsState()
+            var lastScheduleNotifiedPhase by rememberSaveable {
+                mutableStateOf(eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase.IDLE)
+            }
+            LaunchedEffect(scheduleGraceState.phase) {
+                if (scheduleGraceState.phase != lastScheduleNotifiedPhase) {
+                    when (scheduleGraceState.phase) {
+                        eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase.CHAPTER_GRACE ->
+                            toast(KMR.strings.reading_schedule_restricted_grace_toast)
+                        eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase.EXPIRED ->
+                            toast(KMR.strings.reading_schedule_restricted_toast)
+                        else -> {}
+                    }
+                    lastScheduleNotifiedPhase = scheduleGraceState.phase
+                }
+            }
+            // KMK <--
+
+            // KMK v0.8.10: once the deferred chapter-completion rating prompt (and its optional
+            // "rate other versions" step) resolves back to no dialog, actually finish() the
+            // activity that back-press/finish() deferred. Reacting to state.dialog here (rather
+            // than patching every dismiss/rate/mark-not-interested button individually) covers
+            // every dismissal path uniformly, including the system dialog back-press/scrim-tap
+            // dismiss that doesn't go through any button handler at all.
+            LaunchedEffect(state.dialog) {
+                if (awaitingChapterCompletionPromptResolution &&
+                    state.dialog !is ReaderViewModel.Dialog.ChapterCompletionRating &&
+                    state.dialog !is ReaderViewModel.Dialog.ChapterCompletionRatingGroupOffer
+                ) {
+                    awaitingChapterCompletionPromptResolution = false
+                    finish()
+                }
+            }
 
             val onDismissRequest = viewModel::closeDialog
             when (state.dialog) {
@@ -392,6 +513,27 @@ class ReaderActivity : BaseActivity() {
                         onShowMenus = { setMenuVisibility(true) },
                         onHideMenus = { setMenuVisibility(false) },
                         screenModel = settingsScreenModel,
+                    )
+                }
+
+                // KMK v0.8.4
+                is ReaderViewModel.Dialog.ReadingTimer -> {
+                    eu.kanade.presentation.reader.ReaderTimerDialog(
+                        onDismissRequest = onDismissRequest,
+                        session = timerState,
+                        onStart = viewModel::startTimer,
+                        onPause = viewModel::pauseTimer,
+                        onResume = viewModel::resumeTimer,
+                        onReset = viewModel::resetTimer,
+                        onStop = viewModel::stopTimer,
+                        onConfigureSchedule = {
+                            onDismissRequest()
+                            startActivity(
+                                Intent(this@ReaderActivity, MainActivity::class.java).apply {
+                                    action = Constants.OPEN_READER_SCHEDULE_SETTINGS
+                                },
+                            )
+                        },
                     )
                 }
 
@@ -512,6 +654,113 @@ class ReaderActivity : BaseActivity() {
                     text = { Text(text = stringResource(SYMR.strings.eh_retry_all_help_message)) },
                 )
                 // SY <--
+
+                // KMK v0.8.8: chapter-completion rating prompt (step 1: Love/Like/Dislike/Not
+                // Interested/dismiss) — shown only after LatestChapterCompletionPolicy confirms a
+                // genuine completion of the latest available chapter (see
+                // ReaderViewModel.maybeShowChapterCompletionRatingPrompt).
+                is ReaderViewModel.Dialog.ChapterCompletionRating -> {
+                    val dialog = state.dialog as ReaderViewModel.Dialog.ChapterCompletionRating
+                    AlertDialog(
+                        onDismissRequest = onDismissRequest,
+                        title = { Text(stringResource(KMR.strings.chapter_completion_rating_title)) },
+                        text = {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                androidx.compose.material3.TextButton(onClick = {
+                                    viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LOVE)
+                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                    Text(stringResource(KMR.strings.rated_manga_rating_love))
+                                }
+                                androidx.compose.material3.TextButton(onClick = {
+                                    viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LIKE)
+                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                    Text(stringResource(KMR.strings.rated_manga_rating_like))
+                                }
+                                androidx.compose.material3.TextButton(onClick = {
+                                    viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.DISLIKE)
+                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                    Text(stringResource(KMR.strings.rated_manga_rating_dislike))
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { viewModel.markNotInterestedFromChapterCompletionPrompt(dialog.mangaId) },
+                                modifier = Modifier.defaultMinSize(minWidth = 112.dp, minHeight = 48.dp),
+                            ) {
+                                Text(stringResource(KMR.strings.rated_manga_action_mark_not_interested))
+                            }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = viewModel::dismissChapterCompletionPrompt,
+                                modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
+                            ) {
+                                Text(stringResource(MR.strings.action_cancel))
+                            }
+                        },
+                    )
+                }
+
+                // KMK v0.8.8: step 2 — offered after step 1's rating is committed. Yes launches
+                // MainActivity with primitives-only extras that push the existing
+                // CrossExtensionMatchScreen (Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING — see
+                // MainActivity's intent handling); No/Cancel just closes this dialog. Either way the
+                // rating already committed in step 1 is untouched.
+                // KMK v0.8.17-fix1: this is no longer gated on a confirmed cross-source group already
+                // existing -- CrossExtensionMatchScreen performs its own live title search regardless.
+                // `hasConfirmedGroup` now only selects honest wording: the "confirmed other versions"
+                // message when a group is already known, or a "search for other versions" message
+                // when this offer will run a fresh search instead of reusing a known group.
+                is ReaderViewModel.Dialog.ChapterCompletionRatingGroupOffer -> {
+                    val dialog = state.dialog as ReaderViewModel.Dialog.ChapterCompletionRatingGroupOffer
+                    val titleRes = if (dialog.hasConfirmedGroup) {
+                        KMR.strings.chapter_completion_rating_group_offer_title
+                    } else {
+                        KMR.strings.chapter_completion_rating_search_offer_title
+                    }
+                    val messageRes = if (dialog.hasConfirmedGroup) {
+                        KMR.strings.chapter_completion_rating_group_offer_message
+                    } else {
+                        KMR.strings.chapter_completion_rating_search_offer_message
+                    }
+                    AlertDialog(
+                        onDismissRequest = onDismissRequest,
+                        title = { Text(stringResource(titleRes)) },
+                        text = { Text(stringResource(messageRes)) },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    onDismissRequest()
+                                    startActivity(
+                                        Intent(this@ReaderActivity, MainActivity::class.java).apply {
+                                            action = tachiyomi.core.common.Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING
+                                            putExtra(tachiyomi.core.common.Constants.CROSS_EXTENSION_MATCH_MANGA_ID_EXTRA, dialog.mangaId)
+                                            putExtra(tachiyomi.core.common.Constants.CROSS_EXTENSION_MATCH_RATING_EXTRA, dialog.ratingValue)
+                                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                        },
+                                    )
+                                },
+                                modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
+                            ) {
+                                Text(stringResource(MR.strings.action_ok))
+                            }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = onDismissRequest,
+                                modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
+                            ) {
+                                Text(stringResource(MR.strings.action_cancel))
+                            }
+                        },
+                    )
+                }
+                // KMK <--
+
                 null -> {}
             }
         }
@@ -537,6 +786,10 @@ class ReaderActivity : BaseActivity() {
         updateDiscordRPC(exitingReader = true)
         // <-- AM (DISCORD)
 
+        // KMK v0.8.4: pause the reading timer whenever the reader leaves the foreground — distinct
+        // from viewModel.restartReadTimer() above, which tracks per-chapter history duration only.
+        viewModel.onReaderBackground()
+
         super.onPause()
     }
 
@@ -547,6 +800,11 @@ class ReaderActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.restartReadTimer()
+        // KMK v0.8.4: resume the reading timer — idempotent, and a no-op if the user explicitly
+        // paused it before backgrounding (see ReaderTimerReducer.ReaderForeground semantics).
+        viewModel.onReaderForeground()
+        // KMK v0.8.5: re-evaluate the reading schedule on every foreground/background-return.
+        viewModel.evaluateSchedule()
 
         // AM (DISCORD) -->
         updateDiscordRPC(exitingReader = false)
@@ -571,11 +829,32 @@ class ReaderActivity : BaseActivity() {
         assistUrl?.let { outContent.webUri = it.toUri() }
     }
 
+    // KMK v0.8.10: guards the deferred chapter-completion rating prompt (see
+    // ReaderViewModel.ChapterCompletionPromptState / finish() below). Plain Activity field, not
+    // Compose state -- finish() is a regular method, and this only needs to survive across the
+    // single finish() call that shows the dialog through to the LaunchedEffect below that observes
+    // its resolution; it intentionally does NOT need to survive process death (a fresh reader
+    // session after process death has no pending prompt to resolve).
+    private var awaitingChapterCompletionPromptResolution = false
+
     /**
      * Called when the user clicks the back key or the button on the toolbar. The call is
      * delegated to the presenter.
+     *
+     * KMK v0.8.10: if a chapter-completion rating prompt is pending for this exit, show it first
+     * and defer the actual finish -- see the LaunchedEffect(state.dialog) in setContent() that
+     * calls finish() again once the prompt (and, if offered, its "rate other versions" follow-up)
+     * has been resolved. Leaving the reader without a pending prompt is completely unaffected.
      */
     override fun finish() {
+        if (!awaitingChapterCompletionPromptResolution) {
+            val pendingMangaId = viewModel.takePendingChapterCompletionRatingPromptForExit()
+            if (pendingMangaId != null) {
+                awaitingChapterCompletionPromptResolution = true
+                viewModel.showChapterCompletionRatingPromptNow(pendingMangaId)
+                return
+            }
+        }
         viewModel.onActivityFinish()
         super.finish()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -662,8 +941,11 @@ class ReaderActivity : BaseActivity() {
         } else {
             cropBorderContinuousVertical
         }
-        val readerBottomButtons by readerPreferences.readerBottomButtons().changes().map { it.toImmutableSet() }
-            .collectAsState(persistentSetOf())
+        // KMK: the Flow must be built once (via remember), not on every recomposition -- calling
+        // .map { } directly in composition creates a new Flow identity each time, which restarts
+        // collectAsState's underlying collection every recomposition (Lint: FlowOperatorInvokedInComposition).
+        val readerBottomButtonsFlow = remember { readerPreferences.readerBottomButtons().changes().map { it.toImmutableSet() } }
+        val readerBottomButtons by readerBottomButtonsFlow.collectAsState(persistentSetOf())
         val dualPageSplitPaged by readerPreferences.dualPageSplitPaged().collectAsState()
 
         val forceHorizontalSeekbar by readerPreferences.forceHorizontalSeekbar().collectAsState()
@@ -757,6 +1039,8 @@ class ReaderActivity : BaseActivity() {
             },
             onClickShiftPage = ::shiftDoublePages,
             // SY <--
+            // KMK v0.8.4
+            onClickReadingTimer = viewModel::openReadingTimerDialog,
         )
     }
 
@@ -1093,9 +1377,9 @@ class ReaderActivity : BaseActivity() {
      * this case the activity is closed and a toast is shown to the user.
      */
     private fun setInitialChapterError(error: Throwable) {
-        logcat(LogPriority.ERROR, error)
+        logcat(LogPriority.ERROR) { "Reader initial chapter load failed" }
         finish()
-        toast(error.message)
+        toast(with(this) { error.formattedMessage })
     }
 
     /**
@@ -1257,7 +1541,7 @@ class ReaderActivity : BaseActivity() {
                 toast(MR.strings.picture_saved)
             }
             is ReaderViewModel.SaveImageResult.Error -> {
-                logcat(LogPriority.ERROR, result.error)
+                logcat(LogPriority.ERROR) { "Reader image save failed" }
             }
         }
     }
@@ -1545,8 +1829,10 @@ class ReaderActivity : BaseActivity() {
                         setScreen(this@ReaderActivity)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "Error updating Discord RPC: ${e.message}" }
+                logcat(LogPriority.ERROR) { "Reader Discord RPC update failed" }
             }
         }
     }

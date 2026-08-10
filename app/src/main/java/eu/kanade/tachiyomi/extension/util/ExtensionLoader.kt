@@ -108,8 +108,8 @@ internal object ExtensionLoader {
                 ExtensionInstallReceiver.notifyAdded(context, extension.packageName)
             }
             true
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to copy extension file." }
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Extension file copy failed" }
             target.delete()
             false
         }
@@ -169,12 +169,29 @@ internal object ExtensionLoader {
 
         if (extPkgs.isEmpty()) return emptyList()
 
+        // KMK --> v0.6.18: block known-unsafe packages before class loading or source construction
+        val blockedResults = mutableListOf<LoadResult>()
+        val safeExtPkgs = extPkgs.filter { extInfo ->
+            val pkgName = extInfo.packageInfo.packageName
+            if (ExtensionLoadSafetyPolicy.shouldBlock(pkgName)) {
+                val entry = KnownUnsafeExtensionPackages.ALL.find { it.pkgName == pkgName }
+                val reason = entry?.reason ?: "Package blocked by safety policy"
+                logcat(LogPriority.WARN) { "KMK extension safety: unsafe extension blocked" }
+                blockedResults.add(LoadResult.Blocked(pkgName = pkgName, reason = reason))
+                false
+            } else {
+                true
+            }
+        }
+        // KMK <--
+
         // Load each extension concurrently and wait for completion
-        return runBlocking {
+        // KMK --> v0.6.18: use safeExtPkgs (unsafe packages already filtered into blockedResults)
+        val loadedResults = runBlocking {
             // KMK -->
             val extStores = getExtensionStores.get()
             // KMK <--
-            val deferred = extPkgs.map {
+            val deferred = safeExtPkgs.map {
                 async {
                     loadExtension(
                         context,
@@ -187,6 +204,8 @@ internal object ExtensionLoader {
             }
             deferred.awaitAll()
         }
+        return loadedResults + blockedResults
+        // KMK <--
     }
 
     /**
@@ -194,9 +213,17 @@ internal object ExtensionLoader {
      * contains the required feature flag before trying to load it.
      */
     suspend fun loadExtensionFromPkgName(context: Context, pkgName: String): LoadResult {
+        // KMK --> v0.6.18: block unsafe packages on manual reload paths too (trust receiver, etc.)
+        if (ExtensionLoadSafetyPolicy.shouldBlock(pkgName)) {
+            val entry = KnownUnsafeExtensionPackages.ALL.find { it.pkgName == pkgName }
+            val reason = entry?.reason ?: "Package blocked by safety policy"
+            logcat(LogPriority.WARN) { "KMK extension safety: unsafe extension reload blocked" }
+            return LoadResult.Blocked(pkgName = pkgName, reason = reason)
+        }
+        // KMK <--
         val extensionPackage = getExtensionInfoFromPkgName(context, pkgName)
         if (extensionPackage == null) {
-            logcat(LogPriority.ERROR) { "Extension package is not found ($pkgName)" }
+            logcat(LogPriority.ERROR) { "Extension package lookup failed" }
             return LoadResult.Error
         }
         return loadExtension(context, extensionPackage)
@@ -265,7 +292,7 @@ internal object ExtensionLoader {
         val versionCode = PackageInfoCompat.getLongVersionCode(pkgInfo)
 
         if (versionName.isNullOrEmpty()) {
-            logcat(LogPriority.WARN) { "Missing versionName for extension $extName" }
+            logcat(LogPriority.WARN) { "Extension metadata is missing a version name" }
             return LoadResult.Error
         }
 
@@ -284,7 +311,7 @@ internal object ExtensionLoader {
 
         val signatures = getSignatures(pkgInfo)
         if (signatures.isNullOrEmpty()) {
-            logcat(LogPriority.WARN) { "Package $pkgName isn't signed" }
+            logcat(LogPriority.WARN) { "Extension signature is missing" }
             return LoadResult.Error
         } else if (!trustExtension.isTrusted(pkgInfo, signatures)) {
             val extension = Extension.Untrusted(
@@ -298,25 +325,25 @@ internal object ExtensionLoader {
                 storeName = stores.firstOrNull { store ->
                     signatures.all { it == store.signingKey }
                 }?.let { store ->
-                    store.badgeLabel.takeIf(String::isNotBlank) ?: store.name
+                    store.badgeLabel.takeIf { !it.isNullOrBlank() } ?: store.name
                 },
                 // KMK <--
             )
-            logcat(LogPriority.WARN) { "Extension $pkgName isn't trusted" }
+            logcat(LogPriority.WARN) { "Extension trust check failed" }
             return LoadResult.Untrusted(extension)
         }
 
         val isNsfw = appInfo.metaData.getInt(METADATA_CONTENT_WARNING) > 0 ||
             appInfo.metaData.getInt(METADATA_NSFW) == 1
         if (!loadNsfwSource && isNsfw) {
-            logcat(LogPriority.WARN) { "NSFW extension $pkgName not allowed" }
+            logcat(LogPriority.WARN) { "NSFW extension rejected by policy" }
             return LoadResult.Error
         }
 
         val classLoader = try {
             ChildFirstPathClassLoader(appInfo.sourceDir, null, context.classLoader)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($pkgName)" }
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Extension class-loader creation failed" }
             return LoadResult.Error
         }
 
@@ -337,8 +364,8 @@ internal object ExtensionLoader {
                         is SourceFactory -> obj.createSources()
                         else -> throw Exception("Unknown source class type: ${obj.javaClass}")
                     }
-                } catch (e: Throwable) {
-                    logcat(LogPriority.ERROR, e) { "Extension load error: $extName ($it)" }
+                } catch (_: Throwable) {
+                    logcat(LogPriority.ERROR) { "Extension source loading failed" }
                     return LoadResult.Error
                 }
             }
@@ -367,7 +394,7 @@ internal object ExtensionLoader {
             storeName = stores.firstOrNull { store ->
                 signatures.all { it == store.signingKey }
             }?.let { store ->
-                store.badgeLabel.takeIf(String::isNotBlank) ?: store.name
+                store.badgeLabel.takeIf { !it.isNullOrBlank() } ?: store.name
             },
             // KMK <--
         )

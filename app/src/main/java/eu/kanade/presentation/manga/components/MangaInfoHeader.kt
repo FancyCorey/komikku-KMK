@@ -27,15 +27,19 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.CallMerge
+import androidx.compose.material.icons.automirrored.outlined.CompareArrows
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.HourglassDisabled
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -43,6 +47,8 @@ import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -74,6 +80,8 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -237,7 +245,10 @@ fun MangaActionRow(
     isUserIntervalMode: Boolean,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    // KMK v0.8.18-fix1: renamed from onWebViewLongClicked -- this is no longer a long-click callback.
+    // It was dead wiring after v0.8.18 moved WebView into the "More" overflow menu (DropdownMenuItem has
+    // no long-press affordance); restored here as an explicit, always-reachable "Copy link" menu item.
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
     onEditIntervalClicked: (() -> Unit)?,
     onEditCategory: (() -> Unit)?,
@@ -247,6 +258,20 @@ fun MangaActionRow(
     // KMK -->
     status: Long,
     interval: Int,
+    mangaTaste: tachiyomi.domain.taste.model.MangaTaste? = null,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK --> v0.7.0: Phase 3 – favorite other versions
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20: seen manga marker
+    isNotInterested: Boolean = false,
+    onNotInterestedClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8: find best version action
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
     modifier: Modifier = Modifier,
 ) {
@@ -327,25 +352,230 @@ fun MangaActionRow(
             color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
             onClick = onTrackingClicked,
         )
-        if (onWebViewClicked != null) {
+        // KMK -->
+        if (onTasteClicked != null) {
+            var tasteMenuExpanded by remember { mutableStateOf(false) }
+            val currentRating = tachiyomi.domain.taste.model.MangaRating.fromValue(mangaTaste?.rating ?: 0)
+            // KMK: the primary rate action must
+            // visibly reflect Not Interested when active -- previously this derived title/icon/color
+            // from currentRating only, so a manga marked Not Interested still showed a bare "Rate"
+            // button with no indication. MangaPreferencePresentationPolicy makes the precedence
+            // (Not Interested first, then the ordinary rating) explicit and directly testable.
+            val tastePresentation = exh.recs.loved.MangaPreferencePresentationPolicy.resolve(currentRating, isNotInterested)
+            fun markerIcon(marker: exh.recs.loved.MangaPreferencePresentationPolicy.Marker) = when (marker) {
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED -> Icons.Outlined.VisibilityOff
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LOVE -> Icons.Filled.Favorite
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LIKE -> Icons.Outlined.Done
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.DISLIKE -> Icons.Outlined.Block
+                exh.recs.loved.MangaPreferencePresentationPolicy.Marker.NONE -> Icons.Outlined.FavoriteBorder
+            }
+            fun markerForRating(rating: tachiyomi.domain.taste.model.MangaRating) = when (rating) {
+                tachiyomi.domain.taste.model.MangaRating.LOVE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LOVE
+                tachiyomi.domain.taste.model.MangaRating.LIKE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LIKE
+                tachiyomi.domain.taste.model.MangaRating.DISLIKE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.DISLIKE
+            }
             MangaActionButton(
-                title = stringResource(MR.strings.action_web_view),
-                icon = Icons.Outlined.Public,
-                color = MaterialTheme.colorScheme.primary, // KMK: defaultActionButtonColor
-                onClick = onWebViewClicked,
-                onLongClick = onWebViewLongClicked,
+                title = stringResource(tastePresentation.titleRes),
+                icon = markerIcon(tastePresentation.marker),
+                color = if (tastePresentation.selected) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
+                onClick = { tasteMenuExpanded = true },
+                stateDescription = stringResource(tastePresentation.accessibilityStateDescriptionRes),
             )
+            // KMK: dispatches every
+            // MangaPreferenceAction through the same two existing callbacks (onTasteClicked/
+            // onNotInterestedClicked) -- the callback surface is unchanged, only the rendering below
+            // is now one shared, data-driven list instead of four independently hand-coded blocks.
+            fun dispatch(action: exh.recs.loved.MangaPreferenceAction) {
+                when (action) {
+                    is exh.recs.loved.MangaPreferenceAction.Rating -> onTasteClicked(action.value)
+                    exh.recs.loved.MangaPreferenceAction.NotInterested -> onNotInterestedClicked?.invoke()
+                    exh.recs.loved.MangaPreferenceAction.Clear -> onTasteClicked(null)
+                }
+                tasteMenuExpanded = false
+            }
+            DropdownMenu(
+                expanded = tasteMenuExpanded,
+                onDismissRequest = { tasteMenuExpanded = false },
+            ) {
+                // KMK: Love, Like, Dislike, and
+                // Not Interested render from one shared list -- Not Interested is a structural peer
+                // here, not a separately hardcoded, divider-separated standalone action.
+                exh.recs.loved.MangaPreferencePresentationPolicy.dropdownActions().forEach { action ->
+                    when (action) {
+                        is exh.recs.loved.MangaPreferenceAction.Rating -> DropdownMenuItem(
+                            text = { Text(stringResource(exh.recs.loved.MangaPreferencePresentationPolicy.labelFor(action))) },
+                            onClick = { dispatch(action) },
+                            leadingIcon = { Icon(markerIcon(markerForRating(action.value)), contentDescription = null) },
+                        )
+                        exh.recs.loved.MangaPreferenceAction.NotInterested -> if (onNotInterestedClicked != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            exh.recs.loved.MangaPreferencePresentationPolicy.notInterestedToggleLabel(isNotInterested),
+                                        ),
+                                    )
+                                },
+                                onClick = { dispatch(action) },
+                                leadingIcon = {
+                                    Icon(
+                                        if (isNotInterested) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                        contentDescription = null,
+                                    )
+                                },
+                            )
+                        }
+                        exh.recs.loved.MangaPreferenceAction.Clear -> Unit
+                    }
+                }
+                if (mangaTaste != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.taste_clear)) },
+                        onClick = { dispatch(exh.recs.loved.MangaPreferenceAction.Clear) },
+                        leadingIcon = { Icon(Icons.Outlined.Close, contentDescription = null) },
+                    )
+                }
+                // KMK -->
+                if (onTasteOtherVersionsClicked != null) {
+                    androidx.compose.material3.HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_love)) },
+                        onClick = {
+                            onTasteOtherVersionsClicked(tachiyomi.domain.taste.model.MangaRating.LOVE)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_like)) },
+                        onClick = {
+                            onTasteOtherVersionsClicked(tachiyomi.domain.taste.model.MangaRating.LIKE)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Done, contentDescription = null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_dislike)) },
+                        onClick = {
+                            onTasteOtherVersionsClicked(tachiyomi.domain.taste.model.MangaRating.DISLIKE)
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                    )
+                    // KMK --> v0.7.0: Phase 3 – favorite other versions
+                    if (onFavoriteOtherVersionsClicked != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.rec_match_title_favorite)) },
+                            onClick = {
+                                onFavoriteOtherVersionsClicked()
+                                tasteMenuExpanded = false
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.AddCircleOutline, contentDescription = null) },
+                        )
+                    }
+                    // KMK <--
+                    // KMK: "Not interested in
+                    // other versions" is now a peer of the other three "other versions" actions in
+                    // this same group, instead of sitting behind its own second divider below.
+                    if (onSeenOtherVersionsClicked != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(KMR.strings.rec_match_title_seen)) },
+                            onClick = {
+                                onSeenOtherVersionsClicked()
+                                tasteMenuExpanded = false
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
+                        )
+                    }
+                } else if (onSeenOtherVersionsClicked != null) {
+                    // No taste-other-versions callback set but Not Interested's "other versions" is --
+                    // still needs its own divider since the group above didn't render.
+                    androidx.compose.material3.HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.rec_match_title_seen)) },
+                        onClick = {
+                            onSeenOtherVersionsClicked()
+                            tasteMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
+                    )
+                }
+                // KMK <--
+            }
         }
-        // SY -->
-        if (onMergeClicked != null) {
+        // KMK v0.8.18: WebView, Merge, and Find best version were previously three more always-
+        // visible equal-weight primary buttons alongside Library/Interval/Tracking/Rate, crowding
+        // compact width. They now share one "More" overflow menu -- still fully reachable (one extra
+        // tap, matching the app's existing overflow-menu convention elsewhere), never removed. Find
+        // best version stays conceptually separate from Rate (it's still not inside the taste
+        // dropdown above) -- moving it here is acceptable per the v0.8.18 plan; moving it back into
+        // the Rate menu would not be.
+        // KMK v0.8.18-fix1: v0.8.18's move left onCopyLinkClicked (then onWebViewLongClicked) passed
+        // through several layers but never invoked -- the previous comment here judged the long-click
+        // affordance "not worth a second menu row," but that left real, working copy-link behavior
+        // unreachable rather than intentionally removed. Restored as an explicit "Copy link" menu item,
+        // gated the same as WebView itself since it only makes sense for HTTP sources.
+        if (onWebViewClicked != null || onCopyLinkClicked != null || onMergeClicked != null || onFindBestVersionClicked != null) {
+            var moreMenuExpanded by remember { mutableStateOf(false) }
             MangaActionButton(
-                title = stringResource(SYMR.strings.merge),
-                icon = Icons.AutoMirrored.Outlined.CallMerge,
-                color = MaterialTheme.colorScheme.primary, // KMK: defaultActionButtonColor
-                onClick = onMergeClicked,
+                title = stringResource(MR.strings.label_more),
+                icon = Icons.Default.MoreVert,
+                color = defaultActionButtonColor,
+                onClick = { moreMenuExpanded = true },
             )
+            DropdownMenu(
+                expanded = moreMenuExpanded,
+                onDismissRequest = { moreMenuExpanded = false },
+            ) {
+                if (onWebViewClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(MR.strings.action_web_view)) },
+                        onClick = {
+                            onWebViewClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+                    )
+                }
+                // KMK v0.8.18-fix1: restored copy-link as an explicit, always-reachable menu item.
+                if (onCopyLinkClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(MR.strings.action_copy_link)) },
+                        onClick = {
+                            onCopyLinkClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                    )
+                }
+                // SY -->
+                if (onMergeClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(SYMR.strings.merge)) },
+                        onClick = {
+                            onMergeClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.CallMerge, contentDescription = null) },
+                    )
+                }
+                // SY <--
+                // KMK --> v0.8.16: Find best version is a source-quality/comparison workflow, not a
+                // rating action -- must not live inside the taste/seen dropdown above.
+                if (onFindBestVersionClicked != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(KMR.strings.best_version_find_action)) },
+                        onClick = {
+                            onFindBestVersionClicked()
+                            moreMenuExpanded = false
+                        },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.CompareArrows, contentDescription = null) },
+                    )
+                }
+                // KMK <--
+            }
         }
-        // SY <--
+        // KMK <--
     }
 }
 
@@ -1017,10 +1247,20 @@ private fun RowScope.MangaActionButton(
     color: Color,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    // KMK: optional accessibility state
+    // description (e.g. "Selected"/"Not selected"), announced by accessibility services alongside
+    // the visible title. Defaults to none so every other MangaActionButton call site is unaffected.
+    stateDescription: String? = null,
 ) {
     TextButton(
         onClick = onClick,
-        modifier = Modifier.weight(1f),
+        modifier = Modifier.weight(1f).let { m ->
+            if (stateDescription != null) {
+                m.semantics { this.stateDescription = stateDescription }
+            } else {
+                m
+            }
+        },
         onLongClick = onLongClick,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

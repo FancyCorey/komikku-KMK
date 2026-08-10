@@ -45,7 +45,7 @@ object SettingsBrowseScreen : SearchableSettings {
         val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
         val getExtensionStoreCountAsFlow = remember { Injekt.get<GetExtensionStoreCountAsFlow>() }
 
-        val reposCount by getExtensionStoreCountAsFlow().collectAsState(0)
+        val reposCount by getExtensionStoreCountAsFlow().collectAsState(0L)
 
         // SY -->
         val scope = rememberCoroutineScope()
@@ -83,6 +83,11 @@ object SettingsBrowseScreen : SearchableSettings {
                         title = stringResource(KMR.strings.pref_show_home_on_related_mangas),
                         subtitle = stringResource(KMR.strings.pref_show_home_on_related_mangas_summary),
                         enabled = sourcePreferences.relatedMangas().get(),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = sourcePreferences.recommendationCrossExtensionSearch(),
+                        title = stringResource(KMR.strings.pref_rec_cross_extension_search),
+                        subtitle = stringResource(KMR.strings.pref_rec_cross_extension_search_summary),
                     ),
                     // KMK <--
                     run {
@@ -130,6 +135,14 @@ object SettingsBrowseScreen : SearchableSettings {
                         preference = sourcePreferences.hideInLibraryFeedItems(),
                         title = stringResource(MR.strings.pref_hide_in_library_items),
                     ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = uiPreferences.hideMigrateTab(),
+                        title = stringResource(KMR.strings.pref_hide_migrate_tab),
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = uiPreferences.hideForYouTab(),
+                        title = stringResource(KMR.strings.pref_hide_for_you_tab),
+                    ),
                     // KMK <--
                 ),
             ),
@@ -163,6 +176,13 @@ object SettingsBrowseScreen : SearchableSettings {
                             )
                         },
                     ),
+                    // KMK -->
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = sourcePreferences.blockExplicitPornHentaiSources(),
+                        title = stringResource(KMR.strings.pref_block_explicit_porn_hentai_sources),
+                        subtitle = stringResource(KMR.strings.pref_block_explicit_porn_hentai_sources_summary),
+                    ),
+                    // KMK <--
                     Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.parental_controls_info)),
                 ),
             ),

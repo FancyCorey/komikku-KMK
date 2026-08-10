@@ -3,6 +3,8 @@
 package eu.kanade.tachiyomi.data.database.models
 
 import eu.kanade.tachiyomi.source.model.SChapter
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 import java.io.Serializable
 import tachiyomi.domain.chapter.model.Chapter as DomainChapter
 

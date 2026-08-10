@@ -1,6 +1,7 @@
 package exh.recs.components
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -14,6 +15,8 @@ import eu.kanade.presentation.util.formattedMessage
 import exh.recs.RecommendationItemResult
 import exh.recs.RecommendsScreenModel
 import exh.recs.sources.RecommendationPagingSource
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableMap
 import nl.adaptivity.xmlutil.core.impl.multiplatform.name
 import tachiyomi.domain.manga.model.Manga
@@ -29,6 +32,9 @@ fun RecommendsScreen(
     onClickSource: (RecommendationPagingSource) -> Unit,
     onClickItem: (Manga) -> Unit,
     onLongClickItem: (Manga) -> Unit,
+    // KMK -->
+    actions: @Composable RowScope.() -> Unit = {},
+    // KMK <--
 ) {
     Scaffold(
         topBar = { scrollBehavior ->
@@ -36,6 +42,9 @@ fun RecommendsScreen(
                 title = title,
                 scrollBehavior = scrollBehavior,
                 navigateUp = navigateUp,
+                // KMK -->
+                actions = actions,
+                // KMK <--
             )
         },
     ) { paddingValues ->
@@ -59,13 +68,22 @@ internal fun RecommendsContent(
     onClickItem: (Manga) -> Unit,
     onLongClickItem: (Manga) -> Unit,
 ) {
+    // KMK --> v0.8.19: evaluation mode source-name obfuscation
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    // KMK <--
     LazyColumn(
         contentPadding = contentPadding,
     ) {
         items.forEach { (source, recResult) ->
             item(key = "${source::class.name}-${source.name}-${source.category.resourceId}") {
                 GlobalSearchResultItem(
-                    title = source.name,
+                    // KMK -->
+                    title = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(source.name)
+                    } else {
+                        source.name
+                    },
+                    // KMK <--
                     subtitle = stringResource(source.category),
                     onClick = { onClickSource(source) },
                 ) {

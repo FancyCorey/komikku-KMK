@@ -1,0 +1,28 @@
+-- KMK --> v0.7.6: bounded recommendation-quality probe results table
+CREATE TABLE IF NOT EXISTS source_recommendation_fit (
+    fit_key TEXT NOT NULL PRIMARY KEY,
+    evaluation_key TEXT NOT NULL,
+    source_id INTEGER,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    evaluated_at INTEGER NOT NULL,
+    query_count INTEGER NOT NULL DEFAULT 0,
+    query_success_count INTEGER NOT NULL DEFAULT 0,
+    raw_result_count INTEGER NOT NULL DEFAULT 0,
+    visible_candidate_count INTEGER NOT NULL DEFAULT 0,
+    filtered_out_count INTEGER NOT NULL DEFAULT 0,
+    blocked_tag_candidate_count INTEGER NOT NULL DEFAULT 0,
+    matched_group_count INTEGER NOT NULL DEFAULT 0,
+    top_picks_contribution INTEGER NOT NULL DEFAULT 0,
+    no_matches_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    avg_candidate_score REAL NOT NULL DEFAULT 0.0,
+    recommendation_quality_score REAL NOT NULL DEFAULT 0.0,
+    verdict TEXT NOT NULL,
+    reasons_json TEXT NOT NULL DEFAULT '[]',
+    error_message TEXT
+);
+-- KMK <--

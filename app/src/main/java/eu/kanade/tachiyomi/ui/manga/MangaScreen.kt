@@ -60,6 +60,7 @@ import eu.kanade.presentation.more.settings.screen.SettingsEhScreen
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
@@ -85,6 +86,9 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import exh.pagepreview.PagePreviewScreen
 import exh.recs.RecommendsScreen
+import exh.recs.bestversion.BestVersionCompareScreen
+import exh.recs.matching.CrossExtensionMatchMode
+import exh.recs.matching.CrossExtensionMatchScreen
 import exh.source.ExhPreferences
 import exh.source.MERGED_SOURCE_ID
 import exh.source.anyIs
@@ -238,6 +242,8 @@ class MangaScreen(
                     withIOContext {
                         assistUrl = getMangaUrl(screenModel.manga, screenModel.source)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e) { "Failed to get manga URL" }
                 }
@@ -302,7 +308,7 @@ class MangaScreen(
                 }
             }.takeIf { isHttpSource },
             // SY <--
-            onWebViewLongClicked = {
+            onCopyLinkClicked = {
                 // KMK -->
                 if (successState.mergedData == null) {
                     // KMK <--
@@ -461,6 +467,54 @@ class MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = { navigator.push(PaletteScreen(successState.seedColor?.toArgb())) },
             hazeState = hazeState,
+            onTasteClicked = { rating ->
+                if (rating != null) {
+                    screenModel.setMangaTaste(rating)
+                } else {
+                    screenModel.clearMangaTaste()
+                }
+            },
+            onTasteOtherVersionsClicked = { rating ->
+                navigator.push(
+                    CrossExtensionMatchScreen.fromMode(
+                        originMangaId = successState.manga.id,
+                        mode = CrossExtensionMatchMode.Rating(rating),
+                    ),
+                )
+            },
+            // KMK -->
+            lastReadChapterTarget = screenModel.resolveLastReadChapterTarget(),
+            currentIndexOfChapter = screenModel::currentIndexOfChapter,
+            // KMK <--
+            // KMK --> v0.7.0: Phase 3 – favorite other versions
+            onFavoriteOtherVersionsClicked = {
+                navigator.push(
+                    CrossExtensionMatchScreen.fromMode(
+                        originMangaId = successState.manga.id,
+                        mode = CrossExtensionMatchMode.Favorite,
+                    ),
+                )
+            },
+            // KMK <--
+            // KMK --> v0.6.20: not-interested manga callbacks
+            isNotInterested = successState.isNotInterested,
+            onNotInterestedClicked = {
+                if (successState.isNotInterested) screenModel.clearSeen() else screenModel.markSeen()
+            },
+            onSeenOtherVersionsClicked = {
+                navigator.push(
+                    CrossExtensionMatchScreen.fromMode(
+                        originMangaId = successState.manga.id,
+                        mode = CrossExtensionMatchMode.MarkSeen,
+                    ),
+                )
+            },
+            // KMK <--
+            // KMK --> v0.7.8: find best version
+            onFindBestVersionClicked = {
+                navigator.push(BestVersionCompareScreen(successState.manga.id))
+            },
+            // KMK <--
             // KMK <--
         )
 
@@ -695,7 +749,7 @@ class MangaScreen(
                 context.startActivity(intent)
             }
         } catch (e: Exception) {
-            context.toast(e.message)
+            context.toast(with(context) { e.formattedMessage })
         }
     }
 
@@ -920,7 +974,12 @@ class MangaScreen(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
 
-                context.toast(context.stringResource(SYMR.strings.failed_merge, e.message.orEmpty()))
+                context.toast(
+                    context.stringResource(
+                        SYMR.strings.failed_merge,
+                        with(context) { e.formattedMessage },
+                    ),
+                )
             }
         }
     }

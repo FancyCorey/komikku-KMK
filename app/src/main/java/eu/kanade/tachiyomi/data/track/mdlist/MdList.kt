@@ -7,6 +7,9 @@ import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.BaseTracker
 import eu.kanade.tachiyomi.data.track.model.TrackMangaMetadata
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.SManga
 import exh.md.network.MangaDexAuthInterceptor
 import exh.md.utils.FollowStatus
@@ -57,13 +60,22 @@ class MdList(id: Long) : BaseTracker(id, "MDList") {
         return withIOContext {
             val mdex = mdex ?: throw MangaDexNotFoundException()
 
-            val remoteTrack = mdex.fetchTrackingInfo(track.tracking_url)
+            // KMK: mdex is a resolved installed-extension MangaDex source (see
+            // MdUtil.getEnabledMangaDex()/getEnabledMangaDexs()), so its methods can throw a
+            // recoverable LinkageError the same way any other extension source can -- routed
+            // through the shared SourceRuntime boundary instead of calling raw.
+            val remoteTrack = SourceRuntime.run(mdex, SourceRuntimeOperation.MangaUpdate) {
+                mdex.fetchTrackingInfo(track.tracking_url)
+            }.getOrThrowSourceRuntimeException()
             val followStatus = FollowStatus.fromLong(track.status)
 
             // this updates the follow status in the metadata
             // allow follow status to update
             if (remoteTrack.status != followStatus.long) {
-                if (mdex.updateFollowStatus(MdUtil.getMangaId(track.tracking_url), followStatus)) {
+                val updated = SourceRuntime.run(mdex, SourceRuntimeOperation.MangaUpdate) {
+                    mdex.updateFollowStatus(MdUtil.getMangaId(track.tracking_url), followStatus)
+                }.getOrThrowSourceRuntimeException()
+                if (updated) {
                     remoteTrack.status = followStatus.long
                 } else {
                     track.status = remoteTrack.status
@@ -71,7 +83,9 @@ class MdList(id: Long) : BaseTracker(id, "MDList") {
             }
 
             if (remoteTrack.score != track.score) {
-                mdex.updateRating(track)
+                SourceRuntime.run(mdex, SourceRuntimeOperation.MangaUpdate) {
+                    mdex.updateRating(track)
+                }.getOrThrowSourceRuntimeException()
             }
 
             // mangadex wont update chapters if manga is not follows this prevents unneeded network call
@@ -118,7 +132,9 @@ class MdList(id: Long) : BaseTracker(id, "MDList") {
     override suspend fun refresh(track: Track): Track {
         return withIOContext {
             val mdex = mdex ?: throw MangaDexNotFoundException()
-            val remoteTrack = mdex.fetchTrackingInfo(track.tracking_url)
+            val remoteTrack = SourceRuntime.run(mdex, SourceRuntimeOperation.MangaUpdate) {
+                mdex.fetchTrackingInfo(track.tracking_url)
+            }.getOrThrowSourceRuntimeException()
             track.copyPersonalFrom(remoteTrack)
             /*if (track.total_chapters == 0 && mangaMetadata.status == SManga.COMPLETED) {
                 track.total_chapters = mangaMetadata.maxChapterNumber ?: 0
@@ -139,10 +155,18 @@ class MdList(id: Long) : BaseTracker(id, "MDList") {
     override suspend fun search(query: String): List<TrackSearch> {
         return withIOContext {
             val mdex = mdex ?: throw MangaDexNotFoundException()
-            mdex.getSearchManga(1, query, mdex.getFilterList())
-                .mangas
+            val filterList = SourceRuntime.runBlockingSourceCall(mdex, SourceRuntimeOperation.FilterList) {
+                mdex.getFilterList()
+            }.getOrThrowSourceRuntimeException()
+            val searchResult = SourceRuntime.run(mdex, SourceRuntimeOperation.Search) {
+                mdex.getSearchManga(1, query, filterList)
+            }.getOrThrowSourceRuntimeException()
+            searchResult.mangas
                 .map {
-                    toTrackSearch(mdex.getMangaDetails(it))
+                    val details = SourceRuntime.run(mdex, SourceRuntimeOperation.MangaUpdate) {
+                        mdex.getMangaDetails(it)
+                    }.getOrThrowSourceRuntimeException()
+                    toTrackSearch(details)
                 }
                 .distinct()
         }
@@ -165,7 +189,9 @@ class MdList(id: Long) : BaseTracker(id, "MDList") {
     override suspend fun getMangaMetadata(track: DomainTrack): TrackMangaMetadata {
         return withIOContext {
             val mdex = mdex ?: throw MangaDexNotFoundException()
-            val manga = mdex.getMangaMetadata(track.toDbTrack())
+            val manga = SourceRuntime.run(mdex, SourceRuntimeOperation.MangaUpdate) {
+                mdex.getMangaMetadata(track.toDbTrack())
+            }.getOrThrowSourceRuntimeException()
             TrackMangaMetadata(
                 remoteId = 0,
                 title = manga.title,

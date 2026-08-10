@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.delay
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -31,7 +32,7 @@ fun ExtensionStoreCreateDialog(
     onCreate: (String) -> Unit,
     storeIndexUrls: Set<String>,
     processing: Boolean,
-    errorMessage: String?,
+    errorMessage: StringResource?,
 ) {
     val state = rememberTextFieldState()
     val storeAlreadyExists by remember(storeIndexUrls) {
@@ -63,7 +64,7 @@ fun ExtensionStoreCreateDialog(
                     } else {
                         MR.strings.information_required_plain
                     }
-                    Text(text = errorMessage ?: stringResource(msgRes))
+                    Text(text = errorMessage?.let { stringResource(it) } ?: stringResource(msgRes))
                 },
                 isError = errorMessage != null || storeAlreadyExists,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -138,7 +139,7 @@ fun ExtensionStoreConfirmDialog(
     storeIndexUrl: String,
     storeAlreadyExists: Boolean,
     processing: Boolean,
-    errorMessage: String?,
+    errorMessage: StringResource?,
 ) {
     val state = rememberTextFieldState(initialText = storeIndexUrl)
     AlertDialog(
@@ -161,7 +162,7 @@ fun ExtensionStoreConfirmDialog(
                         }
                         errorMessage != null -> {
                             {
-                                Text(text = errorMessage)
+                                Text(text = stringResource(errorMessage))
                             }
                         }
                         else -> null

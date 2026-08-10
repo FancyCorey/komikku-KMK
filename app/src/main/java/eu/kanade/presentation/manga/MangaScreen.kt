@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,6 +100,7 @@ import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
 import eu.kanade.tachiyomi.ui.manga.MergedMangaData
 import eu.kanade.tachiyomi.ui.manga.PagePreviewState
+import eu.kanade.tachiyomi.util.chapter.LastReadChapterTargetPolicy
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import exh.metadata.MetadataUtil
 import exh.source.MERGED_SOURCE_ID
@@ -110,6 +112,12 @@ import exh.ui.metadata.adapters.LanraragiDescription
 import exh.ui.metadata.adapters.MangaDexDescription
 import exh.ui.metadata.adapters.NHentaiDescription
 import exh.ui.metadata.adapters.PururinDescription
+import exh.util.EvaluationModeFormatter
+import exh.util.EvaluationModeMangaDescriptionPolicy
+import exh.util.rememberEvaluationModeEnabled
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.missingChaptersCount
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -147,7 +155,7 @@ fun MangaScreen(
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
 
     // For tags menu
@@ -208,6 +216,23 @@ fun MangaScreen(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK -->
+    lastReadChapterTarget: LastReadChapterTargetPolicy.Target? = null,
+    currentIndexOfChapter: (Long) -> Int? = { null },
+    // KMK <--
+    // KMK --> v0.7.0: Phase 3 – favorite other versions
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20: seen manga params
+    isNotInterested: Boolean = false,
+    onNotInterestedClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8: find best version
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
 ) {
     val context = LocalContext.current
@@ -229,7 +254,7 @@ fun MangaScreen(
             onDownloadChapter = onDownloadChapter,
             onAddToLibraryClicked = onAddToLibraryClicked,
             onWebViewClicked = onWebViewClicked,
-            onWebViewLongClicked = onWebViewLongClicked,
+            onCopyLinkClicked = onCopyLinkClicked,
             onTrackingClicked = onTrackingClicked,
             onTagSearch = onTagSearch,
             onCopyTagToClipboard = onCopyTagToClipboard,
@@ -277,6 +302,23 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onTasteClicked = onTasteClicked,
+            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+            // KMK -->
+            lastReadChapterTarget = lastReadChapterTarget,
+            currentIndexOfChapter = currentIndexOfChapter,
+            // KMK <--
+            // KMK --> v0.7.0
+            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.6.20
+            isNotInterested = isNotInterested,
+            onNotInterestedClicked = onNotInterestedClicked,
+            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.7.8
+            onFindBestVersionClicked = onFindBestVersionClicked,
+            // KMK <--
             // KMK <--
         )
     } else {
@@ -291,7 +333,7 @@ fun MangaScreen(
             onDownloadChapter = onDownloadChapter,
             onAddToLibraryClicked = onAddToLibraryClicked,
             onWebViewClicked = onWebViewClicked,
-            onWebViewLongClicked = onWebViewLongClicked,
+            onCopyLinkClicked = onCopyLinkClicked,
             onTrackingClicked = onTrackingClicked,
             onTagSearch = onTagSearch,
             onCopyTagToClipboard = onCopyTagToClipboard,
@@ -339,6 +381,23 @@ fun MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
             hazeState = hazeState,
+            onTasteClicked = onTasteClicked,
+            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+            // KMK -->
+            lastReadChapterTarget = lastReadChapterTarget,
+            currentIndexOfChapter = currentIndexOfChapter,
+            // KMK <--
+            // KMK --> v0.7.0
+            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.6.20
+            isNotInterested = isNotInterested,
+            onNotInterestedClicked = onNotInterestedClicked,
+            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+            // KMK <--
+            // KMK --> v0.7.8
+            onFindBestVersionClicked = onFindBestVersionClicked,
+            // KMK <--
             // KMK <--
         )
     }
@@ -356,7 +415,7 @@ private fun MangaScreenSmallImpl(
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
 
     // For tags menu
@@ -418,6 +477,23 @@ private fun MangaScreenSmallImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK -->
+    lastReadChapterTarget: LastReadChapterTargetPolicy.Target? = null,
+    currentIndexOfChapter: (Long) -> Int? = { null },
+    // KMK <--
+    // KMK --> v0.7.0
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20
+    isNotInterested: Boolean = false,
+    onNotInterestedClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
 ) {
     val chapterListState = rememberLazyListState()
@@ -429,8 +505,61 @@ private fun MangaScreenSmallImpl(
             third = state.isAnySelected,
         )
     }
+    // KMK -->
+    val jumpScope = rememberCoroutineScope()
+    var jumpJob by remember { mutableStateOf<Job?>(null) }
+    val jumpUnavailableMessage = stringResource(KMR.strings.jump_to_last_read_unavailable)
+    val onClickJumpToLastRead = lastReadChapterTarget?.let { target ->
+        {
+            jumpJob?.cancel()
+            jumpJob = jumpScope.launch {
+                try {
+                    val currentIndex = currentIndexOfChapter(target.chapterId)
+                    val absoluteIndex = currentIndex?.let {
+                        LastReadChapterTargetPolicy.toLazyListIndex(
+                            totalItemsCount = chapterListState.layoutInfo.totalItemsCount,
+                            chapterCount = listItem.size,
+                            indexInList = it,
+                        )
+                    }
+                    if (absoluteIndex == null) {
+                        snackbarHostState.showSnackbar(jumpUnavailableMessage)
+                    } else {
+                        chapterListState.animateScrollToItem(absoluteIndex)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                }
+            }
+        }
+    }
+    // KMK <--
     // SY -->
     val metadataDescription = metadataDescription(state.source)
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val displaySourceName = remember(evaluationModeEnabled, state.source.id, state.mergedData?.sources) {
+        if (evaluationModeEnabled) {
+            EvaluationModeFormatter.sourceLabel(state.source.id)
+        } else {
+            state.source.getNameForMangaInfo(state.mergedData?.sources)
+        }
+    }
+    val displayDescription = remember(
+        state.manga.description,
+        evaluationModeEnabled,
+        displaySourceName,
+        state.mergedData?.sources,
+    ) {
+        EvaluationModeMangaDescriptionPolicy.displayDescription(
+            description = state.manga.description,
+            evaluationModeEnabled = evaluationModeEnabled,
+            sourceLabel = displaySourceName,
+            rawSourceNames = buildList {
+                add(state.source.name)
+                addAll(state.mergedData?.sources.orEmpty().map { it.name })
+            },
+        )
+    }
     var maxWidth by remember {
         mutableStateOf(Dp.Hairline)
     }
@@ -483,6 +612,9 @@ private fun MangaScreenSmallImpl(
                 onClickFilter = onFilterClicked,
                 onClickShare = onShareClicked,
                 onClickDownload = onDownloadActionClicked,
+                // KMK -->
+                onClickJumpToLastRead = onClickJumpToLastRead,
+                // KMK <--
                 onClickEditCategory = onEditCategoryClicked,
                 onClickRefresh = onRefresh,
                 onClickMigrate = onMigrateClicked,
@@ -621,7 +753,7 @@ private fun MangaScreenSmallImpl(
                             isTabletUi = false,
                             appBarPadding = topPadding,
                             manga = state.manga,
-                            sourceName = remember { state.source.getNameForMangaInfo(state.mergedData?.sources) },
+                            sourceName = displaySourceName,
                             isStubSource = remember { state.source is StubSource },
                             // KMK -->
                             isSourceIncognito = remember { state.source.isIncognitoModeEnabled() },
@@ -648,7 +780,7 @@ private fun MangaScreenSmallImpl(
                             isUserIntervalMode = state.manga.fetchInterval < 0,
                             onAddToLibraryClicked = onAddToLibraryClicked,
                             onWebViewClicked = onWebViewClicked,
-                            onWebViewLongClicked = onWebViewLongClicked,
+                            onCopyLinkClicked = onCopyLinkClicked,
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
@@ -658,6 +790,20 @@ private fun MangaScreenSmallImpl(
                             // KMK -->
                             status = state.manga.status,
                             interval = state.manga.fetchInterval,
+                            mangaTaste = state.mangaTaste,
+                            onTasteClicked = onTasteClicked,
+                            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+                            // KMK --> v0.7.0
+                            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.6.20
+                            isNotInterested = isNotInterested,
+                            onNotInterestedClicked = onNotInterestedClicked,
+                            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.7.8
+                            onFindBestVersionClicked = onFindBestVersionClicked,
+                            // KMK <--
                             // KMK <--
                         )
                     }
@@ -684,7 +830,7 @@ private fun MangaScreenSmallImpl(
                     ) {
                         ExpandableMangaDescription(
                             defaultExpandState = state.isFromSource && !state.manga.favorite,
-                            description = state.manga.description,
+                            description = displayDescription,
                             tagsProvider = { state.manga.genre },
                             notes = state.manga.notes,
                             onTagSearch = onTagSearch,
@@ -791,6 +937,7 @@ private fun MangaScreenSmallImpl(
                         manga = state.manga,
                         mergedData = state.mergedData,
                         chapters = listItem,
+                        evaluationModeEnabled = evaluationModeEnabled,
                         isAnyChapterSelected = chapters.fastAny { it.selected },
                         chapterSwipeStartAction = chapterSwipeStartAction,
                         chapterSwipeEndAction = chapterSwipeEndAction,
@@ -820,7 +967,7 @@ private fun MangaScreenLargeImpl(
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
     onAddToLibraryClicked: () -> Unit,
     onWebViewClicked: (() -> Unit)?,
-    onWebViewLongClicked: (() -> Unit)?,
+    onCopyLinkClicked: (() -> Unit)?,
     onTrackingClicked: () -> Unit,
 
     // For tags menu
@@ -882,6 +1029,23 @@ private fun MangaScreenLargeImpl(
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
     hazeState: HazeState,
+    onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
+    onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
+    // KMK -->
+    lastReadChapterTarget: LastReadChapterTargetPolicy.Target? = null,
+    currentIndexOfChapter: (Long) -> Int? = { null },
+    // KMK <--
+    // KMK --> v0.7.0
+    onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.6.20
+    isNotInterested: Boolean = false,
+    onNotInterestedClicked: (() -> Unit)? = null,
+    onSeenOtherVersionsClicked: (() -> Unit)? = null,
+    // KMK <--
+    // KMK --> v0.7.8
+    onFindBestVersionClicked: (() -> Unit)? = null,
+    // KMK <--
     // KMK <--
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -897,6 +1061,30 @@ private fun MangaScreenLargeImpl(
 
     // SY -->
     val metadataDescription = metadataDescription(state.source)
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val displaySourceName = remember(evaluationModeEnabled, state.source.id, state.mergedData?.sources) {
+        if (evaluationModeEnabled) {
+            EvaluationModeFormatter.sourceLabel(state.source.id)
+        } else {
+            state.source.getNameForMangaInfo(state.mergedData?.sources)
+        }
+    }
+    val displayDescription = remember(
+        state.manga.description,
+        evaluationModeEnabled,
+        displaySourceName,
+        state.mergedData?.sources,
+    ) {
+        EvaluationModeMangaDescriptionPolicy.displayDescription(
+            description = state.manga.description,
+            evaluationModeEnabled = evaluationModeEnabled,
+            sourceLabel = displaySourceName,
+            rawSourceNames = buildList {
+                add(state.source.name)
+                addAll(state.mergedData?.sources.orEmpty().map { it.name })
+            },
+        )
+    }
     // SY <--
     // KMK -->
     val uiPreferences = Injekt.get<UiPreferences>()
@@ -916,6 +1104,36 @@ private fun MangaScreenLargeImpl(
     var topBarHeight by remember { mutableIntStateOf(0) }
 
     val chapterListState = rememberLazyListState()
+
+    // KMK -->
+    val jumpScope = rememberCoroutineScope()
+    var jumpJob by remember { mutableStateOf<Job?>(null) }
+    val jumpUnavailableMessage = stringResource(KMR.strings.jump_to_last_read_unavailable)
+    val onClickJumpToLastRead = lastReadChapterTarget?.let { target ->
+        {
+            jumpJob?.cancel()
+            jumpJob = jumpScope.launch {
+                try {
+                    val currentIndex = currentIndexOfChapter(target.chapterId)
+                    val absoluteIndex = currentIndex?.let {
+                        LastReadChapterTargetPolicy.toLazyListIndex(
+                            totalItemsCount = chapterListState.layoutInfo.totalItemsCount,
+                            chapterCount = listItem.size,
+                            indexInList = it,
+                        )
+                    }
+                    if (absoluteIndex == null) {
+                        snackbarHostState.showSnackbar(jumpUnavailableMessage)
+                    } else {
+                        chapterListState.animateScrollToItem(absoluteIndex)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                }
+            }
+        }
+    }
+    // KMK <--
 
     BackHandler(onBack = {
         if (isAnySelected) {
@@ -938,6 +1156,9 @@ private fun MangaScreenLargeImpl(
                 onClickFilter = onFilterButtonClicked,
                 onClickShare = onShareClicked,
                 onClickDownload = onDownloadActionClicked,
+                // KMK -->
+                onClickJumpToLastRead = onClickJumpToLastRead,
+                // KMK <--
                 onClickEditCategory = onEditCategoryClicked,
                 onClickRefresh = onRefresh,
                 onClickMigrate = onMigrateClicked,
@@ -1077,7 +1298,7 @@ private fun MangaScreenLargeImpl(
                             isTabletUi = true,
                             appBarPadding = contentPadding.calculateTopPadding(),
                             manga = state.manga,
-                            sourceName = remember { state.source.getNameForMangaInfo(state.mergedData?.sources) },
+                            sourceName = displaySourceName,
                             isStubSource = remember { state.source is StubSource },
                             // KMK -->
                             isSourceIncognito = remember { state.source.isIncognitoModeEnabled() },
@@ -1098,7 +1319,7 @@ private fun MangaScreenLargeImpl(
                             isUserIntervalMode = state.manga.fetchInterval < 0,
                             onAddToLibraryClicked = onAddToLibraryClicked,
                             onWebViewClicked = onWebViewClicked,
-                            onWebViewLongClicked = onWebViewLongClicked,
+                            onCopyLinkClicked = onCopyLinkClicked,
                             onTrackingClicked = onTrackingClicked,
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
@@ -1108,6 +1329,20 @@ private fun MangaScreenLargeImpl(
                             // KMK -->
                             status = state.manga.status,
                             interval = state.manga.fetchInterval,
+                            mangaTaste = state.mangaTaste,
+                            onTasteClicked = onTasteClicked,
+                            onTasteOtherVersionsClicked = onTasteOtherVersionsClicked,
+                            // KMK --> v0.7.0
+                            onFavoriteOtherVersionsClicked = onFavoriteOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.6.20
+                            isNotInterested = isNotInterested,
+                            onNotInterestedClicked = onNotInterestedClicked,
+                            onSeenOtherVersionsClicked = onSeenOtherVersionsClicked,
+                            // KMK <--
+                            // KMK --> v0.7.8
+                            onFindBestVersionClicked = onFindBestVersionClicked,
+                            // KMK <--
                             // KMK <--
                         )
                         // SY -->
@@ -1120,7 +1355,7 @@ private fun MangaScreenLargeImpl(
                         // SY <--
                         ExpandableMangaDescription(
                             defaultExpandState = true,
-                            description = state.manga.description,
+                            description = displayDescription,
                             tagsProvider = { state.manga.genre },
                             notes = state.manga.notes,
                             onTagSearch = onTagSearch,
@@ -1230,6 +1465,7 @@ private fun MangaScreenLargeImpl(
                                 manga = state.manga,
                                 mergedData = state.mergedData,
                                 chapters = listItem,
+                                evaluationModeEnabled = evaluationModeEnabled,
                                 isAnyChapterSelected = chapters.fastAny { it.selected },
                                 chapterSwipeStartAction = chapterSwipeStartAction,
                                 chapterSwipeEndAction = chapterSwipeEndAction,
@@ -1295,6 +1531,7 @@ private fun LazyListScope.sharedChapterItems(
     manga: Manga,
     mergedData: MergedMangaData?,
     chapters: List<ChapterList>,
+    evaluationModeEnabled: Boolean,
     isAnyChapterSelected: Boolean,
     chapterSwipeStartAction: LibraryPreferences.ChapterSwipeAction,
     chapterSwipeEndAction: LibraryPreferences.ChapterSwipeAction,
@@ -1360,7 +1597,13 @@ private fun LazyListScope.sharedChapterItems(
                         !it.isNullOrBlank() /* SY --> */ && item.showScanlator /* SY <-- */
                     },
                     // SY -->
-                    sourceName = item.sourceName,
+                    sourceName = if (evaluationModeEnabled) {
+                        EvaluationModeFormatter.sourceLabel(
+                            mergedData?.manga?.get(item.chapter.mangaId)?.source ?: manga.source,
+                        )
+                    } else {
+                        item.sourceName
+                    },
                     // SY <--
                     read = item.chapter.read,
                     bookmark = item.chapter.bookmark,

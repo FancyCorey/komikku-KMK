@@ -66,6 +66,7 @@ class HistoryScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     private val sourceManager: SourceManager = Injekt.get(),
+    private val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
     // KMK -->
     private val historyPreferences: HistoryPreferences = Injekt.get(),
     // KMK <--
@@ -203,7 +204,16 @@ class HistoryScreenModel(
 
     private fun moveMangaToCategory(mangaId: Long, categoryIds: List<Long>) {
         screenModelScope.launchIO {
-            setMangaCategories.await(mangaId, categoryIds)
+            val previousCategoryIds = getCategories.await(mangaId).map { it.id }
+            val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(
+                sourcePreferences = sourcePreferences,
+                mangaId = mangaId,
+                previousCategoryIds = previousCategoryIds,
+                newCategoryIds = categoryIds,
+            )
+            if (setMangaCategories.await(mangaId, categoryIds)) {
+                undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
+            }
         }
     }
 

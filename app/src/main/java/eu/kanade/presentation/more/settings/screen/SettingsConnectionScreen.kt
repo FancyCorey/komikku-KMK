@@ -42,11 +42,13 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.data.connections.ConnectionsManager
 import eu.kanade.tachiyomi.data.connections.ConnectionsService
 import eu.kanade.tachiyomi.ui.setting.connections.DiscordLoginScreen
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CancellationException
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.i18n.MR
@@ -223,9 +225,11 @@ object SettingsConnectionScreen : SearchableSettings {
             service.login(username, password)
             withUIContext { context.toast(MR.strings.login_success) }
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             service.logout()
-            withUIContext { context.toast(e.message.toString()) }
+            withUIContext { context.toast(with(context) { e.formattedMessage }) }
             false
         }
     }

@@ -1,0 +1,59 @@
+-- KMK -->
+CREATE TABLE source_evaluation_unsafe_source (
+    unsafe_key TEXT NOT NULL PRIMARY KEY,
+    evaluation_key TEXT,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_id INTEGER,
+    source_name TEXT,
+    lang TEXT,
+    phase TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    crash_count INTEGER NOT NULL,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    last_batch_id TEXT
+);
+
+CREATE INDEX source_evaluation_unsafe_pkg_index ON source_evaluation_unsafe_source(extension_pkg_name);
+CREATE INDEX source_evaluation_unsafe_seen_index ON source_evaluation_unsafe_source(last_seen_at);
+
+getAll:
+SELECT *
+FROM source_evaluation_unsafe_source
+ORDER BY last_seen_at DESC;
+
+getAllAsFlow:
+SELECT *
+FROM source_evaluation_unsafe_source
+ORDER BY last_seen_at DESC;
+
+getByKey:
+SELECT *
+FROM source_evaluation_unsafe_source
+WHERE unsafe_key = :key;
+
+upsertCrash:
+INSERT INTO source_evaluation_unsafe_source(
+    unsafe_key, evaluation_key, extension_pkg_name, signature_hash, extension_name,
+    source_id, source_name, lang, phase, reason, crash_count, first_seen_at, last_seen_at, last_batch_id
+)
+VALUES (
+    :unsafeKey, :evaluationKey, :extensionPkgName, :signatureHash, :extensionName,
+    :sourceId, :sourceName, :lang, :phase, :reason, 1, :now, :now, :batchId
+)
+ON CONFLICT(unsafe_key) DO UPDATE SET
+    phase = :phase,
+    reason = :reason,
+    crash_count = crash_count + 1,
+    last_seen_at = :now,
+    last_batch_id = :batchId;
+
+deleteByKey:
+DELETE FROM source_evaluation_unsafe_source
+WHERE unsafe_key = :key;
+
+deleteAll:
+DELETE FROM source_evaluation_unsafe_source;
+-- KMK <--

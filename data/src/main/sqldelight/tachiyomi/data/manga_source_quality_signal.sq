@@ -1,0 +1,80 @@
+-- KMK --> v0.7.8: user-confirmed source quality signals from Best Version comparisons
+CREATE TABLE manga_source_quality_signal (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    origin_source_id INTEGER NOT NULL,
+    origin_url TEXT NOT NULL,
+    origin_title TEXT NOT NULL,
+    selected_source_id INTEGER NOT NULL,
+    selected_url TEXT NOT NULL,
+    selected_title TEXT NOT NULL,
+    selected_source_name TEXT NOT NULL,
+    compared_candidates_json TEXT NOT NULL DEFAULT '[]',
+    chapter_number REAL,
+    chapter_name TEXT NOT NULL DEFAULT '',
+    sample_size INTEGER NOT NULL DEFAULT 5,
+    sampled_pages_json TEXT NOT NULL DEFAULT '[]',
+    selected_at INTEGER NOT NULL,
+    quality_signal_version INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX manga_source_quality_signal_origin_index
+    ON manga_source_quality_signal(origin_source_id, origin_url);
+
+CREATE INDEX manga_source_quality_signal_selected_index
+    ON manga_source_quality_signal(selected_source_id, selected_url);
+
+getByOrigin:
+SELECT *
+FROM manga_source_quality_signal
+WHERE origin_source_id = :originSourceId
+  AND origin_url = :originUrl;
+
+getBySelectedSource:
+SELECT *
+FROM manga_source_quality_signal
+WHERE selected_source_id = :selectedSourceId;
+
+getAll:
+SELECT *
+FROM manga_source_quality_signal;
+
+insert:
+INSERT INTO manga_source_quality_signal(
+    origin_source_id,
+    origin_url,
+    origin_title,
+    selected_source_id,
+    selected_url,
+    selected_title,
+    selected_source_name,
+    compared_candidates_json,
+    chapter_number,
+    chapter_name,
+    sample_size,
+    sampled_pages_json,
+    selected_at,
+    quality_signal_version
+) VALUES (
+    :originSourceId,
+    :originUrl,
+    :originTitle,
+    :selectedSourceId,
+    :selectedUrl,
+    :selectedTitle,
+    :selectedSourceName,
+    :comparedCandidatesJson,
+    :chapterNumber,
+    :chapterName,
+    :sampleSize,
+    :sampledPagesJson,
+    :selectedAt,
+    :qualitySignalVersion
+);
+
+deleteById:
+DELETE FROM manga_source_quality_signal
+WHERE id = :id;
+
+deleteAll:
+DELETE FROM manga_source_quality_signal;
+-- KMK <--

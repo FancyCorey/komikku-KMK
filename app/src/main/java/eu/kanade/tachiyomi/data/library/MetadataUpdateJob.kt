@@ -11,6 +11,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
@@ -57,14 +58,15 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
             try {
                 updateMetadata()
                 Result.success()
+            } catch (e: CancellationException) {
+                // KMK: previously caught here and converted into Result.success() ("Assume
+                // success although cancelled") -- see LibraryUpdateJob.doWork() for the identical
+                // fix and its full rationale. Rethrowing lets CoroutineWorker report the run as
+                // actually cancelled instead of succeeded.
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) {
-                    // Assume success although cancelled
-                    Result.success()
-                } else {
-                    logcat(LogPriority.ERROR, e)
-                    Result.failure()
-                }
+                logcat(LogPriority.ERROR, e)
+                Result.failure()
             } finally {
                 notifier.cancelProgressNotification()
             }
@@ -124,6 +126,10 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
                                             // KMK <--
                                         ).getOrThrow()
                                     } catch (e: Throwable) {
+                                        // KMK v0.8.10-fix9: rethrow cancellation and fatal VM/system
+                                        // errors instead of ignoring them the same way as an ordinary
+                                        // per-manga metadata failure.
+                                        rethrowIfFatal(e)
                                         // Ignore errors and continue
                                         logcat(LogPriority.ERROR, e)
                                     }

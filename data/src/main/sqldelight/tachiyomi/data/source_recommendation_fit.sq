@@ -1,0 +1,105 @@
+-- KMK --> v0.7.6
+CREATE TABLE IF NOT EXISTS source_recommendation_fit (
+    fit_key TEXT NOT NULL PRIMARY KEY,
+    evaluation_key TEXT NOT NULL,
+    source_id INTEGER,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    evaluated_at INTEGER NOT NULL,
+    query_count INTEGER NOT NULL DEFAULT 0,
+    query_success_count INTEGER NOT NULL DEFAULT 0,
+    raw_result_count INTEGER NOT NULL DEFAULT 0,
+    visible_candidate_count INTEGER NOT NULL DEFAULT 0,
+    filtered_out_count INTEGER NOT NULL DEFAULT 0,
+    blocked_tag_candidate_count INTEGER NOT NULL DEFAULT 0,
+    matched_group_count INTEGER NOT NULL DEFAULT 0,
+    top_picks_contribution INTEGER NOT NULL DEFAULT 0,
+    no_matches_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    avg_candidate_score REAL NOT NULL DEFAULT 0.0,
+    recommendation_quality_score REAL NOT NULL DEFAULT 0.0,
+    verdict TEXT NOT NULL,
+    reasons_json TEXT NOT NULL DEFAULT '[]',
+    error_message TEXT,
+    -- KMK --> v0.7.42: staleness parity with source_evaluation (see migration 60)
+    evaluation_version INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER
+    -- KMK <--
+);
+
+CREATE INDEX source_recommendation_fit_evaluation_key_index ON source_recommendation_fit(evaluation_key);
+CREATE INDEX source_recommendation_fit_pkg_index ON source_recommendation_fit(extension_pkg_name);
+
+getAll:
+SELECT *
+FROM source_recommendation_fit
+ORDER BY evaluated_at DESC;
+
+getByKey:
+SELECT *
+FROM source_recommendation_fit
+WHERE fit_key = :fitKey;
+
+getByEvaluationKey:
+SELECT *
+FROM source_recommendation_fit
+WHERE evaluation_key = :evaluationKey;
+
+upsert:
+INSERT INTO source_recommendation_fit(
+    fit_key, evaluation_key, source_id, extension_pkg_name, signature_hash,
+    extension_name, source_name, lang, evaluated_at, query_count,
+    query_success_count, raw_result_count, visible_candidate_count, filtered_out_count,
+    blocked_tag_candidate_count, matched_group_count, top_picks_contribution,
+    no_matches_count, error_count, avg_candidate_score, recommendation_quality_score,
+    verdict, reasons_json, error_message, evaluation_version, expires_at
+)
+VALUES (
+    :fitKey, :evaluationKey, :sourceId, :extensionPkgName, :signatureHash,
+    :extensionName, :sourceName, :lang, :evaluatedAt, :queryCount,
+    :querySuccessCount, :rawResultCount, :visibleCandidateCount, :filteredOutCount,
+    :blockedTagCandidateCount, :matchedGroupCount, :topPicksContribution,
+    :noMatchesCount, :errorCount, :avgCandidateScore, :recommendationQualityScore,
+    :verdict, :reasonsJson, :errorMessage, :evaluationVersion, :expiresAt
+)
+ON CONFLICT(fit_key)
+DO UPDATE
+SET
+    evaluation_key = :evaluationKey,
+    source_id = :sourceId,
+    extension_name = :extensionName,
+    source_name = :sourceName,
+    lang = :lang,
+    evaluated_at = :evaluatedAt,
+    query_count = :queryCount,
+    query_success_count = :querySuccessCount,
+    raw_result_count = :rawResultCount,
+    visible_candidate_count = :visibleCandidateCount,
+    filtered_out_count = :filteredOutCount,
+    blocked_tag_candidate_count = :blockedTagCandidateCount,
+    matched_group_count = :matchedGroupCount,
+    top_picks_contribution = :topPicksContribution,
+    no_matches_count = :noMatchesCount,
+    error_count = :errorCount,
+    avg_candidate_score = :avgCandidateScore,
+    recommendation_quality_score = :recommendationQualityScore,
+    verdict = :verdict,
+    reasons_json = :reasonsJson,
+    error_message = :errorMessage,
+    evaluation_version = :evaluationVersion,
+    expires_at = :expiresAt;
+
+deleteByKey:
+DELETE FROM source_recommendation_fit
+WHERE fit_key = :fitKey;
+
+deleteByEvaluationKey:
+DELETE FROM source_recommendation_fit
+WHERE evaluation_key = :evaluationKey;
+
+deleteAll:
+DELETE FROM source_recommendation_fit;
+-- KMK <--

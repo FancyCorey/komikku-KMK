@@ -28,9 +28,11 @@ import eu.kanade.presentation.more.LogoHeader
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.util.Screen
+import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.updater.AppUpdateChecker
 import eu.kanade.tachiyomi.ui.more.ComingUpdatesScreen
+import eu.kanade.tachiyomi.ui.more.KmkRecsWhatsNewScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.WhatsNewScreen
 import eu.kanade.tachiyomi.util.CrashLogUtil
@@ -41,6 +43,8 @@ import eu.kanade.tachiyomi.util.system.isPreviewBuildType
 import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.updaterEnabled
+import exh.recs.KmkRecsReleaseNotes
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withIOContext
@@ -54,7 +58,6 @@ import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.icons.CustomIcons
-import tachiyomi.presentation.core.icons.Discord
 import tachiyomi.presentation.core.icons.Github
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -184,6 +187,16 @@ class AboutScreen : Screen() {
                     )
                 }
 
+                // KMK -->
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(KMR.strings.kmk_recs_whats_new),
+                        subtitle = KmkRecsReleaseNotes.VERSION_NAME,
+                        onPreferenceClick = { navigator.push(KmkRecsWhatsNewScreen()) },
+                    )
+                }
+                // KMK <--
+
                 if (isReleaseBuildType || isDebugBuildType) {
                     item {
                         TextPreferenceWidget(
@@ -227,17 +240,6 @@ class AboutScreen : Screen() {
 
                 item {
                     TextPreferenceWidget(
-                        title = stringResource(MR.strings.help_translate),
-                        onPreferenceClick = {
-                            uriHandler.openUri(
-                                "https://hosted.weblate.org/engage/komikku-app/",
-                            )
-                        },
-                    )
-                }
-
-                item {
-                    TextPreferenceWidget(
                         title = stringResource(MR.strings.licenses),
                         onPreferenceClick = { navigator.push(OpenSourceLicensesScreen()) },
                     )
@@ -246,7 +248,11 @@ class AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.privacy_policy),
-                        onPreferenceClick = { uriHandler.openUri("https://komikku-app.github.io/privacy/") },
+                        onPreferenceClick = {
+                            uriHandler.openUri(
+                                "https://github.com/FancyCorey/komikku-KMK/blob/main/docs/kmk/privacy-and-data.md",
+                            )
+                        },
                     )
                 }
 
@@ -260,12 +266,7 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = stringResource(MR.strings.website),
                             icon = Icons.Outlined.Public,
-                            url = "https://komikku-app.github.io",
-                        )
-                        LinkIcon(
-                            label = "Discord",
-                            icon = CustomIcons.Discord,
-                            url = "https://discord.gg/85jB7V5AJR",
+                            url = "https://github.com/FancyCorey/komikku-KMK",
                         )
                         // LinkIcon(
                         //     label = "X",
@@ -285,7 +286,7 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            url = "https://github.com/komikku-app",
+                            url = "https://github.com/FancyCorey/komikku-KMK",
                         )
                     }
                 }
@@ -322,8 +323,10 @@ class AboutScreen : Screen() {
                         context.toast(MR.strings.update_check_eol)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                context.toast(e.message)
+                context.toast(with(context) { e.formattedMessage })
                 logcat(LogPriority.ERROR, e)
             } finally {
                 onFinish()
@@ -348,8 +351,10 @@ class AboutScreen : Screen() {
 
                         else -> {}
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    context.toast(e.message)
+                    context.toast(with(context) { e.formattedMessage })
                     logcat(LogPriority.ERROR, e)
                 } finally {
                     onFinish()

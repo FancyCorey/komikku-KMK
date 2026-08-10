@@ -1,37 +1,37 @@
 <div align="center">
 
-<a href="https://komikku-app.github.io">
-  <img width=200px height=200px src="./.github/readme-images/app-icon.png"/>
-</a><br/>
-<a href="https://trendshift.io/repositories/13696" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13696" alt="komikku-app%2Fkomikku | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
- <h1 align="center"> Komikku </h1>
+<img width="160" height="160" src="./docs/kmk/assets/kmk-icon.svg" alt="Komikku KMK icon" />
 
-| Releases | Preview |
-|----------|---------|
-| <div align="center"> [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku/latest/total?label=Latest%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku/releases/latest) [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku/total?label=Total%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku/releases) [![Stable build](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku/build_release.yml?labelColor=27303D&label=Stable&labelColor=06599d&color=043b69)](https://github.com/komikku-app/komikku/actions/workflows/build_release.yml) | <div align="center"> [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku-preview/latest/total?label=Latest%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku-preview/releases/latest) [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku-preview/total?label=Total%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku-preview/releases) [![Preview build](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku-preview/build_app.yml?labelColor=27303D&label=Preview&labelColor=2c2c47&color=1c1c39)](https://github.com/komikku-app/komikku-preview/actions/workflows/build_app.yml) |
+# Komikku KMK
 
-*Requires Android 8.0 or higher.*
+**An independent, unofficial Komikku fork focused on personal discovery, source evaluation, and reader tools.**
 
-[![Discord](https://img.shields.io/discord/1242381704459452488.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.gg/85jB7V5AJR)
-[![CI](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku/build_push.yml?labelColor=27303D&label=CI)](https://github.com/komikku-app/komikku/actions/workflows/build_push.yml)
-[![License: Apache-2.0](https://img.shields.io/github/license/komikku-app/komikku?labelColor=27303D&color=0877d2)](/LICENSE)
-[![Translation status](https://img.shields.io/weblate/progress/komikku-app?labelColor=27303D&color=946300)](https://hosted.weblate.org/engage/komikku-app/)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0877d2)](LICENSE)
+[![Repository](https://img.shields.io/badge/repository-FancyCorey%2Fkomikku--KMK-163c42?logo=github)](https://github.com/FancyCorey/komikku-KMK)
 
-## Download
+</div>
 
-[![Stable](https://img.shields.io/github/release/komikku-app/komikku.svg?maxAge=3600&label=Stable&labelColor=06599d&color=043b69)](https://github.com/komikku-app/komikku/releases/latest)
-[![Preview](https://img.shields.io/github/v/release/komikku-app/komikku-preview.svg?maxAge=3600&label=Preview&labelColor=2c2c47&color=1c1c39)](https://github.com/komikku-app/komikku-preview/releases/latest)
+Komikku KMK is based on [Komikku](https://github.com/komikku-app/komikku), TachiyomiSY, and Mihon. It is maintained independently and is not an official Komikku release. Its package name, launcher name, icon, update source, issue tracker, and release channel are separate from upstream.
 
-*Requires Android 8.0 or higher.*
+## Install
 
-[![Sponsor me on GitHub](https://custom-icon-badges.demolab.com/badge/-Sponsor-ea4aaa?style=for-the-badge&logo=heart&logoColor=white)](https://github.com/sponsors/cuong-tran "Sponsor me on GitHub")
+Published builds, when available, are distributed only through this fork's [Releases page](https://github.com/FancyCorey/komikku-KMK/releases). Until a release is published, follow the [build and verification guide](docs/kmk/build-and-verify.md). Do not install an artifact represented as Komikku KMK from an unrelated source.
 
-<div align="left">
-A free and open source manga reader which is based off TachiyomiSY & Mihon/Tachiyomi. This fork is meant to provide new & useful features while regularly take features/updates from Mihon or other forks like SY, J2K and Neko...
+Requires Android 8.0 or higher. The release application ID is `app.komikku.kmk`, so it can coexist with official Komikku.
+
+Report fork-specific problems through this repository's [issue tracker](https://github.com/FancyCorey/komikku-KMK/issues). For upstream Komikku behavior, use the upstream project's support channels.
 
 ![screenshots of app](./.github/readme-images/screens.png)
 
 <div align="left">
+
+### KMK additions
+
+This fork includes personalized discovery, source evaluation, cross-source comparison, reversible manga preferences, local OCR search, safer extension/export operations, and optional reader controls. See the [KMK feature guide](docs/kmk/README.md) for the user guide, architecture, feature contracts, detailed diagrams, release notes, privacy behavior, and reviewed UI evidence.
+
+![For You recommendations shown in Evaluation Mode](docs/kmk/evidence/screenshots/for-you-evaluation-mode.png)
+
+The image above shows the central For You experience in Evaluation Mode. Source identities are neutralized; manga artwork and recommendation context remain visible because they are the result being demonstrated.
 
 ## Features
 
@@ -134,10 +134,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 <details><summary>Issues</summary>
 
-[Website](https://komikku-app.github.io/)
-
-1. **Before reporting a new issue, take a look at the [FAQ](https://komikku-app.github.io/docs/faq/general), the [changelog](https://github.com/komikku-app/komikku/releases) and the already opened [issues](https://github.com/komikku-app/komikku/issues).**
-2. If you are unsure, ask here: [![Discord](https://img.shields.io/discord/1242381704459452488.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.gg/85jB7V5AJR)
+Before reporting a new fork issue, review the [KMK guide](docs/kmk/README.md), [release notes](docs/kmk/release-notes.md), and [open issues](https://github.com/FancyCorey/komikku-KMK/issues). Use upstream Komikku support only after confirming the behavior is not specific to KMK.
 
 </details>
 
@@ -151,7 +148,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 * If it could be device-dependent, try reproducing on another device (if possible)
 * Don't group unrelated requests into one issue
 
-Use the [issue forms](https://github.com/komikku-app/komikku/issues/new/choose) to submit a bug.
+Use this fork's [issue forms](https://github.com/FancyCorey/komikku-KMK/issues/new/choose) to submit a bug.
 
 </details>
 
@@ -175,13 +172,11 @@ See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
 
 ### Credits
 
-Thank you to all the people who have contributed!
+Thank you to the Komikku, TachiyomiSY, Mihon, and KMK contributors whose work makes this fork possible.
 
 <a href="https://github.com/komikku-app/komikku/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=komikku-app/komikku" alt="Komikku app contributors" title="Komikku app contributors" width="800"/>
+    <img src="https://contrib.rocks/image?repo=komikku-app/komikku" alt="Upstream Komikku contributors" title="Upstream Komikku contributors" width="800"/>
 </a>
-
-![Visitor Count](https://count.getloli.com/get/@komikku-app?theme=capoo-2)
 
 ### Disclaimer
 

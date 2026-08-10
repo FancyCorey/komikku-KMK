@@ -25,6 +25,7 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.Source
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.source.isEhBasedSource
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.StateFlow
@@ -213,17 +214,20 @@ internal fun MissingSourceScreen(
     source: StubSource,
     navigateUp: () -> Unit,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val title = BrowseSourceTitlePolicy.resolve(evaluationModeEnabled, source.id) { source.name }
+
     Scaffold(
         topBar = { scrollBehavior ->
             AppBar(
-                title = source.name,
+                title = title,
                 navigateUp = navigateUp,
                 scrollBehavior = scrollBehavior,
             )
         },
     ) { paddingValues ->
         EmptyScreen(
-            message = stringResource(MR.strings.source_not_installed, source.toString()),
+            message = stringResource(MR.strings.source_not_installed, title),
             modifier = Modifier.padding(paddingValues),
         )
     }

@@ -49,14 +49,14 @@ class KavitaApi(private val client: OkHttpClient, interceptor: KavitaInterceptor
                         200 -> return it.parseAs<AuthenticationDto>().token
                         401 -> {
                             logcat(LogPriority.WARN) {
-                                "Unauthorized / API key not valid: API URL: $apiUrl, empty API key: ${apiKey.isEmpty()}"
+                                "Kavita token request was unauthorized"
                             }
                             throw IOException("Unauthorized / api key not valid")
                         }
                         500 -> {
                             logcat(
                                 LogPriority.WARN,
-                            ) { "Error fetching JWT token. API URL: $apiUrl, empty API key: ${apiKey.isEmpty()}" }
+                            ) { "Kavita token request returned a server error" }
                             throw IOException("Error fetching JWT token")
                         }
                         else -> {}
@@ -66,12 +66,12 @@ class KavitaApi(private val client: OkHttpClient, interceptor: KavitaInterceptor
             // Not sure which one to catch
         } catch (e: SocketTimeoutException) {
             logcat(LogPriority.WARN) {
-                "Could not fetch JWT token. Probably due to connectivity issue or URL '$apiUrl' not available, skipping"
+                "Kavita token request timed out"
             }
             return null
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) {
-                "Unhandled exception fetching JWT token for URL: '$apiUrl'"
+                "Kavita token request failed"
             }
             throw IOException(e)
         }
@@ -113,7 +113,7 @@ class KavitaApi(private val client: OkHttpClient, interceptor: KavitaInterceptor
 
             return if (maxChapterNumber > volumeNumber) maxChapterNumber else volumeNumber
         } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Exception fetching Total Chapters. Request:$requestUrl" }
+            logcat(LogPriority.WARN) { "Kavita chapter-count request failed" }
             throw e
         }
     }
@@ -135,8 +135,7 @@ class KavitaApi(private val client: OkHttpClient, interceptor: KavitaInterceptor
         } catch (e: Exception) {
             logcat(
                 LogPriority.WARN,
-                e,
-            ) { "Exception getting latest chapter read. Could not get itemRequest: $requestUrl" }
+            ) { "Kavita latest-chapter request failed" }
             throw e
         }
         return 0.0
@@ -165,7 +164,7 @@ class KavitaApi(private val client: OkHttpClient, interceptor: KavitaInterceptor
                 last_chapter_read = getLatestChapterRead(url)
             }
         } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Could not get item: $url" }
+            logcat(LogPriority.WARN) { "Kavita tracking lookup failed" }
             throw e
         }
     }

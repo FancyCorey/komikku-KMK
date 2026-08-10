@@ -30,8 +30,11 @@ import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.data.track.TrackStatus
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.source.online.all.MergedSource
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -98,6 +101,7 @@ import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetMergedChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryGroup
@@ -137,6 +141,7 @@ class LibraryScreenModel(
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val getBookmarkedChaptersByMangaId: GetBookmarkedChaptersByMangaId = Injekt.get(),
     private val setReadStatus: SetReadStatus = Injekt.get(),
+    private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val preferences: BasePreferences = Injekt.get(),
@@ -1046,7 +1051,11 @@ class LibraryScreenModel(
         launchIO {
             MdUtil.getEnabledMangaDex(sourcePreferences, sourceManager)?.let { mdex ->
                 state.value.selectedManga.fastFilter { it.source in mangaDexSourceIds }.fastForEach { manga ->
-                    mdex.updateFollowStatus(MdUtil.getMangaId(manga.url), FollowStatus.READING)
+                    SourceRuntime.run<Boolean>(mdex, SourceRuntimeOperation.MangaUpdate) {
+                        (this as MangaDex).updateFollowStatus(MdUtil.getMangaId(manga.url), FollowStatus.READING)
+                    }.onFailure { error ->
+                        xLogE("MangaDex status sync failed")
+                    }
                 }
             }
             clearSelection()
@@ -1093,10 +1102,24 @@ class LibraryScreenModel(
         val selection = state.value.selectedManga
         screenModelScope.launchNonCancellable {
             selection.forEach { manga ->
-                setReadStatus.await(
+                val chapters = if (manga.source == MERGED_SOURCE_ID) {
+                    getMergedChaptersByMangaId.await(manga.id, applyFilter = false)
+                } else {
+                    getChaptersByMangaId.await(manga.id, applyFilter = false)
+                }
+                val canJournalReadState = !read || !downloadPreferences.removeAfterMarkedAsRead().get()
+                val undoEntries = if (canJournalReadState) {
+                    exh.util.ChapterUndoRecorder.buildReadEntries(sourcePreferences, chapters, read)
+                } else {
+                    emptyList()
+                }
+                val result = setReadStatus.await(
                     manga = manga,
                     read = read,
                 )
+                if (result is SetReadStatus.Result.Success) {
+                    undoEntries.forEach { exh.util.ChapterUndoJournal.record(it) }
+                }
             }
         }
         clearSelection()
@@ -1112,8 +1135,11 @@ class LibraryScreenModel(
     fun removeMangas(mangas: List<Manga>, deleteFromLibrary: Boolean, deleteChapters: Boolean) {
         screenModelScope.launchNonCancellable {
             if (deleteFromLibrary) {
-                val toDelete = mangas
-                    .distinctBy { it.id }
+                val distinctMangas = mangas.distinctBy { it.id }
+                // KMK: build before write, commit only after success. Never
+                // journals the cover removal above or the chapter-delete branch below.
+                val undoEntries = exh.util.LibraryUndoRecorder.buildFavoriteEntries(sourcePreferences, distinctMangas, false)
+                val toDelete = distinctMangas
                     .map {
                         it.removeCovers(coverCache)
                         MangaUpdate(
@@ -1121,7 +1147,9 @@ class LibraryScreenModel(
                             id = it.id,
                         )
                     }
-                updateManga.awaitAll(toDelete)
+                if (updateManga.awaitAll(toDelete)) {
+                    undoEntries.forEach { exh.util.LibraryUndoJournal.record(it) }
+                }
             }
 
             if (deleteChapters) {
@@ -1157,13 +1185,17 @@ class LibraryScreenModel(
     fun setMangaCategories(mangaList: List<Manga>, addCategories: List<Long>, removeCategories: List<Long>) {
         screenModelScope.launchNonCancellable {
             mangaList.forEach { manga ->
-                val categoryIds = getCategories.await(manga.id)
-                    .map { it.id }
+                val previousCategoryIds = getCategories.await(manga.id).map { it.id }
+                val categoryIds = previousCategoryIds
                     .subtract(removeCategories.toSet())
                     .plus(addCategories)
                     .toList()
 
+                // KMK: build before write, commit only after -- per-item so a
+                // failure partway through the bulk selection only journals the manga that changed.
+                val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(sourcePreferences, manga.id, previousCategoryIds, categoryIds)
                 setMangaCategories.await(manga.id, categoryIds)
+                undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
             }
         }
     }
@@ -1828,9 +1860,9 @@ class LibraryScreenModel(
                         .filter { it.isNotEmpty() && !it.startsWith("#") }
                         .toHashSet()
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Log the error and return an empty set if the file cannot be read.
-                xLogE("Error loading MangaDex DMCA UUIDs", e)
+                xLogE("MangaDex DMCA UUID loading failed")
                 hashSetOf()
             }
         }

@@ -13,6 +13,7 @@ import mihon.data.extension.model.NetworkExtensionStore
 import mihon.data.extension.model.NetworkLegacyExtension
 import mihon.data.extension.model.NetworkLegacyExtensionRepo
 import mihon.data.extension.model.toAvailableExtensions
+import mihon.domain.extension.ExtensionStoreUrlPolicy
 import mihon.domain.extension.model.ExtensionStore
 import okio.BufferedSource
 import okio.buffer
@@ -26,6 +27,9 @@ class ExtensionStoreService(
     private val protoBuf: ProtoBuf,
 ) {
     suspend fun fetch(indexUrl: String): Result<ExtensionStore> {
+        if (!ExtensionStoreUrlPolicy.isAllowed(indexUrl)) {
+            return Result.failure(IllegalArgumentException("Invalid extension store URL"))
+        }
         var updatedIndexUrl: String = indexUrl
         return try {
             // KMK -->
@@ -65,9 +69,7 @@ class ExtensionStoreService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) {
-                "Failed to add extension store '$updatedIndexUrl'"
-            }
+            logcat(LogPriority.ERROR) { "Extension store fetch failed" }
             Result.failure(e)
         }
     }

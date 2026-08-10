@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.extension
 import android.content.Context
 import android.graphics.drawable.Drawable
 import androidx.core.content.ContextCompat
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.R
@@ -21,6 +22,7 @@ import exh.source.EHENTAI_EXT_SOURCES
 import exh.source.EXHENTAI_EXT_SOURCES
 import exh.source.ExhPreferences
 import exh.source.MERGED_SOURCE_ID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -164,7 +166,7 @@ class ExtensionManager(
         return filterNot { (_, extension) ->
             extension.isBlacklisted(blacklistEnabled)
                 .also {
-                    if (it) this@ExtensionManager.xLogD("Removing blacklisted extension: (name: %s, pkgName: %s)!", extension.name, extension.pkgName)
+                    if (it) this@ExtensionManager.xLogD("Removing blacklisted extension")
                 }
         }
     }
@@ -189,8 +191,10 @@ class ExtensionManager(
     suspend fun findAvailableExtensions() {
         val extensions: List<Extension.Available> = try {
             api.findExtensions()
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Extension list loading failed" }
             withUIContext { context.toast(MR.strings.extension_api_error) }
             return
         }
@@ -297,9 +301,14 @@ class ExtensionManager(
      *
      * @param extension The extension to be installed.
      */
-    fun installExtension(extension: Extension.Available): Flow<InstallStep> {
-        return installer.downloadAndInstall(extension.apkUrl, extension)
+    // KMK -->
+    fun installExtension(
+        extension: Extension.Available,
+        installerOverride: BasePreferences.ExtensionInstaller? = null,
+    ): Flow<InstallStep> {
+        return installer.downloadAndInstall(extension.apkUrl, extension, installerOverride)
     }
+    // KMK <--
 
     /**
      * Returns a flow of the installation process for the given extension. It will complete
@@ -309,14 +318,19 @@ class ExtensionManager(
      * @param extension The extension to be updated.
      */
     fun updateExtension(extension: Extension.Installed): Flow<InstallStep> {
-        val availableExt = availableExtensionMapFlow.value[
-            extension.pkgName +
-                // KMK -->
-                "_${extension.signatureHash}",
-            // KMK <--
-        ] ?: return emptyFlow()
+        val availableExt = getAvailableExtension(extension) ?: return emptyFlow()
         return installExtension(availableExt)
     }
+
+    // KMK: exposes the same
+    // pkgName+signatureHash lookup updateExtension() already does internally, so a caller (e.g. a
+    // PackageOperationReceipt-recording screen model) can resolve the update's own artifact URL
+    // without duplicating this lookup logic.
+    fun getAvailableExtension(extension: Extension.Installed): Extension.Available? =
+        availableExtensionMapFlow.value[
+            extension.pkgName +
+                "_${extension.signatureHash}",
+        ]
 
     fun cancelInstallUpdateExtension(extension: Extension) {
         installer.cancelInstall(
@@ -375,7 +389,7 @@ class ExtensionManager(
     private fun registerNewExtension(extension: Extension.Installed) {
         // SY -->
         if (extension.isBlacklisted()) {
-            xLogD("Removing blacklisted extension: (name: String, pkgName: %s)!", extension.name, extension.pkgName)
+            xLogD("Removing blacklisted extension")
             return
         }
         // SY <--
@@ -392,7 +406,7 @@ class ExtensionManager(
     private fun registerUpdatedExtension(extension: Extension.Installed) {
         // SY -->
         if (extension.isBlacklisted()) {
-            xLogD("Removing blacklisted extension: (name: %s, pkgName: %s)!", extension.name, extension.pkgName)
+            xLogD("Removing blacklisted extension")
             return
         }
         // SY <--

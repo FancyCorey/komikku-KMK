@@ -58,6 +58,8 @@ import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
@@ -67,6 +69,19 @@ import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
+
+/** Keeps extension-detail source rows aligned with the shared Evaluation Mode display policy. */
+internal fun extensionSourceTitle(
+    evaluationModeEnabled: Boolean,
+    sourceId: Long,
+    labelAsName: Boolean,
+    rawName: () -> String,
+    languageLabel: () -> String,
+): String = when {
+    evaluationModeEnabled -> EvaluationModeFormatter.sourceLabel(sourceId)
+    labelAsName -> rawName()
+    else -> languageLabel()
+}
 
 @Composable
 fun ExtensionDetailsScreen(
@@ -82,6 +97,8 @@ fun ExtensionDetailsScreen(
     onClickUninstall: () -> Unit,
     onClickSource: (sourceId: Long) -> Unit,
     onClickIncognito: (Boolean) -> Unit,
+    // KMK v0.8.18: manual extension APK export
+    onClickExportApk: (() -> Unit)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val url = remember(state.extension) {
@@ -139,6 +156,15 @@ fun ExtensionDetailsScreen(
                                         ),
                                     ),
                                 )
+                                // KMK v0.8.18: manual extension APK export
+                                if (onClickExportApk != null) {
+                                    add(
+                                        AppBar.OverflowAction(
+                                            title = stringResource(tachiyomi.i18n.kmk.KMR.strings.extension_export_action),
+                                            onClick = onClickExportApk,
+                                        ),
+                                    )
+                                }
                             }
                             .build(),
                     )
@@ -294,8 +320,14 @@ private fun DetailsHeader(
                 density = DisplayMetrics.DENSITY_XXXHIGH,
             )
 
+            // KMK --> v0.8.19: evaluation mode name/package obfuscation
+            val evaluationModeEnabled = rememberEvaluationModeEnabled()
             Text(
-                text = extension.name,
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(extension.pkgName)
+                } else {
+                    extension.name
+                },
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
             )
@@ -303,9 +335,10 @@ private fun DetailsHeader(
             val strippedPkgName = extension.pkgName.substringAfter("eu.kanade.tachiyomi.extension.")
 
             Text(
-                text = strippedPkgName,
+                text = if (evaluationModeEnabled) "" else strippedPkgName,
                 style = MaterialTheme.typography.bodySmall,
             )
+            // KMK <--
         }
 
         Row(
@@ -450,14 +483,17 @@ private fun SourceSwitchPreference(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
     TextPreferenceWidget(
         modifier = modifier,
-        title = if (source.labelAsName) {
-            source.source.toString()
-        } else {
-            LocaleHelper.getSourceDisplayName(source.source.lang, context)
-        },
+        title = extensionSourceTitle(
+            evaluationModeEnabled = evaluationModeEnabled,
+            sourceId = source.source.id,
+            labelAsName = source.labelAsName,
+            rawName = { source.source.toString() },
+            languageLabel = { LocaleHelper.getSourceDisplayName(source.source.lang, context) },
+        ),
         widget = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

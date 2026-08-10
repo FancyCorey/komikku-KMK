@@ -1,5 +1,6 @@
 package tachiyomi.domain.track.interactor
 
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.track.model.Track
@@ -12,6 +13,8 @@ class InsertTrack(
     suspend fun await(track: Track) {
         try {
             trackRepository.insert(track)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }
@@ -20,6 +23,8 @@ class InsertTrack(
     suspend fun awaitAll(tracks: List<Track>) {
         try {
             trackRepository.insertAll(tracks)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }

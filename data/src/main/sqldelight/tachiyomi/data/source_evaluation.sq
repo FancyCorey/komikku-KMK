@@ -1,0 +1,188 @@
+-- KMK -->
+CREATE TABLE source_evaluation (
+    evaluation_key TEXT NOT NULL PRIMARY KEY,
+    source_id INTEGER,
+    extension_pkg_name TEXT NOT NULL,
+    signature_hash TEXT NOT NULL,
+    extension_name TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    base_url TEXT,
+    repo_name TEXT,
+    source_count INTEGER NOT NULL,
+    is_nsfw INTEGER NOT NULL,
+    evaluation_version INTEGER NOT NULL,
+    evaluated_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    sample_count INTEGER NOT NULL,
+    popular_count INTEGER NOT NULL,
+    latest_count INTEGER NOT NULL,
+    search_count INTEGER NOT NULL,
+    search_success_count INTEGER NOT NULL,
+    liked_title_match_count INTEGER NOT NULL,
+    preferred_tag_match_count INTEGER NOT NULL,
+    blocked_tag_match_count INTEGER NOT NULL,
+    explicit_signal_count INTEGER NOT NULL,
+    ecchi_signal_count INTEGER NOT NULL,
+    error_count INTEGER NOT NULL,
+    quality_score REAL NOT NULL,
+    recommendation_fit_score REAL NOT NULL,
+    search_reliability_score REAL NOT NULL,
+    explicit_score REAL NOT NULL,
+    ecchi_score REAL NOT NULL,
+    verdict TEXT NOT NULL,
+    sampled_titles_json TEXT,
+    sampled_tags_json TEXT,
+    error_message TEXT,
+    -- KMK --> v0.7.4: extension version at evaluation time
+    extension_version_name TEXT,
+    extension_version_code INTEGER,
+    extension_apk_name TEXT,
+    -- KMK <--
+    -- KMK --> v0.7.42: catalogue-only metadata confidence (see migration 59)
+    catalogue_metadata_confidence TEXT NOT NULL DEFAULT 'unknown',
+    -- KMK <--
+    -- KMK --> v0.7.47: detail-enrichment + split evidence counters (see migration 61)
+    detail_enrichment_attempt_count INTEGER NOT NULL DEFAULT 0,
+    detail_enrichment_success_count INTEGER NOT NULL DEFAULT 0,
+    metadata_candidate_count INTEGER NOT NULL DEFAULT 0,
+    positive_candidate_count INTEGER NOT NULL DEFAULT 0,
+    negative_candidate_count INTEGER NOT NULL DEFAULT 0,
+    explicit_preferred_group_hit_count INTEGER NOT NULL DEFAULT 0,
+    learned_positive_group_hit_count INTEGER NOT NULL DEFAULT 0,
+    blocked_candidate_count INTEGER NOT NULL DEFAULT 0,
+    adult_signal_candidate_count INTEGER NOT NULL DEFAULT 0
+    -- KMK <--
+);
+
+CREATE INDEX source_evaluation_source_id_index ON source_evaluation(source_id);
+CREATE INDEX source_evaluation_pkg_index ON source_evaluation(extension_pkg_name);
+CREATE INDEX source_evaluation_verdict_index ON source_evaluation(verdict);
+CREATE INDEX source_evaluation_evaluated_at_index ON source_evaluation(evaluated_at);
+
+-- KMK --> v0.6.15: ORDER BY evaluated_at DESC for deterministic list ordering
+getAll:
+SELECT *
+FROM source_evaluation
+ORDER BY evaluated_at DESC;
+
+getAllAsFlow:
+SELECT *
+FROM source_evaluation
+ORDER BY evaluated_at DESC;
+-- KMK <--
+
+getByKey:
+SELECT *
+FROM source_evaluation
+WHERE evaluation_key = :key;
+
+getBySourceId:
+SELECT *
+FROM source_evaluation
+WHERE source_id = :sourceId;
+
+getByPackage:
+SELECT *
+FROM source_evaluation
+WHERE extension_pkg_name = :pkgName
+AND signature_hash = :signatureHash;
+
+getRecent:
+SELECT *
+FROM source_evaluation
+ORDER BY evaluated_at DESC
+LIMIT :limit;
+
+upsert:
+INSERT INTO source_evaluation(
+    evaluation_key, source_id, extension_pkg_name, signature_hash, extension_name,
+    source_name, lang, base_url, repo_name, source_count, is_nsfw,
+    evaluation_version, evaluated_at, expires_at, sample_count, popular_count,
+    latest_count, search_count, search_success_count, liked_title_match_count,
+    preferred_tag_match_count, blocked_tag_match_count, explicit_signal_count,
+    ecchi_signal_count, error_count, quality_score, recommendation_fit_score,
+    search_reliability_score, explicit_score, ecchi_score, verdict,
+    sampled_titles_json, sampled_tags_json, error_message,
+    extension_version_name, extension_version_code, extension_apk_name,
+    catalogue_metadata_confidence,
+    detail_enrichment_attempt_count, detail_enrichment_success_count, metadata_candidate_count,
+    positive_candidate_count, negative_candidate_count, explicit_preferred_group_hit_count,
+    learned_positive_group_hit_count, blocked_candidate_count, adult_signal_candidate_count
+)
+VALUES (
+    :evaluationKey, :sourceId, :extensionPkgName, :signatureHash, :extensionName,
+    :sourceName, :lang, :baseUrl, :repoName, :sourceCount, :isNsfw,
+    :evaluationVersion, :evaluatedAt, :expiresAt, :sampleCount, :popularCount,
+    :latestCount, :searchCount, :searchSuccessCount, :likedTitleMatchCount,
+    :preferredTagMatchCount, :blockedTagMatchCount, :explicitSignalCount,
+    :ecchiSignalCount, :errorCount, :qualityScore, :recommendationFitScore,
+    :searchReliabilityScore, :explicitScore, :ecchiScore, :verdict,
+    :sampledTitlesJson, :sampledTagsJson, :errorMessage,
+    :extensionVersionName, :extensionVersionCode, :extensionApkName,
+    :catalogueMetadataConfidence,
+    :detailEnrichmentAttemptCount, :detailEnrichmentSuccessCount, :metadataCandidateCount,
+    :positiveCandidateCount, :negativeCandidateCount, :explicitPreferredGroupHitCount,
+    :learnedPositiveGroupHitCount, :blockedCandidateCount, :adultSignalCandidateCount
+)
+ON CONFLICT(evaluation_key)
+DO UPDATE
+SET
+    source_id = :sourceId,
+    extension_name = :extensionName,
+    source_name = :sourceName,
+    lang = :lang,
+    base_url = :baseUrl,
+    repo_name = :repoName,
+    source_count = :sourceCount,
+    is_nsfw = :isNsfw,
+    evaluation_version = :evaluationVersion,
+    evaluated_at = :evaluatedAt,
+    expires_at = :expiresAt,
+    sample_count = :sampleCount,
+    popular_count = :popularCount,
+    latest_count = :latestCount,
+    search_count = :searchCount,
+    search_success_count = :searchSuccessCount,
+    liked_title_match_count = :likedTitleMatchCount,
+    preferred_tag_match_count = :preferredTagMatchCount,
+    blocked_tag_match_count = :blockedTagMatchCount,
+    explicit_signal_count = :explicitSignalCount,
+    ecchi_signal_count = :ecchiSignalCount,
+    error_count = :errorCount,
+    quality_score = :qualityScore,
+    recommendation_fit_score = :recommendationFitScore,
+    search_reliability_score = :searchReliabilityScore,
+    explicit_score = :explicitScore,
+    ecchi_score = :ecchiScore,
+    verdict = :verdict,
+    sampled_titles_json = :sampledTitlesJson,
+    sampled_tags_json = :sampledTagsJson,
+    error_message = :errorMessage,
+    extension_version_name = :extensionVersionName,
+    extension_version_code = :extensionVersionCode,
+    extension_apk_name = :extensionApkName,
+    catalogue_metadata_confidence = :catalogueMetadataConfidence,
+    detail_enrichment_attempt_count = :detailEnrichmentAttemptCount,
+    detail_enrichment_success_count = :detailEnrichmentSuccessCount,
+    metadata_candidate_count = :metadataCandidateCount,
+    positive_candidate_count = :positiveCandidateCount,
+    negative_candidate_count = :negativeCandidateCount,
+    explicit_preferred_group_hit_count = :explicitPreferredGroupHitCount,
+    learned_positive_group_hit_count = :learnedPositiveGroupHitCount,
+    blocked_candidate_count = :blockedCandidateCount,
+    adult_signal_candidate_count = :adultSignalCandidateCount
+WHERE evaluation_key = :evaluationKey;
+
+deleteByKey:
+DELETE FROM source_evaluation
+WHERE evaluation_key = :key;
+
+deleteByPackage:
+DELETE FROM source_evaluation
+WHERE extension_pkg_name = :pkgName
+AND signature_hash = :signatureHash;
+
+deleteAll:
+DELETE FROM source_evaluation;
+-- KMK <--

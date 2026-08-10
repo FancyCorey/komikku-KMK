@@ -1,0 +1,42 @@
+-- KMK -->
+CREATE TABLE tag_taste (
+    normalized_tag TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    preference INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX tag_taste_preference_index ON tag_taste(preference);
+
+getByNormalizedTag:
+SELECT *
+FROM tag_taste
+WHERE normalized_tag = :normalizedTag;
+
+getAll:
+SELECT *
+FROM tag_taste;
+
+getAllAsFlow:
+SELECT *
+FROM tag_taste;
+
+upsert:
+INSERT INTO tag_taste(normalized_tag, display_name, preference, created_at, updated_at)
+VALUES (:normalizedTag, :displayName, :preference, :createdAt, :updatedAt)
+ON CONFLICT(normalized_tag)
+DO UPDATE
+SET
+    display_name = :displayName,
+    preference = :preference,
+    updated_at = :updatedAt
+WHERE normalized_tag = :normalizedTag;
+
+delete:
+DELETE FROM tag_taste
+WHERE normalized_tag = :normalizedTag;
+
+deleteAll:
+DELETE FROM tag_taste;
+-- KMK <--

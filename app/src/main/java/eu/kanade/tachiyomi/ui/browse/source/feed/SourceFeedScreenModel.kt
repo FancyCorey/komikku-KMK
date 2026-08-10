@@ -18,6 +18,8 @@ import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.browse.SourceFeedUI
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.ui.browse.feed.MaxFeedItems
@@ -40,12 +42,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.source.interactor.CountFeedSavedSearchBySourceId
@@ -102,7 +106,7 @@ open class SourceFeedScreenModel(
     // KMK <--
 
     init {
-        setFilters(source.getFilterList())
+        setFilters(safeFilterList())
 
         // KMK -->
         reloadSavedSearches()
@@ -142,7 +146,7 @@ open class SourceFeedScreenModel(
     }
 
     fun resetFilters() {
-        setFilters(source.getFilterList())
+        setFilters(safeFilterList())
         reloadSavedSearches()
     }
     // KMK <--
@@ -150,6 +154,14 @@ open class SourceFeedScreenModel(
     fun setFilters(filters: FilterList) {
         mutableState.update { it.copy(filters = filters) }
     }
+
+    private fun safeFilterList(src: Source = source): FilterList =
+        SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrElse {
+            logcat(LogPriority.WARN) { "Source feed filter loading failed" }
+            FilterList()
+        }
 
     private suspend fun hasTooManyFeeds(): Boolean {
         return countFeedSavedSearchBySourceId.await(source.id) > MaxFeedItems
@@ -254,7 +266,7 @@ open class SourceFeedScreenModel(
     private fun getFilterList(savedSearch: SavedSearch, source: Source): FilterList {
         val filters = savedSearch.filtersJson ?: return FilterList()
         return runCatching {
-            val originalFilters = source.getFilterList()
+            val originalFilters = safeFilterList(source)
             filterSerializer.deserialize(
                 filters = originalFilters,
                 json = Json.decodeFromString(filters),
@@ -284,13 +296,13 @@ open class SourceFeedScreenModel(
     // KMK <--
 
     private suspend fun loadSearches() =
-        getExhSavedSearch.await(source.id, source::getFilterList)
+        getExhSavedSearch.await(source.id) { safeFilterList(source) }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, EXHSavedSearch::name))
             .toImmutableList()
 
     fun onFilter(onBrowseClick: (query: String?, filters: String?) -> Unit) {
         screenModelScope.launchIO {
-            val allDefault = state.value.filters == source.getFilterList()
+            val allDefault = state.value.filters == safeFilterList(source)
             dismissDialog()
             if (allDefault) {
                 onBrowseClick(
@@ -316,7 +328,7 @@ open class SourceFeedScreenModel(
     ) {
         screenModelScope.launchIO {
             // KMK -->
-            val search = getExhSavedSearch.awaitOne(loadedSearch.id, source::getFilterList) ?: loadedSearch
+            val search = getExhSavedSearch.awaitOne(loadedSearch.id) { safeFilterList(source) } ?: loadedSearch
             // KMK <--
 
             if (search.filterList == null && state.value.filters.isNotEmpty()) {
@@ -326,7 +338,7 @@ open class SourceFeedScreenModel(
                 return@launchIO
             }
 
-            val allDefault = search.filterList != null && search.filterList == source.getFilterList()
+            val allDefault = search.filterList != null && search.filterList == safeFilterList(source)
             dismissDialog()
 
             if (!allDefault) {

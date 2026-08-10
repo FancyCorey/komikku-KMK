@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.network.jsonMime
 import eu.kanade.tachiyomi.network.parseAs
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.safeClientOrNull
 import eu.kanade.tachiyomi.source.sourcePreferences
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.addAll
@@ -16,7 +17,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import okhttp3.OkHttpClient
+import okhttp3.Call
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.source.service.SourceManager
@@ -30,7 +31,13 @@ class SuwayomiApi(private val trackId: Long) {
     private val sourceManager: SourceManager by injectLazy()
     private val source: HttpSource by lazy { sourceManager.get(sourceId) as HttpSource }
     private val configurableSource: ConfigurableSource by lazy { (sourceManager.get(sourceId) as ConfigurableSource) }
-    private val client: OkHttpClient by lazy { source.client }
+    // KMK v0.8.10-fix9: only `.newCall(Request)` is used below, so the `Call.Factory` interface
+    // `safeClientOrNull()` already returns is sufficient -- no need for the concrete `OkHttpClient`.
+    // Routes through SourceRuntime so a recoverable source LinkageError (e.g. a broken lazy client
+    // initializer) is classified/recorded instead of crashing this tracker.
+    private val client: Call.Factory by lazy {
+        source.safeClientOrNull() ?: error("Suwayomi source client is currently unavailable")
+    }
     private val baseUrl: String by lazy { source.baseUrl.trimEnd('/') }
     private val apiUrl: String by lazy { "$baseUrl/api/graphql" }
 

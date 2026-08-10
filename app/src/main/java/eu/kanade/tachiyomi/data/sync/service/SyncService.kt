@@ -5,11 +5,19 @@ import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
+import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
+import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
+import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
+import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
+import eu.kanade.tachiyomi.data.backup.restore.restorers.CrossSourceGroupPrimaryRestorePolicy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
@@ -63,6 +71,41 @@ abstract class SyncService(
         )
         // SY <--
 
+        // KMK -->
+        val mergedFeedsList = mergeFeedsLists(
+            localSyncData.backup?.backupFeeds,
+            remoteSyncData.backup?.backupFeeds,
+        )
+        val mergedMangaTastes = mergeMangaTasteLists(
+            localSyncData.backup?.backupMangaTastes,
+            remoteSyncData.backup?.backupMangaTastes,
+        )
+        val mergedTagTastes = mergeTagTasteLists(
+            localSyncData.backup?.backupTagTastes,
+            remoteSyncData.backup?.backupTagTastes,
+        )
+        val mergedTagAliases = (
+            localSyncData.backup?.backupTagAliases.orEmpty() +
+                remoteSyncData.backup?.backupTagAliases.orEmpty()
+            ).distinctBy { it.alias.lowercase().trim() }
+        val mergedDisabledRecSources = (
+            localSyncData.backup?.backupDisabledRecommendationSources.orEmpty() +
+                remoteSyncData.backup?.backupDisabledRecommendationSources.orEmpty()
+            ).distinctBy { it.sourceId }
+        // KMK --> v0.7.0: Phase 4 – merge cross-source link groups; prefer newer updatedAt per (source, url)
+        val mergedCrossSourceLinks = mergeCrossSourceMangaLinks(
+            localSyncData.backup?.backupCrossSourceMangaLinks,
+            remoteSyncData.backup?.backupCrossSourceMangaLinks,
+        )
+        // KMK <--
+        // KMK --> v0.8.1-fix1: merge user-selected primary versions; prefer newer updatedAt per groupId
+        val mergedCrossSourceGroupPrimaries = mergeCrossSourceGroupPrimaries(
+            localSyncData.backup?.backupCrossSourceGroupPrimaries,
+            remoteSyncData.backup?.backupCrossSourceGroupPrimaries,
+        )
+        // KMK <--
+        // KMK <--
+
         // Create the merged Backup object
         val mergedBackup = Backup(
             backupManga = mergedMangaList,
@@ -74,6 +117,20 @@ abstract class SyncService(
             // SY -->
             backupSavedSearches = mergedSavedSearchesList,
             // SY <--
+
+            // KMK -->
+            backupFeeds = mergedFeedsList,
+            backupMangaTastes = mergedMangaTastes,
+            backupTagTastes = mergedTagTastes,
+            backupTagAliases = mergedTagAliases,
+            backupDisabledRecommendationSources = mergedDisabledRecSources,
+            // KMK --> v0.7.0: Phase 4
+            backupCrossSourceMangaLinks = mergedCrossSourceLinks,
+            // KMK <--
+            // KMK --> v0.8.1-fix1
+            backupCrossSourceGroupPrimaries = mergedCrossSourceGroupPrimaries,
+            // KMK <--
+            // KMK <--
         )
 
         // Create the merged SData object
@@ -149,16 +206,12 @@ abstract class SyncService(
                 local != null && remote != null -> {
                     // Compare versions to decide which manga to keep
                     if (local.version >= remote.version) {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Keeping local version of ${local.title} with merged chapters."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Keeping local manga version with merged chapters" }
                         local.chapters = mergeChapters(local.chapters, remote.chapters)
                         updateCategories(local, localCategoriesMapByOrder)
                         local
                     } else {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Keeping remote version of ${remote.title} with merged chapters."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Keeping remote manga version with merged chapters" }
                         remote.chapters = mergeChapters(local.chapters, remote.chapters)
                         updateCategories(remote, remoteCategoriesMapByOrder)
                         remote
@@ -219,17 +272,17 @@ abstract class SyncService(
             val remoteChapter = remoteChapterMap[compositeKey]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing chapter key: $compositeKey. Local chapter: ${localChapter != null}, " +
+                "Processing chapter merge candidate. Local chapter: ${localChapter != null}, " +
                     "Remote chapter: ${remoteChapter != null}"
             }
 
             when {
                 localChapter != null && remoteChapter == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Keeping local chapter: ${localChapter.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Keeping local chapter" }
                     localChapter
                 }
                 localChapter == null && remoteChapter != null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Taking remote chapter: ${remoteChapter.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Taking remote chapter" }
                     remoteChapter
                 }
                 localChapter != null && remoteChapter != null -> {
@@ -244,16 +297,12 @@ abstract class SyncService(
                         remoteChapter
                     }
                     logcat(LogPriority.DEBUG, logTag) {
-                        "Merging chapter: ${chosenChapter.name}. Chosen version from: ${
-                            if (localChapter.version >= remoteChapter.version) "Local" else "Remote"
-                        }, Local version: ${localChapter.version}, Remote version: ${remoteChapter.version}."
+                        "Merging chapter; selected=${if (localChapter.version >= remoteChapter.version) "Local" else "Remote"}"
                     }
                     chosenChapter
                 }
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) {
-                        "No chapter found for composite key: $compositeKey. Skipping."
-                    }
+                    logcat(LogPriority.DEBUG, logTag) { "No chapter merge candidate available; skipping" }
                     null
                 }
             }
@@ -328,21 +377,21 @@ abstract class SyncService(
             val remoteSource = remoteSourceMap[sourceId]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing source ID: $sourceId. Local source: ${localSource != null}, " +
+                "Processing source merge candidate. Local source: ${localSource != null}, " +
                     "Remote source: ${remoteSource != null}"
             }
 
             when {
                 localSource != null && remoteSource == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using local source: ${localSource.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using local source" }
                     localSource
                 }
                 remoteSource != null && localSource == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using remote source: ${remoteSource.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using remote source" }
                     remoteSource
                 }
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Remote and local is not empty: $sourceId. Skipping." }
+                    logcat(LogPriority.DEBUG, logTag) { "Remote and local source entries conflict; skipping" }
                     null
                 }
             }
@@ -374,21 +423,21 @@ abstract class SyncService(
             val remotePreference = remotePreferencesMap[key]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing preference key: $key. Local preference: ${localPreference != null}, " +
+                "Processing preference merge candidate. Local preference: ${localPreference != null}, " +
                     "Remote preference: ${remotePreference != null}"
             }
 
             when {
                 localPreference != null && remotePreference == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using local preference: ${localPreference.key}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using local preference" }
                     localPreference
                 }
                 remotePreference != null && localPreference == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using remote preference: ${remotePreference.key}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using remote preference" }
                     remotePreference
                 }
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Both remote and local have keys. Skipping: $key" }
+                    logcat(LogPriority.DEBUG, logTag) { "Both remote and local preferences exist; skipping" }
                     null
                 }
             }
@@ -423,22 +472,18 @@ abstract class SyncService(
                 val remoteSourcePreference = remotePreferencesMap[sourceKey]
 
                 logcat(LogPriority.DEBUG, logTag) {
-                    "Processing source preference key: $sourceKey. " +
+                    "Processing source preference merge candidate. " +
                         "Local source preference: ${localSourcePreference != null}, " +
                         "Remote source preference: ${remoteSourcePreference != null}"
                 }
 
                 when {
                     localSourcePreference != null && remoteSourcePreference == null -> {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Using local source preference: ${localSourcePreference.sourceKey}."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Using local source preference" }
                         localSourcePreference
                     }
                     remoteSourcePreference != null && localSourcePreference == null -> {
-                        logcat(LogPriority.DEBUG, logTag) {
-                            "Using remote source preference: ${remoteSourcePreference.sourceKey}."
-                        }
+                        logcat(LogPriority.DEBUG, logTag) { "Using remote source preference" }
                         remoteSourcePreference
                     }
                     localSourcePreference != null && remoteSourcePreference != null -> {
@@ -493,24 +538,22 @@ abstract class SyncService(
             val remoteSearch = remoteSearchMap[compositeKey]
 
             logcat(LogPriority.DEBUG, logTag) {
-                "Processing saved search key: $compositeKey. Local search: ${localSearch != null}, " +
+                "Processing saved-search merge candidate. Local search: ${localSearch != null}, " +
                     "Remote search: ${remoteSearch != null}"
             }
 
             when {
                 localSearch != null && remoteSearch == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using local saved search: ${localSearch.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using local saved search" }
                     localSearch
                 }
                 remoteSearch != null && localSearch == null -> {
-                    logcat(LogPriority.DEBUG, logTag) { "Using remote saved search: ${remoteSearch.name}." }
+                    logcat(LogPriority.DEBUG, logTag) { "Using remote saved search" }
                     remoteSearch
                 }
 
                 else -> {
-                    logcat(LogPriority.DEBUG, logTag) {
-                        "No saved search found for composite key: $compositeKey. Skipping."
-                    }
+                    logcat(LogPriority.DEBUG, logTag) { "No saved-search merge candidate available; skipping" }
                     null
                 }
             }
@@ -523,4 +566,137 @@ abstract class SyncService(
         return mergedSearches
     }
     // SY <--
+
+    // KMK -->
+    /**
+     * Merges feed lists using a composite key; local entries take precedence on collision.
+     * BackupFeed has no timestamp so we prefer local over remote for identical keys.
+     */
+    private fun mergeFeedsLists(
+        localFeeds: List<BackupFeed>?,
+        remoteFeeds: List<BackupFeed>?,
+    ): List<BackupFeed> {
+        fun feedKey(feed: BackupFeed): String =
+            "${feed.source}|${feed.global}|${feed.savedSearch?.name ?: ""}|" +
+                "${feed.savedSearch?.query ?: ""}|${feed.savedSearch?.filterList ?: "[]"}"
+
+        val localMap = localFeeds.orEmpty().associateBy { feedKey(it) }
+        val remoteMap = remoteFeeds.orEmpty().associateBy { feedKey(it) }
+        return (localMap.keys + remoteMap.keys).distinct().map { key ->
+            // Prefer local entry; fall back to remote if local is absent
+            localMap[key] ?: remoteMap[key]!!
+        }
+    }
+
+    /**
+     * Merges manga taste ratings, keeping the most recently updated entry per (source, url).
+     * Keyed on source|url because manga row IDs are device-local.
+     */
+    private fun mergeMangaTasteLists(
+        localTastes: List<BackupMangaTaste>?,
+        remoteTastes: List<BackupMangaTaste>?,
+    ): List<BackupMangaTaste> {
+        fun tasteCompositeKey(taste: BackupMangaTaste): String = "${taste.source}|${taste.url}"
+
+        val localMap = localTastes.orEmpty().associateBy { tasteCompositeKey(it) }
+        val remoteMap = remoteTastes.orEmpty().associateBy { tasteCompositeKey(it) }
+
+        return (localMap.keys + remoteMap.keys).map { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local == null -> remote!!
+                remote == null -> local
+                else -> if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+
+    /**
+     * Merges tag preferences, keeping the most recently updated entry per tag name.
+     */
+    private fun mergeTagTasteLists(
+        localTags: List<BackupTagTaste>?,
+        remoteTags: List<BackupTagTaste>?,
+    ): List<BackupTagTaste> {
+        fun tagKey(tag: BackupTagTaste): String = tag.displayName.lowercase().trim()
+
+        val localMap = localTags.orEmpty().associateBy { tagKey(it) }
+        val remoteMap = remoteTags.orEmpty().associateBy { tagKey(it) }
+
+        return (localMap.keys + remoteMap.keys).map { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local == null -> remote!!
+                remote == null -> local
+                else -> if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+
+    // KMK --> v0.7.0: Phase 4 – merge cross-source link groups; prefer newer updatedAt per (source, url)
+    private fun mergeCrossSourceMangaLinks(
+        localLinks: List<BackupCrossSourceMangaLink>?,
+        remoteLinks: List<BackupCrossSourceMangaLink>?,
+    ): List<BackupCrossSourceMangaLink> {
+        fun linkKey(link: BackupCrossSourceMangaLink): String = "${link.source}|${link.url}"
+
+        val localMap = localLinks.orEmpty().associateBy { linkKey(it) }
+        val remoteMap = remoteLinks.orEmpty().associateBy { linkKey(it) }
+
+        return (localMap.keys + remoteMap.keys).distinct().map { key ->
+            val local = localMap[key]
+            val remote = remoteMap[key]
+            when {
+                local == null -> remote!!
+                remote == null -> local
+                else -> if (local.updatedAt >= remote.updatedAt) local else remote
+            }
+        }
+    }
+    // KMK <--
+
+    // KMK --> v0.8.1-fix1: merge user-selected primary versions; prefer newer updatedAt per groupId.
+    // Mirrors mergeCrossSourceMangaLinks' key-by-and-prefer-newer shape above. Delegates to the
+    // companion object's pure implementation so it's directly unit-testable without instantiating
+    // this abstract class (see SyncServiceCrossSourceGroupPrimaryMergeTest).
+    private fun mergeCrossSourceGroupPrimaries(
+        localPrimaries: List<BackupCrossSourceGroupPrimary>?,
+        remotePrimaries: List<BackupCrossSourceGroupPrimary>?,
+    ): List<BackupCrossSourceGroupPrimary> = mergeCrossSourceGroupPrimariesPure(localPrimaries, remotePrimaries)
+    // KMK <--
+    // KMK <--
+
+    // KMK --> v0.8.1-fix2
+    companion object {
+        /**
+         * Invalid rows are filtered here using the same [CrossSourceGroupPrimaryRestorePolicy.isValid]
+         * rule restore uses (blank groupId, source == 0L, or blank url) — previously this only
+         * filtered blank groupId, which was looser than restore validation and let malformed rows
+         * (e.g. source == 0L) through to the merged sync payload.
+         */
+        internal fun mergeCrossSourceGroupPrimariesPure(
+            localPrimaries: List<BackupCrossSourceGroupPrimary>?,
+            remotePrimaries: List<BackupCrossSourceGroupPrimary>?,
+        ): List<BackupCrossSourceGroupPrimary> {
+            val localMap = localPrimaries.orEmpty()
+                .filter { CrossSourceGroupPrimaryRestorePolicy.isValid(it) }
+                .associateBy { it.groupId }
+            val remoteMap = remotePrimaries.orEmpty()
+                .filter { CrossSourceGroupPrimaryRestorePolicy.isValid(it) }
+                .associateBy { it.groupId }
+
+            return (localMap.keys + remoteMap.keys).distinct().map { key ->
+                val local = localMap[key]
+                val remote = remoteMap[key]
+                when {
+                    local == null -> remote!!
+                    remote == null -> local
+                    else -> if (local.updatedAt >= remote.updatedAt) local else remote
+                }
+            }
+        }
+    }
+    // KMK <--
 }

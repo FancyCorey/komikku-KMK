@@ -42,6 +42,7 @@ fun EmptyScreen(
     actions: ImmutableList<EmptyScreenAction>? = null,
     // KMK -->
     help: @Composable (() -> Unit)? = null,
+    illustration: (@Composable () -> Unit)? = null,
     // KMK <--
 ) {
     EmptyScreen(
@@ -50,6 +51,7 @@ fun EmptyScreen(
         actions = actions,
         // KMK -->
         help = help,
+        illustration = illustration,
         // KMK <--
     )
 }
@@ -61,6 +63,12 @@ fun EmptyScreen(
     actions: ImmutableList<EmptyScreenAction>? = null,
     // KMK -->
     help: @Composable (() -> Unit)? = null,
+    /**
+     * Optional decorative illustration shown in place of the random error face. Preserves existing
+     * behavior when null (the default) -- no migration needed for any existing [EmptyScreen] caller.
+     * Must not carry a content description; [message] remains the accessible explanation of the state.
+     */
+    illustration: (@Composable () -> Unit)? = null,
     // KMK <--
 ) {
     val face = remember { getRandomErrorFace() }
@@ -72,13 +80,21 @@ fun EmptyScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Text(
-                text = face,
-                modifier = Modifier.secondaryItemAlpha(),
-                style = MaterialTheme.typography.displayMedium,
-            )
+        // KMK -->
+        if (illustration != null) {
+            illustration()
+        } else {
+            // KMK <--
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Text(
+                    text = face,
+                    modifier = Modifier.secondaryItemAlpha(),
+                    style = MaterialTheme.typography.displayMedium,
+                )
+            }
+            // KMK -->
         }
+        // KMK <--
 
         Text(
             text = message,

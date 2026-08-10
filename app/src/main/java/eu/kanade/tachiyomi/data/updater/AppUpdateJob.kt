@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.notificationManager
 import eu.kanade.tachiyomi.util.system.updaterEnabled
 import exh.log.xLogE
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.TimeUnit
 
@@ -27,6 +28,8 @@ class AppUpdateJob(private val context: Context, workerParams: WorkerParameters)
             }
             AppUpdateChecker().checkForUpdate(context)
             Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             xLogE("Unable to check for update", e)
             Result.failure()

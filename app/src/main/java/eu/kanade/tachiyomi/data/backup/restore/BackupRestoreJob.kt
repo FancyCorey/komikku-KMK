@@ -11,6 +11,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.BackupRestoreStatus
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -18,6 +19,9 @@ import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
+import exh.util.NonUndoableEvent
+import exh.util.NonUndoableEventJournal
+import exh.util.NonUndoableEventType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
@@ -53,17 +57,37 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
         setForegroundSafely()
 
         return try {
-            BackupRestorer(context, notifier, isSync).restore(uri, options)
-            Result.success()
-        } catch (e: Exception) {
-            if (e is CancellationException) {
-                notifier.showRestoreError(context.stringResource(MR.strings.restoring_backup_canceled))
-                Result.success()
-            } else {
-                logcat(LogPriority.ERROR, e)
-                notifier.showRestoreError(e.message)
-                Result.failure()
+            val outcome = BackupRestorer(context, notifier, isSync).restore(uri, options)
+            // KMK: a non-undoable Action History event is
+            // recorded only for a manual (non-sync), fully successful restore -- never for a sync-
+            // triggered restore (the user didn't consciously choose to restore a backup in that
+            // case) and never for BackupRestoreOutcome.PartialSuccess (see that type's own doc for
+            // why partial failure isn't represented as an event). Cancellation and ordinary failure
+            // never reach this line at all, since restore() still throws for those exactly as
+            // before this change. Decision itself lives in the pure, directly-testable
+            // shouldRecordBackupRestoreEvent().
+            val sourcePreferences: SourcePreferences = Injekt.get()
+            if (shouldRecordBackupRestoreEvent(isSync, outcome, sourcePreferences.evaluationMode().get())) {
+                NonUndoableEventJournal.record(
+                    NonUndoableEvent(
+                        id = NonUndoableEvent.newId(),
+                        timestamp = System.currentTimeMillis(),
+                        eventType = NonUndoableEventType.BACKUP_RESTORED,
+                    ),
+                )
             }
+            Result.success()
+        } catch (e: CancellationException) {
+            // KMK: previously caught here and converted into Result.success() ("Assume success
+            // although cancelled") -- see LibraryUpdateJob.doWork() for the identical fix and its
+            // full rationale. Rethrowing lets CoroutineWorker report the run as actually cancelled
+            // instead of succeeded; the cancellation-specific notification is still shown first.
+            notifier.showRestoreError(context.stringResource(MR.strings.restoring_backup_canceled))
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            notifier.showRestoreError(context.stringResource(MR.strings.restoring_backup_error))
+            Result.failure()
         } finally {
             context.cancelNotification(Notifications.ID_RESTORE_PROGRESS)
             // KMK -->

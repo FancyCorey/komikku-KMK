@@ -56,20 +56,18 @@ class DownloadProvider(
         val sourceDirName = getSourceDirName(source)
         val sourceDir = downloadsDir.createDirectory(sourceDirName)
         if (sourceDir == null) {
-            val displayablePath = downloadsDir.displayablePath + "/$sourceDirName"
-            logcat(LogPriority.ERROR) { "Failed to create source download directory: $displayablePath" }
+            logcat(LogPriority.ERROR) { "Source download directory creation failed" }
             return Result.failure(
-                IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath)),
+                IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, downloadsDir.displayablePath + "/$sourceDirName")),
             )
         }
 
         val mangaDirName = getMangaDirName(mangaTitle)
         val mangaDir = sourceDir.createDirectory(mangaDirName)
         if (mangaDir == null) {
-            val displayablePath = sourceDir.displayablePath + "/$mangaDirName"
-            logcat(LogPriority.ERROR) { "Failed to create manga download directory: $displayablePath" }
+            logcat(LogPriority.ERROR) { "Manga download directory creation failed" }
             return Result.failure(
-                IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath)),
+                IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, sourceDir.displayablePath + "/$mangaDirName")),
             )
         }
 
@@ -130,7 +128,11 @@ class DownloadProvider(
      * @param manga the manga of the chapter.
      * @param source the source of the chapter.
      */
-    fun findChapterDirs(chapters: List<Chapter>, manga: Manga, source: Source): Pair<UniFile?, List<UniFile>> {
+    fun findChapterDirs(
+        chapters: List<Chapter>,
+        manga: Manga,
+        source: Source,
+    ): Pair<UniFile?, List<Pair<Chapter, UniFile>>> {
         val mangaDir = findMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source) ?: return null to emptyList()
         return mangaDir to chapters.mapNotNull { chapter ->
             // KMK -->
@@ -140,14 +142,17 @@ class DownloadProvider(
                     null
                 } else {
                     val (mangaDirName, chapterDirName) = splitUrl
-                    mangaDir.findFile(chapterDirName)
-                        ?: storageManager.getLocalSourceDirectory()?.findFile(mangaDirName)?.findFile(chapterDirName)
+                    (
+                        mangaDir.findFile(chapterDirName)
+                            ?: storageManager.getLocalSourceDirectory()?.findFile(mangaDirName)?.findFile(chapterDirName)
+                        )?.let { chapter to it }
                 }
             } else {
                 // KMK <--
                 getValidChapterDirNames(chapter.name, chapter.scanlator, chapter.url).asSequence()
                     .mapNotNull { mangaDir.findFile(it) }
                     .firstOrNull()
+                    ?.let { chapter to it }
             }
         }
     }

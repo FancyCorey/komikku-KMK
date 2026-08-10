@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
@@ -22,11 +23,13 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,7 +53,6 @@ import eu.kanade.presentation.browse.components.ExtensionIcon
 import eu.kanade.presentation.components.WarningBanner
 import eu.kanade.presentation.manga.components.DotSeparatorNoSpaceText
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
-import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.rememberRequestPackageInstallsPermissionState
 import eu.kanade.tachiyomi.extension.model.Extension
@@ -59,6 +61,8 @@ import eu.kanade.tachiyomi.ui.browse.extension.ExtensionUiModel
 import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.launchRequestPackageInstallsPermission
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import mihon.domain.extension.model.ExtensionStore
 import mihon.domain.extension.model.KOMIKKU_SIGNATURE
@@ -93,6 +97,12 @@ fun ExtensionScreen(
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
+    // KMK -->
+    onToggleExtensionSelected: (Extension) -> Unit = {},
+    onRequestUninstallSelected: () -> Unit = {},
+    onRequestExportSelected: () -> Unit = {},
+    onExitSelectionMode: () -> Unit = {},
+    // KMK <--
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -134,6 +144,12 @@ fun ExtensionScreen(
                     onTrustExtension = onTrustExtension,
                     onOpenExtension = onOpenExtension,
                     onClickUpdateAll = onClickUpdateAll,
+                    // KMK -->
+                    onToggleExtensionSelected = onToggleExtensionSelected,
+                    onRequestUninstallSelected = onRequestUninstallSelected,
+                    onRequestExportSelected = onRequestExportSelected,
+                    onExitSelectionMode = onExitSelectionMode,
+                    // KMK <--
                 )
             }
         }
@@ -153,12 +169,24 @@ private fun ExtensionContent(
     onTrustExtension: (Extension.Untrusted) -> Unit,
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
+    // KMK -->
+    onToggleExtensionSelected: (Extension) -> Unit = {},
+    onRequestUninstallSelected: () -> Unit = {},
+    onRequestExportSelected: () -> Unit = {},
+    onExitSelectionMode: () -> Unit = {},
+    // KMK <--
 ) {
     val context = LocalContext.current
     var trustState by remember { mutableStateOf<Extension.Untrusted?>(null) }
     val installGranted = rememberRequestPackageInstallsPermissionState(initialValue = true)
     // KMK -->
     val navigator = LocalNavigator.current
+    val selectedCount = remember(state.items, state.selectedExtensionKeys) {
+        state.items.values.flatten().count { item ->
+            (item.extension is Extension.Installed || item.extension is Extension.Untrusted) &&
+                "${item.extension.pkgName}_${item.extension.signatureHash}" in state.selectedExtensionKeys
+        }
+    }
     // KMK <--
 
     FastScrollLazyColumn(
@@ -233,6 +261,49 @@ private fun ExtensionContent(
                 }
             }
 
+            // KMK -->
+            // Selection controls row — appears below the installed header when in selection mode.
+            if (
+                state.isExtensionSelectionMode &&
+                header is ExtensionUiModel.Header.Resource &&
+                header.textRes == MR.strings.ext_installed
+            ) {
+                item(key = "extension-selection-controls") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = MaterialTheme.padding.medium,
+                                vertical = MaterialTheme.padding.extraSmall,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                    ) {
+                        Button(
+                            onClick = onRequestUninstallSelected,
+                            enabled = selectedCount > 0 && !state.isBulkUninstallingExtensions,
+                        ) {
+                            Text(stringResource(KMR.strings.extension_uninstall_selected, selectedCount))
+                        }
+                        // KMK v0.8.18: manual extension APK export -- bulk export shares the same
+                        // selection-mode UI uninstall already uses.
+                        OutlinedButton(
+                            onClick = onRequestExportSelected,
+                            enabled = selectedCount > 0 && !state.isBulkUninstallingExtensions,
+                        ) {
+                            Text(stringResource(KMR.strings.extension_export_selected_action))
+                        }
+                        OutlinedButton(
+                            onClick = onExitSelectionMode,
+                            enabled = !state.isBulkUninstallingExtensions,
+                        ) {
+                            Text(stringResource(KMR.strings.extension_cancel_selection))
+                        }
+                    }
+                }
+            }
+            // KMK <--
+
             items(
                 items = items,
                 contentType = { "item" },
@@ -244,6 +315,12 @@ private fun ExtensionContent(
                     }
                 },
             ) { item ->
+                // KMK -->
+                val selectable = state.isExtensionSelectionMode &&
+                    (item.extension is Extension.Installed || item.extension is Extension.Untrusted) &&
+                    item.installStep.isCompleted()
+                val selected = "${item.extension.pkgName}_${item.extension.signatureHash}" in state.selectedExtensionKeys
+                // KMK <--
                 ExtensionItem(
                     modifier = Modifier.animateItemFastScroll(),
                     item = item,
@@ -280,6 +357,12 @@ private fun ExtensionContent(
                             }
                         }
                     },
+                    // KMK -->
+                    selectionMode = state.isExtensionSelectionMode,
+                    selectable = selectable,
+                    selected = selected,
+                    onToggleSelected = { onToggleExtensionSelected(item.extension) },
+                    // KMK <--
                 )
             }
         }
@@ -310,47 +393,82 @@ private fun ExtensionItem(
     onClickItemAction: (Extension) -> Unit,
     onClickItemSecondaryAction: (Extension) -> Unit,
     modifier: Modifier = Modifier,
+    // KMK -->
+    selectionMode: Boolean = false,
+    selectable: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelected: () -> Unit = {},
+    // KMK <--
 ) {
     val (extension, installStep) = item
+    // KMK -->
+    val effectiveOnClick: (Extension) -> Unit = if (selectionMode && selectable) {
+        { onToggleSelected() }
+    } else {
+        onClickItem
+    }
+    // KMK <--
     BaseBrowseItem(
         modifier = modifier
             .combinedClickable(
-                onClick = { onClickItem(extension) },
+                onClick = { effectiveOnClick(extension) },
                 onLongClick = { onLongClickItem(extension) },
             ),
-        onClickItem = { onClickItem(extension) },
+        onClickItem = { effectiveOnClick(extension) },
         onLongClickItem = { onLongClickItem(extension) },
         icon = {
-            Box(
-                modifier = Modifier
-                    .size(40.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                val idle = installStep.isCompleted()
-                if (!idle) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(40.dp),
-                        strokeWidth = 2.dp,
+            // KMK -->
+            if (selectionMode && selectable) {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = { onToggleSelected() },
                     )
                 }
-
-                val padding by animateDpAsState(targetValue = if (idle) 0.dp else 8.dp)
-                ExtensionIcon(
-                    extension = extension,
+            } else {
+                // KMK <--
+                Box(
                     modifier = Modifier
-                        .matchParentSize()
-                        .padding(padding),
-                )
+                        .size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val idle = installStep.isCompleted()
+                    if (!idle) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(40.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+
+                    val padding by animateDpAsState(targetValue = if (idle) 0.dp else 8.dp)
+                    ExtensionIcon(
+                        extension = extension,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .padding(padding),
+                    )
+                }
+                // KMK -->
             }
+            // KMK <--
         },
         action = {
-            ExtensionItemActions(
-                extension = extension,
-                installStep = installStep,
-                onClickItemCancel = onClickItemCancel,
-                onClickItemAction = onClickItemAction,
-                onClickItemSecondaryAction = onClickItemSecondaryAction,
-            )
+            // KMK -->
+            if (!selectionMode) {
+                // KMK <--
+                ExtensionItemActions(
+                    extension = extension,
+                    installStep = installStep,
+                    onClickItemCancel = onClickItemCancel,
+                    onClickItemAction = onClickItemAction,
+                    onClickItemSecondaryAction = onClickItemSecondaryAction,
+                )
+                // KMK -->
+            }
+            // KMK <--
         },
     ) {
         ExtensionItemContent(
@@ -367,11 +485,20 @@ private fun ExtensionItemContent(
     installStep: InstallStep,
     modifier: Modifier = Modifier,
 ) {
+    // KMK --> v0.8.19: evaluation mode name/repo obfuscation
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    // KMK <--
     Column(
         modifier = modifier.padding(start = MaterialTheme.padding.medium),
     ) {
         Text(
-            text = extension.name,
+            // KMK -->
+            text = if (evaluationModeEnabled) {
+                EvaluationModeFormatter.sourceLabel(extension.pkgName)
+            } else {
+                extension.name
+            },
+            // KMK <--
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
@@ -405,7 +532,11 @@ private fun ExtensionItemContent(
                 }
 
                 // KMK -->
-                Text(text = extension.storeName?.let { "@$it" } ?: "(?)")
+                Text(
+                    text = extension.storeName?.let { storeName ->
+                        "@" + if (evaluationModeEnabled) EvaluationModeFormatter.repoLabel(storeName) else storeName
+                    } ?: "(?)",
+                )
                 // KMK <--
 
                 val warning = when {
@@ -599,6 +730,15 @@ private fun ExtensionTrustDialog(
 @PreviewLightDark
 @Composable
 private fun ExtensionItemContentPreview() {
+    val previewStore = mihon.domain.extension.model.ExtensionStore(
+        indexUrl = "",
+        name = "Repository",
+        badgeLabel = "Repository",
+        signingKey = "900000",
+        contact = mihon.domain.extension.model.ExtensionStore.Contact(website = "", discord = null),
+        isLegacy = false,
+        extensionListUrl = null,
+    )
     val extAvail = Extension.Available(
         name = "Tachiyomi",
         pkgName = "com.tachiyomi.test",
@@ -608,11 +748,11 @@ private fun ExtensionItemContentPreview() {
         libVersion = 1.0,
         isNsfw = true,
         signatureHash = "900000",
-        storeName = "Komikku",
+        storeName = "Repository",
         sources = emptyList(),
-        apkUrl = "Test",
+        apkUrl = "",
         iconUrl = "",
-        store = ExtensionStore("https://komikku", "Komikku", "", KOMIKKU_SIGNATURE, ExtensionStore.Contact("", ""), false, null),
+        store = previewStore,
     )
     val extInstalled = Extension.Installed(
         name = "Tachiyomi",
@@ -623,9 +763,9 @@ private fun ExtensionItemContentPreview() {
         libVersion = 1.0,
         isNsfw = true,
         signatureHash = "900000",
-        storeName = "Komikku",
+        storeName = "Repository",
         sources = emptyList(),
-        store = ExtensionStore("https://komikku", "Komikku", "", KOMIKKU_SIGNATURE, ExtensionStore.Contact("", ""), false, null),
+        store = previewStore,
         pkgFactory = null,
         icon = null,
         hasUpdate = false,
@@ -644,33 +784,28 @@ private fun ExtensionItemContentPreview() {
         signatureHash = "900000",
         storeName = "Repository",
     )
-
-    TachiyomiPreviewTheme {
-        Surface {
-            Column {
-                ExtensionItemContent(
-                    extension = extAvail.copy(
-                        storeName = "Repository extensions minion multiple languages various sources",
-                    ),
-                    installStep = InstallStep.Idle,
-                )
-                ExtensionItemContent(extension = extAvail, installStep = InstallStep.Installing)
-                ExtensionItemContent(extension = extInstalled, installStep = InstallStep.Idle)
-                ExtensionItemContent(
-                    extension = extInstalled.copy(
-                        isObsolete = true,
-                    ),
-                    installStep = InstallStep.Idle,
-                )
-                ExtensionItemContent(
-                    extension = extInstalled.copy(
-                        isRedundant = true,
-                    ),
-                    installStep = InstallStep.Idle,
-                )
-                ExtensionItemContent(extension = extUntrusted, installStep = InstallStep.Idle)
-            }
-        }
+    Column {
+        ExtensionItemContent(
+            extension = extAvail.copy(
+                storeName = "Repository extensions minion multiple languages various sources",
+            ),
+            installStep = InstallStep.Idle,
+        )
+        ExtensionItemContent(extension = extAvail, installStep = InstallStep.Installing)
+        ExtensionItemContent(extension = extInstalled, installStep = InstallStep.Idle)
+        ExtensionItemContent(
+            extension = extInstalled.copy(
+                isObsolete = true,
+            ),
+            installStep = InstallStep.Idle,
+        )
+        ExtensionItemContent(
+            extension = extInstalled.copy(
+                isRedundant = true,
+            ),
+            installStep = InstallStep.Idle,
+        )
+        ExtensionItemContent(extension = extUntrusted, installStep = InstallStep.Idle)
     }
 }
 // KMK <--

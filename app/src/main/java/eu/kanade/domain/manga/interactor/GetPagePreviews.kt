@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.source.PagePreviewSource
 import eu.kanade.tachiyomi.source.Source
 import exh.source.getMainSource
+import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.model.Manga
 
@@ -35,6 +36,8 @@ class GetPagePreviews(
                 pagePreviews.hasNextPage,
                 pagePreviews.pagePreviewPages,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.Error(e)
         }

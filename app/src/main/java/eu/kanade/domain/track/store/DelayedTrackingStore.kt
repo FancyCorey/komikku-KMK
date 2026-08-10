@@ -15,7 +15,7 @@ class DelayedTrackingStore(context: Context) {
     fun add(trackId: Long, lastChapterRead: Double) {
         val previousLastChapterRead = preferences.getFloat(trackId.toString(), 0f)
         if (lastChapterRead > previousLastChapterRead) {
-            logcat(LogPriority.DEBUG) { "Queuing track item: $trackId, last chapter read: $lastChapterRead" }
+            logcat(LogPriority.DEBUG) { "Tracking item queued" }
             preferences.edit {
                 putFloat(trackId.toString(), lastChapterRead.toFloat())
             }

@@ -17,6 +17,8 @@ import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher.Companion.USE_CUSTOM_COVER_KEY
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.safeClientOrNull
+import eu.kanade.tachiyomi.source.safeHeadersOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -213,7 +215,10 @@ class MangaCoverFetcher(
     }
 
     private suspend fun executeNetworkRequest(): Response {
-        val client = sourceLazy.value?.client ?: callFactoryLazy.value
+        // KMK v0.8.10-fix5: source.client can run an extension's lazy client-builder for the first
+        // time here and throw LinkageError (e.g. a missing transitive dependency) -- route through
+        // SourceRuntime and fall back to the default call factory instead of crashing.
+        val client = sourceLazy.value?.safeClientOrNull() ?: callFactoryLazy.value
         val response = client.newCall(newRequest()).await()
         if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
             response.close()
@@ -226,7 +231,8 @@ class MangaCoverFetcher(
         val request = Request.Builder().apply {
             url(url!!)
 
-            val sourceHeaders = sourceLazy.value?.headers
+            // KMK v0.8.10-fix5: same lazy-property linkage-failure risk as .client above.
+            val sourceHeaders = sourceLazy.value?.safeHeadersOrNull()
             if (sourceHeaders != null) {
                 headers(sourceHeaders)
             }
@@ -257,7 +263,7 @@ class MangaCoverFetcher(
             }
             cacheFile.takeIf { it.exists() }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to write snapshot data to cover cache ${cacheFile.name}" }
+            logcat(LogPriority.ERROR) { "Manga-cover snapshot cache write failed" }
             null
         }
     }
@@ -270,7 +276,7 @@ class MangaCoverFetcher(
             }
             cacheFile.takeIf { it.exists() }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to write response data to cover cache ${cacheFile.name}" }
+            logcat(LogPriority.ERROR) { "Manga-cover response cache write failed" }
             null
         }
     }

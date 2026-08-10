@@ -22,6 +22,7 @@ import exh.source.EIGHTMUSES_SOURCE_ID
 import exh.source.EXHENTAI_EXT_SOURCES
 import exh.source.EnhancedHttpSource
 import exh.source.ExhPreferences
+import exh.source.ExplicitSourceClassifier
 import exh.source.MERGED_SOURCE_ID
 import exh.source.handleSourceLibrary
 import kotlinx.coroutines.CoroutineScope
@@ -146,7 +147,9 @@ class AndroidSourceManager(
         // EXH -->
         val sourceQName = this::class.qualifiedName
         val delegate = if (sourceQName != null) {
-            // KMK -->
+            // KMK v0.8.17 (Komikku v1.14.1 reconciliation): upstream restructured DELEGATED_SOURCES
+            // from a Map keyed by qualified class name to a List with inline matching -- fixes
+            // delegated-source loading for the latest extension DSL changes (upstream PR #1797).
             DELEGATED_SOURCES.firstOrNull { delegated ->
                 sourceQName == delegated.originalSourceQualifiedClassName ||
                     (delegated.factory && sourceQName.startsWith(delegated.originalSourceQualifiedClassName))
@@ -156,7 +159,7 @@ class AndroidSourceManager(
             null
         }
         val newSource = if (this is HttpSource && delegate != null) {
-            xLogD("Delegating source: %s -> %s!", sourceQName, delegate.newSourceClass.qualifiedName)
+            xLogD("Delegating source")
             val enhancedSource = EnhancedHttpSource(
                 this,
                 delegate.newSourceClass.constructors.find { it.parameters.size == 2 }!!.call(this, context),
@@ -180,12 +183,7 @@ class AndroidSourceManager(
             // KMK <--
             id in BlacklistedSources.BLACKLISTED_EXT_SOURCES
         ) {
-            xLogD(
-                "Removing blacklisted source: (id: %s, name: %s, lang: %s)!",
-                id,
-                name,
-                lang,
-            )
+            xLogD("Removing blacklisted source")
             null
         } else {
             newSource
@@ -213,16 +211,32 @@ class AndroidSourceManager(
     }
 
     // SY -->
-    override fun getVisibleOnlineSources() = sourcesMapFlow.value.values
-        .filterIsInstance<HttpSource>()
-        .filter {
-            it.id !in BlacklistedSources.HIDDEN_SOURCES
-        }
+    override fun getVisibleOnlineSources(): List<HttpSource> {
+        // KMK -->
+        val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
+        // KMK <--
+        return sourcesMapFlow.value.values
+            .filterIsInstance<HttpSource>()
+            .filter {
+                it.id !in BlacklistedSources.HIDDEN_SOURCES &&
+                    // KMK -->
+                    !(blockExplicit && ExplicitSourceClassifier.isExplicitCatalogueSource(it))
+                // KMK <--
+            }
+    }
 
-    override fun getVisibleSources() = sourcesMapFlow.value.values
-        .filter {
-            it.id !in BlacklistedSources.HIDDEN_SOURCES
-        }
+    override fun getVisibleSources(): List<Source> {
+        // KMK -->
+        val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
+        // KMK <--
+        return sourcesMapFlow.value.values
+            .filter {
+                it.id !in BlacklistedSources.HIDDEN_SOURCES &&
+                    // KMK -->
+                    !(blockExplicit && ExplicitSourceClassifier.isExplicitCatalogueSource(it))
+                // KMK <--
+            }
+    }
 
     fun getDelegatedSources() = sourcesMapFlow.value.values
         .filterIsInstance<EnhancedHttpSource>()

@@ -261,6 +261,19 @@ class ReaderPreferences(
         const val CACHE_TO_DISK = 2
     }
 
+    // KMK v0.8.5: optional local reading schedule -- reader-only wall-clock policy, entirely
+    // separate from the active-reading timer's own SavedState-backed session. See
+    // eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleResolver/ReaderScheduleStore.
+    /** Master enable toggle. Default off — the schedule never restricts reading unless explicitly turned on. */
+    fun readingScheduleEnabled() = preferenceStore.getBoolean("reading_schedule_enabled", false)
+
+    /** ReaderScheduleMode name (ALLOWED or RESTRICTED). Invalid/corrupt values fall back to RESTRICTED at read time. */
+    fun readingScheduleMode() = preferenceStore.getString("reading_schedule_mode", "RESTRICTED")
+
+    /** Serialized window list; see ReaderScheduleStore for the exact format. Invalid entries are dropped, never crash. */
+    fun readingScheduleWindows() = preferenceStore.getString("reading_schedule_windows", "")
+    // KMK <--
+
     companion object {
         const val WEBTOON_PADDING_MIN = 0
         const val WEBTOON_PADDING_MAX = 25

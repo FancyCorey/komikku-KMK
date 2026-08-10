@@ -24,6 +24,18 @@ class MigratingManga(
 
     val searchResult = MutableStateFlow<SearchResult>(SearchResult.Searching)
 
+    // KMK: truthful per-item migration
+    // status, set by MigrationListScreenModel.migrateNow()/migrateMangas() via
+    // MigrationOutcomeReducer. Null means "no migration attempted yet or last attempt not
+    // resolved" -- the item stays visible and retryable in either case; it is never removed from
+    // the pending list except after a confirmed RESULT_SUCCESS.
+    val migrationResult = MutableStateFlow<MigrationResultState?>(null)
+
+    sealed interface MigrationResultState {
+        data object InProgress : MigrationResultState
+        data class Failed(val retryable: Boolean) : MigrationResultState
+    }
+
     sealed interface SearchResult {
         data object Searching : SearchResult
         data object NotFound : SearchResult

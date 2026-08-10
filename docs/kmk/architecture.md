@@ -1,0 +1,126 @@
+# KMK architecture
+
+This page explains how KMK fits into Komikku. Read it when you want to understand which part of the app owns a feature, where data is stored, or how failures are contained. For instructions, use the [user guide](user-guide.md). For feature-level flows, use the [detailed diagram index](diagrams/README.md).
+
+## System boundary
+
+```mermaid
+flowchart LR
+    User["Reader"] --> App["Komikku Android app"]
+    App --> Library["Library, history, and reader"]
+    App --> Discovery["KMK discovery and preference features"]
+    Discovery --> Runtime["Guarded source runtime"]
+    Runtime --> Extensions["Installed source extensions"]
+    Library --> Store["Repositories, preferences, and SQLDelight"]
+    Discovery --> Store
+    App --> Android["Android lifecycle, storage, and document APIs"]
+```
+
+Komikku continues to own navigation, the library, the reader, downloads, tracking, backup, and extension loading. KMK adds discovery and preference features inside those existing parts of the app. Installed extensions can access their own online services; KMK does not add a separate server.
+
+## Feature ownership
+
+```mermaid
+flowchart TD
+    Screens["Compose screens and Voyager routes"] --> Models["Screen models and ReaderViewModel"]
+    Models --> Taste["Ratings and taste policies"]
+    Models --> Retrieval["Recommendation retrieval and reranking"]
+    Models --> Evaluation["Source evaluation and discovery"]
+    Models --> Matching["Cross-source matching and Best Version"]
+    Models --> Reader["Completion, timer, schedule, and chapter navigation"]
+    Models --> OCR["Local OCR indexing and search"]
+    Taste --> Persistence["Repositories, preferences, and migrations"]
+    Retrieval --> SourceRuntime["SourceRuntime isolation"]
+    Evaluation --> SourceRuntime
+    Matching --> SourceRuntime
+    Retrieval --> Persistence
+    Evaluation --> Persistence
+    Matching --> Persistence
+    Reader --> Persistence
+    OCR --> Persistence
+```
+
+Screens display information and handle navigation. Screen models hold the current feature state and coordinate the work behind each screen. `SourceRuntime` prevents one failing extension from breaking unrelated work and preserves cancellation. Data is stored through Komikku's repositories, settings, and database migrations.
+
+## Recommendation flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Screen as For You screen
+    participant Model as Recommendation screen model
+    participant Policy as Eligibility and ranking policies
+    participant Runtime as SourceRuntime
+    participant Source as Installed source
+    participant Memory as Exposure and preference stores
+
+    User->>Screen: Open or refresh For You
+    Screen->>Model: Request visible rows
+    Model->>Memory: Read ratings, exclusions, exposure, and settings
+    Model->>Runtime: Request guarded source candidates
+    Runtime->>Source: Search, latest, or supported catalogue request
+    Source-->>Runtime: Candidates or local failure
+    Runtime-->>Model: Isolated result
+    Model->>Policy: Filter, merge, diversify, and rerank
+    Policy-->>Model: Stable visible result
+    Model->>Memory: Record visible exposure
+    Model-->>Screen: Loaded, empty, partial, or error state
+```
+
+Personalized matches remain the majority when enough suitable results exist. A smaller set of recent catalogue entries can add variety, but those entries must still pass language, genre, minimum-chapter, exclusion, and source checks. If a card remains visible and untouched for the configured number of days, the app moves it lower instead of deleting it. Manga in the library, manga with a preference, and known tracked manga keep their position when the app can verify that state safely.
+
+## Reversible preference actions
+
+```mermaid
+flowchart TD
+    Neutral["Neutral"] --> Choose{"Preference action"}
+    Choose --> Love["Love"]
+    Choose --> Like["Like"]
+    Choose --> Dislike["Dislike"]
+    Choose --> NotInterested["Not Interested"]
+    Love --> Rated["Visible rating state"]
+    Like --> Rated
+    Dislike --> Rated
+    NotInterested --> Hidden["Visible Not Interested state"]
+    Rated --> Clear["Clear rating"]
+    Hidden --> Undo["Undo not interested"]
+    Hidden --> Replace["Choose a rating"]
+    Clear --> Neutral
+    Undo --> Neutral
+    Replace --> Rated
+```
+
+Not Interested behaves like the other preference choices. It has its own marker and collection, and it can be cleared or replaced by Love, Like, or Dislike. Before a supported change, Action History records the previous value. It keeps that record only when the change succeeds, so the previous state can be restored unless a newer change would be overwritten.
+
+## Reader lifecycle
+
+```mermaid
+flowchart TD
+    Open["Open reader"] --> Resolve["Resolve optional local schedule"]
+    Resolve --> Allowed{"Reading allowed?"}
+    Allowed -->|Yes| Read["Read current chapter"]
+    Allowed -->|No| Block["Show blocked state"]
+    Read --> Complete{"Genuine latest-chapter completion?"}
+    Complete -->|No| Continue["Continue or exit normally"]
+    Complete -->|Yes| Defer["Defer rating prompt until reader exit"]
+    Defer --> Choice["Love, Like, Dislike, Not interested, or skip"]
+    Choice --> Offer["Optional linked-version rating handoff"]
+    Offer --> Exit["Return through normal navigation"]
+```
+
+The schedule is local, optional, and off by default. It is re-evaluated on reader lifecycle transitions. A restricted session cannot use alternate chapter transitions as a bypass. The completion prompt is offered only for genuine completion of the latest available chapter and is deferred until exit so it does not interrupt reading. The manga screen also exposes a semantic Jump to last read action when a valid read position exists.
+
+## Public evidence boundary
+
+```mermaid
+flowchart LR
+    Source["Reviewed source and tests"] --> Public["Public fork"]
+    Docs["Current behavior documentation"] --> Public
+    Safe["Sanitized screenshots and semantic XML"] --> Public
+    Raw["Raw logs, device captures, accounts, and private paths"] --> Hold["Private only"]
+    Stale["Superseded diagrams and stale captures"] --> Hold
+```
+
+Only current, privacy-reviewed files are included in the public fork. Raw screen dumps, device identifiers, local paths, account details, source identities, reading history, and manga-specific preference evidence remain private.
+
+OCR text is an intentionally local, regenerable index. It is stored in the app database, excluded from backup and sync, and deleted through scoped index controls. Backup support covers the KMK state that users cannot cheaply recreate, including ratings, recommendation settings, links, and source evaluation data.

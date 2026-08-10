@@ -170,6 +170,22 @@ class DomainModule : InjektModule {
         addFactory { SyncChaptersWithSource(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         addFactory { GetAvailableScanlators(get()) }
         addFactory { FilterChaptersForDownload(get(), get(), get(), get()) }
+        // KMK v0.8.10-fix1: was never registered -- BulkFavoriteScreenModel's constructor default
+        // arg `Injekt.get()` for this type threw an uncaught InjektionException immediately on
+        // construction, which happens for any Browse/Global Search/manga-update bulk-selection flow.
+        // This factory prevents the constructor-time injection failure in Browse, Global Search,
+        // and manga-update bulk-selection flows.
+        addFactory {
+            UpdateMangaFromRemote(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+            )
+        }
 
         addSingletonFactory<HistoryRepository> { HistoryRepositoryImpl(get()) }
         addFactory { GetHistory(get()) }

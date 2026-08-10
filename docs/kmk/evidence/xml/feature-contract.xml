@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kmk-feature-contract version="3" privacy="sanitized-semantic">
+  <publication application-id="app.komikku.kmk" app-name="Komikku KMK" update-repository="FancyCorey/komikku-KMK" />
+  <feature id="for-you" route="browse/for-you">
+    <purpose>Show personalized and exploratory manga candidates grouped by eligible source.</purpose>
+    <documentation>docs/kmk/diagrams/for-you.md</documentation>
+    <owner>app/src/main/java/exh/recs/BrowsePersonalRecommendationsScreenModel.kt</owner>
+    <presentation>app/src/main/java/exh/recs/BrowsePersonalRecommendationsTab.kt</presentation>
+    <states>loading loaded partial empty recoverable-error</states>
+    <constraints>language genre minimum-chapters exclusions source-eligibility personalized-majority exposure-window</constraints>
+    <privacy screenshot="approved">Evaluation Mode neutralizes source identities; manga artwork and recommendation context are intentionally retained as core feature evidence.</privacy>
+  </feature>
+  <feature id="recommendation-settings" route="settings/recommendations">
+    <purpose>Navigate and configure recommendation feature families using established settings patterns.</purpose>
+    <documentation>docs/kmk/diagrams/recommendation-settings.md</documentation>
+    <owner>app/src/main/java/exh/recs/settings/RecommendationSettingsIndexScreen.kt</owner>
+    <states>loaded search filtered</states>
+    <sections>for-you-sources taste-and-filters source-evaluation sources-to-try management-and-diagnostics</sections>
+    <privacy screenshot="approved">No account, title, source identity, or local path is visible.</privacy>
+  </feature>
+  <feature id="source-evaluation" route="settings/recommendations/source-evaluation">
+    <purpose>Evaluate source suitability and disclose partial, skipped, failed, and reassessment outcomes.</purpose>
+    <documentation>docs/kmk/diagrams/source-evaluation.md</documentation>
+    <owner>app/src/main/java/exh/recs/evaluation/SourceEvaluationScreenModel.kt</owner>
+    <presentation>app/src/main/java/exh/recs/evaluation/SourceEvaluationScreen.kt</presentation>
+    <states>ready running partial completed cancelled failed</states>
+    <privacy screenshot="approved">Counts and generic categories are visible; source identities and raw errors are absent.</privacy>
+  </feature>
+  <feature id="sources-to-try" route="settings/recommendations/sources-to-try">
+    <purpose>Suggest compatible non-installed sources using taste and source-evaluation signals.</purpose>
+    <documentation>docs/kmk/diagrams/sources-and-priority.md</documentation>
+    <owner>app/src/main/java/exh/recs/discovery/GetNonInstalledSourceSuggestions.kt</owner>
+    <states>loading suggestions empty unavailable install-handoff</states>
+    <privacy screenshot="withheld">A live suggestion list can reveal source availability and preference context.</privacy>
+  </feature>
+  <feature id="manga-preference" route="manga/detail">
+    <purpose>Treat Love, Like, Dislike, and Not Interested as peer preference actions with reversible transitions.</purpose>
+    <documentation>docs/kmk/diagrams/ratings-and-groups.md</documentation>
+    <owner>app/src/main/java/exh/recs/loved/MangaPreferencePresentationPolicy.kt</owner>
+    <dispatch>app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt</dispatch>
+    <states>neutral loved liked disliked not-interested</states>
+    <privacy screenshot="withheld">The active preference and manga identity are user-specific.</privacy>
+  </feature>
+  <feature id="cross-source-matching" route="manga/find-other-versions">
+    <purpose>Find, select, link, group, and compare versions through guarded source work.</purpose>
+    <documentation>docs/kmk/diagrams/best-version.md</documentation>
+    <owner>app/src/main/java/exh/recs/matching/CrossExtensionMatchScreen.kt</owner>
+    <states>searching candidates selected linked empty partial-failure</states>
+    <privacy screenshot="withheld">Candidate source and manga identities are route inputs.</privacy>
+  </feature>
+  <feature id="best-version" route="manga/find-other-versions/best-version">
+    <purpose>Compare linked versions and continue through the established migration workflow when the user selects another version.</purpose>
+    <documentation>docs/kmk/diagrams/best-version.md</documentation>
+    <owner>app/src/main/java/exh/recs/bestversion/BestVersionCompareScreenModel.kt</owner>
+    <states>loading comparable insufficient-data keep-current confirmed cancelled failed</states>
+    <privacy screenshot="withheld">Comparison pages, source identities, and manga identity are route inputs.</privacy>
+  </feature>
+  <feature id="reader-controls" route="reader">
+    <purpose>Apply optional timer and schedule policy, defer completion rating until exit, and preserve ordinary reader navigation.</purpose>
+    <documentation>docs/kmk/diagrams/reader.md</documentation>
+    <owner>app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt</owner>
+    <presentation>app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt</presentation>
+    <states>allowed restricted grace completed deferred-prompt</states>
+    <privacy screenshot="withheld">Reader pages and progress are private content.</privacy>
+  </feature>
+  <feature id="jump-to-last-read" route="manga/detail/chapters">
+    <purpose>Move the chapter list to the resolved last-read position without changing chapter state.</purpose>
+    <documentation>docs/kmk/diagrams/reader.md</documentation>
+    <owner>app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt</owner>
+    <presentation>app/src/main/java/eu/kanade/presentation/manga/components/MangaToolbar.kt</presentation>
+    <states>available unavailable scrolled</states>
+    <privacy screenshot="withheld">Chapter names and reading position are private history.</privacy>
+  </feature>
+  <feature id="evaluation-mode" route="settings/advanced/evaluation-mode">
+    <purpose>Sanitize identity-bearing presentation while preserving identifiers, actions, persistence, and network behavior.</purpose>
+    <documentation>docs/kmk/diagrams/export-and-evidence.md</documentation>
+    <owner>app/src/main/java/exh/util/EvaluationModeFormatter.kt</owner>
+    <states>disabled enabled</states>
+    <privacy screenshot="approved">Approved captures use neutral source labels where applicable.</privacy>
+  </feature>
+  <feature id="action-history" route="settings/advanced/action-history">
+    <purpose>Disclose reversible and non-reversible actions and restore supported local state when no conflict exists.</purpose>
+    <documentation>docs/kmk/diagrams/ratings-and-groups.md</documentation>
+    <owner>app/src/main/java/exh/util/EvaluationModeActionHistoryScreen.kt</owner>
+    <states>empty entries undoable conflict restored non-reversible</states>
+    <privacy screenshot="withheld">Entries can describe user preference and library actions.</privacy>
+  </feature>
+  <feature id="extension-export" route="extensions/export">
+    <purpose>Export selected extension artifacts through Android document APIs and offer exact-artifact cleanup after success.</purpose>
+    <documentation>docs/kmk/diagrams/export-and-evidence.md</documentation>
+    <owner>app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionApkExporter.kt</owner>
+    <states>ready chooser success cancelled failed cleanup-kept cleanup-removed cleanup-failed</states>
+    <privacy screenshot="withheld">The system picker can expose provider and path information.</privacy>
+  </feature>
+  <feature id="ocr-search" route="search/ocr-downloads">
+    <purpose>Index and search recognized text from downloaded chapter pages on the device.</purpose>
+    <documentation>docs/kmk/diagrams/ocr.md</documentation>
+    <owner>app/src/main/java/exh/ocr/OcrSearchScreenModel.kt</owner>
+    <presentation>app/src/main/java/exh/ocr/OcrSearchScreen.kt</presentation>
+    <states>no-index indexing searchable partial cancelled failed</states>
+    <privacy screenshot="withheld">Recognized text, manga identity, chapter identity, and reading context are private; OCR text is excluded from backup and sync.</privacy>
+  </feature>
+  <feature id="backup-portability" route="settings/data/backup-restore">
+    <purpose>Include supported KMK ratings, recommendation preferences, links, and source-evaluation state in the established backup flow.</purpose>
+    <documentation>docs/kmk/diagrams/backup-and-portability.md</documentation>
+    <owner>app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/restorers/TasteRestorer.kt</owner>
+    <states>selected encoded restored partial failed</states>
+    <privacy screenshot="withheld">Backup destinations and restored library details can expose private storage and reading information.</privacy>
+  </feature>
+  <feature id="extension-operations" route="browse/extensions">
+    <purpose>Isolate unsafe extension failures and perform install, removal, and export through supported Android boundaries.</purpose>
+    <documentation>docs/kmk/diagrams/extension-operations.md</documentation>
+    <owner>app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt</owner>
+    <dispatch>app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionApkExporter.kt</dispatch>
+    <states>ready consent success cancelled failed cleanup-verified</states>
+    <privacy screenshot="withheld">Installed package, repository, source, and document-provider details may identify user configuration.</privacy>
+  </feature>
+  <feature id="security-integration" route="system-boundary">
+    <purpose>Validate external inputs, isolate ordinary failures, preserve cancellation, and scope local mutations and cleanup.</purpose>
+    <documentation>docs/kmk/diagrams/security-and-integration.md</documentation>
+    <owner>app/src/main/java/eu/kanade/tachiyomi/source/SourceRuntime.kt</owner>
+    <dispatch>app/src/main/java/eu/kanade/tachiyomi/ui/deeplink/DeepLinkIntentSanitizer.kt</dispatch>
+    <states>accepted rejected isolated-failure cancelled verified-mutation</states>
+    <privacy screenshot="withheld">Security boundaries are validated through source and tests; raw hostile inputs and private route values are not public evidence.</privacy>
+  </feature>
+</kmk-feature-contract>

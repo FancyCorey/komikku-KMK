@@ -3,9 +3,14 @@ package eu.kanade.presentation.more.settings.screen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.reader.ReaderScheduleDialog
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleStore
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderBottomButton
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -114,6 +119,8 @@ object SettingsReaderScreen : SearchableSettings {
             getPageDownloadingGroup(readerPreferences = readerPref),
             getForkSettingsGroup(readerPreferences = readerPref),
             // SY <--
+            // KMK v0.8.5
+            getReadingScheduleGroup(readerPreferences = readerPref),
         )
     }
 
@@ -675,4 +682,74 @@ object SettingsReaderScreen : SearchableSettings {
         )
     }
     // SY <--
+
+    // KMK v0.8.5: optional local reading schedule -- reader-only wall-clock policy.
+    @Composable
+    private fun getReadingScheduleGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
+        var showDialog by rememberSaveable { mutableStateOf(false) }
+        val enabled by readerPreferences.readingScheduleEnabled().collectAsState()
+        val modeRaw by readerPreferences.readingScheduleMode().collectAsState()
+        val windowsRaw by readerPreferences.readingScheduleWindows().collectAsState()
+        val mode = ReaderScheduleStore.parseMode(modeRaw)
+        val windows = ReaderScheduleStore.parseWindows(windowsRaw)
+
+        if (showDialog) {
+            ReaderScheduleDialog(
+                onDismissRequest = { showDialog = false },
+                initialMode = mode,
+                initialWindows = windows,
+                onSave = { newMode, newWindows ->
+                    // KMK: journal the complete prior mode+window serialization
+                    // as one preference entry so Undo restores the whole schedule, not a partial edit.
+                    val sourcePreferences = Injekt.get<eu.kanade.domain.source.service.SourcePreferences>()
+                    val windowsPref = readerPreferences.readingScheduleWindows()
+                    val modePref = readerPreferences.readingScheduleMode()
+                    val previousSerialized = modePref.get() to windowsPref.get()
+                    val newSerialized = ReaderScheduleStore.serializeMode(newMode) to ReaderScheduleStore.serializeWindows(newWindows)
+                    val undoEntry = if (sourcePreferences.evaluationMode().get() && previousSerialized != newSerialized) {
+                        exh.util.PreferenceUndoEntry(
+                            id = exh.util.PreferenceUndoEntry.newId(),
+                            timestamp = System.currentTimeMillis(),
+                            actionType = exh.util.PreferenceJournalActionType.READING_SCHEDULE,
+                            identityKey = "readingSchedule",
+                            previousValue = previousSerialized,
+                            expectedPostValue = newSerialized,
+                            readCurrent = { modePref.get() to windowsPref.get() },
+                            restore = { (mode, windows) ->
+                                modePref.set(mode)
+                                windowsPref.set(windows)
+                            },
+                        )
+                    } else {
+                        null
+                    }
+                    readerPreferences.readingScheduleMode().set(newSerialized.first)
+                    readerPreferences.readingScheduleWindows().set(newSerialized.second)
+                    undoEntry?.let { exh.util.PreferenceUndoJournal.record(it) }
+                },
+            )
+        }
+
+        return Preference.PreferenceGroup(
+            title = stringResource(KMR.strings.reading_schedule_title),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.readingScheduleEnabled(),
+                    title = stringResource(KMR.strings.reading_schedule_enabled_title),
+                    subtitle = stringResource(KMR.strings.reading_schedule_scope_note),
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(KMR.strings.reading_schedule_configure),
+                    subtitle = if (windows.isNotEmpty()) {
+                        stringResource(KMR.strings.reading_schedule_window_count, windows.size)
+                    } else {
+                        stringResource(KMR.strings.reading_schedule_not_configured)
+                    },
+                    enabled = enabled,
+                    onClick = { showDialog = true },
+                ),
+            ),
+        )
+    }
+    // KMK <--
 }

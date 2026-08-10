@@ -257,7 +257,9 @@ class EHentaiUpdateHelper(context: Context) {
                         sourceOrder = -1,
                         lastModifiedAt = 0,
                         version = 0,
+                        // KMK --> 1.14.0 reconciliation: chapters.memo column, vacant by default
                         memo = JsonObject.EMPTY,
+                        // KMK <--
                     )
                 }
             }

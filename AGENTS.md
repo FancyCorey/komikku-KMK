@@ -1,6 +1,6 @@
 # Komikku – AI Agent Guide
 
-Komikku is an Android manga reader (min SDK 26, target SDK 36, JVM 17 / Kotlin) forked from **Mihon** + **TachiyomiSY**. Stack: Jetpack Compose + Material3, Voyager navigation, SQLDelight, Injekt DI. `applicationId`: `app.komikku`.
+Komikku KMK is an Android manga reader (min SDK 26, target SDK 36, JVM 17 / Kotlin) forked from **Komikku**, **Mihon**, and **TachiyomiSY**. Stack: Jetpack Compose + Material3, Voyager navigation, SQLDelight, Injekt DI. Release `applicationId`: `app.komikku.kmk`.
 
 ---
 

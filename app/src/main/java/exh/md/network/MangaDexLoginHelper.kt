@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.network.parseAs
 import exh.md.utils.MdApi
 import exh.md.utils.MdConstants
 import exh.md.utils.MdUtil
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import okhttp3.FormBody
 import okhttp3.Headers
@@ -35,14 +36,19 @@ class MangaDexLoginHelper(
             .add("redirect_uri", MdConstants.Login.redirectUri)
             .build()
 
-        val error = kotlin.runCatching {
+        val error = try {
             val data = with(MdUtil.jsonParser) {
                 client.newCall(
                     POST(MdApi.baseAuthUrl + MdApi.token, headers = headers, body = loginFormBody),
                 ).awaitSuccess().parseAs<MALOAuth>()
             }
             mangaDexAuthInterceptor.setAuth(data)
-        }.exceptionOrNull()
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e
+        }
 
         return when (error == null) {
             true -> true
@@ -69,7 +75,7 @@ class MangaDexLoginHelper(
             .add("redirect_uri", MdConstants.Login.redirectUri)
             .build()
 
-        val error = kotlin.runCatching {
+        val error = try {
             client.newCall(
                 POST(
                     url = MdApi.baseAuthUrl + MdApi.logout,
@@ -79,7 +85,12 @@ class MangaDexLoginHelper(
                 ),
             ).awaitSuccess()
             mdList.logout()
-        }.exceptionOrNull()
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e
+        }
 
         return when (error == null) {
             true -> {

@@ -1,0 +1,22 @@
+-- KMK: additive-only migration for the
+-- local-only For You exposure history table -- see recommendation_exposure.sq for the full schema
+-- rationale. No existing table is altered, renamed, or dropped.
+--
+-- KMK: CREATE statements now carry IF NOT EXISTS, matching the
+-- idempotency contract every other KMK migration follows and KmkMigrationTest enforces. Without it,
+-- re-running this migration against a database that already has the table would fail instead of
+-- being a no-op.
+CREATE TABLE IF NOT EXISTS recommendation_exposure (
+    source_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    manga_id INTEGER,
+    first_exposed_at INTEGER NOT NULL,
+    last_exposed_at INTEGER NOT NULL,
+    exposure_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (source_id, url)
+);
+
+CREATE INDEX IF NOT EXISTS recommendation_exposure_last_exposed_index
+    ON recommendation_exposure(last_exposed_at);
+CREATE INDEX IF NOT EXISTS recommendation_exposure_source_index
+    ON recommendation_exposure(source_id);

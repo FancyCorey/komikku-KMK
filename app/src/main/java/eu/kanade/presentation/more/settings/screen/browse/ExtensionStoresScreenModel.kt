@@ -3,18 +3,21 @@ package eu.kanade.presentation.more.settings.screen.browse
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import mihon.domain.extension.ExtensionStoreUrlPolicy
 import mihon.domain.extension.interactor.AddExtensionStore
 import mihon.domain.extension.interactor.GetExtensionStores
 import mihon.domain.extension.interactor.RemoveExtensionStore
 import mihon.domain.extension.interactor.UpdateExtensionStores
 import mihon.domain.extension.model.ExtensionStore
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -101,11 +104,11 @@ class ExtensionStoresScreenModel(
                             dialog = when (it.dialog) {
                                 is ExtensionStoreDialog.Create -> it.dialog.copy(
                                     processing = false,
-                                    errorMessage = throwable.message ?: "unknown error",
+                                    errorMessage = KMR.strings.extension_store_operation_failed,
                                 )
                                 is ExtensionStoreDialog.Confirm -> it.dialog.copy(
                                     processing = false,
-                                    errorMessage = throwable.message ?: "unknown error",
+                                    errorMessage = KMR.strings.extension_store_operation_failed,
                                 )
                                 else -> it.dialog
                             },
@@ -169,6 +172,7 @@ class ExtensionStoresScreenModel(
     // KMK <--
 
     fun addFromDeeplink(storeIndexUrl: String) {
+        if (!ExtensionStoreUrlPolicy.isAllowed(storeIndexUrl)) return
         updateSuccessState { state ->
             state.copy(
                 dialog = ExtensionStoreDialog.Confirm(
@@ -193,13 +197,13 @@ class ExtensionStoresScreenModel(
 }
 
 sealed class ExtensionStoreDialog {
-    data class Create(val processing: Boolean = false, val errorMessage: String? = null) : ExtensionStoreDialog()
+    data class Create(val processing: Boolean = false, val errorMessage: StringResource? = null) : ExtensionStoreDialog()
     data class Delete(val store: ExtensionStore) : ExtensionStoreDialog()
     data class Confirm(
         val url: String,
         val alreadyExists: Boolean = false,
         val processing: Boolean = false,
-        val errorMessage: String? = null,
+        val errorMessage: StringResource? = null,
     ) : ExtensionStoreDialog()
 }
 

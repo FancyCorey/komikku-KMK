@@ -129,7 +129,7 @@
     <string name="action_filter_unfinished_chapter">Capitolo incompleto</string>
     <string name="active_account">Account attivo</string>
     <string name="login_failed">Login fallito</string>
-    <string name="discord_status_description">Sezione Discord</string>
+    <string name="discord_status_description">%1$s %2$s</string>
     <string name="discord_accounts">Account Discord</string>
     <string name="no_accounts_found">Nessun account trovato</string>
     <string name="pref_category_discord_customization">Personalizzazione Discord</string>

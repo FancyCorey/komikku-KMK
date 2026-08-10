@@ -76,7 +76,7 @@ class KomgaApi(
                     last_chapter_read = progress.lastReadContinuousNumberSort
                 }
             } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "Could not get item: $url" }
+                logcat(LogPriority.WARN) { "Komga tracking lookup failed" }
                 throw e
             }
         }

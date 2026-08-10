@@ -1,0 +1,120 @@
+-- KMK --> v0.7.38: For You candidate discovery memory queries
+CREATE TABLE IF NOT EXISTS recommendation_candidate_memory (
+    source_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    manga_id INTEGER,
+    title TEXT NOT NULL,
+    thumbnail_url TEXT,
+    normalized_title TEXT NOT NULL,
+    last_score REAL NOT NULL DEFAULT 0.0,
+    matched_groups_json TEXT,
+    result_reasons_json TEXT,
+    query_signature TEXT NOT NULL,
+    query_tags_json TEXT NOT NULL,
+    query_strategy TEXT,
+    page INTEGER NOT NULL DEFAULT 1,
+    discovered_at INTEGER NOT NULL,
+    last_scored_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    profile_fingerprint TEXT,
+    filtered_reason TEXT,
+    PRIMARY KEY (source_id, url)
+);
+
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_source_index ON recommendation_candidate_memory(source_id);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_score_index ON recommendation_candidate_memory(last_score);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_seen_index ON recommendation_candidate_memory(last_seen_at);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_query_index ON recommendation_candidate_memory(query_signature);
+
+getAll:
+SELECT *
+FROM recommendation_candidate_memory
+ORDER BY last_score DESC;
+
+getBySource:
+SELECT *
+FROM recommendation_candidate_memory
+WHERE source_id = :sourceId
+ORDER BY last_score DESC;
+
+getBySources:
+SELECT *
+FROM recommendation_candidate_memory
+WHERE source_id IN :sourceIds
+ORDER BY last_score DESC;
+
+getBySourceUrl:
+SELECT *
+FROM recommendation_candidate_memory
+WHERE source_id = :sourceId AND url = :url;
+
+getBySourceQuery:
+SELECT *
+FROM recommendation_candidate_memory
+WHERE source_id = :sourceId AND query_signature = :querySignature
+ORDER BY last_score DESC;
+
+getDistinctPagesBySourceQuery:
+SELECT DISTINCT page
+FROM recommendation_candidate_memory
+WHERE source_id = :sourceId AND query_signature = :querySignature;
+
+countBySource:
+SELECT COUNT(*)
+FROM recommendation_candidate_memory
+WHERE source_id = :sourceId;
+
+upsert:
+INSERT INTO recommendation_candidate_memory(
+    source_id, url, manga_id, title, thumbnail_url, normalized_title,
+    last_score, matched_groups_json, result_reasons_json,
+    query_signature, query_tags_json, query_strategy, page,
+    discovered_at, last_scored_at, last_seen_at, profile_fingerprint, filtered_reason
+)
+VALUES (
+    :sourceId, :url, :mangaId, :title, :thumbnailUrl, :normalizedTitle,
+    :lastScore, :matchedGroupsJson, :resultReasonsJson,
+    :querySignature, :queryTagsJson, :queryStrategy, :page,
+    :discoveredAt, :lastScoredAt, :lastSeenAt, :profileFingerprint, :filteredReason
+)
+ON CONFLICT(source_id, url)
+DO UPDATE SET
+    manga_id = :mangaId,
+    title = :title,
+    thumbnail_url = :thumbnailUrl,
+    normalized_title = :normalizedTitle,
+    last_score = :lastScore,
+    matched_groups_json = :matchedGroupsJson,
+    result_reasons_json = :resultReasonsJson,
+    query_signature = :querySignature,
+    query_tags_json = :queryTagsJson,
+    query_strategy = :queryStrategy,
+    page = MAX(page, :page),
+    last_scored_at = :lastScoredAt,
+    last_seen_at = :lastSeenAt,
+    profile_fingerprint = :profileFingerprint,
+    filtered_reason = :filteredReason
+WHERE source_id = :sourceId AND url = :url;
+
+deleteBySourceUrl:
+DELETE FROM recommendation_candidate_memory
+WHERE source_id = :sourceId AND url = :url;
+
+deleteBySource:
+DELETE FROM recommendation_candidate_memory
+WHERE source_id = :sourceId;
+
+deleteAll:
+DELETE FROM recommendation_candidate_memory;
+
+pruneOldestBySource:
+DELETE FROM recommendation_candidate_memory
+WHERE source_id = :sourceId
+AND (source_id, url) IN (
+    SELECT source_id, url
+    FROM recommendation_candidate_memory
+    WHERE source_id = :sourceId
+    ORDER BY last_seen_at ASC, last_score ASC
+    LIMIT :pruneCount
+);
+-- KMK <--

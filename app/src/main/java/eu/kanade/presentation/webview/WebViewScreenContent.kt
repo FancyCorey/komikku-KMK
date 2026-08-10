@@ -20,6 +20,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,19 @@ import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
+import java.net.URI
+
+// KMK -->
+/** Returns true only for ordinary HTTP(S) web URLs accepted by the embedded WebView. */
+internal fun isAllowedWebUrl(url: String): Boolean =
+    runCatching {
+        URI(url).let { uri ->
+            uri.scheme?.lowercase() in setOf("http", "https") &&
+                !uri.host.isNullOrBlank() &&
+                uri.userInfo == null
+        }
+    }.getOrDefault(false)
+// KMK <--
 
 class WebViewWindow(webContent: WebContent, val navigator: WebViewNavigator) {
     var state by mutableStateOf(WebViewState(webContent))
@@ -76,6 +90,11 @@ fun WebViewScreenContent(
     headers: Map<String, String> = emptyMap(),
     onUrlChange: (String) -> Unit = {},
 ) {
+    if (!isAllowedWebUrl(url)) {
+        LaunchedEffect(url) { onNavigateUp() }
+        return
+    }
+
     val coroutineScope = rememberCoroutineScope()
 
     val windowStack = remember {
@@ -132,15 +151,14 @@ fun WebViewScreenContent(
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                // Ignore intents urls
-                if (url.startsWith("intent://")) return true
+                // Reject every non-HTTP(S) scheme, including intent://, file://, javascript:, and
+                // scheme-prefix lookalikes such as httpx://. The embedded view must never navigate
+                // to an arbitrary Android or local-resource handler.
+                if (!isAllowedWebUrl(url)) return true
 
-                // Only open valid web urls
-                if (url.startsWith("http") || url.startsWith("https")) {
-                    if (url != view?.url) {
-                        view?.loadUrl(url, headers)
-                        return true
-                    }
+                if (url != view?.url) {
+                    view?.loadUrl(url, headers)
+                    return true
                 }
 
                 return false

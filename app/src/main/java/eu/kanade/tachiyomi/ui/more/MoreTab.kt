@@ -33,6 +33,7 @@ import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsScreen
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
+import exh.ocr.OcrSearchScreen
 import exh.ui.batchadd.BatchAddScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -93,6 +94,9 @@ data object MoreTab : Tab {
             // SY <--
             // KMK -->
             onClickLibraryUpdateErrors = { navigator.push(LibraryUpdateErrorScreen()) },
+            // KMK OCR -->
+            onClickOcrSearch = { navigator.push(OcrSearchScreen()) },
+            // KMK OCR <--
             // KMK <--
         )
 

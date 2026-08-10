@@ -1,0 +1,58 @@
+-- KMK -->
+-- Local-only For You exposure history: records that a card was actually present in a loaded,
+-- visible result state (never a fetch-only page), so repeatedly-shown-but-untouched candidates can
+-- be softly reordered lower without ever being hidden or deleted. Identity is (source_id, url), the
+-- same stable local identity recommendation_candidate_memory already uses -- never url alone, so two
+-- different sources that happen to expose an identical relative url path cannot collide.
+--
+-- Deliberately excluded from backup/sync/OCR/export, exactly like recommendation_candidate_memory
+-- and recommendation_discovery_progress -- see BackupCreator/BackupRestorer, neither of which
+-- references this table. No raw title, thumbnail, or query text is stored.
+CREATE TABLE recommendation_exposure (
+    source_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    manga_id INTEGER,
+    first_exposed_at INTEGER NOT NULL,
+    last_exposed_at INTEGER NOT NULL,
+    exposure_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (source_id, url)
+);
+
+CREATE INDEX recommendation_exposure_last_exposed_index
+    ON recommendation_exposure(last_exposed_at);
+CREATE INDEX recommendation_exposure_source_index
+    ON recommendation_exposure(source_id);
+
+getBySourceUrl:
+SELECT *
+FROM recommendation_exposure
+WHERE source_id = :sourceId AND url = :url;
+
+getBySource:
+SELECT *
+FROM recommendation_exposure
+WHERE source_id = :sourceId;
+
+-- Atomic increment-or-insert so a concurrent recording batch can never lose an exposure count to a
+-- read-then-write race. exposure_count starts at 1 on first sighting.
+recordExposure:
+INSERT INTO recommendation_exposure(source_id, url, manga_id, first_exposed_at, last_exposed_at, exposure_count)
+VALUES (:sourceId, :url, :mangaId, :timestamp, :timestamp, 1)
+ON CONFLICT(source_id, url)
+DO UPDATE SET
+    manga_id = coalesce(:mangaId, manga_id),
+    last_exposed_at = :timestamp,
+    exposure_count = exposure_count + 1
+WHERE source_id = :sourceId AND url = :url;
+
+pruneOlderThan:
+DELETE FROM recommendation_exposure
+WHERE last_exposed_at < :cutoff;
+
+deleteBySource:
+DELETE FROM recommendation_exposure
+WHERE source_id = :sourceId;
+
+deleteAll:
+DELETE FROM recommendation_exposure;
+-- KMK <--

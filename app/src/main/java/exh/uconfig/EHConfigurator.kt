@@ -1,6 +1,7 @@
 package exh.uconfig
 
 import android.content.Context
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.source.online.all.EHentai
 import eu.kanade.tachiyomi.util.asJsoup
@@ -9,6 +10,7 @@ import exh.log.xLogD
 import exh.source.EH_SOURCE_ID
 import exh.source.EXH_SOURCE_ID
 import exh.source.ExhPreferences
+import exh.util.EvaluationModeFormatter
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -20,6 +22,7 @@ import java.util.Locale
 
 class EHConfigurator(val context: Context) {
     private val exhPreferences: ExhPreferences by injectLazy()
+    private val sourcePreferences: SourcePreferences by injectLazy()
     private val sourceManager: SourceManager by injectLazy()
 
     private val configuratorClient = OkHttpClient.Builder()
@@ -110,7 +113,14 @@ class EHConfigurator(val context: Context) {
 
         // No profile slots left :(
         if (availableProfiles.isEmpty()) {
-            throw IllegalStateException(context.stringResource(SYMR.strings.eh_settings_out_of_slots_error, source.name))
+            val displaySourceName = if (sourcePreferences.evaluationMode().get()) {
+                EvaluationModeFormatter.sourceLabel(source.id)
+            } else {
+                source.name
+            }
+            throw IllegalStateException(
+                context.stringResource(SYMR.strings.eh_settings_out_of_slots_error, displaySourceName),
+            )
         }
         // Create profile in available slot
 

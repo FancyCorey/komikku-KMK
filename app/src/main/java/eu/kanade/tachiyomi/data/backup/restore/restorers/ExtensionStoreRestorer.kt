@@ -1,12 +1,12 @@
 package eu.kanade.tachiyomi.data.backup.restore.restorers
 
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
-import tachiyomi.data.Database
+import tachiyomi.data.DatabaseHandler
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class ExtensionStoreRestorer(
-    private val database: Database = Injekt.get(),
+    private val handler: DatabaseHandler = Injekt.get(),
 ) {
 
     suspend operator fun invoke(
@@ -20,15 +20,17 @@ class ExtensionStoreRestorer(
             backupStore.indexUrl
         }
         // KMK <--
-        database.extension_storeQueries.upsert(
-            indexUrl = indexUrl,
-            name = backupStore.name,
-            badgeLabel = backupStore.badgeLabel ?: backupStore.name,
-            signingKey = backupStore.signingKey,
-            contactWebsite = backupStore.contactWebsite,
-            contactDiscord = backupStore.contactDiscord,
-            isLegacy = backupStore.isLegacy ?: true,
-            extensionListUrl = backupStore.extensionListUrl,
-        )
+        handler.await {
+            extension_storeQueries.upsert(
+                indexUrl = indexUrl,
+                name = backupStore.name,
+                badgeLabel = backupStore.badgeLabel ?: backupStore.name,
+                signingKey = backupStore.signingKey,
+                contactWebsite = backupStore.contactWebsite,
+                contactDiscord = backupStore.contactDiscord,
+                isLegacy = backupStore.isLegacy ?: true,
+                extensionListUrl = backupStore.extensionListUrl,
+            )
+        }
     }
 }

@@ -52,6 +52,9 @@ import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
+internal fun shouldPropagateInstallationCancellation(error: Throwable): Boolean =
+    error is CancellationException
+
 class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
 
@@ -198,7 +201,7 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
                 notifier.onDownloadError(
                     url,
                     // KMK -->
-                    e.message,
+                    context.stringResource(MR.strings.update_check_notification_download_error),
                     // KMK <--
                 )
             }
@@ -251,9 +254,12 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
                 }
             }
         } catch (error: Exception) {
+            if (shouldPropagateInstallationCancellation(error)) {
+                throw error
+            }
             // Either install package can't be found (probably bots) or there's a security exception
             // with the download manager. Nothing we can workaround.
-            context.toast(error.message)
+            context.toast(context.stringResource(MR.strings.update_check_notification_download_error))
             notifier.cancelInstallNotification()
             notifier.promptInstall(file.getUriCompat(context))
         }

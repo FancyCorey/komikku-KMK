@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- KMK: distinguish disposable public-test installs from release installs. -->
+    <string name="app_name" translatable="false">Komikku KMK Test</string>
+</resources>

@@ -1,0 +1,51 @@
+-- KMK --> v0.7.0: Phase 4 – persistent cross-source manga link groups
+CREATE TABLE manga_cross_source_link (
+    source INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (source, url)
+);
+
+CREATE INDEX manga_cross_source_link_group_index ON manga_cross_source_link(group_id);
+
+getByGroupId:
+SELECT *
+FROM manga_cross_source_link
+WHERE group_id = :groupId;
+
+getBySourceUrl:
+SELECT *
+FROM manga_cross_source_link
+WHERE source = :source
+AND url = :url;
+
+getAll:
+SELECT *
+FROM manga_cross_source_link;
+
+upsert:
+INSERT INTO manga_cross_source_link(source, url, group_id, title, created_at, updated_at)
+VALUES (:source, :url, :groupId, :title, :createdAt, :updatedAt)
+ON CONFLICT(source, url)
+DO UPDATE
+SET
+    group_id = :groupId,
+    title = :title,
+    updated_at = :updatedAt
+WHERE source = :source AND url = :url;
+
+deleteBySourceUrl:
+DELETE FROM manga_cross_source_link
+WHERE source = :source
+AND url = :url;
+
+deleteByGroupId:
+DELETE FROM manga_cross_source_link
+WHERE group_id = :groupId;
+
+deleteAll:
+DELETE FROM manga_cross_source_link;
+-- KMK <--

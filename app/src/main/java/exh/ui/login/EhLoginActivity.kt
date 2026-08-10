@@ -90,7 +90,7 @@ class EhLoginActivity : BaseActivity() {
     }
 
     private fun onPageFinished(view: WebView, url: String, customIgneous: String?) {
-        xLogD(url)
+        xLogD("EH login page processing started")
         val parsedUrl = url.toUri()
         if (parsedUrl.host.equals("forums.e-hentai.org", ignoreCase = true)) {
             view.evaluateJavascript(

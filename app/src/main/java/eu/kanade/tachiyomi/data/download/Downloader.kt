@@ -9,9 +9,13 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.UnmeteredSource
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.DiskUtil.NOMEDIA_FILE
 import eu.kanade.tachiyomi.util.storage.saveTo
@@ -264,8 +268,8 @@ class Downloader(
             }
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
-            logcat(LogPriority.ERROR, e)
-            notifier.onError(e.message)
+            logcat(LogPriority.ERROR) { "Download job failed" }
+            notifier.onError(context.stringResource(MR.strings.download_notifier_unknown_error))
             stop()
         }
     }
@@ -349,7 +353,12 @@ class Downloader(
 
         val mangaDir = provider.getMangaDir(/* SY --> */ download.manga.ogTitle /* SY <-- */, download.source).getOrElse { e ->
             download.status = Download.State.ERROR
-            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                context.stringResource(MR.strings.download_notifier_unknown_error),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
             return
         }
 
@@ -376,7 +385,9 @@ class Downloader(
             // If the page list already exists, start from the file
             val pageList = download.pages ?: run {
                 // Otherwise, pull page list from network and add them to download object
-                val pages = download.source.getPageList(download.chapter.toSChapter())
+                val pages = SourceRuntime.run(download.source, SourceRuntimeOperation.PageList) {
+                    (this as HttpSource).getPageList(download.chapter.toSChapter())
+                }.getOrThrowSourceRuntimeException()
 
                 if (pages.isEmpty()) {
                     throw Exception(context.stringResource(MR.strings.page_list_empty_error))
@@ -407,8 +418,11 @@ class Downloader(
                     if (page.imageUrl.isNullOrEmpty()) {
                         page.status = Page.State.LoadPage
                         try {
-                            page.imageUrl = download.source.getImageUrl(page)
+                            page.imageUrl = SourceRuntime.run(download.source, SourceRuntimeOperation.ImageUrl) {
+                                (this as HttpSource).getImageUrl(page)
+                            }.getOrThrowSourceRuntimeException()
                         } catch (e: Throwable) {
+                            rethrowIfFatal(e)
                             page.status = Page.State.Error(e)
                         }
                     }
@@ -450,10 +464,16 @@ class Downloader(
             download.status = Download.State.DOWNLOADED
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
+            rethrowIfFatal(error)
             // If the page list threw, it will resume here
             logcat(LogPriority.ERROR, error)
             download.status = Download.State.ERROR
-            notifier.onError(error.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                context.stringResource(MR.strings.download_notifier_unknown_error),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
         }
     }
 
@@ -502,7 +522,12 @@ class Downloader(
             // Mark this page as error and allow to download the remaining
             page.progress = 0
             page.status = Page.State.Error(e)
-            notifier.onError(e.message, download.chapter.name, download.manga.title, download.manga.id)
+            notifier.onError(
+                context.stringResource(MR.strings.download_notifier_unknown_error),
+                download.chapter.name,
+                download.manga.title,
+                download.manga.id,
+            )
         }
     }
 
@@ -524,7 +549,9 @@ class Downloader(
         page.status = Page.State.DownloadImage
         page.progress = 0
         return flow {
-            val response = source.getImage(page, dataSaver)
+            val response = SourceRuntime.run(source, SourceRuntimeOperation.Image) {
+                (this as HttpSource).getImage(page, dataSaver)
+            }.getOrThrowSourceRuntimeException()
             val file = tmpDir.createFile("$filename.tmp")!!
             try {
                 response.body.source().saveTo(file.openOutputStream())
@@ -542,7 +569,9 @@ class Downloader(
                 if (attempt < 3) {
                     delay((2L shl attempt.toInt()) * 1000)
                     if (source.isEhBasedSource()) {
-                        page.imageUrl = source.getImageUrl(page)
+                        page.imageUrl = SourceRuntime.run(source, SourceRuntimeOperation.ImageUrl) {
+                            (this as HttpSource).getImageUrl(page)
+                        }.getOrThrowSourceRuntimeException()
                     }
                     true
                 } else {
@@ -600,8 +629,8 @@ class Downloader(
                 imageFile,
                 filenamePrefix,
             )
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to split downloaded image" }
+        } catch (_: Exception) {
+            logcat(LogPriority.ERROR) { "Downloaded image split failed" }
         }
     }
 

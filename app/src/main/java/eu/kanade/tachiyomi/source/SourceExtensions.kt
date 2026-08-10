@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import exh.source.EH_PACKAGE
 import exh.source.LOCAL_SOURCE_PACKAGE
 import exh.source.isEhBasedSource
+import exh.util.EvaluationModeFormatter
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.presentation.core.icons.FlagEmoji
 import tachiyomi.source.local.isLocal
@@ -17,6 +18,13 @@ fun Source.getNameForMangaInfo(
     // SY <--
 ): String {
     val preferences = Injekt.get<SourcePreferences>()
+    // KMK --> v0.8.19: evaluation mode source-name obfuscation. This is a plain (non-@Composable)
+    // extension function, so it reads the preference directly instead of via
+    // rememberEvaluationModeEnabled().
+    if (preferences.evaluationMode().get() && !isLocalOrStub()) {
+        return EvaluationModeFormatter.sourceLabel(id)
+    }
+    // KMK <--
     val enabledLanguages = preferences.enabledLanguages().get()
         .filterNot { it in listOf("all", "other") }
     val hasOneActiveLanguages = enabledLanguages.size == 1

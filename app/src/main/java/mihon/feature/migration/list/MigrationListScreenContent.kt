@@ -56,11 +56,14 @@ import eu.kanade.presentation.util.animateItemFastScroll
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.presentation.util.rememberResourceBitmapPainter
 import eu.kanade.tachiyomi.R
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import mihon.feature.migration.list.models.MigratingManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -125,72 +128,119 @@ fun MigrationListScreenContent(
     ) { contentPadding ->
         FastScrollLazyColumn(contentPadding = contentPadding + topSmallPaddingValues) {
             items(items, key = { it.manga.id }) { item ->
-                Row(
+                Column(
                     Modifier
                         .fillMaxWidth()
                         .animateItemFastScroll()
                         .padding(
                             start = MaterialTheme.padding.medium,
                             end = MaterialTheme.padding.small,
-                        )
-                        .height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                        ),
                 ) {
-                    MigrationListItem(
-                        modifier = Modifier
-                            .weight(1f)
-                            .align(Alignment.Top)
-                            .fillMaxHeight(),
-                        manga = item.manga,
-                        source = item.source,
-                        chapterCount = item.chapterCount,
-                        latestChapter = item.latestChapter,
-                        onClick = { onItemClick(item.manga) },
-                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MigrationListItem(
+                            modifier = Modifier
+                                .weight(1f)
+                                .align(Alignment.Top)
+                                .fillMaxHeight(),
+                            manga = item.manga,
+                            source = item.source,
+                            sourceId = item.manga.source,
+                            chapterCount = item.chapterCount,
+                            latestChapter = item.latestChapter,
+                            onClick = { onItemClick(item.manga) },
+                        )
 
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.weight(0.2f),
-                    )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.weight(0.2f),
+                        )
 
-                    val result by item.searchResult.collectAsState()
-                    MigrationListItemResult(
-                        modifier = Modifier
-                            .weight(1f)
-                            .align(Alignment.Top)
-                            .fillMaxHeight(),
-                        result = result,
-                        onItemClick = onItemClick,
-                    )
+                        val result by item.searchResult.collectAsState()
+                        MigrationListItemResult(
+                            modifier = Modifier
+                                .weight(1f)
+                                .align(Alignment.Top)
+                                .fillMaxHeight(),
+                            result = result,
+                            onItemClick = onItemClick,
+                        )
 
-                    MigrationListItemAction(
-                        modifier = Modifier.weight(0.2f),
-                        result = result,
-                        onSearchManually = { onSearchManually(item) },
-                        onSkip = { onSkip(item.manga.id) },
-                        onMigrate = { onMigrate(item.manga.id) },
-                        onCopy = { onCopy(item.manga.id) },
-                        // KMK -->
-                        onCancel = { onCancel(item.manga.id) },
-                        // KMK <--
-                    )
+                        MigrationListItemAction(
+                            modifier = Modifier.weight(0.2f),
+                            result = result,
+                            onSearchManually = { onSearchManually(item) },
+                            onSkip = { onSkip(item.manga.id) },
+                            onMigrate = { onMigrate(item.manga.id) },
+                            onCopy = { onCopy(item.manga.id) },
+                            // KMK -->
+                            onCancel = { onCancel(item.manga.id) },
+                            // KMK <--
+                        )
+                    }
+                    // KMK: a per-item
+                    // migration attempt status -- shown instead of silently removing the item from
+                    // the list on failure (see MigrationListScreenModel.migrateNow()/
+                    // migrateMangas()). Retry uses the same Migrate/Copy actions above.
+                    val migrationResult by item.migrationResult.collectAsState()
+                    MigrationListItemStatus(migrationResult)
                 }
             }
         }
     }
 }
 
+// KMK>
+@Composable
+private fun MigrationListItemStatus(state: MigratingManga.MigrationResultState?) {
+    when (state) {
+        MigratingManga.MigrationResultState.InProgress -> {
+            Text(
+                text = stringResource(KMR.strings.migration_list_item_in_progress),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(
+                    start = MaterialTheme.padding.extraSmall,
+                    bottom = MaterialTheme.padding.extraSmall,
+                ),
+            )
+        }
+        is MigratingManga.MigrationResultState.Failed -> {
+            if (state.retryable) {
+                Text(
+                    text = stringResource(KMR.strings.migration_list_item_failed_retryable),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(
+                        start = MaterialTheme.padding.extraSmall,
+                        bottom = MaterialTheme.padding.extraSmall,
+                    ),
+                )
+            }
+        }
+        null -> Unit
+    }
+}
+// KMK <--
+
 @Composable
 fun MigrationListItem(
     modifier: Modifier,
     manga: Manga,
     source: String,
+    sourceId: Long,
     chapterCount: Int,
     latestChapter: Double?,
     onClick: () -> Unit,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     Column(
         modifier = modifier
             .widthIn(max = 150.dp)
@@ -241,7 +291,11 @@ fun MigrationListItem(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = source,
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(sourceId)
+                } else {
+                    source
+                },
                 overflow = TextOverflow.Ellipsis,
                 maxLines = 1,
                 style = MaterialTheme.typography.titleSmall,
@@ -309,6 +363,7 @@ fun MigrationListItemResult(
                     modifier = Modifier.fillMaxSize(),
                     manga = result.manga,
                     source = result.source,
+                    sourceId = result.manga.source,
                     chapterCount = result.chapterCount,
                     latestChapter = result.latestChapter,
                     onClick = { onItemClick(result.manga) },

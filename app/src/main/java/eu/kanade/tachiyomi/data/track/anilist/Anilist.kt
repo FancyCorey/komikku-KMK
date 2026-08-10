@@ -13,6 +13,7 @@ import exh.log.xLogW
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.injectLazy
@@ -221,6 +222,8 @@ class Anilist(id: Long) : BaseTracker(id, "AniList"), DeletableTracker {
             val (username, scoreType) = api.getCurrentUser()
             scorePreference.set(scoreType)
             saveCredentials(username.toString(), oauth.accessToken)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             logout()
         }
@@ -240,8 +243,10 @@ class Anilist(id: Long) : BaseTracker(id, "AniList"), DeletableTracker {
     override suspend fun searchById(id: String): TrackSearch? {
         return try {
             api.searchById(id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            xLogW("Error during searchById '$id': ${e.message}", e)
+            xLogW("AniList search-by-ID failed")
             null
         }
     }

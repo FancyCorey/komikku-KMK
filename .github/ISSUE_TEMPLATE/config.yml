@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❌ Help with Extensions
-    url: https://komikku-app.github.io/docs/faq/browse/extensions
-    about: For extension-related questions/issues
-  - name: 🖥️ Komikku website
-    url: https://komikku-app.github.io/
-    about: Guides, troubleshooting, and answers to common questions
+  - name: Extension support boundary
+    url: https://github.com/FancyCorey/komikku-KMK/blob/master/docs/kmk/user-guide.md
+    about: Read the source and extension support notes before filing an issue.
+  - name: Security report
+    url: https://github.com/FancyCorey/komikku-KMK/security/advisories/new
+    about: Report suspected security or privacy vulnerabilities privately.

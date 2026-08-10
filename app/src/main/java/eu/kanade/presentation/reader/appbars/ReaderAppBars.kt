@@ -99,6 +99,8 @@ fun ReaderAppBars(
     onClickPageLayout: () -> Unit,
     onClickShiftPage: () -> Unit,
     // SY <--
+    // KMK v0.8.4
+    onClickReadingTimer: () -> Unit,
 ) {
     val isRtl = viewer is R2LPagerViewer
     val backgroundColor = MaterialTheme.colorScheme
@@ -275,6 +277,8 @@ fun ReaderAppBars(
                     onClickPageLayout = onClickPageLayout,
                     onClickShiftPage = onClickShiftPage,
                     // SY <--
+                    // KMK v0.8.4
+                    onClickReadingTimer = onClickReadingTimer,
                 )
             }
         }

@@ -28,9 +28,9 @@ suspend fun Manga.editCover(
 ) {
     if (isLocal()) {
         coverManager.update(toSManga(), stream)
-        updateManga.awaitUpdateCoverLastModified(id)
+        check(updateManga.awaitUpdateCoverLastModified(id))
     } else if (favorite) {
         coverCache.setCustomCoverToCache(this, stream)
-        updateManga.awaitUpdateCoverLastModified(id)
+        check(updateManga.awaitUpdateCoverLastModified(id))
     }
 }

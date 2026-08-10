@@ -57,6 +57,7 @@ import eu.kanade.domain.connections.service.ConnectionsPreferences
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.presentation.components.AppStateBanners
+import eu.kanade.presentation.components.BackupCleanupRecoveryDialog
 import eu.kanade.presentation.components.DownloadedOnlyBannerBackgroundColor
 import eu.kanade.presentation.components.IncognitoModeBannerBackgroundColor
 import eu.kanade.presentation.components.IndexingBannerBackgroundColor
@@ -64,7 +65,10 @@ import eu.kanade.presentation.components.RestoringBannerBackgroundColor
 import eu.kanade.presentation.components.SyncingBannerBackgroundColor
 import eu.kanade.presentation.components.UpdatingBannerBackgroundColor
 import eu.kanade.presentation.more.settings.screen.ConfigureExhDialog
+import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen.Companion.getReleaseNotes
+import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewDialog
+import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewPolicy
 import eu.kanade.presentation.more.settings.screen.about.WhatsNewDialog
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
@@ -91,6 +95,7 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.deeplink.DeepLinkScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
+import eu.kanade.tachiyomi.ui.more.KmkRecsWhatsNewScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
 import eu.kanade.tachiyomi.ui.more.WhatsNewScreen
@@ -104,7 +109,10 @@ import eu.kanade.tachiyomi.util.view.setComposeContent
 import exh.debug.DebugToggles
 import exh.eh.EHentaiUpdateWorker
 import exh.log.DebugModeOverlay
+import exh.recs.KmkRecsReleaseNotes
+import exh.recs.evaluation.SourceEvaluationScreen
 import exh.source.ExhPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
@@ -118,6 +126,7 @@ import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.migration.Migrator
 import mihon.core.migration.Migrator.scope
+import mihon.domain.extension.ExtensionStoreUrlPolicy
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.Preference
@@ -419,6 +428,22 @@ class MainActivity : BaseActivity() {
                     // KMK <--
                 )
             }
+
+            // KMK -->
+            val kmkRecsLastSeenVersion = Injekt.get<PreferenceStore>().getInt(
+                Preference.appStateKey("kmk_recs_last_seen_version_code"),
+                0,
+            )
+            var showKmkChangelog by remember {
+                mutableStateOf(
+                    KmkRecsWhatsNewPolicy.hasUnseenChangelog(
+                        currentVersionCode = KmkRecsReleaseNotes.VERSION_CODE,
+                        lastSeenVersionCode = kmkRecsLastSeenVersion.get(),
+                    ),
+                )
+            }
+            // KMK <--
+
             if (showChangelog) {
                 // KMK -->
                 WhatsNewDialog(
@@ -449,7 +474,26 @@ class MainActivity : BaseActivity() {
                     },
                 )
                 // KMK <--
+                // KMK --> v0.8.1-fix2: the normal Komikku changelog dialog takes priority within
+                // this launch — while showChangelog is true, shouldShowKmkDialog() always returns
+                // false, so the KMK dialog stays pending (not shown, not marked seen) rather than
+                // stacking both dialogs. Once showChangelog flips to false (dismissed/opened above),
+                // this branch is re-evaluated on the next recomposition and the KMK dialog shows
+                // then, if it still has unseen content. See KmkRecsWhatsNewPolicy's KDoc.
+            } else if (KmkRecsWhatsNewPolicy.shouldShowKmkDialog(showChangelog, showKmkChangelog)) {
+                KmkRecsWhatsNewDialog(
+                    onDismissRequest = {
+                        showKmkChangelog = false
+                        kmkRecsLastSeenVersion.set(KmkRecsWhatsNewPolicy.seenVersionCodeOnAcknowledge(KmkRecsReleaseNotes.VERSION_CODE))
+                    },
+                    onOpenWhatsNew = {
+                        showKmkChangelog = false
+                        kmkRecsLastSeenVersion.set(KmkRecsWhatsNewPolicy.seenVersionCodeOnAcknowledge(KmkRecsReleaseNotes.VERSION_CODE))
+                        navigator?.push(KmkRecsWhatsNewScreen())
+                    },
+                )
             }
+            // KMK <--
             // KMK -->
             previewLastVersion.set(previewCurrentVersion)
             // KMK <--
@@ -457,6 +501,12 @@ class MainActivity : BaseActivity() {
             // SY -->
             ConfigureExhDialog(run = runExhConfigureDialog, onRunning = { runExhConfigureDialog = false })
             // SY <--
+
+            // KMK: rendered at
+            // the application composition root -- alongside the other always-reachable dialogs above
+            // -- so a pending backup SAF cleanup offer stays visible/actionable regardless of which
+            // screen is currently active, or whether CreateBackupScreen itself has been popped.
+            BackupCleanupRecoveryDialog()
         }
 
         val startTime = System.currentTimeMillis()
@@ -513,6 +563,8 @@ class MainActivity : BaseActivity() {
                     if (!LibraryUpdateJob.isPeriodicUpdateScheduled(context)) {
                         LibraryUpdateJob.setupTask(context)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                     withContext(Dispatchers.Main) {
@@ -527,6 +579,8 @@ class MainActivity : BaseActivity() {
                     if (!BackupCreateJob.isPeriodicBackupScheduled(context)) {
                         BackupCreateJob.setupTask(context)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                     withContext(Dispatchers.Main) {
@@ -564,6 +618,8 @@ class MainActivity : BaseActivity() {
                         )
                         navigator.push(updateScreen)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e)
                 }
@@ -574,6 +630,8 @@ class MainActivity : BaseActivity() {
         LaunchedEffect(Unit) {
             try {
                 ExtensionApi().checkForUpdates(context)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e)
             }
@@ -665,6 +723,41 @@ class MainActivity : BaseActivity() {
                 navigator.popUntilRoot()
                 HomeScreen.Tab.More(toDownloads = false, toLibraryUpdateErrors = true)
             }
+            Constants.OPEN_SOURCE_EVALUATION -> {
+                navigator.popUntilRoot()
+                navigator.push(SourceEvaluationScreen())
+                null
+            }
+            Constants.OPEN_READER_SCHEDULE_SETTINGS -> {
+                navigator.popUntilRoot()
+                navigator.push(SettingsReaderScreen)
+                null
+            }
+            // KMK v0.8.8: chapter-completion rating prompt's "rate other versions" step. Only
+            // primitives travel through the Intent (manga id + rating int) — the actual
+            // CrossExtensionMatchScreen/CrossExtensionMatchMode objects are constructed fresh here,
+            // never serialized. Reuses the exact same CrossExtensionMatchScreen.fromMode(...) entry
+            // point RatedMangaScreen's item menu already uses for "Find Other Versions".
+            Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING -> {
+                val mangaId = intent.extras?.getLong(Constants.CROSS_EXTENSION_MATCH_MANGA_ID_EXTRA) ?: return false
+                val ratingValue = intent.extras?.getInt(Constants.CROSS_EXTENSION_MATCH_RATING_EXTRA) ?: return false
+                val rating = tachiyomi.domain.taste.model.MangaRating.fromValue(ratingValue) ?: return false
+                navigator.popUntilRoot()
+                navigator.push(
+                    exh.recs.matching.CrossExtensionMatchScreen.fromMode(
+                        mangaId,
+                        exh.recs.matching.CrossExtensionMatchMode.Rating(rating),
+                    ),
+                )
+                null
+            }
+            // KMK OCR -->
+            Constants.OPEN_OCR_SEARCH -> {
+                navigator.popUntilRoot()
+                navigator.push(exh.ocr.OcrSearchScreen())
+                null
+            }
+            // KMK OCR <--
             // KMK <--
             Intent.ACTION_SEARCH, Intent.ACTION_SEND, "com.google.android.gms.actions.SEARCH_ACTION" -> {
                 // If the intent match the "standard" Android search intent
@@ -689,16 +782,19 @@ class MainActivity : BaseActivity() {
             }
             Intent.ACTION_VIEW -> {
                 // Handling opening of backup files
-                if (intent.data.toString().endsWith(".tachibk")) {
+                val data = intent.data
+                if (BackupDeepLinkPolicy.isAllowed(data?.scheme, data?.path)) {
                     navigator.popUntilRoot()
-                    navigator.push(RestoreBackupScreen(intent.data.toString()))
+                    navigator.push(RestoreBackupScreen(data.toString()))
                 }
-                // Deep link to add extension store
-                else if (intent.isAddExtensionStoreIntent()) {
-                    intent.data?.getQueryParameter("url")?.let { repoUrl ->
-                        navigator.popUntilRoot()
-                        navigator.push(ExtensionStoresScreen(repoUrl))
-                    }
+                // Deep link to add extension repo
+                else if (intent.scheme == "tachiyomi" && intent.data?.host == "add-repo") {
+                    intent.data?.getQueryParameter("url")
+                        ?.takeIf(ExtensionStoreUrlPolicy::isAllowed)
+                        ?.let { repoUrl ->
+                            navigator.popUntilRoot()
+                            navigator.push(ExtensionStoresScreen(repoUrl))
+                        }
                 }
                 null
             }

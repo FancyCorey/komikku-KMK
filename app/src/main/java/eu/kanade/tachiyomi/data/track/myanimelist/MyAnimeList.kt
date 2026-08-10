@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALOAuth
 import exh.log.xLogW
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.injectLazy
@@ -143,6 +144,8 @@ class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker {
             interceptor.setAuth(oauth)
             val username = api.getCurrentUser()
             saveCredentials(username, oauth.accessToken)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             logout()
         }
@@ -162,13 +165,15 @@ class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker {
     override suspend fun searchById(id: String): TrackSearch? {
         val searchId = id.toIntOrNull()
             ?: run {
-                xLogW("Invalid ID format for searchById: $id")
+                xLogW("MyAnimeList search-by-ID input was invalid")
                 return null
             }
         return try {
             api.getMangaDetails(searchId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            xLogW("Error during searchById '$id': ${e.message}", e)
+            xLogW("MyAnimeList search-by-ID failed")
             null
         }
     }

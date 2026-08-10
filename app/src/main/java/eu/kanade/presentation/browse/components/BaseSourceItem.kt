@@ -13,6 +13,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import eu.kanade.domain.source.model.installedExtension
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.domain.source.model.Source
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.padding
@@ -61,13 +63,17 @@ private val defaultContent: @Composable RowScope.(
             .weight(1f),
     ) {
         Text(
-            text = source.name +
-                // KMK -->
-                (
-                    source.installedExtension?.let { extension ->
-                        " (${extension.name})".takeIf { extension.name != source.name }
-                    } ?: ""
-                    ),
+            // KMK -->
+            text = if (rememberEvaluationModeEnabled()) {
+                EvaluationModeFormatter.sourceLabel(source.id)
+            } else {
+                source.name +
+                    (
+                        source.installedExtension?.let { extension ->
+                            " (${extension.name})".takeIf { extension.name != source.name }
+                        } ?: ""
+                        )
+            },
             // KMK <--
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

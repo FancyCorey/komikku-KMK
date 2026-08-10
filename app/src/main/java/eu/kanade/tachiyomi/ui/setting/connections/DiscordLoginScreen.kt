@@ -49,6 +49,7 @@ import eu.kanade.tachiyomi.util.system.isDebugBuildType
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -304,8 +305,10 @@ class DiscordLoginScreen : Screen() {
                 withContext(Dispatchers.Main) {
                     context.toast(MR.strings.login_success)
                 }
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR, e) { "Discord login error: ${e.message}" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                logcat(LogPriority.ERROR) { "Discord login failed" }
                 // Show toast on main thread
                 withContext(Dispatchers.Main) {
                     context.toast(KMR.strings.login_failed)
@@ -319,7 +322,7 @@ class DiscordLoginScreen : Screen() {
 
         url.toHttpUrlOrNull()?.let {
             val cleared = networkHelper.cookieJar.remove(it)
-            logcat { "Cleared $cleared cookies for: $url" }
+            logcat { "Discord cookies cleared: $cleared" }
         }
     }
 }

@@ -1,0 +1,35 @@
+-- KMK --> v0.8.0: user-selected primary version per confirmed cross-source link group
+CREATE TABLE manga_cross_source_group_primary (
+    group_id TEXT NOT NULL PRIMARY KEY,
+    source INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+getByGroupId:
+SELECT *
+FROM manga_cross_source_group_primary
+WHERE group_id = :groupId;
+
+getAll:
+SELECT *
+FROM manga_cross_source_group_primary;
+
+upsert:
+INSERT INTO manga_cross_source_group_primary(group_id, source, url, updated_at)
+VALUES (:groupId, :source, :url, :updatedAt)
+ON CONFLICT(group_id)
+DO UPDATE
+SET
+    source = :source,
+    url = :url,
+    updated_at = :updatedAt
+WHERE group_id = :groupId;
+
+deleteByGroupId:
+DELETE FROM manga_cross_source_group_primary
+WHERE group_id = :groupId;
+
+deleteAll:
+DELETE FROM manga_cross_source_group_primary;
+-- KMK <--

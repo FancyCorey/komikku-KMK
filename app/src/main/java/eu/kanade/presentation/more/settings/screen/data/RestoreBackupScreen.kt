@@ -139,18 +139,18 @@ class RestoreBackupScreen(
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                                     appendLine(stringResource(MR.strings.invalid_backup_file))
                                 }
-                                appendLine(error.uri.toString())
-
                                 appendLine()
 
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                                     appendLine(stringResource(MR.strings.invalid_backup_file_error))
                                 }
-                                appendLine(error.message)
+                                appendLine(stringResource(MR.strings.unknown_error))
                             }
 
                             else -> {
-                                appendLine(error.toString())
+                                // Keep future restore-state additions from surfacing raw exception
+                                // text or other diagnostic payloads in the user-visible error UI.
+                                appendLine(stringResource(MR.strings.unknown_error))
                             }
                         }
                     }
@@ -194,7 +194,7 @@ private class RestoreBackupScreenModel(
             BackupFileValidator(context).validate(uri)
         } catch (e: Exception) {
             setError(
-                error = InvalidRestore(uri, e.message.toString()),
+                error = InvalidRestore,
                 canRestore = false,
             )
             return
@@ -202,7 +202,7 @@ private class RestoreBackupScreenModel(
 
         if (results.missingSources.isNotEmpty() || results.missingTrackers.isNotEmpty()) {
             setError(
-                error = MissingRestoreComponents(uri, results.missingSources, results.missingTrackers),
+                error = MissingRestoreComponents(results.missingSources, results.missingTrackers),
                 canRestore = true,
             )
             return
@@ -229,12 +229,8 @@ private class RestoreBackupScreenModel(
 }
 
 private data class MissingRestoreComponents(
-    val uri: Uri,
     val sources: List<String>,
     val trackers: List<String>,
 )
 
-private data class InvalidRestore(
-    val uri: Uri? = null,
-    val message: String,
-)
+private data object InvalidRestore

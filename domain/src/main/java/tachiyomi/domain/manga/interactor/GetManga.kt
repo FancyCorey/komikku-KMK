@@ -1,6 +1,7 @@
 package tachiyomi.domain.manga.interactor
 
 import eu.kanade.tachiyomi.source.online.MetadataSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -14,6 +15,8 @@ class GetManga(
     suspend fun await(id: Long): Manga? {
         return try {
             mangaRepository.getMangaById(id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             null

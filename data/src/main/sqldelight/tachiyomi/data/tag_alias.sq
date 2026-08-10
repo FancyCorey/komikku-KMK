@@ -1,0 +1,38 @@
+-- KMK -->
+CREATE TABLE tag_alias (
+    alias TEXT NOT NULL PRIMARY KEY,
+    normalized_alias TEXT NOT NULL,
+    group_key TEXT NOT NULL,
+    display_name TEXT NOT NULL
+);
+
+CREATE INDEX tag_alias_group_key_index ON tag_alias(group_key);
+CREATE INDEX tag_alias_normalized_index ON tag_alias(normalized_alias);
+
+getByNormalizedAlias:
+SELECT *
+FROM tag_alias
+WHERE normalized_alias = :normalizedAlias;
+
+getAll:
+SELECT *
+FROM tag_alias;
+
+upsert:
+INSERT INTO tag_alias(alias, normalized_alias, group_key, display_name)
+VALUES (:alias, :normalizedAlias, :groupKey, :displayName)
+ON CONFLICT(alias)
+DO UPDATE
+SET
+    normalized_alias = :normalizedAlias,
+    group_key = :groupKey,
+    display_name = :displayName
+WHERE alias = :alias;
+
+delete:
+DELETE FROM tag_alias
+WHERE alias = :alias;
+
+deleteAll:
+DELETE FROM tag_alias;
+-- KMK <--

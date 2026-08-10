@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FlipToBack
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,9 @@ fun MangaToolbar(
     hasFilters: Boolean,
     navigateUp: () -> Unit,
     onClickFilter: () -> Unit,
+    // KMK: null when nothing has been read yet, in which case the
+    // action is omitted entirely rather than shown disabled/inert.
+    onClickJumpToLastRead: (() -> Unit)? = null,
     onClickShare: (() -> Unit)?,
     onClickDownload: ((DownloadAction) -> Unit)?,
     onClickEditCategory: (() -> Unit)?,
@@ -146,6 +150,20 @@ fun MangaToolbar(
                             ),
                         )
                     }
+                    // KMK -->
+                    // Only offered when a target actually exists; an unread manga has no last-read
+                    // chapter, so the action is omitted rather than shown inert. `title` is used by
+                    // AppBar.Action as both the tooltip and the accessibility content description.
+                    if (onClickJumpToLastRead != null) {
+                        add(
+                            AppBar.Action(
+                                title = stringResource(KMR.strings.action_jump_to_last_read),
+                                icon = Icons.Outlined.History,
+                                onClick = onClickJumpToLastRead,
+                            ),
+                        )
+                    }
+                    // KMK <--
                     add(
                         AppBar.Action(
                             title = stringResource(MR.strings.action_filter),

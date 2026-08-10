@@ -1,5 +1,6 @@
 package tachiyomi.domain.category.interactor
 
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -8,11 +9,15 @@ class SetMangaCategories(
     private val mangaRepository: MangaRepository,
 ) {
 
-    suspend fun await(mangaId: Long, categoryIds: List<Long>) {
+    suspend fun await(mangaId: Long, categoryIds: List<Long>): Boolean {
         try {
             mangaRepository.setMangaCategories(mangaId, categoryIds)
+            return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            return false
         }
     }
 }

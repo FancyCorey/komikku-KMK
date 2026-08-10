@@ -89,6 +89,7 @@ leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", ve
 leakcanary-plumber = { module = "com.squareup.leakcanary:plumber-android", version.ref = "leakcanary" }
 
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
+sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions-jvm", version.ref = "sqldelight" }
 sqldelight-android-paging = { module = "app.cash.sqldelight:androidx-paging3-extensions", version.ref = "sqldelight" }
 sqldelight-dialects-sql = { module = "app.cash.sqldelight:sqlite-3-38-dialect", version = "2.3.2" }
@@ -112,6 +113,10 @@ markdown-coil = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3",
 stringSimilarity = { module = "com.aallam.similarity:string-similarity-kotlin", version = "0.1.0" }
 
 materialKolor = { module = "com.materialkolor:material-kolor", version.ref = "materialKolor" }
+
+# KMK --> OCR
+mlkit-text-recognition = "com.google.mlkit:text-recognition:16.0.1"
+# KMK <--
 
 [plugins]
 google-services = { id = "com.google.gms.google-services", version = "4.5.0" }

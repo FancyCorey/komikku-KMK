@@ -41,7 +41,7 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
                                 .sanitizeByFiltering(this)
                         }
                     if (userAction == null) {
-                        xLogE("Fatal error for $intent")
+                        xLogE("Package installer user action sanitization failed")
                         continueQueue(InstallStep.Error)
                         return
                     }
@@ -93,8 +93,8 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
                 @SuppressLint("RequestInstallPackagesPolicy")
                 session.commit(intentSender)
             }
-        } catch (e: Exception) {
-            xLogE("Failed to install extension ${entry.downloadId} ${entry.uri}", e)
+        } catch (_: Exception) {
+            xLogE("Package installer extension installation failed")
             activeSession?.let { (_, sessionId) ->
                 packageInstaller.abandonSession(sessionId)
             }

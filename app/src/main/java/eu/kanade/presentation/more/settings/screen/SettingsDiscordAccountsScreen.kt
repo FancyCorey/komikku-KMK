@@ -42,6 +42,7 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.data.connections.ConnectionsManager
 import eu.kanade.tachiyomi.data.connections.discord.DiscordAccount
 import eu.kanade.tachiyomi.ui.setting.connections.DiscordLoginScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.logcat
@@ -67,6 +68,8 @@ data class DiscordAccountsScreenState(
     val isLoading: Boolean = false,
     val error: String? = null,
 )
+
+private const val DISCORD_ACCOUNTS_ERROR_KEY = "DISCORD_ACCOUNTS_ERROR"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,7 +116,11 @@ private fun DiscordAccountsScreenContent() {
                 }
                 error != null -> {
                     Text(
-                        text = error,
+                        text = if (error == DISCORD_ACCOUNTS_ERROR_KEY) {
+                            stringResource(KMR.strings.rec_error_internal)
+                        } else {
+                            error
+                        },
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -165,9 +172,9 @@ class DiscordAccountsScreenModel : StateScreenModel<DiscordAccountsScreenState>(
     private fun loadAccounts() {
         screenModelScope.launch {
             mutableState.update { it.copy(isLoading = true, error = null) }
-            runCatching {
+            try {
                 val accounts = discord.getAccounts()
-                logcat(logcat.LogPriority.DEBUG) { "Debug: Loaded accounts: $accounts" } // Debug log
+                logcat(logcat.LogPriority.DEBUG) { "Loaded Discord account count=${accounts.size}" }
                 if (accounts.isEmpty()) {
                     mutableState.update {
                         it.copy(
@@ -184,11 +191,13 @@ class DiscordAccountsScreenModel : StateScreenModel<DiscordAccountsScreenState>(
                         )
                     }
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
                 mutableState.update {
                     it.copy(
                         isLoading = false,
-                        error = e.message ?: "Unknown error",
+                        error = DISCORD_ACCOUNTS_ERROR_KEY,
                     )
                 }
             }
@@ -198,11 +207,13 @@ class DiscordAccountsScreenModel : StateScreenModel<DiscordAccountsScreenState>(
     fun removeAccount(accountId: String) {
         screenModelScope.launch {
             mutableState.update { it.copy(isLoading = true, error = null) }
-            runCatching {
+            try {
                 discord.removeAccount(accountId)
                 loadAccounts()
-            }.onFailure { e ->
-                mutableState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                mutableState.update { it.copy(isLoading = false, error = DISCORD_ACCOUNTS_ERROR_KEY) }
             }
         }
     }
@@ -210,12 +221,14 @@ class DiscordAccountsScreenModel : StateScreenModel<DiscordAccountsScreenState>(
     fun setActiveAccount(accountId: String, context: Context) {
         screenModelScope.launch {
             mutableState.update { it.copy(isLoading = true, error = null) }
-            runCatching {
+            try {
                 discord.setActiveAccount(accountId)
                 discord.restartRichPresence(context)
                 loadAccounts()
-            }.onFailure { e ->
-                mutableState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                mutableState.update { it.copy(isLoading = false, error = DISCORD_ACCOUNTS_ERROR_KEY) }
             }
         }
     }

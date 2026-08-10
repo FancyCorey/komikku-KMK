@@ -186,14 +186,17 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                     // SY <--
                 }
                 Result.success()
-            } catch (e: Exception) {
-                if (e is CancellationException) {
-                    // Assume success although cancelled
-                    Result.success()
-                } else {
-                    logcat(LogPriority.ERROR, e)
-                    Result.failure()
-                }
+            } catch (e: CancellationException) {
+                // KMK: previously caught here and converted into Result.success() ("Assume
+                // success although cancelled"), which reported a cancelled run as succeeded to
+                // WorkManager and any external observer of this work's WorkInfo. Rethrowing lets
+                // CoroutineWorker's own cancellation handling report the run as actually
+                // cancelled, which is both accurate and the standard way a CoroutineWorker should
+                // propagate cancellation. The finally block below still runs cleanup either way.
+                throw e
+            } catch (_: Exception) {
+                logcat(LogPriority.ERROR) { "Library update failed" }
+                Result.failure()
             } finally {
                 notifier.cancelProgressNotification()
                 // KMK -->
@@ -367,14 +370,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
 
         if (skippedUpdates.isNotEmpty()) {
             // TODO: surface skipped reasons to user?
-            logcat {
-                skippedUpdates
-                    .groupBy { it.second }
-                    .map { (reason, entries) ->
-                        "$reason: [${entries.map { it.first.title }.sorted().joinToString()}]"
-                    }
-                    .joinToString()
-            }
+            logcat { "Library updates skipped count=${skippedUpdates.size}" }
         }
     }
 
@@ -425,7 +421,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                             }
                                         } catch (e: Exception) {
                                             if (e is CancellationException) throw e
-                                            xLogE("Error adding initial track for ${manga.title}", e)
+                                            xLogE("Library initial track update failed")
                                         }
                                     }
                                 }
@@ -472,7 +468,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                                 MR.strings.loader_not_implemented_error,
                                             )
 
-                                            else -> e.message
+                                            else -> context.stringResource(MR.strings.unknown_error)
                                         }
                                         writeErrorToDB(manga to errorMessage)
                                         failedUpdates.add(manga to errorMessage)

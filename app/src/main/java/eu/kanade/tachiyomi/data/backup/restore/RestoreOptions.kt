@@ -14,6 +14,9 @@ data class RestoreOptions(
     // SY -->
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // KMK -->
+    val tasteProfile: Boolean = true,
+    // KMK <--
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -25,6 +28,9 @@ data class RestoreOptions(
         // SY -->
         savedSearchesFeeds,
         // SY <--
+        // KMK -->
+        tasteProfile,
+        // KMK <--
     )
 
     fun canRestore() =
@@ -33,7 +39,8 @@ data class RestoreOptions(
             appSettings ||
             extensionStores ||
             sourceSettings /* SY --> */ ||
-            savedSearchesFeeds /* SY <-- */
+            savedSearchesFeeds /* SY <-- */ /* KMK --> */ ||
+            tasteProfile /* KMK <-- */
 
     companion object {
         val options = persistentListOf(
@@ -71,6 +78,13 @@ data class RestoreOptions(
                 setter = { options, enabled -> options.copy(savedSearchesFeeds = enabled) },
             ),
             // SY <--
+            // KMK -->
+            Entry(
+                label = KMR.strings.taste_backup_option,
+                getter = RestoreOptions::tasteProfile,
+                setter = { options, enabled -> options.copy(tasteProfile = enabled) },
+            ),
+            // KMK <--
         )
 
         fun fromBooleanArray(array: BooleanArray) = RestoreOptions(
@@ -82,6 +96,9 @@ data class RestoreOptions(
             // SY -->
             savedSearchesFeeds = array[5],
             // SY <--
+            // KMK -->
+            tasteProfile = array.getOrElse(6) { true },
+            // KMK <--
         )
     }
 

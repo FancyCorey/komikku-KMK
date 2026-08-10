@@ -5,21 +5,32 @@ import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
+import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
+import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
+import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
+import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
+import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.FeedRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.SavedSearchRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.TasteRestorer
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -45,6 +56,7 @@ class BackupRestorer(
     // SY <--
     // KMK -->
     private val feedRestorer: FeedRestorer = FeedRestorer(),
+    private val tasteRestorer: TasteRestorer = TasteRestorer(),
     // KMK <--
 ) {
 
@@ -57,7 +69,12 @@ class BackupRestorer(
      */
     private var sourceMapping: Map<Long, String> = emptyMap()
 
-    suspend fun restore(uri: Uri, options: RestoreOptions) {
+    // KMK: returns a typed BackupRestoreOutcome instead of Unit
+    // so a caller can distinguish a fully clean restore from one where individual items failed --
+    // see BackupRestoreOutcome's own doc. This does NOT change this function's existing exception
+    // propagation: restoreFromFile() still throws normally (cancellation or an unisolated-section
+    // failure) exactly as before; only the no-exception completion path now carries a typed result.
+    suspend fun restore(uri: Uri, options: RestoreOptions): BackupRestoreOutcome {
         val startTime = System.currentTimeMillis()
 
         restoreFromFile(uri, options)
@@ -73,6 +90,12 @@ class BackupRestorer(
             logFile.name,
             isSync,
         )
+
+        return if (errors.isEmpty()) {
+            BackupRestoreOutcome.Success(restoreProgress)
+        } else {
+            BackupRestoreOutcome.PartialSuccess(restoreProgress, errors.size)
+        }
     }
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
@@ -93,6 +116,11 @@ class BackupRestorer(
             restoreAmount += 1
         }
         // SY <--
+        // KMK -->
+        if (options.tasteProfile) {
+            restoreAmount += 1
+        }
+        // KMK <--
         if (options.appSettings) {
             restoreAmount += 1
         }
@@ -123,12 +151,42 @@ class BackupRestorer(
             if (options.sourceSettings) {
                 restoreSourcePreferences(backup.backupSourcePreferences)
             }
-            if (options.libraryEntries) {
-                restoreManga(backup.backupManga, if (options.categories) backup.backupCategories else emptyList())
-            }
+            // KMK -->
+            val mangaJob =
+                // KMK <--
+                if (options.libraryEntries) {
+                    restoreManga(backup.backupManga, if (options.categories) backup.backupCategories else emptyList())
+                    // KMK -->
+                } else {
+                    null
+                    // KMK <--
+                }
             if (options.extensionStores) {
                 restoreExtensionStores(backup.backupExtensionStores)
             }
+            // KMK -->
+            if (options.tasteProfile) {
+                restoreTasteProfile(
+                    backup.backupMangaTastes,
+                    backup.backupTagTastes,
+                    backup.backupTagAliases,
+                    backup.backupDisabledRecommendationSources,
+                    // KMK --> v0.7.0: Phase 4
+                    backup.backupCrossSourceMangaLinks,
+                    // KMK <--
+                    // KMK --> v0.7.16: Best Version quality signals
+                    backup.backupMangaSourceQualitySignals,
+                    // KMK <--
+                    // KMK --> v0.7.28: seen manga keys
+                    backup.backupSeenMangaKeys,
+                    // KMK <--
+                    // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+                    backup.backupCrossSourceGroupPrimaries,
+                    // KMK <--
+                    mangaJob,
+                )
+            }
+            // KMK <--
 
             // TODO: optionally trigger online library + tracker update
         }
@@ -191,9 +249,11 @@ class BackupRestorer(
 
                 try {
                     mangaRestorer.restore(it, backupCategories)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     val sourceName = sourceMapping[it.source] ?: it.source.toString()
-                    errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
+                    errors.add(Date() to "${it.title} [$sourceName]: ${context.stringResource(MR.strings.unknown_error)}")
                 }
 
                 restoreProgress += 1
@@ -257,8 +317,13 @@ class BackupRestorer(
 
                 try {
                     extensionStoreRestorer(it)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    errors.add(Date() to "Error adding extension store: ${it.name} : ${e.message}")
+                    errors.add(
+                        Date() to
+                            "Error Adding Repo: ${it.name} : ${context.stringResource(MR.strings.unknown_error)}",
+                    )
                 }
 
                 restoreProgress += 1
@@ -277,6 +342,62 @@ class BackupRestorer(
                 }
             }
     }
+
+    // KMK -->
+    private fun CoroutineScope.restoreTasteProfile(
+        backupMangaTastes: List<BackupMangaTaste>,
+        backupTagTastes: List<BackupTagTaste>,
+        backupTagAliases: List<BackupTagAlias>,
+        backupDisabledSources: List<BackupDisabledRecommendationSource>,
+        // KMK --> v0.7.0: Phase 4
+        backupCrossSourceMangaLinks: List<BackupCrossSourceMangaLink>,
+        // KMK <--
+        // KMK --> v0.7.16: Best Version quality signals
+        backupMangaSourceQualitySignals: List<BackupMangaSourceQualitySignal>,
+        // KMK <--
+        // KMK --> v0.7.28: seen manga keys
+        backupSeenMangaKeys: List<BackupSeenMangaKey>,
+        // KMK <--
+        // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+        backupCrossSourceGroupPrimaries: List<BackupCrossSourceGroupPrimary>,
+        // KMK <--
+        mangaJob: Job?,
+    ) = launch {
+        // Manga tastes resolve by (url, source) — wait until library entries exist locally
+        mangaJob?.join()
+        ensureActive()
+        val tasteErrors = buildList {
+            addAll(tasteRestorer.restoreMangaTastes(backupMangaTastes))
+            addAll(tasteRestorer.restoreTagTastes(backupTagTastes))
+            addAll(tasteRestorer.restoreTagAliases(backupTagAliases))
+            addAll(tasteRestorer.restoreDisabledRecommendationSources(backupDisabledSources))
+            // KMK --> v0.7.0: Phase 4
+            addAll(tasteRestorer.restoreCrossSourceMangaLinks(backupCrossSourceMangaLinks))
+            // KMK <--
+            // KMK --> v0.8.1-fix1: restored after links so the group already exists
+            addAll(tasteRestorer.restoreCrossSourceGroupPrimaries(backupCrossSourceGroupPrimaries))
+            // KMK <--
+            // KMK --> v0.7.16: Best Version quality signals
+            addAll(tasteRestorer.restoreMangaSourceQualitySignals(backupMangaSourceQualitySignals))
+            // KMK <--
+            // KMK --> v0.7.28: seen manga keys
+            addAll(tasteRestorer.restoreSeenMangaKeys(backupSeenMangaKeys))
+            // KMK <--
+        }
+        tasteErrors.forEach { errors.add(Date() to it) }
+
+        restoreProgress += 1
+        with(notifier) {
+            showRestoreProgress(
+                context.stringResource(KMR.strings.taste_backup_option),
+                restoreProgress,
+                restoreAmount,
+                isSync,
+            )
+                .show(Notifications.ID_RESTORE_PROGRESS)
+        }
+    }
+    // KMK <--
 
     private fun writeErrorLog(): File {
         try {

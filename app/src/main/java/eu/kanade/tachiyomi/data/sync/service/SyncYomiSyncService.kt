@@ -71,13 +71,13 @@ class SyncYomiSyncService(
             val finalSyncData = if (remoteData != null) {
                 assert(etag.isNotEmpty()) { "ETag should never be empty if remote data is not null" }
                 logcat(LogPriority.DEBUG, "SyncService") {
-                    "Try update remote data with ETag($etag)"
+                    "SyncYomi remote data available for merge"
                 }
                 mergeSyncData(syncData, remoteData)
             } else {
                 // init or overwrite remote data
                 logcat(LogPriority.DEBUG) {
-                    "Try overwrite remote data with ETag($etag)"
+                    "SyncYomi remote data unavailable; using local data"
                 }
                 syncData
             }
@@ -96,12 +96,12 @@ class SyncYomiSyncService(
             return finalSyncData.backup
         } catch (e: Exception) {
             if (e is CancellationException) {
-                reportSyncEvent(SyncEventStatus.SYNC_CANCELLED, e.message)
+                reportSyncEvent(SyncEventStatus.SYNC_CANCELLED, "cancelled")
                 throw e
             }
-            logcat(LogPriority.ERROR) { "Error syncing: ${e.message}" }
-            notifier.showSyncError(e.message)
-            reportSyncEvent(SyncEventStatus.SYNC_ERROR, e.message)
+            logcat(LogPriority.ERROR) { "SyncYomi sync failed" }
+            notifier.showSyncError(context.getString(eu.kanade.tachiyomi.R.string.sync_error))
+            reportSyncEvent(SyncEventStatus.SYNC_ERROR, null)
             return null
         }
     }
@@ -157,10 +157,10 @@ class SyncYomiSyncService(
                 Pair(null, "")
             }
         } else {
-            val responseBody = response.body.string()
-            notifier.showSyncError("Failed to download sync data: $responseBody")
-            logcat(LogPriority.ERROR) { "SyncError: $responseBody" }
-            throw SyncYomiException("Failed to download sync data: $responseBody")
+            response.body.string()
+            notifier.showSyncError(context.getString(eu.kanade.tachiyomi.R.string.sync_error))
+            logcat(LogPriority.ERROR) { "SyncYomi download failed: HTTP ${response.code}" }
+            throw SyncYomiException("Failed to download sync data")
         }
     }
 
@@ -207,9 +207,9 @@ class SyncYomiSyncService(
                     logcat(LogPriority.DEBUG) { "SyncYomi sync failed with 412" }
                     return false
                 } else {
-                    val responseBody = response.body.string()
-                    notifier.showSyncError("Failed to upload sync data: $responseBody")
-                    logcat(LogPriority.ERROR) { "SyncError: $responseBody" }
+                    response.body.string()
+                    notifier.showSyncError(context.getString(eu.kanade.tachiyomi.R.string.sync_error))
+                    logcat(LogPriority.ERROR) { "SyncYomi upload failed: HTTP ${response.code}" }
                     return false
                 }
             }
@@ -242,7 +242,7 @@ class SyncYomiSyncService(
 
                 client.newCall(request).await().close()
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "Failed to report sync event: ${e.message}" }
+                logcat(LogPriority.ERROR) { "SyncYomi event reporting failed" }
             }
         }
     }

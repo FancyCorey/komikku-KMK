@@ -24,8 +24,13 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.util.ioCoroutineScope
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MangaDex
@@ -39,6 +44,8 @@ import exh.source.isEhBasedSource
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -61,6 +68,7 @@ import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
@@ -90,6 +98,20 @@ import xyz.nulldev.ts.api.http.serializer.FilterSerializer
 import java.time.Instant
 import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
 
+// See
+// BrowseSourceScreenModel.createSourcePagingSource for call site and rationale.
+internal fun selectBrowseSourcePagingSource(
+    isDebugBuild: Boolean,
+    fixtureModeEnabled: Boolean,
+    realPagingSourceProvider: () -> SourcePagingSource,
+    fixturePagingSourceProvider: () -> SourcePagingSource,
+): SourcePagingSource =
+    if (isDebugBuild && fixtureModeEnabled) {
+        fixturePagingSourceProvider()
+    } else {
+        realPagingSourceProvider()
+    }
+
 open class BrowseSourceScreenModel(
     /* KMK --> */
     protected /* KMK <-- */ val sourceId: Long,
@@ -99,7 +121,7 @@ open class BrowseSourceScreenModel(
     savedSearch: Long? = null,
     // SY <--
     sourceManager: SourceManager = Injekt.get(),
-    sourcePreferences: SourcePreferences = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
     private val getRemoteManga: GetRemoteManga = Injekt.get(),
@@ -130,6 +152,31 @@ open class BrowseSourceScreenModel(
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
 
     var source = sourceManager.getOrStub(sourceId)
+
+    // KMK v0.8.10-fix4 -->
+    /**
+     * Confirmed live-device crash: `source.getFilterList()` was called directly, unguarded, from
+     * this screen model's `init` block -- meaning opening *any* Browse source screen for a source
+     * whose extension throws a [LinkageError] the first time a method lazily touches a missing
+     * runtime dependency (confirmed: the installed Asura Scans extension, `NoClassDefFoundError:
+     * okhttp3.zstd.Zstd`) crashed immediately on screen construction. `getFilterList()` is declared
+     * directly on the base `Source` interface (not `CatalogueSource`-specific), so no cast is
+     * needed here.
+     *
+     * Routes through the shared [SourceRuntime] boundary (not a local `catch(Error)` band-aid) per
+     * the behavior contract's explicit instruction. Falls back to an empty [FilterList] on any recoverable
+     * source-runtime failure -- every call site already tolerated an empty/default filter list, so
+     * this preserves existing behavior for the non-crash case exactly.
+     */
+    private fun safeFilterList(src: Source = source): FilterList {
+        return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrElse {
+            logcat(LogPriority.WARN) { "Browse source filter loading failed" }
+            FilterList()
+        }
+    }
+    // KMK <--
 
     // SY -->
     val ehentaiBrowseDisplayMode by exhPreferences.enhancedEHentaiView().asState(screenModelScope)
@@ -387,16 +434,25 @@ open class BrowseSourceScreenModel(
             val fetchMetadataOnAdd = libraryPreferences.fetchMetadataOnAdd().get()
             val fetchChaptersOnAdd = libraryPreferences.fetchChaptersOnAdd().get()
             if (new.favorite && (fetchMetadataOnAdd || fetchChaptersOnAdd)) {
-                try {
-                    // Use `manga` instead of `new` so its title got updated with source's `getMangaDetails`
-                    updateMangaFromRemote(
-                        source = source,
-                        manga = manga,
-                        fetchDetails = fetchMetadataOnAdd,
-                        fetchChapters = fetchChaptersOnAdd,
-                    )
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e)
+                withIOContext {
+                    try {
+                        // Use `manga` instead of `new` so its title got updated with source's remote details
+                        // KMK v0.8.10-fix7: this was a genuine hole -- there was no catch(Error) at
+                        // all here, so a raw NoClassDefFoundError from .getOrThrow() would have
+                        // escaped uncaught. getOrThrowSourceRuntimeException() converts a recoverable
+                        // extension failure into an Exception so the existing catch(Exception) below
+                        // actually catches it.
+                        updateMangaFromRemote(
+                            source = source,
+                            manga = manga,
+                            fetchDetails = fetchMetadataOnAdd,
+                            fetchChapters = fetchChaptersOnAdd,
+                        ).getOrThrowSourceRuntimeException()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        logcat(LogPriority.ERROR) { "Browse metadata update failed" }
+                    }
                 }
             }
             // KMK <--
@@ -440,7 +496,26 @@ open class BrowseSourceScreenModel(
 
     // SY -->
     open fun createSourcePagingSource(query: String, filters: FilterList): SourcePagingSource {
-        return getRemoteManga(sourceId, query, filters)
+        // Pure decision
+        // extracted to selectBrowseSourcePagingSource so the debug/release gating is directly
+        // unit-testable. BuildConfig.DEBUG folds to `false` for every non-debug build type, so this
+        // is unreachable and dead-code-eliminable outside a debug build regardless of the
+        // preference value.
+        //
+        // KMK: this previously read
+        // SourcePreferences.evaluationFixtureFailureMode() -- the Source-Evaluation-named
+        // preference -- which meant any non-off Source Evaluation debug mode silently also
+        // activated this unrelated Browse failure fixture. Now reads the separate
+        // SourcePreferences.browseFixtureFailureMode() opt-in via BrowseDebugFixtureMode so the two
+        // debug-only fixture systems can never cross-activate each other.
+        return selectBrowseSourcePagingSource(
+            isDebugBuild = BuildConfig.DEBUG,
+            fixtureModeEnabled = BrowseDebugFixtureMode.fromPrefValue(
+                sourcePreferences.browseFixtureFailureMode().get(),
+            ) != BrowseDebugFixtureMode.OFF,
+            realPagingSourceProvider = { getRemoteManga(sourceId, query, filters) },
+            fixturePagingSourceProvider = { BrowseDeterministicFixturePagingSource() },
+        )
     }
     // SY <--
 

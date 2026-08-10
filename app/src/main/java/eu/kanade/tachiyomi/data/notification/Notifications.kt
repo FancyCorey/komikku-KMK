@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.util.system.buildNotificationChannel
 import eu.kanade.tachiyomi.util.system.buildNotificationChannelGroup
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 
 /**
  * Class to manage the basic information of all the notifications used in the app.
@@ -100,6 +101,24 @@ object Notifications {
     const val CHANNEL_EXTENSIONS_UPDATE = "ext_apk_update_channel"
     const val ID_UPDATES_TO_EXTS = -401
     const val ID_EXTENSION_INSTALLER = -402
+
+    // KMK --> v0.6.19: Source Evaluation background job
+    const val CHANNEL_SOURCE_EVALUATION = "source_evaluation_channel"
+    const val ID_SOURCE_EVALUATION_PROGRESS = -801
+    const val ID_SOURCE_EVALUATION_COMPLETE = -802
+    // KMK <--
+
+    // KMK --> v0.7.43: For You search compatibility background job — separate from Source Evaluation
+    const val CHANNEL_SOURCE_RECOMMENDATION_QUALITY = "source_recommendation_quality_channel"
+    const val ID_SOURCE_RECOMMENDATION_QUALITY_PROGRESS = -803
+    const val ID_SOURCE_RECOMMENDATION_QUALITY_COMPLETE = -804
+    // KMK <--
+
+    // KMK --> OCR v0.1.0: OCR indexing background job
+    const val CHANNEL_OCR_INDEXING = "ocr_indexing_channel"
+    const val ID_OCR_INDEX_PROGRESS = -901
+    const val ID_OCR_INDEX_COMPLETE = -902
+    // KMK <--
 
     private val deprecatedChannels = listOf(
         "downloader_channel",
@@ -209,6 +228,24 @@ object Notifications {
                     setShowBadge(false)
                 },
                 // SY <--
+                // KMK --> v0.6.19
+                buildNotificationChannel(CHANNEL_SOURCE_EVALUATION, IMPORTANCE_LOW) {
+                    setName(context.stringResource(KMR.strings.source_evaluation_job_notification_title))
+                    setShowBadge(false)
+                },
+                // KMK <--
+                // KMK --> v0.7.43
+                buildNotificationChannel(CHANNEL_SOURCE_RECOMMENDATION_QUALITY, IMPORTANCE_LOW) {
+                    setName(context.stringResource(KMR.strings.source_recommendation_quality_job_notification_title))
+                    setShowBadge(false)
+                },
+                // KMK <--
+                // KMK --> OCR v0.1.0
+                buildNotificationChannel(CHANNEL_OCR_INDEXING, IMPORTANCE_LOW) {
+                    setName(context.stringResource(KMR.strings.ocr_notification_channel_name))
+                    setShowBadge(false)
+                },
+                // KMK <--
             ),
         )
     }

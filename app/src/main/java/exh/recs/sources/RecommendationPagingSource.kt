@@ -1,9 +1,13 @@
 package exh.recs.sources
 
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -49,11 +53,35 @@ abstract class RecommendationPagingSource(
     open val associatedSourceId: Long? = null
 
     companion object {
+        // KMK -->
+        private const val MAX_CROSS_EXTENSION_SOURCES = 20
+        // KMK <--
+
         internal fun createSources(
             manga: Manga,
             // KMK -->
             recommendationSource: RecommendationSource,
+            // KMK --> v0.7.43: group-seeded recommendations pass the combined/weighted group tag
+            // list here so cross-extension rows search by the whole group's genres, not just
+            // this one manga's. Null (single-manga path) keeps using manga.genre as before.
+            groupGenreOverride: List<String>? = null,
+            // KMK --> v0.7.44: group-seeded recommendations pass the combined/alternate group title
+            // list so a source that has no useful tag match can still fall back to a title search
+            // across every linked version, not just the primary manga's title.
+            groupTitlesOverride: List<String>? = null,
+            // KMK --> v0.7.44: when non-null (group-seeded path only), used instead of
+            // `sourceManager.getVisibleSources().take(...)` for cross-extension rows, so
+            // group recommendations honor the same language/priority/disabled/disliked source
+            // policy as For You (RecommendationSourceSelector). Computed by the caller (already
+            // running in a coroutine) so this function can stay non-suspend. Null (single-manga
+            // path) keeps the existing raw visible-source behavior unchanged.
+            eligibleCrossExtensionSources: List<Source>? = null,
             // KMK <--
+            // KMK v0.8.6: shared across every CrossExtensionGenreSearchSource created by this call so
+            // nested detail-enrichment requests are bounded by one total budget across all
+            // concurrently active GROUP_PREVIEW sources, not per-source. Null (single-manga path)
+            // keeps each source's enrichment unbounded-within-itself, same as before.
+            sharedEnrichmentSemaphore: kotlinx.coroutines.sync.Semaphore? = null,
         ): List<RecommendationPagingSource> {
             return buildList {
                 add(AniListPagingSource(manga))
@@ -92,6 +120,30 @@ abstract class RecommendationPagingSource(
                         ),
                     )
                 }
+
+                // KMK -->
+                // When cross-extension search is enabled, add one source per installed extension
+                // (capped at MAX_CROSS_EXTENSION_SOURCES). Each source searches by genre and
+                // enriches the top results so RecommendationScorer has real genre data to compare.
+                val sourcePreferences: SourcePreferences = Injekt.get()
+                if (sourcePreferences.recommendationCrossExtensionSearch().get()) {
+                    val crossExtensionSources = eligibleCrossExtensionSources ?: run {
+                        val sourceManager: SourceManager = Injekt.get()
+                        sourceManager.getVisibleSources().take(MAX_CROSS_EXTENSION_SOURCES)
+                    }
+                    crossExtensionSources.forEach { catalogueSource ->
+                        add(
+                            CrossExtensionGenreSearchSource(
+                                manga,
+                                catalogueSource,
+                                groupGenreOverride,
+                                groupTitlesOverride,
+                                sharedEnrichmentSemaphore,
+                            ),
+                        )
+                    }
+                }
+                // KMK <--
             }.sortedWith(compareBy({ it.name }, { it.category.resourceId }))
         }
     }
@@ -132,13 +184,13 @@ abstract class TrackerRecommendationPagingSource(
             } else {
                 getRecsBySearch(manga.ogTitle)
             }
-            logcat { name + " > Results: " + results.size }
+            logcat { "Recommendation results loaded count=${results.size}" }
 
             results.ifEmpty { throw NoResultsException() }
         } catch (e: Exception) {
             // 'No results' should not be logged as it happens frequently and is expected
             if (e !is NoResultsException) {
-                logcat(LogPriority.ERROR, e) { name }
+                logcat(LogPriority.ERROR) { "Recommendation results failed" }
             }
             throw e
         }
@@ -163,31 +215,57 @@ class RecommendationSource(
     override val lang: String by lazy { delegate?.lang ?: "all" }
     override val supportsLatest by lazy { delegate?.supportsLatest ?: false }
 
+    // KMK v0.8.10-fix6: this wrapper is a synthetic recommendation source that delegates to a real
+    // installed source. If any caller invokes it directly, the delegate call must be source-runtime
+    // safe at this boundary too -- not only at some outer caller that may or may not wrap it.
+    private fun requireDelegate(): Source = delegate ?: throw UnsupportedOperationException()
+
     override suspend fun getMangaUpdate(
         manga: SManga,
         chapters: List<SChapter>,
         fetchDetails: Boolean,
         fetchChapters: Boolean,
-    ): SMangaUpdate =
-        delegate?.getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
-            ?: throw UnsupportedOperationException()
+    ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.MangaUpdate) {
+            getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
+        }.getOrThrowSourceRuntimeException()
+    }
 
-    override suspend fun getPageList(chapter: SChapter) =
-        delegate?.getPageList(chapter)
-            ?: throw UnsupportedOperationException()
+    override suspend fun getPageList(chapter: SChapter): List<eu.kanade.tachiyomi.source.model.Page> {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.PageList) {
+            getPageList(chapter)
+        }.getOrThrowSourceRuntimeException()
+    }
 
-    override suspend fun getPopularManga(page: Int) =
-        delegate?.getPopularManga(page)
-            ?: throw UnsupportedOperationException()
-    override suspend fun getLatestUpdates(page: Int) =
-        delegate?.getLatestUpdates(page)
-            ?: throw UnsupportedOperationException()
-    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
-        delegate?.getSearchManga(page, query, filters)
-            ?: throw UnsupportedOperationException()
-    override fun getFilterList() =
-        delegate?.getFilterList()
-            ?: throw UnsupportedOperationException()
+    override suspend fun getPopularManga(page: Int): MangasPage {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.Popular) {
+            getPopularManga(page)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override suspend fun getLatestUpdates(page: Int): MangasPage {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.Latest) {
+            getLatestUpdates(page)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+        val src = requireDelegate()
+        return SourceRuntime.run(src, SourceRuntimeOperation.Search) {
+            getSearchManga(page, query, filters)
+        }.getOrThrowSourceRuntimeException()
+    }
+
+    override fun getFilterList(): FilterList {
+        val src = requireDelegate()
+        return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
+            getFilterList()
+        }.getOrThrowSourceRuntimeException()
+    }
 }
 
 const val RECOMMENDS_SOURCE = -1L

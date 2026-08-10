@@ -126,9 +126,9 @@ class PreferenceRestorer(
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // KMK -->
-                xLogE("Failed to restore preference <$key>", e)
+                xLogE("Preference restore failed")
                 // KMK <--
             }
         }

@@ -1,5 +1,6 @@
 package tachiyomi.domain.source.interactor
 
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import logcat.asLog
 import tachiyomi.core.common.util.system.logcat
@@ -13,6 +14,8 @@ class InsertFeedSavedSearch(
     suspend fun await(feedSavedSearch: FeedSavedSearch): Long? {
         return try {
             feedSavedSearchRepository.insert(feedSavedSearch)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { e.asLog() }
             null
@@ -22,6 +25,8 @@ class InsertFeedSavedSearch(
     suspend fun awaitAll(feedSavedSearch: List<FeedSavedSearch>) {
         try {
             feedSavedSearchRepository.insertAll(feedSavedSearch)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { e.asLog() }
         }

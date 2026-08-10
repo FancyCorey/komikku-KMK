@@ -14,6 +14,9 @@ import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.presentation.components.BulkSelectionToolbar
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
+import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
+import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.PersistentList
@@ -21,6 +24,7 @@ import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -30,6 +34,7 @@ import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -355,17 +360,26 @@ class BulkFavoriteScreenModel(
             val fetchMetadataOnAdd = libraryPreferences.fetchMetadataOnAdd().get()
             val fetchChaptersOnAdd = libraryPreferences.fetchChaptersOnAdd().get()
             if (new.favorite && (fetchMetadataOnAdd || fetchChaptersOnAdd)) {
-                try {
-                    // Use `manga` instead of `new` so its title got updated with source's `getMangaDetails`
-                    updateMangaFromRemote(
-                        source = source,
-                        manga = manga,
-                        fetchDetails = fetchMetadataOnAdd,
-                        fetchChapters = fetchChaptersOnAdd,
-                        // FIXME (KMK): Should have throttle here
-                    )
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e)
+                withIOContext {
+                    try {
+                        // Use `manga` instead of `new` so its title got updated with source's remote details
+                        updateMangaFromRemote(
+                            source = source,
+                            manga = manga,
+                            fetchDetails = fetchMetadataOnAdd,
+                            fetchChapters = fetchChaptersOnAdd,
+                        ).getOrThrowSourceRuntimeException()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // KMK v0.8.10-fix7: same reasoning as the other updateMangaFromRemote(...)
+                        // call site above -- getOrThrowSourceRuntimeException() is the primary
+                        // containment path now; catch(Error) below is defensive-only.
+                        logcat(LogPriority.ERROR, e)
+                    } catch (e: Error) {
+                        if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
+                        logcat(LogPriority.ERROR, e)
+                    }
                 }
             }
         }

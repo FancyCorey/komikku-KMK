@@ -3,12 +3,14 @@ package eu.kanade.domain.source.service
 import eu.kanade.domain.source.interactor.SetMigrateSorting
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import exh.recs.GroupPreviewBudgetPolicy
 import mihon.domain.migration.models.MigrationFlag
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 import tachiyomi.core.common.preference.getLongArray
 import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.taste.model.RatedMangaVisibility
 
 class SourcePreferences(
     private val preferenceStore: PreferenceStore,
@@ -54,7 +56,7 @@ class SourcePreferences(
     fun hideInLibraryFeedItems() = preferenceStore.getBoolean("feed_hide_in_library_items", false)
     // KMK <--
 
-    @Deprecated("Use ExtensionRepoRepository instead", replaceWith = ReplaceWith("ExtensionRepoRepository.getAll()"))
+    @Deprecated("Use ExtensionStoreRepository instead", replaceWith = ReplaceWith("ExtensionStoreRepository.getAll()"))
     fun extensionRepos() = preferenceStore.getStringSet("extension_repos", emptySet())
 
     fun extensionUpdatesCount() = preferenceStore.getInt("ext_updates_count", 0)
@@ -144,6 +146,210 @@ class SourcePreferences(
 
     // KMK -->
     fun relatedMangas() = preferenceStore.getBoolean("related_mangas", true)
+
+    /**
+     * When enabled, the recommendations screen searches all installed extensions by the source
+     * manga's genres and adds one result row per extension (capped at 20 extensions).
+     * Defaults to false (opt-in) so users with many installed extensions are not surprised by
+     * a large number of network calls on first open.
+     */
+    fun recommendationCrossExtensionSearch() = preferenceStore.getBoolean("rec_cross_extension_search", false)
+
+    fun recommendationRatedMangaVisibility() = preferenceStore.getEnum(
+        "recommendation_rated_manga_visibility",
+        RatedMangaVisibility.HIDE_DISLIKED_ONLY,
+    )
+
+    // KMK -->
+    /** Languages to search for For You recommendations. Defaults to EN-only. */
+    fun recommendationSourceLanguages() = preferenceStore.getStringSet("recommendation_source_languages", setOf("en"))
+
+    /** Comma-separated source ids in user-defined priority order for For You recommendations. */
+    fun recommendationSourceOrder() = preferenceStore.getString("recommendation_source_order", "")
+
+    /** Semicolon-separated "sourceId=strategyName" pairs persisting the last-successful query strategy per source. */
+    fun recommendationSourceStrategies() = preferenceStore.getString("recommendation_source_strategies", "")
+
+    /** When true, hides manga that are already rated, in library, started, or read from For You results. */
+    fun recommendationHideKnownManga() = preferenceStore.getBoolean("recommendation_hide_known_manga", true)
+
+    /** Compact serialized last For You source run statuses for display in Recommendation Settings. */
+    fun recommendationLastSourceRunStatuses() = preferenceStore.getString("recommendation_last_source_run_statuses", "")
+
+    // KMK --> v0.7.19: rolling source fit stats accumulated across For You runs
+    /** Compact serialized rolling source fit stats for the Source Priority section in Recommendation Settings. */
+    fun recommendationSourceFitStats() = preferenceStore.getString("recommendation_source_fit_stats", "")
+    // KMK <--
+
+    // KMK v0.8.14-fix1: read-only For You preview snapshot for Recommendation Settings -- see
+    // exh.recs.settings.RecommendationForYouPreviewSnapshotStore.
+    /** Compact serialized snapshot (Top Picks + visible source rows, capped) from the last successful For You refresh. */
+    fun recommendationForYouPreviewSnapshot() = preferenceStore.getString("recommendation_for_you_preview_snapshot", "")
+
+    // KMK --> v0.7.26: minimum chapter count filter for For You
+    // KMK: the raw value stored here is only a
+    // hint -- every read site resolves it through RecommendationMinChapterCountPolicy.resolve(), and
+    // RecommendationsSettingsScreenModel.setMinChapterCount() refuses to persist an unsupported
+    // value, so a corrupt/legacy/out-of-contract number can never reach the visibility policy or the
+    // cache fingerprint as an unsupported threshold.
+    /** Minimum locally-known chapter count for a manga to appear in For You. Supported: 0/5/10/20/50. 0 = no filter. */
+    fun recommendationMinChapterCount() =
+        preferenceStore.getInt("recommendation_min_chapter_count", exh.recs.RecommendationMinChapterCountPolicy.DEFAULT)
+    // KMK <--
+
+    // KMK --> v0.7.34: configurable enrichment cap for For You sources
+    /** Number of candidate manga per source to enrich with full metadata. Default 5; boosted sources get 2×. Max 20. */
+    fun recommendationEnrichmentCap() = preferenceStore.getInt("recommendation_enrichment_cap", 5)
+    // KMK <--
+
+    // KMK v0.8.2: configurable visible-card budget per ordinary For You source row. Validated
+    // against ForYouResultBudgetPolicy.SUPPORTED_VALUES at every read site; raw/corrupt values here
+    // fall back to ForYouResultBudgetPolicy.DEFAULT rather than crashing.
+    /** Visible manga cards per ordinary For You source row. Supported: 5/10/15/20/30. Default 10. Boosted sources use max(value, 20). */
+    fun recommendationResultBudget() = preferenceStore.getInt("recommendation_result_budget", 10)
+
+    // KMK
+    // Both values are validated at every read site through their owning pure policy (never trusted
+    // raw), exactly like recommendationResultBudget/groupPreviewResultBudget above.
+    /**
+     * Share of a For You refresh's attempted sources that may additionally be probed for their
+     * Latest catalogue. Supported: 0/10/20/30/50 percent. Default 20. `0` switches the Latest lane
+     * off entirely and is the documented behavior kill switch -- personalized search plus the
+     * existing Popular fallback remain the default path either way.
+     */
+    fun recommendationLatestExplorationPercent() =
+        preferenceStore.getInt("recommendation_latest_exploration_percent", exh.recs.RecommendationLatestBudgetPolicy.DEFAULT)
+
+    /**
+     * How many days a locally-recorded For You exposure keeps influencing display order. Supported:
+     * 7/14/30. Default 14. Exposure history is local-only, is never included in backup/sync/export,
+     * never creates an Action History entry, and can only ever reorder -- never hide -- a candidate.
+     */
+    fun recommendationExposureWindowDays() =
+        preferenceStore.getInt("recommendation_exposure_window_days", exh.recs.RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS)
+    // KMK <--
+
+    /** Semicolon-separated dismissal keys for non-installed source suggestions. Format: signatureHash|pkgName|sourceId */
+    fun dismissedNonInstalledRecommendationSources() = preferenceStore.getString("dismissed_non_installed_rec_sources", "")
+
+    // KMK v0.8.6: configurable initial-preview budget per extension for GROUP_PREVIEW group
+    // recommendation rows only. Validated against GroupPreviewBudgetPolicy.SUPPORTED_VALUES at
+    // every read site; raw/corrupt/migrated values fall back to GroupPreviewBudgetPolicy.DEFAULT.
+    // Never applied to For You (recommendationResultBudget above) or to normal global search.
+    /** Initial preview manga cards per extension in a group recommendation row. Supported: 5/10/15/20/30. Default 10. */
+    fun groupPreviewResultBudget() = preferenceStore.getInt("recommendation_group_preview_budget", GroupPreviewBudgetPolicy.DEFAULT)
+    // KMK <--
+
+    /** Semicolon-separated liked recommendation source keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
+    fun likedRecommendationSourceKeys() = preferenceStore.getString("liked_recommendation_source_keys", "")
+
+    /** Semicolon-separated disliked recommendation source keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
+    fun dislikedRecommendationSourceKeys() = preferenceStore.getString("disliked_recommendation_source_keys", "")
+
+    // KMK v0.8.1-fix4: source/library-quality preference axis -- separate from the recommendation-behavior
+    // axis above. Answers "is this source itself worth showing/suggesting/evaluating?" rather than
+    // "do I want this source's For You rows?" Same key format and serializer (RecommendationSourcePreferenceStore).
+    /** Semicolon-separated liked source/library-quality keys. Format: i|sourceId or a|signatureHash|pkgName[|sourceId] */
+    fun likedSourceQualityKeys() = preferenceStore.getString("liked_source_quality_keys", "")
+
+    /** Semicolon-separated disliked source/library-quality keys (poor library / too explicit). Same key format. */
+    fun dislikedSourceQualityKeys() = preferenceStore.getString("disliked_source_quality_keys", "")
+
+    /** Subset of dislikedSourceQualityKeys marked specifically "too explicit" rather than generically "poor". Same key format. */
+    fun explicitSourceQualityKeys() = preferenceStore.getString("explicit_source_quality_keys", "")
+
+    /** When true, hides clearly explicit porn/hentai sources from Browse and Sources To Try. Does not affect ecchi-only sources. */
+    fun blockExplicitPornHentaiSources() = preferenceStore.getBoolean("block_explicit_porn_hentai_sources", false)
+
+    // KMK --> v0.6.20: seen manga + reassessment prefs
+    /** Semicolon-separated "sourceId|url" pairs identifying recommendation manga the user has marked as seen/already read. */
+    fun seenRecommendationMangaKeys() = preferenceStore.getString("seen_recommendation_manga_keys", "")
+
+    /** Total rated manga count at the time of the last source-evaluation reassessment baseline. 0 = never set. */
+    fun sourceEvaluationLastReassessmentRatingCount() = preferenceStore.getInt("source_evaluation_last_reassessment_rating_count", 0)
+
+    /** Epoch-ms timestamp of the last source-evaluation reassessment baseline. 0 = never set. */
+    fun sourceEvaluationLastReassessmentAt() = preferenceStore.getLong("source_evaluation_last_reassessment_at", 0L)
+
+    // KMK --> v0.7.6: continuation cursor for source evaluation batches
+    /** Serialized [SourceEvaluationCursor] for continuing a paused evaluation queue. Blank = no cursor. */
+    fun sourceEvaluationContinuationCursor() = preferenceStore.getString("source_evaluation_continuation_cursor", "")
+
+    // KMK --> v0.8.1-fix3: separate cursor slot for the stale/outdated reassessment queue, so
+    // switching between the normal unassessed queue and the stale-reassessment queue does not
+    // discard either one's progress. See SOURCE_EVALUATION_CONTINUATION_FIX_PLAN.
+    /** Serialized [SourceEvaluationCursor] for continuing a paused stale/outdated reassessment queue. Blank = no cursor. */
+    fun sourceEvaluationContinuationCursorStale() = preferenceStore.getString("source_evaluation_continuation_cursor_stale", "")
+    // KMK <--
+
+    // KMK --> v0.7.11: source evaluation consent
+    /** When true, the user has acknowledged the Source Evaluation pre-run warning. */
+    fun sourceEvaluationConsentGiven() = preferenceStore.getBoolean("source_evaluation_consent_given", false)
+    // KMK <--
+
+    // KMK --> v0.8.19: evaluation mode (visual-only obfuscation for screen recordings/screenshots)
+    /**
+     * When true, every displayed source/extension name and icon, extension-repository name,
+     * disliked-manga title, and preferred/blocked tag label is replaced with a generic
+     * placeholder throughout the UI. Purely a display-layer relabeling -- no underlying data,
+     * network behavior, or functionality is affected. Intended for capturing public evidence
+     * (screenshots/screen recordings) without exposing private source/repo names or personal
+     * taste signals.
+     */
+    fun evaluationMode() = preferenceStore.getBoolean("evaluation_mode", false)
+    // KMK <--
+
+    // KMK --> Developer opt-in selecting a deterministic Source Evaluation debug fixture outcome instead of
+    // running the real installer/network pipeline. Only ever read behind `BuildConfig.DEBUG` (see
+    // SourceEvaluationJob.selectSourceEvaluationRunner) -- this preference alone cannot activate the
+    // fixture in a release-derived build. Valid values: "off" (default, real runner),
+    // "candidate_load_error", "connectivity_lost", "per_source_error" -- see
+    // SourceEvaluationDebugFixtureMode.
+    fun evaluationFixtureFailureMode() = preferenceStore.getString("evaluation_fixture_failure_mode", "off")
+    // KMK <--
+
+    // KMK --> private developer opt-in selecting a deterministic Browse
+    // debug fixture outcome, intentionally SEPARATE from evaluationFixtureFailureMode() above. The
+    // original Phase 1 implementation read evaluationFixtureFailureMode() from
+    // BrowseSourceScreenModel.createSourcePagingSource(), which meant any non-off Source Evaluation
+    // debug mode also silently activated the unrelated Browse failure fixture (and vice versa was a
+    // structural risk even though not observed). This preference and BrowseDebugFixtureMode exist so
+    // the two debug-only fixture systems can never cross-activate each other. Only ever read behind
+    // `BuildConfig.DEBUG` (see selectBrowseSourcePagingSource) -- this preference alone cannot
+    // activate the fixture in a release-derived build. Valid values: "off" (default, real paging
+    // source), "source_unavailable" -- see BrowseDebugFixtureMode.
+    fun browseFixtureFailureMode() = preferenceStore.getString("browse_fixture_failure_mode", "off")
+    // KMK <--
+
+    // KMK: debug-only Sources To Try fixture. The consumer also requires BuildConfig.DEBUG, so a
+    // stale preference cannot activate this path in release-derived builds.
+    fun sourcesToTryFixtureMode() = preferenceStore.getString("sources_to_try_fixture_mode", "off")
+
+    // KMK --> v0.7.31: C3 — rated count at the time evaluation was last launched (for profile-changed prompt)
+    /** Total rated manga count when source evaluation was last started. -1 = never run. */
+    fun sourceEvaluationLastRunRatingCount() = preferenceStore.getInt("source_evaluation_last_run_rating_count", -1)
+    // KMK <--
+
+    // KMK --> SEC-01 v0.7.16: leftover extension detection after process death
+    /** Package name of a Shizuku-installed extension that was left behind by a process-death interruption. Blank = none. */
+    fun sourceEvaluationLeftoverPkg() = preferenceStore.getString("source_evaluation_leftover_pkg", "")
+    // KMK <-- v0.7.6
+    // KMK <-- v0.6.20
+
+    // KMK --> v0.7.8: same-manga matching and best-version comparison settings
+    /** Max results per source for bounded same-manga workflows (Love/Like/Dislike/Seen/Favorite/Best-version). Valid: 1, 2, 5, 10. Default 2. */
+    fun sameMangaMatchResultsPerSource() = preferenceStore.getInt("same_manga_match_results_per_source", 2)
+
+    /** When true, same-manga results start selected. When false, start unselected. Origin is never selected. */
+    fun sameMangaMatchPreselectResults() = preferenceStore.getBoolean("same_manga_match_preselect_results", true)
+
+    /** Number of pages sampled per candidate chapter in Best Version preview. Valid: 2, 5, 10. Default 5. */
+    fun bestVersionPreviewSampleSize() = preferenceStore.getInt("best_version_preview_sample_size", 5)
+
+    /** When true, automatic sample skips first 1–2 pages (avoids credits/covers/ads). */
+    fun bestVersionAvoidFirstPages() = preferenceStore.getBoolean("best_version_avoid_first_pages", true)
+    // KMK <--
+    // KMK <--
 
     companion object {
         const val PINNED_SOURCES_PREF_KEY = "pinned_catalogues"

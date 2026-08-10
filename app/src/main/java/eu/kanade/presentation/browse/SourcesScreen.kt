@@ -43,6 +43,8 @@ import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreenModel.Listi
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import exh.source.EH_SOURCE_ID
 import exh.source.EXH_SOURCE_ID
+import exh.util.EvaluationModeFormatter
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import tachiyomi.domain.source.model.Pin
 import tachiyomi.domain.source.model.Source
@@ -265,9 +267,16 @@ fun SourceOptionsDialog(
     onClickSettings: (() -> Unit)? = null,
     // KMK <--
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     AlertDialog(
         title = {
-            Text(text = source.visualName)
+            Text(
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(source.id)
+                } else {
+                    source.visualName
+                },
+            )
         },
         text = {
             Column {
@@ -346,12 +355,19 @@ fun SourceCategoriesDialog(
     onClickCategories: (List<String>) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
     val newCategories = remember(source) {
         mutableStateListOf<String>().also { it += source.categories }
     }
     AlertDialog(
         title = {
-            Text(text = source.visualName)
+            Text(
+                text = if (evaluationModeEnabled) {
+                    EvaluationModeFormatter.sourceLabel(source.id)
+                } else {
+                    source.visualName
+                },
+            )
         },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {

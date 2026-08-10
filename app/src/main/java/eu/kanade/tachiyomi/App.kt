@@ -76,9 +76,12 @@ import exh.log.EHLogLevel
 import exh.log.EnhancedFilePrinter
 import exh.log.XLogLogcatLogger
 import exh.log.xLogD
+import exh.recs.evaluation.SourceEvaluationStartupRecovery
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import logcat.AndroidLogcatLogger
 import logcat.LogPriority
 import logcat.LogcatLogger
@@ -150,9 +153,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         setupExhLogging() // EXH logging
         if (!LogcatLogger.isInstalled) {
             val minLogPriority = when {
-                // KMK -->
                 EHLogLevel.isExtraLogging() -> LogPriority.VERBOSE
-                // KMK <--
                 BuildConfig.DEBUG -> LogPriority.DEBUG
                 else -> LogPriority.INFO
             }
@@ -166,6 +167,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
 
         val scope = ProcessLifecycleOwner.get().lifecycleScope
+
+        // KMK: startup recovery queries
+        // WorkManager through context.workManager. Ensure the explicit fallback is complete before
+        // launching that process-scoped reconciliation coroutine; otherwise a process without the
+        // AndroidX provider's automatic initialization could lose its durable cleanup offer after
+        // the coroutine fails and never gets retried.
+        if (!WorkManager.isInitialized()) {
+            WorkManager.initialize(this, Configuration.Builder().build())
+        }
 
         // Show notification to disable Incognito Mode when it's enabled
         basePreferences.incognitoMode().changes()
@@ -222,12 +232,34 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         MangaCoverMetadata.load()
         // KMK <--
 
+        // KMK --> v0.6.17: Source Evaluation startup crash recovery — runs before optional work
+        // so a crashing extension can be quarantined before the user opens Source Evaluation.
+        SourceEvaluationStartupRecovery().runAsync(scope)
+        // KMK <--
+
+        // KMK: reconcile any durable
+        // backup-cleanup record left behind by a process death (e.g. the app was killed while a
+        // BackupCreateJob WorkManager job was still running) so the recovery dialog can be restored.
+        //
+        // KMK: reconcileOnStartup already
+        // catches ordinary exceptions from its own WorkManager calls internally, but this outer
+        // boundary is a second, defense-in-depth safety net -- e.g. a WorkManager/database
+        // initialization failure surfacing before reconcileOnStartup's own try/catch is reached must
+        // never crash this process-scoped coroutine (which would take the whole `scope` down with it).
+        // CancellationException is rethrown, never swallowed -- process-scope cancellation must still
+        // propagate normally.
+        scope.launch {
+            try {
+                eu.kanade.tachiyomi.util.export.BackupCleanupRecoveryStore.reconcileOnStartup(this@App)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "App: backup cleanup startup reconciliation failed unexpectedly" }
+            }
+        }
+
         // Updates widget update
         WidgetManager(Injekt.get(), Injekt.get()).apply { init(scope) }
-
-        if (!WorkManager.isInitialized()) {
-            WorkManager.initialize(this, Configuration.Builder().build())
-        }
         val syncPreferences: SyncPreferences = Injekt.get()
         val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
         if (syncPreferences.isSyncEnabled() && syncTriggerOpt.syncOnAppStart) {
@@ -290,9 +322,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
             crossfade((300 * this@App.animatorDurationScale).toInt())
             allowRgb565(DeviceUtil.isLowRamDevice(this@App))
-            // KMK -->
             if (EHLogLevel.isExtraLogging()) logger(DebugLogger())
-            // KMK <--
 
             // Coil spawns a new thread for every image load by default
             fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))

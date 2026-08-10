@@ -1,6 +1,7 @@
 package tachiyomi.domain.chapter.interactor
 
 import exh.source.MERGED_SOURCE_ID
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
@@ -25,6 +26,8 @@ class GetBookmarkedChaptersByMangaId(
             }
             // SY <--
             chapterRepository.getBookmarkedChaptersByMangaId(mangaId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()
