@@ -1,18 +1,18 @@
 # Source Evaluation diagrams
 
-Source Evaluation checks whether an installed source can provide useful, compatible recommendation data. It saves short verdicts and diagnostics instead of raw errors.
+Source Evaluation checks whether an installed source can provide useful recommendations. It saves a short result and explanation instead of raw errors.
 
 ## Evaluation overview
 
 ```mermaid
 flowchart LR
     Settings["Source Evaluation settings"] --> Queue["Eligible source queue"]
-    Queue --> Probes["Popular, recent, search, and metadata probes"]
-    Probes --> Evidence["Evidence and scoring"]
-    Evidence --> Verdict["Saved verdict and short diagnostics"]
+    Queue --> Probes["Check popular, recent, search, and manga details"]
+    Probes --> Evidence["Results and scoring"]
+    Evidence --> Verdict["Saved result and short explanation"]
 ```
 
-Evaluation is bounded by the selected batch size and can continue after the screen is closed.
+The app checks only the selected number of sources at a time, and it can continue after you close the screen.
 
 ## Evaluate one source
 
@@ -37,7 +37,7 @@ flowchart TD
     Fingerprint --> Mode{"New work or stale work?"}
     Mode -->|New| Cursor["Resume saved new-source cursor"]
     Mode -->|Stale| Restart["Start explicit reassessment queue"]
-    Cursor --> Batch["Take next bounded batch"]
+    Cursor --> Batch["Take the next group"]
     Restart --> Batch
     Batch --> Persist["Save each completed result and cursor"]
     Persist --> Remaining["Show remaining actionable count"]
@@ -60,17 +60,17 @@ flowchart TD
 
 Recoverable failures remain local to one source. Cancellation is never converted into a successful result.
 
-## Evidence to verdict
+## From checks to a result
 
 ```mermaid
 flowchart LR
-    Samples["Catalogue and search samples"] --> Summary["Evidence summary"]
+    Samples["Catalogue and search samples"] --> Summary["Check summary"]
     Metadata["Metadata completeness"] --> Summary
     Fit["Taste and recommendation fit"] --> Summary
     Safety["Extension and runtime safety"] --> Summary
-    Summary --> Confidence{"Enough evidence?"}
+    Summary --> Confidence{"Enough information?"}
     Confidence -->|Yes| Verdict["Useful, weak, or unsuitable"]
     Confidence -->|No| Partial["Partial or unavailable"]
 ```
 
-The visible result explains confidence and category without exposing requests, credentials, or exception text.
+The screen explains the result and its confidence without exposing requests, credentials, or raw error text.

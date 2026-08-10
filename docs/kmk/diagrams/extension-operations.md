@@ -12,7 +12,7 @@ flowchart TD
     Load --> Continue
 ```
 
-One incompatible package produces a scoped outcome while unrelated installed extensions continue through normal loading.
+If one package is incompatible, the app reports that package's problem and continues loading the others.
 
 ## Install and remove
 
@@ -26,12 +26,12 @@ sequenceDiagram
     App->>Android: Request supported package operation
     Android-->>App: Success, cancellation, or failure
     App->>History: Record only a confirmed result
-    App-->>User: Show bounded outcome and follow-up
+    App-->>User: Show the result and next step
 ```
 
 The app records only a confirmed Android result. Cancellation and ordinary failure remain distinct outcomes.
 
-## Exact-artifact export
+## Exported-file cleanup
 
 ```mermaid
 flowchart TD
@@ -43,9 +43,9 @@ flowchart TD
     Choice -->|Remove| Delete["Delete exact document URI only"]
 ```
 
-Cleanup retains the exact returned document reference and never searches a folder by filename.
+The app remembers the exact document returned by Android and never searches a folder by filename when cleaning up.
 
-## Source evaluation handoff
+## Continue to Source Evaluation
 
 ```mermaid
 flowchart LR
@@ -56,4 +56,4 @@ flowchart LR
     Installed -->|No| Outcome["Cancelled or failed state"]
 ```
 
-Sources To Try can hand off to installation, but a source enters evaluation only after Android confirms the package is installed.
+Sources To Try can open Android's installation flow. The source is offered for evaluation only after Android confirms that installation succeeded.

@@ -1,6 +1,6 @@
-# Export, Evaluation Mode, and evidence diagrams
+# Export, Evaluation Mode, and screenshot diagrams
 
-These diagrams explain safe document creation, exact-artifact cleanup, anonymized presentation, and the public evidence boundary.
+These diagrams explain how the app creates and cleans up exported files, hides source names in Evaluation Mode, and decides which screenshots are safe to publish.
 
 ## Export sequence
 
@@ -16,7 +16,7 @@ sequenceDiagram
     User->>Screen: Choose export
     Screen->>Picker: Request destination
     Picker-->>Screen: Created document reference or cancellation
-    Screen->>Exporter: Begin bounded write
+    Screen->>Exporter: Start writing
     Exporter->>Source: Read selected export input
     Exporter->>Document: Write output
     Document-->>Exporter: Success, partial output, or failure
@@ -26,7 +26,7 @@ sequenceDiagram
 
 Android creates the destination before the app writes to it. The app therefore keeps an exact reference for cleanup after failed or partial writes.
 
-## Exact-artifact cleanup
+## Clean up the created file
 
 ```mermaid
 flowchart TD
@@ -44,7 +44,7 @@ flowchart TD
 
 Cleanup never searches a folder or deletes unrelated files.
 
-## Evaluation Mode boundary
+## What Evaluation Mode changes
 
 ```mermaid
 flowchart TD
@@ -56,20 +56,20 @@ flowchart TD
     Identity --> Behavior["Storage, source requests, and actions remain unchanged"]
 ```
 
-Evaluation Mode changes presentation only. It is a screenshot aid, not a separate data mode.
+Evaluation Mode changes visible labels only. It helps with screenshots but does not create a separate set of app data.
 
-## Evidence review
+## Review a screenshot
 
 ```mermaid
 flowchart TD
-    Feature["Verified feature state"] --> Mode["Enable Evaluation Mode when source labels are visible"]
-    Mode --> Capture["Capture the app surface"]
+    Feature["Feature ready to show"] --> Mode["Enable Evaluation Mode when source labels are visible"]
+    Mode --> Capture["Capture the app screen"]
     Capture --> Inspect["Check status bar, account, source, title preference, and path details"]
     Inspect --> Private{"Private detail remains?"}
     Private -->|Yes| Exclude["Crop, replace, or exclude capture"]
-    Private -->|No| Hash["Record purpose, privacy treatment, and hash"]
+    Private -->|No| Hash["Record purpose, privacy check, and hash"]
     Exclude --> Inspect
-    Hash --> Public["Approved public evidence"]
+    Hash --> Public["Approved public screenshot"]
 ```
 
-The public evidence set includes only images whose visible content matches the documented privacy treatment.
+Only screenshots that pass the documented privacy check are included in the public guide.

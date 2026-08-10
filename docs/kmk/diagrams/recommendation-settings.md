@@ -1,6 +1,6 @@
 # Recommendation-settings diagrams
 
-Recommendation settings use Komikku's established list, section, search, and navigation patterns.
+Recommendation settings use the same lists, sections, search, and navigation patterns as the rest of Komikku.
 
 ## Navigation map
 

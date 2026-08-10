@@ -12,10 +12,10 @@ Komikku KMK retains Komikku's existing dependency and open-source license screen
 
 ## AndroidX test components
 
-AndroidX test extensions and UI Automator are used by instrumented UI evidence tests. They are `androidTest` dependencies and are not packaged as production runtime features.
+AndroidX test extensions and UI Automator are used by Android UI tests that check documented screens. They are `androidTest` dependencies and are not included in the production app.
 
 ## Google Drive sync
 
 The inherited Google Drive sync provider uses Google's installed-app OAuth flow and app-data storage. Its client configuration is not stored in this repository. A release maintainer must provide a fork-owned configuration through the protected release workflow, verify its consent-screen and redirect settings, and test sign-in and revocation before publishing. User authorization tokens are stored by the app and should never be included in issues, screenshots, backups shared for support, or public build logs.
 
-Before publishing a release, regenerate or inspect the app's open-source license inventory so resolved transitive components and their notices match the exact artifact.
+Before publishing a release, regenerate or inspect the app's open-source license list so all included libraries and notices match that exact build.

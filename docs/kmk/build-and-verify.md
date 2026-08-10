@@ -29,9 +29,9 @@ Run the formatting, unit, and local-source checks before sharing a change:
 ./gradlew spotlessCheck :app:testDebugUnitTest :source-local:testDebugUnitTest :app:assembleDebug
 ```
 
-For a change that affects a specific feature, also run its focused test classes. Device-dependent behavior still needs a supported Android target and privacy-safe evidence; a successful host build does not prove navigation, document-provider behavior, or extension interoperability by itself.
+When a change affects a specific feature, also run that feature's tests. Device behavior still needs to be checked on a supported Android device or emulator, with screenshots reviewed for private information. A successful computer build alone cannot prove navigation, Android document-picker behavior, or extension compatibility.
 
-## Inspect the artifact
+## Check the APK
 
 Before distributing an APK:
 
@@ -51,4 +51,4 @@ The release workflow builds without telemetry service credentials, signs the APK
 
 ## Upstream and fork remotes
 
-Keep the official Komikku repository as an upstream source and this repository as the fork destination. Never publish private evidence, local build output, signing keys, device captures, or machine-specific configuration.
+Keep the official Komikku repository as the upstream source and this repository as the fork. Never publish private test files, local build output, signing keys, device captures, or machine-specific configuration.

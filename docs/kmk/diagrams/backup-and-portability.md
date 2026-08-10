@@ -15,9 +15,9 @@ flowchart TD
     Quality --> Encode
 ```
 
-KMK state is included through explicit backup options and established backup encoding, not a second independent archive format.
+KMK data uses the existing backup format and appears as clear backup options. It does not create a second kind of archive.
 
-## Restore ownership
+## How restore is divided
 
 ```mermaid
 sequenceDiagram
@@ -27,14 +27,14 @@ sequenceDiagram
     participant KMK as KMK taste restorer
     participant Result as Restore outcome
     Job->>Decoder: Decode supported backup
-    Decoder->>Core: Restore established app data
+    Decoder->>Core: Restore existing app data
     Decoder->>KMK: Restore selected KMK records
     Core-->>Result: Counts and failures
     KMK-->>Result: Counts and failures
     Result-->>Job: Complete, partial, or failed
 ```
 
-Core and KMK restorers contribute to one truthful result, so a partial restore cannot be presented as complete.
+Komikku and KMK both report into the same restore result, so a partial restore cannot be shown as complete.
 
 ## Conflict-safe group restoration
 
@@ -59,4 +59,4 @@ flowchart LR
     Rebuild["Downloaded pages"] --> OCR
 ```
 
-Regenerable or externally owned data is deliberately outside KMK backup ownership.
+The KMK backup leaves out data that can be rebuilt or belongs to an outside service.

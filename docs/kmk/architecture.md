@@ -18,7 +18,7 @@ flowchart LR
 
 Komikku continues to own navigation, the library, the reader, downloads, tracking, backup, and extension loading. KMK adds discovery and preference features inside those existing parts of the app. Installed extensions can access their own online services; KMK does not add a separate server.
 
-## Feature ownership
+## Where features live
 
 ```mermaid
 flowchart TD
@@ -104,23 +104,23 @@ flowchart TD
     Complete -->|No| Continue["Continue or exit normally"]
     Complete -->|Yes| Defer["Defer rating prompt until reader exit"]
     Defer --> Choice["Love, Like, Dislike, Not interested, or skip"]
-    Choice --> Offer["Optional linked-version rating handoff"]
+    Choice --> Offer["Option to rate linked versions"]
     Offer --> Exit["Return through normal navigation"]
 ```
 
-The schedule is local, optional, and off by default. It is re-evaluated on reader lifecycle transitions. A restricted session cannot use alternate chapter transitions as a bypass. The completion prompt is offered only for genuine completion of the latest available chapter and is deferred until exit so it does not interrupt reading. The manga screen also exposes a semantic Jump to last read action when a valid read position exists.
+The schedule is local, optional, and off by default. The reader checks it when it opens and whenever the app returns to the foreground. Moving to another chapter cannot bypass a restriction. The completion prompt appears only after you finish the latest available chapter, and it waits until you exit so it does not interrupt reading. The manga toolbar also shows **Jump to last read** when a valid reading position exists.
 
-## Public evidence boundary
+## What stays private
 
 ```mermaid
 flowchart LR
     Source["Reviewed source and tests"] --> Public["Public fork"]
     Docs["Current behavior documentation"] --> Public
-    Safe["Sanitized screenshots and semantic XML"] --> Public
+    Safe["Privacy-checked screenshots and written XML references"] --> Public
     Raw["Raw logs, device captures, accounts, and private paths"] --> Hold["Private only"]
     Stale["Superseded diagrams and stale captures"] --> Hold
 ```
 
-Only current, privacy-reviewed files are included in the public fork. Raw screen dumps, device identifiers, local paths, account details, source identities, reading history, and manga-specific preference evidence remain private.
+Only current files that have passed a privacy review are included in the public fork. Raw screen dumps, device identifiers, local paths, account details, source names, reading history, and manga-specific preference records remain private.
 
-OCR text is an intentionally local, regenerable index. It is stored in the app database, excluded from backup and sync, and deleted through scoped index controls. Backup support covers the KMK state that users cannot cheaply recreate, including ratings, recommendation settings, links, and source evaluation data.
+OCR text forms a local index that the app can rebuild from downloaded pages. It stays in the app database, is left out of backup and sync, and can be cleared without deleting those pages. Backups include KMK data that is harder to recreate, such as ratings, recommendation settings, linked versions, and source evaluations.

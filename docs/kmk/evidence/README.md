@@ -1,18 +1,18 @@
-# Public UI evidence
+# Screenshots
 
-These screenshots show the main KMK screens on a tablet. Each image is cropped to the app and reviewed for private information. The captions explain what to look for, so the images are still useful when viewed out of context.
+These screenshots show the main KMK screens on a tablet. Each image is cropped to the app and checked for private information. The captions point out the important parts of each screen.
 
 ## For You
 
 ![For You page with personalized manga rows, matching tags, and anonymized source labels](screenshots/for-you-evaluation-mode.png)
 
-The first visible area shows the main recommendation experience: topic shortcuts, personalized rows, matching tags, and manga cards. Evaluation Mode replaces source names with neutral labels. Manga artwork and titles remain visible because they are the result the feature is designed to present.
+At the top of For You, you can see topic shortcuts, personalized rows, matching tags, and manga cards. Evaluation Mode hides source names, while the covers and titles remain visible so the recommendations are still meaningful.
 
 ## Browse compatibility
 
 ![Browse page with neutral source labels while Evaluation Mode is enabled](screenshots/browse-evaluation-mode.png)
 
-This image shows that Evaluation Mode also applies to the existing Browse experience. Source labels are anonymized without changing the surrounding Komikku navigation.
+Evaluation Mode also hides source names in Browse. The rest of Komikku's navigation stays the same.
 
 ## Recommendation settings
 
@@ -24,20 +24,20 @@ The settings page groups related controls into For You sources, taste and filter
 
 ![Management and diagnostics settings with grouped controls and short summaries](screenshots/management-diagnostics.png)
 
-This page keeps maintenance and diagnostic controls together. The visible summaries describe configuration state without exposing manga titles, source names, account details, or local paths.
+This page keeps maintenance and diagnostic controls together. Its summaries show the current settings without exposing manga titles, source names, account details, or local paths.
 
 ## Source Evaluation
 
 ![Source Evaluation page showing progress counts, warnings, and reassessment controls](screenshots/source-evaluation.png)
 
-This partial-result state shows progress counts, readiness information, and reassessment actions. It uses general categories instead of raw source identities or error messages.
+This screenshot shows Source Evaluation partway through a run, with progress, readiness information, and reassessment actions. It uses general categories instead of raw source names or error messages.
 
-These captures exclude explicit preference choices, reading history, account state, reader pages, and menus that could reveal private manga activity.
+These screenshots leave out specific preference choices, reading history, account information, reader pages, and menus that could reveal private manga activity.
 
-## XML evidence
+## XML reference files
 
-The XML files in `xml/` describe feature routes, states, implementation owners, privacy rules, and screenshot hashes. They are not raw Android screen dumps and do not include coordinates, device identifiers, titles, source names, URLs, account data, or local paths.
+The XML files in `xml/` list each feature's screens, possible states, related code, privacy rules, and screenshot hashes. They are written references, not raw Android screen dumps, and they do not contain coordinates, device identifiers, manga titles, source names, URLs, account data, or local paths.
 
 ## Maintenance rule
 
-Update an evidence record when its route, visible controls, privacy treatment, or screenshot changes. A code change that leaves those details unchanged does not require a new screenshot, but the linked implementation paths must stay accurate.
+Update the matching XML entry when a screen, visible control, privacy rule, or screenshot changes. A code change does not need a new screenshot when the screen still looks and behaves the same, but its links to the code must remain accurate.

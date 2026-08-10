@@ -7,7 +7,7 @@ flowchart TD
     Open["Open OCR Search Downloads"] --> Scope{"Choose indexing scope"}
     Scope -->|Current manga| Current["Enumerate downloaded pages for one manga"]
     Scope -->|All downloads| All["Confirm broad local scan"]
-    Current --> Worker["Start bounded background work"]
+    Current --> Worker["Start cancellable background work"]
     All --> Worker
     Worker --> Notice["Show progress notification"]
 ```
@@ -26,10 +26,10 @@ sequenceDiagram
     Files-->>Worker: Image bytes or typed file error
     Worker->>OCR: Recognize text on device
     OCR-->>Worker: Text, empty result, or typed recognition error
-    Worker->>Index: Store bounded status and recognized text
+    Worker->>Index: Store short status and recognized text
 ```
 
-Each page becomes a success, empty, or typed failure row. Raw exception messages and page identities are not used as diagnostic text.
+Each page receives a success, empty, or clear failure status. Diagnostics do not include raw error messages or page identities.
 
 ## Search and navigation
 
@@ -41,7 +41,7 @@ flowchart LR
     Results --> Reader["Open the matching reading context"]
 ```
 
-Search ranking favors stronger word matches while retaining the page context needed for supported navigation.
+Search gives stronger word matches a higher position and keeps enough page information to open the correct place in the reader.
 
 ## Privacy and cleanup
 

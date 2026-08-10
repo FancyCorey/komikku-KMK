@@ -15,7 +15,7 @@ Komikku KMK is based on [Komikku](https://github.com/komikku-app/komikku), Tachi
 
 ## Install
 
-Published builds, when available, are distributed only through this fork's [Releases page](https://github.com/FancyCorey/komikku-KMK/releases). Until a release is published, follow the [build and verification guide](docs/kmk/build-and-verify.md). Do not install an artifact represented as Komikku KMK from an unrelated source.
+Official KMK builds, when available, are published on this fork's [Releases page](https://github.com/FancyCorey/komikku-KMK/releases). Until then, follow the [build guide](docs/kmk/build-and-verify.md) to make your own. Avoid builds labeled Komikku KMK when they come from somewhere else.
 
 Requires Android 8.0 or higher. The release application ID is `app.komikku.kmk`, so it can coexist with official Komikku.
 
@@ -27,11 +27,11 @@ Report fork-specific problems through this repository's [issue tracker](https://
 
 ### KMK additions
 
-This fork includes personalized discovery, source evaluation, cross-source comparison, reversible manga preferences, local OCR search, safer extension/export operations, and optional reader controls. See the [KMK feature guide](docs/kmk/README.md) for the user guide, architecture, feature contracts, detailed diagrams, release notes, privacy behavior, and reviewed UI evidence.
+This fork adds personalized discovery, source evaluation, cross-source comparison, reversible manga preferences, local OCR search, safer exports, and optional reader controls. The [KMK feature guide](docs/kmk/README.md) includes instructions, diagrams, privacy details, screenshots, and technical references.
 
 ![For You recommendations shown in Evaluation Mode](docs/kmk/evidence/screenshots/for-you-evaluation-mode.png)
 
-The image above shows the central For You experience in Evaluation Mode. Source identities are neutralized; manga artwork and recommendation context remain visible because they are the result being demonstrated.
+This is the For You page in Evaluation Mode. Source names are hidden, while covers and recommendation details remain visible so you can see what the page actually recommends.
 
 ## Features
 

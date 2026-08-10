@@ -20,7 +20,7 @@ stateDiagram-v2
     NotInterested --> Dislike: Choose Dislike
 ```
 
-Not Interested is a peer preference state. Replacing it with a rating happens as one recorded change.
+Not Interested is saved in the same way as Love, Like, and Dislike. Replacing it with another preference is recorded as one change.
 
 ## Reversible preference write
 
@@ -91,4 +91,4 @@ flowchart LR
     Sort --> Collections["Loved, Liked, Disliked, and Not Interested"]
 ```
 
-Collections are derived from saved preference and link state, so the same structural rules apply across screens.
+Collections come from the saved preferences and linked versions, so they stay consistent across screens.

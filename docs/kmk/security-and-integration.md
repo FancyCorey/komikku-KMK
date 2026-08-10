@@ -1,6 +1,6 @@
 # Security and integration behavior
 
-KMK extends an app that interacts with source extensions, websites, trackers, Android packages, files, backups, and document providers. These boundaries are treated as untrusted inputs. Validation happens before navigation or mutation, and failures are reduced to stable categories before they reach user-facing diagnostics.
+KMK interacts with extensions, websites, trackers, Android packages, files, backups, and document providers. Data from those places is checked before the app opens a screen or changes saved information. Error messages use consistent categories instead of passing private or unpredictable details directly to the screen.
 
 ## External navigation
 
@@ -8,12 +8,12 @@ Deep links and embedded WebView navigation parse the complete URI and accept onl
 
 ## Source and extension calls
 
-Source calls run through guarded runtime boundaries where the feature architecture supports them. A failure is attached to the source operation that produced it, while unrelated sources continue. Coroutine cancellation is rethrown rather than converted into an empty result or ordinary error.
+Where supported, source requests run through a shared safety layer. A failure stays with the source request that caused it while unrelated sources continue. Cancelling a task remains a cancellation instead of being shown as an empty result or ordinary error.
 
 ## Mutations and history
 
-Supported local mutations build a bounded receipt from the previous state before writing and commit it to Action History only after success. Undo checks the current state before restoring, so a later user change is not overwritten. Remote tracker writes and Android package operations are described separately because local state cannot guarantee reversal of an external effect.
+Before a supported local change, the app records the previous value. It adds that record to Action History only after the change succeeds. Undo checks the current value before restoring anything, so it cannot overwrite a newer change. Tracker updates and Android package actions are handled separately because the app cannot guarantee that an outside change can be reversed locally.
 
 ## Storage and diagnostics
 
-Exports use Android document APIs and retain the exact returned document reference for optional cleanup. Public diagnostics use fixed categories and bounded counts; they exclude raw URLs, paths, credentials, exception objects, source identities, and arbitrary remote messages.
+Exports use Android's document APIs and remember the exact file they created so it can be removed later if requested. Public diagnostics use fixed categories and limited counts. They leave out raw URLs, paths, credentials, error objects, source names, and messages returned by outside services.

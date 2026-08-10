@@ -1,6 +1,6 @@
 # System-wide architecture diagrams
 
-These diagrams connect the feature pages and show the shared application, storage, and publication boundaries.
+These diagrams show how the feature pages share the app, save data, and keep private files out of the public repository.
 
 ## System context
 
@@ -15,7 +15,7 @@ flowchart LR
 
 KMK runs inside the Android app and uses installed extensions. It does not add a separate KMK server.
 
-## Feature ownership
+## Responsibilities
 
 ```mermaid
 flowchart TD
@@ -35,7 +35,7 @@ flowchart TD
     Reader --> Persistence
 ```
 
-Screens own presentation, policies own decisions, and repositories or settings own durable state.
+Screens decide what to display, policy classes make feature decisions, and repositories or settings save data that must survive a restart.
 
 ## User action to saved result
 
@@ -79,17 +79,17 @@ flowchart LR
 
 New stored data uses registered migrations and explicit backup behavior where the feature supports backup and restore.
 
-## Public boundary
+## What can be published
 
 ```mermaid
 flowchart TD
     Source["Reviewed source and tests"] --> Review["Publication review"]
     Docs["Current user, architecture, and reference documentation"] --> Review
-    Evidence["Sanitized screenshots and semantic XML"] --> Review
+    Evidence["Privacy-checked screenshots and written XML references"] --> Review
     Review --> Checks{"Paths, privacy, build, tests, diagrams, and hashes pass?"}
     Checks -->|Yes| Public["Public fork"]
     Checks -->|No| Hold["Correct before publication"]
     Raw["Raw logs, device data, accounts, and local paths"] --> Excluded["Excluded from public history"]
 ```
 
-The publication check applies to both the final files and the Git history that would be pushed.
+The privacy check covers both the files being published and the Git history that will be pushed.

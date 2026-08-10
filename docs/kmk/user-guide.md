@@ -56,8 +56,8 @@ Source Evaluation checks whether a source is suitable; For You separately checks
 ## Sources to try
 
 1. Open **Recommendation Settings** and select **Sources to try**.
-2. Review compatible non-installed source suggestions derived from taste and evaluation signals.
-3. Use the normal extension installation handoff for a chosen suggestion.
+2. Review compatible non-installed source suggestions based on your taste and source evaluations.
+3. Choose a suggestion to open Android's normal extension installation screen.
 4. Return to evaluation or For You after installation if the new source needs assessment.
 
 If the extension list, package, or network response is unavailable, the app shows an unavailable or failed state. Test-only sample data is not included in release builds.
@@ -68,7 +68,7 @@ If the extension list, package, or network response is unavailable, the app show
 2. Review versions found through other sources and deselect incorrect matches.
 3. Confirm the versions that should be linked or grouped.
 4. Open **Best Version** when multiple linked versions have enough comparable information.
-5. Compare the available samples and metadata, then keep the current version or continue through Komikku's established migration flow.
+5. Compare the available samples and manga details, then keep the current version or continue through Komikku's existing migration flow.
 
 If you cancel a search, or one source fails, versions you already accepted remain selected. Migration shows which steps succeeded and which failed. It does not claim to reverse changes that already finished or happened outside the app.
 
@@ -92,7 +92,7 @@ The schedule is off by default. If you open the reader during a restricted time,
 
 ### Completion rating
 
-When the latest available chapter is genuinely completed, the reader defers the preference prompt until exit. Choose a preference or skip it. If linked versions exist, the next step can offer a handoff for rating those versions before normal navigation resumes.
+When you finish the latest available chapter, the reader waits until you exit before asking for a preference. Choose one or skip the prompt. If linked versions exist, the next screen can offer to rate those versions before returning to normal navigation.
 
 ## Evaluation Mode and Action History
 
@@ -126,7 +126,7 @@ Extension installation and removal continue through Android's supported package 
 
 ## Privacy and troubleshooting
 
-- Use Evaluation Mode before sharing source-bearing screenshots.
+- Turn on Evaluation Mode before sharing screenshots that would otherwise show source names.
 - Review screenshots for title preferences, account state, reader pages, notifications, status bars, and document paths.
 - Review a diagnostic summary before publishing it; do not publish raw errors or logs.
 - A source-specific error should be retried or reassessed independently; it should not require clearing app data.

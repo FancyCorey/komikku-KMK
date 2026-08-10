@@ -10,8 +10,8 @@ flowchart LR
     Evaluation["Evaluation and recommendation-fit data"] --> Suggestions
     Taste["Language and taste settings"] --> Suggestions
     Suggestions --> List["Compatible non-installed sources"]
-    List --> Handoff["Normal extension installation handoff"]
-    Handoff --> Installed["Installed source pool"]
+    List --> Handoff["Open normal extension installation"]
+    Handoff --> Installed["Installed sources"]
 ```
 
 Suggestions do not install anything automatically. The normal extension flow remains responsible for confirmation and installation.
@@ -24,7 +24,7 @@ flowchart TD
     Installed -->|Yes| Hide["Do not suggest"]
     Installed -->|No| Eligible{"Language, safety, and repository checks pass?"}
     Eligible -->|No| Unavailable["Hide or explain unavailable state"]
-    Eligible -->|Yes| Evidence["Apply evaluation and taste evidence"]
+    Eligible -->|Yes| Evidence["Apply evaluation and taste signals"]
     Evidence --> Order["Order suggestions"]
     Order --> Show["Show source suggestion"]
 ```

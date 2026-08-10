@@ -45,18 +45,18 @@ stateDiagram-v2
     Unavailable --> [*]
 ```
 
-Each linked version owns its own preview state, so one failed preview does not hide the other comparisons.
+Each linked version tracks its own preview. If one preview fails, the other comparisons remain visible.
 
 ## Migration result
 
 ```mermaid
 flowchart TD
     Choose["Choose preferred version"] --> Confirm["Confirm migration"]
-    Confirm --> Execute["Run established migration steps"]
+    Confirm --> Execute["Run existing migration steps"]
     Execute --> Result{"Target manga created?"}
     Result -->|Yes| Open["Open migrated manga"]
     Result -->|No, current kept| Kept["Report current version kept"]
     Execute -->|Step fails| Failed["Report completed and failed steps"]
 ```
 
-The result distinguishes success, a deliberately retained current version, and failure. It does not claim an automatic rollback of completed external effects.
+The result clearly separates a successful migration, a decision to keep the current version, and a failure. It does not promise to undo changes that already finished outside this step.

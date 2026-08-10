@@ -1,6 +1,6 @@
 # Komikku KMK public release notes
 
-This page summarizes the feature set represented by the current public source tree. The in-app **KMK What's new** screen remains the detailed chronological record.
+This page summarizes the features included in the current version. The in-app **KMK What's new** screen keeps the detailed history of changes.
 
 ## Current KMK feature version
 
@@ -8,23 +8,23 @@ The current in-app feature version is **KMK-Recs v0.8.20-fix5**.
 
 ## Included feature families
 
-- Personalized For You rows with eligibility checks, source-aware retrieval, a bounded recent-catalogue lane, exposure-aware reordering, and partial-result handling.
-- Love, Like, Dislike, and Not Interested as peer preference states, with collections, linked-version grouping, and guarded Action History restoration.
+- Personalized For You rows with eligibility checks, source-aware retrieval, a configurable share of recent catalogue entries, reordering for repeatedly shown cards, and useful partial results.
+- Love, Like, Dislike, and Not Interested as equal preference choices, with their own collections, linked-version groups, and conflict-checked undo through Action History.
 - Source Evaluation, Sources To Try, source-priority controls, quality diagnostics, and extension-failure isolation.
-- Cross-source matching and Best Version comparison through Komikku's established migration flow.
-- Reader timer, local reading schedule, deferred latest-chapter preference prompt, linked-version rating handoff, and Jump to last read.
-- Local OCR indexing and search for downloaded pages, with scoped cleanup and backup/sync exclusion.
+- Cross-source matching and Best Version comparison through Komikku's existing migration flow.
+- Reader timer, local reading schedule, a latest-chapter preference prompt shown after exit, linked-version ratings, and Jump to last read.
+- Local OCR indexing and search for downloaded pages, with controls for clearing selected index data and no OCR text in backup or sync.
 - KMK backup and restore support for ratings, recommendation settings, links, source quality, and evaluation state.
-- Android document-based export with exact-artifact cleanup, plus supported extension package operations.
-- Evaluation Mode and privacy-bounded diagnostics for review and evidence capture.
+- Android document-based export that can clean up the exact file it created, plus supported extension package actions.
+- Evaluation Mode and privacy-aware diagnostics for screenshots and review.
 
-## Compatibility boundary
+## Compatibility with Komikku
 
-KMK retains Komikku's established Library, Browse, Reader, Settings, backup, tracking, source-extension, and migration ownership. Source-specific failures are isolated where possible, cancellation remains cancellation, and completed remote or Android package effects are not described as locally reversible.
+KMK continues to use Komikku's existing Library, Browse, Reader, Settings, backup, tracking, extension, and migration flows. When possible, a source failure affects only that source. Cancelling an action stops it normally, and the app does not promise to undo changes that already happened in Android or on an outside service.
 
 ## Fork identity
 
-Komikku KMK is an independent fork. Its release package is `app.komikku.kmk`, its launcher identity is distinct, and its updater targets `FancyCorey/komikku-KMK`. Official Komikku releases and support channels remain upstream resources and are not presented as KMK releases.
+Komikku KMK is an independent fork. It keeps the original Komikku artwork, uses the package name `app.komikku.kmk` and launcher name **Komikku KMK**, and checks `FancyCorey/komikku-KMK` for its own updates. Official Komikku releases and support channels remain separate.
 
 ## Known limitation
 

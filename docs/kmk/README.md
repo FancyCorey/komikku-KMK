@@ -5,28 +5,28 @@ KMK extends Komikku with personalized discovery, cross-source comparison, revers
 ## Documentation map
 
 - [User guide](user-guide.md) gives step-by-step instructions, expected results, and troubleshooting guidance.
-- [Public UI evidence](evidence/README.md) shows the approved screenshots and explains what each image demonstrates.
+- [Screenshots](evidence/README.md) shows the reviewed app screens and explains what to look for in each one.
 - [Architecture](architecture.md) explains how screens, source extensions, storage, and reader features work together.
-- [Feature diagrams](diagrams/README.md) provides detailed flows for every KMK feature domain.
+- [Feature diagrams](diagrams/README.md) explain how each group of KMK features works.
 - [Feature catalog](feature-catalog.md) maps each feature family to its implementation owner and possible states.
 - [Build and verification](build-and-verify.md) explains how to produce and check a local build.
-- [Privacy and data](privacy-and-data.md) explains local storage, network boundaries, exports, backups, and evidence sharing.
-- [Security and integration](security-and-integration.md) explains validation, failure isolation, cancellation, and scoped mutation boundaries.
+- [Privacy and data](privacy-and-data.md) explains local storage, network access, exports, backups, and safe screenshot sharing.
+- [Security and integration](security-and-integration.md) explains input checks, isolated failures, cancellation, and safe changes to local data.
 - [Third-party components](third-party-components.md) records the additional KMK dependencies and their terms.
 - [Release notes](release-notes.md) summarizes the current public feature set and compatibility boundary.
-- [Machine-readable feature contract](evidence/xml/feature-contract.xml) records routes, states, and source ownership.
-- [Machine-readable evidence manifest](evidence/xml/evidence-manifest.xml) records artifact purpose, privacy treatment, and hashes.
+- [Feature reference (XML)](evidence/xml/feature-contract.xml) lists screens, states, and the code responsible for them.
+- [Screenshot manifest (XML)](evidence/xml/evidence-manifest.xml) lists each public file, its privacy review, and its hash.
 - [Security policy](../../SECURITY.md) explains how to report a vulnerability without publishing private data.
 
 ## Design principles
 
-- Existing Library, Browse, Reader, Settings, backup, tracking, and extension behavior remains owned by Komikku's established screens and domain boundaries.
-- KMK screens isolate source-extension failures and store data through the app's established storage layers.
+- Library, Browse, Reader, Settings, backup, tracking, and extension features continue to use Komikku's existing screens and internal flows.
+- KMK keeps one extension failure from breaking unrelated screens and saves data through Komikku's existing database and settings.
 - Cancellation remains cancellation. A source, network, or extension failure is isolated to the operation that encountered it.
-- Evaluation Mode changes presentation and evidence labels; it does not change stable identifiers, stored user state, source requests, or action targets.
+- Evaluation Mode changes visible names in screenshots; it does not change saved identifiers, user data, source requests, or the item an action affects.
 - Reversible actions record the previous value before a change and keep that record only when the change succeeds.
-- The public fork uses its own package name, launcher identity, update source, release page, and issue tracker.
+- The public fork uses its own package name, launcher name, update source, release page, and issue tracker while keeping the original Komikku artwork.
 
-## Evidence scope
+## Screenshots and privacy
 
-The public screenshots include the central For You experience in Evaluation Mode, with source identities replaced by neutral labels. Manga artwork and recommendation context are intentionally visible because they demonstrate the feature's primary result surface. Screens that would expose explicit preference choices, library history, account state, reader content, or unredacted source identities are represented by the XML contract and source links instead.
+The screenshots show the For You page in Evaluation Mode, which replaces source names with neutral labels. Covers and recommendation details stay visible so you can understand what the feature recommends. Screens that could reveal personal preferences, library activity, account information, reader content, or actual source names are described with privacy-checked XML and links to the relevant code instead.

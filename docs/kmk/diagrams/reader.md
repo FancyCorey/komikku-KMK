@@ -23,7 +23,7 @@ sequenceDiagram
     Model-->>Activity: Update chapter state and controls
 ```
 
-Page failures remain local to the affected load while reader progress continues through the existing Komikku ownership path.
+A page failure stays with that page load, while reading progress continues through Komikku's existing reader flow.
 
 ## Completion preference
 
