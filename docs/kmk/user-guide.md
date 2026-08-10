@@ -69,13 +69,9 @@ The app checks stored values before using them and replaces invalid values with 
 
 *Management and diagnostics keeps maintenance tools, saved-data controls, and short status summaries in one place.*
 
-## Ratings and Not Interested
+## Manga preferences
 
 See [Ratings and linked versions](feature-guides/rating-manga-and-managing-linked-versions.md) for the saved-state and undo flow.
-
-![Not Interested selection across matching manga versions](visual-guide/not-interested-other-versions.png)
-
-*Choose the matching versions that should share the Not Interested preference.*
 
 1. Open a manga.
 2. Use the preference action to choose **Love**, **Like**, **Dislike**, or **Not interested**.
@@ -143,6 +139,10 @@ If you cancel a search, or one source fails, versions you already accepted remai
 
 See [Reading schedule, completion, and chapter navigation](feature-guides/reading-schedule-completion-and-chapter-navigation.md) for schedule checks, completion prompts, linked-version ratings, and Jump to last read.
 
+| Reading schedule | Completion preference |
+| --- | --- |
+| ![Reading schedule with recurring time windows](visual-guide/reading-schedule.png) | ![Reader completion prompt with all four manga preferences](visual-guide/reader-completion-preference.png) |
+
 ### Jump to last read
 
 1. Open a manga with chapter progress.
@@ -163,6 +163,8 @@ The schedule is off by default. If you open the reader during a restricted time,
 
 When you finish the latest available chapter, the reader waits until you exit before asking for a preference. Choose one or skip the prompt. If linked versions exist, the next screen can offer to rate those versions before returning to normal navigation.
 
+![Reader follow-up for applying the preference to matching versions](visual-guide/reader-linked-version-follow-up.png)
+
 ## Evaluation Mode and Action History
 
 See [Evaluation Mode and exports](feature-guides/sharing-screenshots-and-exported-files-safely.md) for presentation privacy and [Ratings and linked versions](feature-guides/rating-manga-and-managing-linked-versions.md) for reversible actions.
@@ -175,11 +177,15 @@ Evaluation Mode replaces source names and other identifying labels with neutral 
 
 Open **Action History** to review supported reversible actions. If the same value changed again after the original action, the app refuses to undo it instead of overwriting newer data. Some outside actions, such as updates sent to a tracking service, can be listed but cannot be reversed locally.
 
+![Action History with a completed local preference change and its Undo action](visual-guide/action-history-undo.png)
+
 ## Export and cleanup
 
 See [Evaluation Mode and exports](feature-guides/sharing-screenshots-and-exported-files-safely.md) for chooser, cancellation, success, and exact-file cleanup states.
 
 Extension, recommendation, and library exports use Android's document picker. Choose the destination through the system UI. After a successful supported export, the app can offer to keep or remove exactly the document it just created. Cancellation leaves no success claim, and cleanup never scans or deletes unrelated storage.
+
+![For You with the Export Top Picks action open](visual-guide/recommendation-bundle-export.png)
 
 ## OCR search for downloads
 
@@ -193,6 +199,8 @@ See [Searching downloaded pages with OCR](feature-guides/searching-downloaded-pa
 
 Recognition runs on the device. The extracted text stays in the local database, is excluded from backup and sync payloads, and can be removed without deleting downloaded pages. It works best with Latin-script text; stylized or non-Latin pages may produce incomplete results.
 
+![OCR Search Downloads with a real indexed summary and indexing controls](visual-guide/ocr-search-downloads.png)
+
 ## Backup and restore
 
 See [Backup and restore](feature-guides/preserving-kmk-data-in-backups.md) for selection, encoding, partial restore, and failure handling.
@@ -201,11 +209,15 @@ KMK adds supported ratings, recommendation preferences, source evaluations, link
 
 OCR text is deliberately excluded from backup because it can be regenerated from local downloads. This does not prevent reviewed documentation from showing OCR text or reading context when source identity and other private fields are hidden. Action History is also not a promise that outside services or installed packages can be rolled back.
 
+![Data and storage settings with backup, restore, scheduling, and privacy guidance](visual-guide/backup-and-restore.png)
+
 ## Extension operations
 
 See [Extension management](feature-guides/managing-and-isolating-extensions.md) for isolation, consent, installation, removal, export, and cleanup.
 
 Extension installation and removal continue through Android's supported package flows. KMK isolates known unsafe or incompatible extension failures so one package does not prevent unrelated sources from loading. Extension export uses Android's document picker and acts only on packages selected by the user. After export, cleanup is limited to the exact document created by that operation.
+
+![Extension export confirmation explaining the executable package boundary](visual-guide/extension-export-confirmation.png)
 
 ## Privacy and troubleshooting
 

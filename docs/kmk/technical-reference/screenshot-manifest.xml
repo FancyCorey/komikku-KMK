@@ -50,4 +50,74 @@
     <state>loaded</state>
     <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-title-context-approved; no-device-status; no-account; no-local-path</sanitization>
   </artifact>
+  <artifact id="top-picks-preference-actions" type="screenshot" path="../visual-guide/top-picks-preference-actions.png" sha256="1A730FE5962485EA81617498C8633325B9211AD5697684CD43C4AD78426FB91E">
+    <route>browse/for-you/selection</route>
+    <state>selected-actions-open</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-title-context-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="related-manga-results" type="screenshot" path="../visual-guide/related-manga-results.png" sha256="378958D1D26F48B63EB5A78EB344FF017E57120E899AEF581C08B76090F330FD">
+    <route>manga/related</route>
+    <state>loaded-partial</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-and-title-context-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="taste-and-filters" type="screenshot" path="../visual-guide/taste-and-filters.png" sha256="AE434262A7EAF419C267A5E920F122A93959C802153B260C17BA74C3A82ECFF6">
+    <route>settings/recommendations/taste-and-filters</route>
+    <state>loaded</state>
+    <sanitization>cropped-to-app; evaluation-mode-tag-labels; aggregate-rating-counts-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="reading-schedule" type="screenshot" path="../visual-guide/reading-schedule.png" sha256="9F4BC5B70453C04BBB0B88CFA15E85E99CEDF0877ADA747521D10E5A8620A939">
+    <route>settings/reader/reading-schedule</route>
+    <state>configured-dialog</state>
+    <sanitization>cropped-to-app; generic-schedule-only; no-device-status; no-account; no-title-content; no-local-path</sanitization>
+  </artifact>
+  <artifact id="reader-completion-preference" type="screenshot" path="../visual-guide/reader-completion-preference.png" sha256="68661105B7C977A816D8144A5223C3D8C4D5C3290C21F0EA32CCC2F6788EDA68">
+    <route>reader/final-chapter/completion-preference</route>
+    <state>prompt</state>
+    <sanitization>cropped-to-app-content; disposable-title-excluded; generic-page-art-approved; no-device-status; no-account; no-source-identity; no-local-path</sanitization>
+  </artifact>
+  <artifact id="reader-linked-version-follow-up" type="screenshot" path="../visual-guide/reader-linked-version-follow-up.png" sha256="519209C9B53C72D686426C0D72DB1CB314F1E5C4EC47677EB229EED0F3656599">
+    <route>reader/final-chapter/linked-version-follow-up</route>
+    <state>prompt</state>
+    <sanitization>cropped-to-app-content; disposable-title-excluded; generic-page-art-approved; no-device-status; no-account; no-source-identity; no-local-path</sanitization>
+  </artifact>
+  <artifact id="extension-export-confirmation" type="screenshot" path="../visual-guide/extension-export-confirmation.png" sha256="0B7624CD1DB2708ECFF28A7B4A018CE515CF4D47302714E00A7DA3387DB8465C">
+    <route>extensions/detail/export</route>
+    <state>confirmation</state>
+    <sanitization>cropped-to-app; no-extension-identity; no-repository-identity; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="source-quality-diagnostics" type="screenshot" path="../visual-guide/source-quality-diagnostics.png" sha256="F2308386F005BDDCA0E43D85864E8553FCB766650A0B0BE389EC0589900B1ABD">
+    <route>settings/recommendations/management/source-quality-diagnostics</route>
+    <state>expanded</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; aggregate-counts-only; no-device-status; no-account; no-raw-response; no-local-path</sanitization>
+  </artifact>
+  <artifact id="ocr-search-downloads" type="screenshot" path="../visual-guide/ocr-search-downloads.png" sha256="4848F3D9E657E2264C71F062749F6CC6E3E35E91FAD74BE084A4EA47EC254E9D">
+    <route>more/ocr-search-downloads</route>
+    <state>indexed-summary</state>
+    <sanitization>cropped-to-app; aggregate-index-counts-approved; no-device-status; no-source-identity; no-account; no-page-text; no-local-path</sanitization>
+  </artifact>
+  <artifact id="action-history-undo" type="screenshot" path="../visual-guide/action-history-undo.png" sha256="D607C60ECCBB0779315F719036A062456FC132841CD2DAD72F7D6DE8B8CE710A">
+    <route>settings/advanced/action-history</route>
+    <state>completed-local-action-with-undo</state>
+    <sanitization>cropped-to-feature-pane; aggregate-action-label; no-device-status; no-source-identity; no-manga-title; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="backup-and-restore" type="screenshot" path="../visual-guide/backup-and-restore.png" sha256="15ABA39EFA9F16ACBE87D2492DBD2B003FDCD597C7C8A1FAA06C89572631617D">
+    <route>settings/data-and-storage</route>
+    <state>configured-with-backup-status</state>
+    <sanitization>cropped-to-backup-pane; generic-storage-summary; raw-storage-usage-path-excluded; no-device-status; no-account; no-library-content</sanitization>
+  </artifact>
+  <artifact id="kmk-whats-new" type="screenshot" path="../visual-guide/kmk-whats-new.png" sha256="D595AE478BBE07697D8CF658E3442BA2A726D5FA1EE8C906A4934CE5169CE10C">
+    <route>settings/about/kmk-whats-new</route>
+    <state>current-group-expanded</state>
+    <sanitization>cropped-to-feature-pane; public-release-history-only; no-device-status; no-account; no-source-identity; no-local-path</sanitization>
+  </artifact>
+  <artifact id="group-recommendations" type="screenshot" path="../visual-guide/group-recommendations.png" sha256="CA56B43079591550B97D26243E1DDE5EC7140D00761FB25053FB681363477210">
+    <route>rated/loved/group-recommendations</route>
+    <state>loaded-progressive-results</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-title-and-recommendation-context-approved; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
+  <artifact id="recommendation-bundle-export" type="screenshot" path="../visual-guide/recommendation-bundle-export.png" sha256="5913BFC615ECFCD21CE6609BE4E25962A17A452DC10371964E9F9600DFD5FEF6">
+    <route>browse/for-you/more/export-top-picks</route>
+    <state>export-action-open</state>
+    <sanitization>cropped-to-app; evaluation-mode-source-labels; artwork-title-and-recommendation-context-approved; no-document-picker; no-device-status; no-account; no-local-path</sanitization>
+  </artifact>
 </kmk-screenshot-manifest>

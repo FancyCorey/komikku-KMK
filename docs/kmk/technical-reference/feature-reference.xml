@@ -16,7 +16,7 @@
     <owner>app/src/main/java/exh/recs/TopPicksScreen.kt</owner>
     <dispatch>app/src/main/java/exh/recs/share/RecommendationBundleImportScreenModel.kt</dispatch>
     <states>loaded partial export-chooser import-review invalid library-add-result</states>
-    <privacy screenshot="withheld">A bundle or review screen can contain manga and source selections chosen by the reader.</privacy>
+    <privacy screenshot="approved">The reviewed Top Picks action stays inside the app; the import review remains described without publishing selected source or library details.</privacy>
   </feature>
   <feature id="group-recommendations" route="recommendations/group">
     <purpose>Load related manga for a rated or linked group through bounded, independent source rows.</purpose>
@@ -24,7 +24,7 @@
     <owner>app/src/main/java/exh/recs/GroupPreviewLoadCoordinator.kt</owner>
     <dispatch>app/src/main/java/exh/recs/group/GroupRecommendationSeedBuilder.kt</dispatch>
     <states>loading partial loaded row-timeout row-error cancelled</states>
-    <privacy screenshot="withheld">The seed group and recommendation results can reveal personal preference context.</privacy>
+    <privacy screenshot="approved">The reviewed group result keeps manga context visible while Evaluation Mode neutralizes source identities and account or device details.</privacy>
   </feature>
   <feature id="recommendation-settings" route="settings/recommendations">
     <purpose>Navigate and configure recommendation feature families using established settings patterns.</purpose>
@@ -107,14 +107,14 @@
     <documentation>docs/kmk/feature-guides/rating-manga-and-managing-linked-versions.md</documentation>
     <owner>app/src/main/java/exh/util/EvaluationModeActionHistoryScreen.kt</owner>
     <states>empty entries undoable conflict restored non-reversible</states>
-    <privacy screenshot="withheld">Entries can describe user preference and library actions.</privacy>
+    <privacy screenshot="approved">The reviewed local undo row uses an aggregate action label and excludes manga titles, source identities, account details, and local paths.</privacy>
   </feature>
   <feature id="extension-export" route="extensions/export">
     <purpose>Export selected extension artifacts through Android document APIs and offer exact-artifact cleanup after success.</purpose>
     <documentation>docs/kmk/feature-guides/sharing-screenshots-and-exported-files-safely.md</documentation>
     <owner>app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionApkExporter.kt</owner>
     <states>ready chooser success cancelled failed cleanup-kept cleanup-removed cleanup-failed</states>
-    <privacy screenshot="withheld">The system picker can expose provider and path information.</privacy>
+    <privacy screenshot="approved">The reviewed confirmation stays inside the app and omits the system picker, provider name, destination, package identity, and local path.</privacy>
   </feature>
   <feature id="ocr-search" route="search/ocr-downloads">
     <purpose>Index and search recognized text from downloaded chapter pages on the device.</purpose>
@@ -122,14 +122,14 @@
     <owner>app/src/main/java/exh/ocr/OcrSearchScreenModel.kt</owner>
     <presentation>app/src/main/java/exh/ocr/OcrSearchScreen.kt</presentation>
     <states>no-index indexing searchable partial cancelled failed</states>
-    <privacy screenshot="not-captured">Recognized page text and reading context are approved when useful; source identity, account data, device identity, raw URLs, and local paths must remain hidden. OCR text is excluded from backup and sync.</privacy>
+    <privacy screenshot="approved">The reviewed index summary excludes page text, source identity, account data, device identity, raw URLs, and local paths. Page text and reading context may be shown in a separately reviewed capture when they are needed to explain search. OCR text is excluded from backup and sync.</privacy>
   </feature>
   <feature id="backup-portability" route="settings/data/backup-restore">
     <purpose>Include supported KMK ratings, recommendation preferences, links, and source-evaluation state in the established backup flow.</purpose>
     <documentation>docs/kmk/feature-guides/preserving-kmk-data-in-backups.md</documentation>
     <owner>app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/restorers/TasteRestorer.kt</owner>
     <states>selected encoded restored partial failed</states>
-    <privacy screenshot="withheld">Backup destinations and restored library details can expose private storage and reading information.</privacy>
+    <privacy screenshot="approved">The reviewed backup screen uses a generic storage summary and excludes destinations, restored library details, raw storage paths, account data, and reading history.</privacy>
   </feature>
   <feature id="extension-operations" route="browse/extensions">
     <purpose>Isolate unsafe extension failures and perform install, removal, and export through supported Android boundaries.</purpose>
@@ -153,6 +153,6 @@
     <owner>app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt</owner>
     <presentation>app/src/main/java/eu/kanade/tachiyomi/ui/more/KmkRecsWhatsNewScreen.kt</presentation>
     <states>current-family collapsed-family expanded-family acknowledged</states>
-    <privacy screenshot="withheld">The change history is fully documented in text and does not require another public screen capture.</privacy>
+    <privacy screenshot="approved">The reviewed change-history screen contains public KMK release notes only and excludes device, account, source, and local-path details.</privacy>
   </feature>
 </kmk-feature-contract>
