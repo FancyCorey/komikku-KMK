@@ -250,7 +250,7 @@ class AboutScreen : Screen() {
                         title = stringResource(MR.strings.privacy_policy),
                         onPreferenceClick = {
                             uriHandler.openUri(
-                                "https://github.com/FancyCorey/komikku-KMK/blob/main/docs/kmk/privacy-and-data.md",
+                                "https://github.com/FancyCorey/komikku-KMK/blob/master/docs/kmk/privacy-and-data.md",
                             )
                         },
                     )
