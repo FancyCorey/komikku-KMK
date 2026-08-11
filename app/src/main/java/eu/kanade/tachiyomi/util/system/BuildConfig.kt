@@ -10,6 +10,9 @@ val telemetryIncluded: Boolean
 val updaterEnabled: Boolean
     inline get() = BuildConfig.UPDATER_ENABLED
 
+val googleDriveSyncEnabled: Boolean
+    inline get() = BuildConfig.GOOGLE_DRIVE_SYNC_ENABLED
+
 val isDebugBuildType: Boolean
     inline get() = BuildConfig.BUILD_TYPE == "debug"
 

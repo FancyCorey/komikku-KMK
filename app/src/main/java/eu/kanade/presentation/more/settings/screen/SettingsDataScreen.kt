@@ -77,6 +77,7 @@ import eu.kanade.tachiyomi.data.sync.service.GoogleDriveSyncService
 import eu.kanade.tachiyomi.util.export.SafArtifactOutcome
 import eu.kanade.tachiyomi.util.export.SafExportCoordinator
 import eu.kanade.tachiyomi.util.system.DeviceUtil
+import eu.kanade.tachiyomi.util.system.googleDriveSyncEnabled
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
@@ -639,14 +640,20 @@ object SettingsDataScreen : SearchableSettings {
                 preferenceItems = persistentListOf(
                     Preference.PreferenceItem.ListPreference(
                         preference = syncPreferences.syncService(),
-                        entries = persistentMapOf(
-                            SyncManager.SyncService.NONE.value to stringResource(MR.strings.off),
-                            SyncManager.SyncService.SYNCYOMI.value to stringResource(SYMR.strings.syncyomi),
-                            SyncManager.SyncService.GOOGLE_DRIVE.value to stringResource(SYMR.strings.google_drive),
-                            // KMK -->
-                            SyncManager.SyncService.WEB_DAV.value to stringResource(KMR.strings.web_dav),
-                            // KMK <--
-                        ),
+                        entries = if (googleDriveSyncEnabled) {
+                            persistentMapOf(
+                                SyncManager.SyncService.NONE.value to stringResource(MR.strings.off),
+                                SyncManager.SyncService.SYNCYOMI.value to stringResource(SYMR.strings.syncyomi),
+                                SyncManager.SyncService.GOOGLE_DRIVE.value to stringResource(SYMR.strings.google_drive),
+                                SyncManager.SyncService.WEB_DAV.value to stringResource(KMR.strings.web_dav),
+                            )
+                        } else {
+                            persistentMapOf(
+                                SyncManager.SyncService.NONE.value to stringResource(MR.strings.off),
+                                SyncManager.SyncService.SYNCYOMI.value to stringResource(SYMR.strings.syncyomi),
+                                SyncManager.SyncService.WEB_DAV.value to stringResource(KMR.strings.web_dav),
+                            )
+                        },
                         title = stringResource(SYMR.strings.pref_sync_service),
                         onValueChanged = {
                             // KMK -->

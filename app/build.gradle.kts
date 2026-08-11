@@ -28,14 +28,15 @@ android {
     defaultConfig {
         applicationId = "app.komikku.kmk"
 
-        versionCode = 81
-        versionName = "1.14.1"
+        versionCode = 82
+        versionName = "1.14.2"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
         buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "${Config.enableGoogleDriveSync}")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,6 +46,8 @@ android {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-${getCommitCount()}"
             isPseudoLocalesEnabled = true
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
         }
         val release by getting {
             isMinifyEnabled = Config.enableCodeShrink
@@ -63,6 +66,8 @@ android {
             applicationIdSuffix = ".rt"
             isMinifyEnabled = false
             isShrinkResources = false
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
@@ -70,6 +75,8 @@ android {
             initWith(release)
 
             applicationIdSuffix = ".foss"
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
@@ -80,6 +87,8 @@ android {
 
             versionNameSuffix = debug.versionNameSuffix
             signingConfig = debug.signingConfig
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
 
@@ -94,6 +103,8 @@ android {
             applicationIdSuffix = ".benchmark"
 
             signingConfig = debug.signingConfig
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }
@@ -106,6 +117,8 @@ android {
             isShrinkResources = false
 
             signingConfig = debug.signingConfig
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
 
             matchingFallbacks.addAll(commonMatchingFallbacks)
         }

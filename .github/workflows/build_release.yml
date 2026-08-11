@@ -3,6 +3,12 @@ name: Release build
 on:
   push:
     tags: [v*]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag to build and publish as a draft release
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -11,14 +17,46 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  ANDROID_BUILD_TOOLS_VERSION: '35.0.1'
+
 jobs:
   build:
     name: Build and sign KMK release
     if: github.repository == 'FancyCorey/komikku-KMK'
     runs-on: ubuntu-24.04
     steps:
+      - name: Resolve and verify release tag
+        id: release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "${RELEASE_TAG}" in
+            v[0-9]*) ;;
+            *) echo "Release tags must begin with v followed by a version number." >&2; exit 1 ;;
+          esac
+          printf 'tag=%s\n' "${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Verify tag and version identity
+        id: identity
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
+          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "${version_name}"
+          test "v${version_name}" = "${RELEASE_TAG}"
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'version_name=%s\n' "${version_name}" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
@@ -29,18 +67,45 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6
 
-      - name: Configure Google Drive installed-app client
+      - name: Configure optional Google Drive installed-app client
+        id: google_drive
         shell: bash
         env:
           GOOGLE_CLIENT_SECRETS_JSON: ${{ secrets.GOOGLE_CLIENT_SECRETS_JSON }}
         run: |
           set -euo pipefail
-          test -n "${GOOGLE_CLIENT_SECRETS_JSON}"
-          mkdir -p app/src/main/assets
-          printf '%s' "${GOOGLE_CLIENT_SECRETS_JSON}" > app/src/main/assets/client_secrets.json
+          if [ -n "${GOOGLE_CLIENT_SECRETS_JSON}" ]; then
+            mkdir -p app/src/main/assets
+            printf '%s' "${GOOGLE_CLIENT_SECRETS_JSON}" > app/src/main/assets/client_secrets.json
+            printf 'enabled=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'enabled=false\n' >> "$GITHUB_OUTPUT"
+            echo "Google Drive sync is not included in this release."
+          fi
 
       - name: Format, test, and build release
-        run: ./gradlew spotlessCheck :app:testDebugUnitTest :source-local:testDebugUnitTest :app:assembleRelease -Penable-updater
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle_args=(spotlessCheck :app:testDebugUnitTest :source-local:testDebugUnitTest :app:assembleRelease -Penable-updater)
+          if [ "${{ steps.google_drive.outputs.enabled }}" = "true" ]; then
+            gradle_args+=(-Penable-google-drive-sync)
+          fi
+          ./gradlew "${gradle_args[@]}"
+
+      - name: Verify signing secrets are present
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${SIGNING_KEY}"
+          test -n "${ALIAS}"
+          test -n "${KEY_STORE_PASSWORD}"
+          test -n "${KEY_PASSWORD}"
 
       - name: Sign release APKs
         uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
@@ -57,7 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ steps.release.outputs.tag }}"
           mv app/build/outputs/apk/release/app-universal-release-unsigned-signed.apk "Komikku-KMK-${tag}.apk"
           mv app/build/outputs/apk/release/app-arm64-v8a-release-unsigned-signed.apk "Komikku-KMK-arm64-v8a-${tag}.apk"
           mv app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned-signed.apk "Komikku-KMK-armeabi-v7a-${tag}.apk"
@@ -65,13 +130,67 @@ jobs:
           mv app/build/outputs/apk/release/app-x86_64-release-unsigned-signed.apk "Komikku-KMK-x86_64-${tag}.apk"
           sha256sum Komikku-KMK-*.apk > SHA256SUMS.txt
 
+      - name: Verify signed APK identity
+        id: apk_identity
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          build_tools="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS_VERSION}"
+          aapt="${build_tools}/aapt"
+          apksigner="${build_tools}/apksigner"
+          test -x "${aapt}"
+          test -x "${apksigner}"
+          universal="Komikku-KMK-${RELEASE_TAG}.apk"
+          badging="$("${aapt}" dump badging "${universal}")"
+          printf '%s\n' "${badging}" | grep -F "package: name='app.komikku.kmk'"
+          printf '%s\n' "${badging}" | grep -F "versionName='${VERSION_NAME}'"
+          certificate_fingerprint=""
+          for apk in Komikku-KMK-*.apk; do
+            "${apksigner}" verify --verbose --print-certs "${apk}"
+            current_fingerprint="$("${apksigner}" verify --print-certs "${apk}" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ { print $2 }')"
+            test -n "${current_fingerprint}"
+            if [ -z "${certificate_fingerprint}" ]; then
+              certificate_fingerprint="${current_fingerprint}"
+            else
+              test "${certificate_fingerprint}" = "${current_fingerprint}"
+            fi
+          done
+          printf '%s\n' "${certificate_fingerprint}" > CERTIFICATE_SHA256.txt
+          printf 'certificate_sha256=%s\n' "${certificate_fingerprint}" >> "$GITHUB_OUTPUT"
+
+      - name: Write release manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.identity.outputs.commit }}
+          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          CERTIFICATE_SHA256: ${{ steps.apk_identity.outputs.certificate_sha256 }}
+          GOOGLE_DRIVE_ENABLED: ${{ steps.google_drive.outputs.enabled }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg tag "${RELEASE_TAG}" \
+            --arg commit "${RELEASE_COMMIT}" \
+            --arg package_name "app.komikku.kmk" \
+            --arg version_name "${VERSION_NAME}" \
+            --arg certificate_sha256 "${CERTIFICATE_SHA256}" \
+            --argjson google_drive_sync_enabled "${GOOGLE_DRIVE_ENABLED}" \
+            --rawfile checksums SHA256SUMS.txt \
+            '{tag: $tag, commit: $commit, package: $package_name, version_name: $version_name, certificate_sha256: $certificate_sha256, google_drive_sync_enabled: $google_drive_sync_enabled, sha256sums: $checksums}' \
+            > RELEASE_MANIFEST.json
+
       - name: Upload release build record
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: komikku-kmk-release-${{ github.ref_name }}
+          name: komikku-kmk-release-${{ steps.release.outputs.tag }}
           path: |
             Komikku-KMK-*.apk
             SHA256SUMS.txt
+            CERTIFICATE_SHA256.txt
+            RELEASE_MANIFEST.json
             app/build/outputs/mapping/release/
           if-no-files-found: error
           retention-days: 30
@@ -79,14 +198,18 @@ jobs:
       - name: Create draft release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          name: Komikku KMK ${{ github.ref_name }}
+          name: Komikku KMK ${{ steps.release.outputs.tag }}
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ steps.identity.outputs.commit }}
           body: |
             This is an independently maintained Komikku KMK release.
 
-            Review the generated notes, APK hashes, and signing certificate before publishing this draft.
+            Review the generated notes, APK hashes, package identity, and signing certificate before publishing this draft.
           generate_release_notes: true
           files: |
             Komikku-KMK-*.apk
             SHA256SUMS.txt
+            CERTIFICATE_SHA256.txt
+            RELEASE_MANIFEST.json
           draft: true
           prerelease: false

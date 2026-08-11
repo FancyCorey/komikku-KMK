@@ -19,7 +19,7 @@ From the repository root, run:
 
 On Windows PowerShell, use `./gradlew.bat :app:assembleDebug`. The universal debug APK is written below `app/build/outputs/apk/debug/`.
 
-The release package is `app.komikku.kmk`. Debug and test variants add their own suffixes so they do not overwrite a release install. Public releases also require a maintainer-controlled signing configuration; debug signing is not a release identity.
+The public release package is `app.komikku.kmk`. The development build uses `app.komikku.kmk.dev`; debug and test variants add their own suffixes so they do not overwrite a release install. Public releases require a maintainer-controlled signing configuration. Debug signing is only for isolated development installs and cannot update a public release.
 
 ## Verify
 
@@ -43,11 +43,11 @@ Before distributing an APK:
 
 ## Repository automation
 
-Pushes and pull requests run formatting, debug unit tests, local-source tests, and a debug build without signing keys or service credentials. Manual preview and benchmark workflows upload unsigned, short-lived test artifacts; they do not create releases or tags.
+Pushes and pull requests run formatting, debug unit tests, local-source tests, and a debug build without signing keys or service credentials. The manual Development validation build produces an isolated `app.komikku.kmk.dev` artifact for personal testing. It does not create releases, tags, or public app updates.
 
-Stable releases are created only from a `v*` tag in `FancyCorey/komikku-KMK`. Before pushing a release tag, the maintainer must configure `SIGNING_KEY`, `ALIAS`, `KEY_STORE_PASSWORD`, and `KEY_PASSWORD` with the fork's release signing identity. The `GOOGLE_CLIENT_SECRETS_JSON` secret must contain the fork's Google Drive installed-app OAuth client configuration so that the existing Google Drive sync provider remains usable. This client configuration is written only into the release build workspace; it is not committed or printed.
+Stable releases are created from a `v*` tag in `FancyCorey/komikku-KMK`. Before pushing a release tag, configure `SIGNING_KEY`, `ALIAS`, `KEY_STORE_PASSWORD`, and `KEY_PASSWORD` with the fork's public release signing identity. The tag must match `versionName`, and the release must have a higher `versionCode` than the public version it replaces. The optional `GOOGLE_CLIENT_SECRETS_JSON` secret includes the fork's Google Drive client in the build; it is not required for the GitHub updater or for a valid public APK.
 
-The release workflow builds without telemetry service credentials, signs the APKs, generates SHA-256 checksums, and creates a draft GitHub release. A human must verify the certificate, hashes, generated notes, update behavior, Google Drive sign-in, and APK behavior before publishing that draft.
+The release workflow builds without telemetry service credentials, signs the APKs, verifies the package name, version, and shared signing certificate, writes SHA-256 checksums and a release manifest, and creates a draft GitHub release. A human must verify the certificate, hashes, generated notes, update behavior, and APK behavior before publishing that draft. Google Drive sign-in is an additional check only when that optional client configuration was supplied. See [Release channels](release-channels.md) for the full public-versus-development release model.
 
 ## Upstream and fork remotes
 

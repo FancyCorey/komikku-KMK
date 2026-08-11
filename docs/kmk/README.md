@@ -12,6 +12,7 @@ KMK extends Komikku with personalized and group discovery, Top Picks and recomme
 | Understand the whole system | [How KMK works](how-kmk-works.md) | Ownership, data flow, source isolation, storage, Android integration, and compatibility with Komikku. |
 | Find a feature owner | [Feature and code map](feature-and-code-map.md) | A compact map from each feature family to its screens, states, and implementation files. |
 | Build or contribute | [Build and verification](build-and-verify.md) and [CONTRIBUTING.md](../../CONTRIBUTING.md) | Local build requirements, validation commands, issue guidance, and contribution expectations. |
+| Prepare a release | [Release channels](release-channels.md) | Public release and private development-build boundaries, signing, updater behavior, and publication checks. |
 
 ## Policies and reference material
 
