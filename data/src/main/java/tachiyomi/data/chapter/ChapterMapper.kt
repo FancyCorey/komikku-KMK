@@ -21,9 +21,7 @@ object ChapterMapper {
         version: Long,
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
-        // KMK --> 1.14.0 reconciliation: chapters.memo column
         memo: JsonObject,
-        // KMK <--
     ): Chapter = Chapter(
         id = id,
         mangaId = mangaId,
@@ -39,8 +37,6 @@ object ChapterMapper {
         scanlator = scanlator,
         lastModifiedAt = lastModifiedAt,
         version = version,
-        // KMK -->
         memo = memo,
-        // KMK <--
     )
 }

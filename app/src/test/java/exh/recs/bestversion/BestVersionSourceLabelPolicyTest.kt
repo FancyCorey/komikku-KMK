@@ -4,9 +4,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 
-// KMK Confirmed Blocker Remediation Phase 3 2026-07-29 -->
+// KMK -->
 /**
- * Tests for [BestVersionSourceLabelPolicy] -- the plan's required "Evaluation Mode source-label
+ * Tests for [BestVersionSourceLabelPolicy] -- the behavior contract's required "Evaluation Mode source-label
  * privacy" coverage for Find Best Version, extracted from
  * [BestVersionCompareScreenModel.sourceName] since that method requires a full screen-model
  * instantiation (SourceManager, GetManga, GetChaptersByMangaId, NetworkToLocalManga,

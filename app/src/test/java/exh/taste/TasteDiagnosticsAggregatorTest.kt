@@ -117,7 +117,7 @@ class TasteDiagnosticsAggregatorTest {
 
     @Test
     fun `diagnostics never surfaces anything beyond tag display names and integer counts`() {
-        // Regression guard for the plan's privacy requirement: the summary type itself has no
+        // Regression guard for the behavior contract's privacy requirement: the summary type itself has no
         // field capable of carrying a URL, cookie, or raw manga title -- this test documents that
         // contract so a future field addition trips a visible failure here for review.
         val ratedManga = listOf(rated(MangaRating.LOVE, "Romance"), rated(MangaRating.DISLIKE, "Horror"))

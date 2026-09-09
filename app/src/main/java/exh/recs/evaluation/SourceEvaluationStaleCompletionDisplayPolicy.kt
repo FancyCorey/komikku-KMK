@@ -3,10 +3,10 @@ package exh.recs.evaluation
 // KMK v0.8.12 -->
 /**
  * Pure extraction of the "show the stale-reassessment completion card" condition from
- * `SourceEvaluationScreen.kt`, formalized and unit-tested per the v0.8.12 plan's Workstream C2.
+ * `SourceEvaluationScreen.kt`, formalized and unit-tested per the versioned behavior contract's Workstream C2.
  *
  * Direct code inspection (v0.8.12 Workstream C investigation) confirmed the underlying condition was
- * already correct going into this pass -- it only reports completion once a stale reassessment run has
+ * already correct going into the implementation -- it only reports completion once a stale reassessment run has
  * actually happened ([DisplayState] considers `continuationCursorStaleIsSet`), not merely because
  * every remaining outdated row happens to be currently unreachable. This object exists to make that
  * condition directly testable rather than only reachable through a Compose item-list assembly, and to

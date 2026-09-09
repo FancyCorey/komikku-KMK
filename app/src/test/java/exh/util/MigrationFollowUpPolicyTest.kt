@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 
-// KMK Universal Action History Recovery Plan 2026-07-31 -->
+// KMK -->
 /**
  * Direct tests for the pure [MigrationFollowUpPolicy.evaluate] decision -- mirrors
  * [PackageOperationFollowUpPolicyTest]'s own shape: no mocking needed, every branch is a plain input

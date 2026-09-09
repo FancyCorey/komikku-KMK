@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK Undo Expansion Phase 2 -->
+// KMK -->
 class ChapterUndoJournalTest {
 
     @AfterEach

@@ -1,17 +1,17 @@
-name: 🐞 Issue report
-description: Report an issue in Komikku
+name: Issue report
+description: Report a reproducible issue in Komikku KMK
 labels: [bug]
 body:
   - type: textarea
     id: reproduce-steps
     attributes:
       label: Steps to reproduce
-      description: Provide an example of the issue.
+      description: Give the shortest sequence that reliably shows the issue. Include the starting screen and any setting needed to reproduce it.
       placeholder: |
         Example:
-          1. First step
-          2. Second step
-          3. Issue here
+          1. Open ...
+          2. Select ...
+          3. Observe the issue ...
     validations:
       required: true
 
@@ -19,10 +19,10 @@ body:
     id: expected-behavior
     attributes:
       label: Expected behavior
-      description: Explain what you should expect to happen.
+      description: Explain what you expected to happen after following the steps above.
       placeholder: |
         Example:
-          "This should happen..."
+          "The app should ..."
     validations:
       required: true
 
@@ -30,10 +30,10 @@ body:
     id: actual-behavior
     attributes:
       label: Actual behavior
-      description: Explain what actually happens.
+      description: Explain what happened instead. Include whether the issue happens every time or only sometimes.
       placeholder: |
         Example:
-          "This happened instead..."
+          "Instead, the app ..."
     validations:
       required: true
 
@@ -42,17 +42,17 @@ body:
     attributes:
       label: Crash logs
       description: |
-        If you're experiencing crashes, if possible, go to the app's **More → Settings → Advanced** page, press **Dump crash logs** and share the crash logs here.
-      placeholder: |
-        You can upload the crash log file as an attachment, or paste the crash logs in plain text if needed.
+        If the app crashes, go to **More → Settings → Advanced**, select **Dump crash logs**, and attach the resulting file when possible.
+
+        Read the file before uploading it. Remove account details, source URLs, local paths, manga or chapter names, and anything else you do not want to publish.
+      placeholder: Upload the checked crash-log file, or paste only the relevant privacy-safe section.
 
   - type: input
     id: komikku-version
     attributes:
-      label: Komikku version
-      description: You can find your Komikku version in **More → About**.
-      placeholder: |
-        Example: "1.3.1"
+      label: Komikku KMK version
+      description: Find the complete version in **More → About**. Preview and commit identifiers are useful when shown there.
+      placeholder: 'Example: "1.14.1"'
     validations:
       required: true
 
@@ -60,9 +60,8 @@ body:
     id: android-version
     attributes:
       label: Android version
-      description: You can find this somewhere in your Android settings.
-      placeholder: |
-        Example: "Android 11"
+      description: Find this in your device's Android settings.
+      placeholder: 'Example: "Android 15"'
     validations:
       required: true
 
@@ -70,9 +69,8 @@ body:
     id: device
     attributes:
       label: Device
-      description: List your device and model.
-      placeholder: |
-        Example: "Google Pixel 5"
+      description: Give the manufacturer and model, but do not include a serial number or account identifier.
+      placeholder: 'Example: "Google Pixel 9"'
     validations:
       required: true
 
@@ -80,39 +78,43 @@ body:
     id: other-details
     attributes:
       label: Other details
+      description: Add screenshots, screen recordings, frequency, recent changes, or other context that can help reproduce the issue.
       placeholder: |
-        Additional details and attachments.
+        Add supporting details or attachments here.
+
+        Before uploading, hide account details, source names, library activity, local paths, notifications, and other private information.
 
   - type: checkboxes
     id: acknowledgements
     attributes:
       label: Acknowledgements
-      description: Read this carefully, we will close and ignore your issue if you skimmed through this.
+      description: These checks prevent duplicate reports and make sure maintainers have enough information to investigate.
       options:
-        - label: I have searched the existing issues and this is a new ticket, **NOT** a duplicate or related to another open or closed issue.
+        - label: I searched open and closed issues and did not find the same report or an issue that should receive this information instead.
           required: true
-        - label: I have written a short but informative title.
+        - label: I wrote a short but informative title.
           required: true
-        - label: I have gone through the [FAQ](https://komikku-app.github.io/docs/faq/general) and [troubleshooting guide](https://komikku-app.github.io/docs/guides/troubleshooting/).
+        - label: I reviewed the [KMK user guide](https://github.com/FancyCorey/komikku-KMK/blob/master/docs/kmk/user-guide.md) and, for inherited Komikku behavior, the upstream [FAQ](https://komikku-app.github.io/docs/faq/general) and [troubleshooting guide](https://komikku-app.github.io/docs/guides/troubleshooting/).
           required: true
-        - label: I have updated the app to version **[latest](https://github.com/komikku-app/komikku/releases/latest)**.
+        - label: I tested the latest [Komikku KMK release](https://github.com/FancyCorey/komikku-KMK/releases/latest).
           required: true
-        - label: I have filled out all of the requested information in this form, including specific version numbers.
+        - label: I filled out every relevant field, including the complete app, Android, and device versions.
           required: true
-        - label: I understand that **Komikku does not have or fix any extensions**, and I **will not receive help** for any issues related to sources or extensions.
+        - label: I checked attachments and removed credentials, private library content, raw source URLs, storage paths, and device identifiers.
+          required: true
+        - label: I understand that KMK can investigate app behavior around extensions, but this project does not maintain third-party source services or their content.
           required: true
 
-  - type: "textarea"
-    id: "prioritisation"
+  - type: textarea
+    id: prioritisation
     attributes:
-      label: "Is this issue important to you?"
+      label: Is this issue important to you?
       description: |
-        **Please do not modify this text area!**
+        **Please do not modify this text area.**
 
-        This template let users to vote with a :+1: reaction if they find it important.
-        This is not a guarantee that highly-requested issues will be fixed first, but it helps us to figure out what's important to users. Please react on other users' issues if you find them important.
+        Other users can add a :+1: reaction to show that the issue affects them. Reactions do not guarantee fix order, but they help maintainers understand impact. If an existing report describes the same problem, react to it and add reproducible details there instead of opening a duplicate.
       value: |
         Add a :+1: [reaction] to [issues you find important].
 
         [reaction]: https://github.blog/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/
-        [issues you find important]: https://github.com/komikku-app/komikku/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc
+        [issues you find important]: https://github.com/FancyCorey/komikku-KMK/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc

@@ -229,7 +229,7 @@ internal class CrossExtensionGenreSearchSource(
                         // in-flight detail requests is bounded across every source active under this
                         // load, not just within this one source's own MAX_ENRICH_PER_SOURCE cap.
                         // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching --
-                        // the plan's explicit instruction is that runCatching must not be the source
+                        // the behavior contract's explicit instruction is that runCatching must not be the source
                         // boundary because it does not record the failure registry. SourceRuntime
                         // still rethrows CancellationException and any genuinely fatal Error, exactly
                         // as runCatching should have but does not by default.

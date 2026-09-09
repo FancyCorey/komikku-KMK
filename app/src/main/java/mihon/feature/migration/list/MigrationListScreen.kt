@@ -166,7 +166,7 @@ class MigrationListScreen(
                 )
             }
             // KMK <--
-            // KMK Confirmed Blocker Remediation follow-up Phase 1 -->
+            // KMK -->
             is MigrationListScreenModel.Dialog.Result -> {
                 MigrationResultDialog(
                     failedCount = dialog.failedCount,

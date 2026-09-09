@@ -4,7 +4,7 @@ package exh.recs.loved
 /**
  * Pure resolver for "which single confirmed group does the current selection belong to, if any" —
  * used to decide whether the bulk-selection bottom bar's "Group" button should merge the selection
- * (2+ items, any groups) versus expand it to a single existing group (plan section 3.4's "Select All
+ * (2+ items, any groups) versus expand it to a single existing group (documented behavior "Select All
  * In Group"), and whether "Select All In Group" should be offered in the bottom bar's More menu at
  * all. Extracted out of [exh.recs.loved.RatedMangaScreen] so the group-conflict rule — no single
  * answer when the selection spans zero or multiple confirmed groups — is directly unit testable.

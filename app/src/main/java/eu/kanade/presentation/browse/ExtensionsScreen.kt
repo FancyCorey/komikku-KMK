@@ -31,6 +31,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,7 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -63,6 +64,8 @@ import eu.kanade.tachiyomi.util.system.launchRequestPackageInstallsPermission
 import exh.util.EvaluationModeFormatter
 import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
+import mihon.domain.extension.model.ExtensionStore
+import mihon.domain.extension.model.KOMIKKU_SIGNATURE
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
@@ -121,7 +124,7 @@ fun ExtensionScreen(
                     modifier = Modifier.padding(contentPadding),
                     actions = persistentListOf(
                         EmptyScreenAction(
-                            stringRes = MR.strings.label_extension_repos,
+                            stringRes = MR.strings.extensionStores,
                             icon = Icons.Outlined.Settings,
                             onClick = { navigator.push(ExtensionStoresScreen()) },
                         ),
@@ -724,7 +727,7 @@ private fun ExtensionTrustDialog(
 }
 
 // KMK -->
-@Preview
+@PreviewLightDark
 @Composable
 private fun ExtensionItemContentPreview() {
     val previewStore = mihon.domain.extension.model.ExtensionStore(

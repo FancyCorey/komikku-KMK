@@ -2,13 +2,13 @@ package exh.util
 
 import eu.kanade.tachiyomi.extension.model.Extension
 
-// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
+// KMK -->
 /**
  * Decides whether a safe follow-up action (uninstall after install/update, reinstall after
  * uninstall) can be offered for a [PackageOperationReceipt] -- kept pure and free of any UI/Context
  * dependency so both directions of the decision are directly unit-testable.
  *
- * The plan's requirement is explicit: never show a generic Undo for an operation that is not
+ * the behavior contract's requirement is explicit: never show a generic Undo for an operation that is not
  * actually, verifiably reversible. A follow-up is only [Offered] when the exact package/signature/
  * version currently observed still matches what the receipt recorded -- if the package was
  * reinstalled, updated again, or removed by some other path since the receipt was recorded, the

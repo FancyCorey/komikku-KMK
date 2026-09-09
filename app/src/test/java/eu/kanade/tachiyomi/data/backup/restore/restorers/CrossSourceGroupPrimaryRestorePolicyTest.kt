@@ -47,7 +47,7 @@ class CrossSourceGroupPrimaryRestorePolicyTest {
         assertEquals(newer, CrossSourceGroupPrimaryRestorePolicy.newestOf(listOf(older, newer)))
     }
 
-    // --- shouldRestore: precedence rules from plan §B3 ---
+    // --- shouldRestore precedence rules ---
 
     @Test
     fun `missing existing primary always restores the backup row`() {

@@ -4,7 +4,7 @@ import mihon.domain.migration.usecases.MigrationOutcome
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
-// KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29 -->
+// KMK>
 class MigrationOutcomeReducerTest {
 
     @Test

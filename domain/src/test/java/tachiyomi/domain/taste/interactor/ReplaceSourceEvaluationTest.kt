@@ -22,20 +22,19 @@ import tachiyomi.domain.taste.repository.SourceEvaluationRepository
 //
 // This suite uses an in-memory fake SourceEvaluationRepository (below), not a real SQLDelight
 // database. A real SQLDelight-backed test harness (in-memory driver + generated queries) does not
-// exist anywhere in this test suite as of this pass -- CURRENT_STATE.md and prior implementation
-// reports repeatedly note "no fake/mock harness for these interactors in this suite" as an accepted,
-// long-standing limitation (see SourceEvaluationRunCompletionPolicyTest and
+// exist anywhere in this test suite. This is a known test-infrastructure limitation (see
+// SourceEvaluationRunCompletionPolicyTest and
 // SourceEvaluationExtensionErrorReconciliationPolicyTest doc comments for the same precedent).
-// Building a real SQLDelight in-memory harness was not attempted in this pass -- it would require
+// Building a real SQLDelight in-memory harness was not attempted in the implementation -- it would require
 // wiring an in-memory SqlDriver, the generated Database class, and DatabaseHandler test double, which
-// is a materially larger undertaking than this pass's scope. The fake below models the exact
+// is a materially larger undertaking than the implementation's scope. The fake below models the exact
 // atomicity contract required (delete-then-upsert commits together or not at all) at the interface
 // level, which is the boundary ReplaceSourceEvaluation/SourceEvaluationRunner actually depend on --
 // it proves the *contract*, not the SQL transaction mechanics themselves. The real transaction
 // mechanics (handler.await(inTransaction = true) rolling back on any exception) are standard SQLDelight/
 // SQLite behavior already relied on elsewhere in this codebase (e.g. every other multi-statement
 // handler.await(inTransaction = true) block in the data module) and were not independently
-// re-verified against a live database in this pass.
+// re-verified against a live database in the implementation.
 class ReplaceSourceEvaluationTest {
 
     private fun evaluation(

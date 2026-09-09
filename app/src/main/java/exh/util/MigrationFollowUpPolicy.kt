@@ -2,7 +2,7 @@ package exh.util
 
 import tachiyomi.domain.manga.model.Manga
 
-// KMK Universal Action History Recovery Plan 2026-07-31 -->
+// KMK -->
 /**
  * Decides whether a safe "Migrate back" follow-up can be offered for a [MigrationReceipt] -- kept
  * pure and free of any UI/Context/interactor dependency so the decision is directly unit-testable,

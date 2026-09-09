@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 
-// KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29 -->
+// KMK -->
 /**
  * Tests for [MigrateDialogScreenModel.migrateManga]'s [MigrationOutcome] handling -- the fix for the
  * confirmed gap that this call site discarded the outcome entirely and always set

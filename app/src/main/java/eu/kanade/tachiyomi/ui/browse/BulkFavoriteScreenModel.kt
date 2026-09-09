@@ -62,8 +62,6 @@ class BulkFavoriteScreenModel(
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
-    // KMK Undo Expansion Phase 1
-    private val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
 ) : StateScreenModel<BulkFavoriteScreenModel.State>(initialState) {
 
     fun backHandler() {
@@ -248,7 +246,7 @@ class BulkFavoriteScreenModel(
         toggleSelectionMode(false)
     }
 
-    private suspend fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
+    private fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
         moveMangaToCategory(manga.id, categories)
         if (manga.favorite) return
 
@@ -261,37 +259,27 @@ class BulkFavoriteScreenModel(
                 val fetchMetadataOnAdd = libraryPreferences.fetchMetadataOnAdd().get()
                 val fetchChaptersOnAdd = libraryPreferences.fetchChaptersOnAdd().get()
                 if (fetchMetadataOnAdd || fetchChaptersOnAdd) {
-                    // Use `manga` instead of `new` so its title got updated with source's remote details
-                    updateMangaFromRemote(
-                        source = source,
-                        manga = manga,
-                        fetchDetails = fetchMetadataOnAdd,
-                        fetchChapters = fetchChaptersOnAdd,
-                    ).getOrThrowSourceRuntimeException()
+                    try {
+                        updateMangaFromRemote(
+                            source = source,
+                            manga = manga,
+                            fetchDetails = fetchMetadataOnAdd,
+                            fetchChapters = fetchChaptersOnAdd,
+                            // FIXME (KMK): Should have throttle here
+                        )
+                    } catch (e: Exception) {
+                        logcat(LogPriority.ERROR, e)
+                    }
                 }
             } catch (e: Exception) {
-                // KMK v0.8.10-fix7: getOrThrowSourceRuntimeException() now converts a recoverable
-                // extension LinkageError into RecoverableSourceRuntimeException (an Exception), so
-                // this is the primary containment path -- the catch(Error) below is now
-                // defensive-only, for any path that has not been migrated.
-                logcat(LogPriority.ERROR, e)
-            } catch (e: Error) {
-                if (!e.unwrapSourceRuntimeCause().isRecoverableSourceRuntimeFailure()) throw e
                 logcat(LogPriority.ERROR, e)
             }
         }
     }
 
-    private suspend fun moveMangaToCategory(mangaId: Long, categoryIds: List<Long>) {
-        val previousCategoryIds = getCategories.await(mangaId).map { it.id }
-        val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(
-            sourcePreferences = sourcePreferences,
-            mangaId = mangaId,
-            previousCategoryIds = previousCategoryIds,
-            newCategoryIds = categoryIds,
-        )
-        if (setMangaCategories.await(mangaId, categoryIds)) {
-            undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
+    private fun moveMangaToCategory(mangaId: Long, categoryIds: List<Long>) {
+        screenModelScope.launchIO {
+            setMangaCategories.await(mangaId, categoryIds)
         }
     }
 
@@ -337,20 +325,10 @@ class BulkFavoriteScreenModel(
 
     private fun moveMangaToCategories(manga: Manga, categoryIds: List<Long>) {
         screenModelScope.launchIO {
-            val previousCategoryIds = getCategories.await(manga.id).map { it.id }
-            val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(
-                sourcePreferences = sourcePreferences,
+            setMangaCategories.await(
                 mangaId = manga.id,
-                previousCategoryIds = previousCategoryIds,
-                newCategoryIds = categoryIds,
+                categoryIds = categoryIds.toList(),
             )
-            if (setMangaCategories.await(
-                    mangaId = manga.id,
-                    categoryIds = categoryIds.toList(),
-                )
-            ) {
-                undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
-            }
         }
     }
 
@@ -371,9 +349,6 @@ class BulkFavoriteScreenModel(
                 },
             )
             // TODO: also allow deleting chapters when remove favorite (just like in [MangaScreenModel])
-            // KMK Undo Expansion Phase 1: build before write, commit only after success. Never
-            // journals the coupled cover removal / chapter-flag defaults / tracker bind below.
-            val undoEntry = exh.util.LibraryUndoRecorder.buildFavoriteEntry(sourcePreferences, manga, new.favorite)
             if (!new.favorite) {
                 new = new.removeCovers(coverCache)
             } else {
@@ -381,8 +356,7 @@ class BulkFavoriteScreenModel(
                 addTracks.bindEnhancedTrackers(manga, source)
             }
 
-            val updated = updateManga.await(new.toMangaUpdate())
-            if (updated) undoEntry?.let { exh.util.LibraryUndoJournal.record(it) }
+            updateManga.await(new.toMangaUpdate())
             val fetchMetadataOnAdd = libraryPreferences.fetchMetadataOnAdd().get()
             val fetchChaptersOnAdd = libraryPreferences.fetchChaptersOnAdd().get()
             if (new.favorite && (fetchMetadataOnAdd || fetchChaptersOnAdd)) {

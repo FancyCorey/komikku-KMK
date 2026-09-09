@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
-// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
+// KMK -->
 class PackageOperationFollowUpPolicyTest {
 
     private fun receipt(

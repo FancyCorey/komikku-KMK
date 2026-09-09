@@ -49,9 +49,6 @@ fun Chapter.toDomainChapter(): DomainChapter? {
         scanlator = scanlator,
         lastModifiedAt = last_modified,
         version = version,
-        // KMK --> 1.14.0 reconciliation: chapters.memo column; this legacy bridge type doesn't
-        // track it, so vacant/default is the only faithful value available here.
-        memo = JsonObject.EMPTY,
-        // KMK <--
+        memo = memo,
     )
 }

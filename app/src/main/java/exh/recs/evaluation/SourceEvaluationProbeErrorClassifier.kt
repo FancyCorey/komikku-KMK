@@ -17,7 +17,7 @@ internal enum class SourceEvaluationProbeErrorKind(val storageKey: String) {
     UNSUPPORTED("UNSUPPORTED"),
     // KMK v0.8.10-fix3: a broken/incompletely-packaged extension (LinkageError) is a technical
     // incompatibility, not a weak taste-fit or generic internal error -- do not conflate the two
-    // (see the fix3 plan's explicit "do not classify a dependency crash as weak taste fit"
+    // (see the behavior contract's explicit "do not classify a dependency crash as weak taste fit"
     // requirement).
     EXTENSION_INCOMPATIBLE("EXTENSION_INCOMPATIBLE"),
     INTERNAL("INTERNAL"),

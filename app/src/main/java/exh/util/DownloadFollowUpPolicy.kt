@@ -3,7 +3,7 @@ package exh.util
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 /**
  * Decides whether a safe "Re-download" follow-up can be offered for a [DownloadReceipt] -- kept pure
  * and free of any UI/Context/interactor dependency so the decision is directly unit-testable,

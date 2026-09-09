@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
-// KMK Undo Expansion Phase 1 -->
+// KMK -->
 /**
  * Covers [PreferenceUndoService.undo] generically -- since [PreferenceUndoEntry] captures its own
  * typed read/restore functions, these tests exercise the full restore contract (conflict, restore,

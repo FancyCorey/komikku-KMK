@@ -339,7 +339,7 @@ class RecommendationBundleImportScreenModel(
                 val receiptId = exh.util.NonUndoableEvent.newId()
                 extensionManager.installExtension(ext)
                     .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
-                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
+                    // KMK: typed
                     // PackageOperationReceipt alongside the visibility-only event above.
                     .recordPackageOperationReceipt(
                         kind = PackageOperationKind.INSTALL,

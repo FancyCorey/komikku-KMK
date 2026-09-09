@@ -2,7 +2,7 @@ package exh.util
 
 import java.util.UUID
 
-// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
+// KMK -->
 /**
  * Distinguishes install, update, and uninstall as three separate package operations. Prior to this
  * pass, [NonUndoableEventJournal] recorded these as bare visibility-only events with no package

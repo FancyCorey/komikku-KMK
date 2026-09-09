@@ -25,7 +25,7 @@ android {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.add("-opt-in=kotlinx.serialization.ExperimentalSerializationApi")
+        optIn.add("kotlinx.serialization.ExperimentalSerializationApi")
     }
 }
 
@@ -34,12 +34,9 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.core.common)
 
-    // KMK --> 1.14.0 reconciliation: extension-store service needs to (de)serialize the store
-    // index/extension-list payloads directly in :data (ExtensionStoreService/NetworkExtensionStore)
     implementation(kotlinx.serialization.json)
     implementation(kotlinx.serialization.json.okio)
     implementation(kotlinx.serialization.protobuf)
-    // KMK <--
 
     api(libs.bundles.sqldelight)
 }

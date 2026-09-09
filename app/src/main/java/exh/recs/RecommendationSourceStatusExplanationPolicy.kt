@@ -14,7 +14,7 @@ import tachiyomi.i18n.kmk.KMR
  * .finalEmptyOutcome] resolves the terminal state for a source. That distinction was already being
  * computed correctly; it was just never explained to the user beyond a one-word badge ("No matches" /
  * "Often filtered"), which is exactly the "guess a scoring tweak instead of explaining the existing
- * signal" trap the v0.8.17 plan's Phase C explicitly warns against. This policy is the compact
+ * signal" trap. This policy is the compact
  * explanation layer the plan calls for, built entirely from data the pipeline already has -- no new
  * instrumentation, no scoring change.
  */

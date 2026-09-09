@@ -23,7 +23,7 @@ import tachiyomi.domain.track.model.Track
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 class ActionHistoryRegistryTrackFollowUpTest {
 
     private val getManga = mockk<GetManga>()

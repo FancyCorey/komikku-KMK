@@ -3,7 +3,7 @@ package exh.util
 import eu.kanade.tachiyomi.data.track.DeletableTracker
 import tachiyomi.domain.track.model.Track
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 /** Pure conflict/capability gate for the tracker-binding unlink follow-up. */
 object TrackerBindingFollowUpPolicy {
     sealed interface Decision {

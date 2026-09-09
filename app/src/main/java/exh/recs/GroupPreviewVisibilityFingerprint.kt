@@ -8,7 +8,7 @@ import tachiyomi.domain.taste.model.MangaTaste
  * of [RecommendsScreenModel] so the fingerprint's "changed input -> different fingerprint" property
  * can be unit tested directly, without constructing the full screen model.
  *
- * Reviewer finding (plan section 10): the cache key must invalidate on every recommendation-affecting
+ * Cache contract: the cache key must invalidate on every recommendation-affecting
  * input, not just group/source/language/budget. This covers everything [RecommendsScreenModel]'s
  * group-recommendation candidate-visibility pipeline reads that is not already part of
  * [GroupPreviewCache.Key]'s other fields: disabled-source state, source order, source-quality

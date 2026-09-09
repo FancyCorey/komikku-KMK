@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
+// KMK -->
 class PackageOperationJournalTest {
 
     @AfterEach

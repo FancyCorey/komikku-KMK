@@ -3,11 +3,11 @@ package exh.recs.bestversion
 import exh.recs.matching.MangaIdentityKey
 import tachiyomi.domain.manga.model.Manga
 
-// KMK Confirmed Blocker Remediation Phase 3 2026-07-29 -->
+// KMK -->
 /**
  * Pure partition of [BestVersionCompareScreenModel.startPreview]'s comparison set into candidates
  * whose chapter is fetchable ([Previewable.previewable]) and candidates that must never be sent into
- * page-list/image-url fetching ([Previewable.unavailable]). Extracted so the plan's required "no
+ * page-list/image-url fetching ([Previewable.unavailable]). Extracted so the behavior contract's required "no
  * network call for unavailable chapter" behavior is directly provable: [unavailable] is computed
  * from state alone (no I/O), and [BestVersionCompareScreenModel.startPreview] only ever passes
  * [Previewable.previewable] into its async fetch loop -- an entry that lands in [unavailable] is

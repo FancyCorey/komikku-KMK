@@ -322,7 +322,7 @@ class ExtensionManager(
         return installExtension(availableExt)
     }
 
-    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: exposes the same
+    // KMK: exposes the same
     // pkgName+signatureHash lookup updateExtension() already does internally, so a caller (e.g. a
     // PackageOperationReceipt-recording screen model) can resolve the update's own artifact URL
     // without duplicating this lookup logic.

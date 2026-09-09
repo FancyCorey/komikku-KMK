@@ -61,12 +61,12 @@ class MigrationListScreenModel(
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val migrateManga: MigrateMangaUseCase = Injekt.get(),
-    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: injectable at the
+    // KMK: injectable at the
     // narrowest existing screen-model boundary, defaulting to the real production dispatcher.
     // Direct fixture tests can pass a deterministic test dispatcher (tied to the test's own
     // TestCoroutineScheduler) instead of relying on the real, process-global Dispatchers.IO thread
     // pool and wall-clock polling -- the root cause of this screen model's full-suite-only test
-    // flakiness identified in the prior Corrective Pass report.
+    // flakiness identified in the earlier test implementation.
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : StateScreenModel<MigrationListScreenModel.State>(State()) {
 
@@ -98,7 +98,7 @@ class MigrationListScreenModel(
                     async {
                         // KMK -->
                         // A metadata-lookup failure for one manga must not blank out the
-                        // whole migration list for every other manga (V2 corrective plan).
+                        // whole migration list for every other manga (revised implementation).
                         try {
                             // KMK <--
                             val manga = getManga.await(mangaId) ?: return@async null
@@ -168,7 +168,7 @@ class MigrationListScreenModel(
         // KMK <--
 
         val sources = preferences.migrationSources().get()
-            .mapNotNull { sourceManager.get(it) as? CatalogueSource }
+            .mapNotNull { sourceManager.get(it) }
 
         for (manga in mangas) {
             if (!currentCoroutineContext().isActive) break
@@ -331,7 +331,7 @@ class MigrationListScreenModel(
                         // SY <--
                     ).getOrThrowSourceRuntimeException().manga
                 } catch (_: Exception) {
-                    return@async null
+                    null
                 }
             }
                 .await()
@@ -359,12 +359,12 @@ class MigrationListScreenModel(
         migrateJob = screenModelScope.launch(ioDispatcher) {
             mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
             val items = items
-            // KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29: previously the return
+            // KMK: previously the return
             // value of migrateManga(...) was discarded entirely, so a PartialFailure/NotStarted
             // outcome for any item was silently indistinguishable from Success -- the loop always
             // finished by navigating back as if every item had fully migrated.
-            // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: tracked separately per
-            // the plan's "report successful, failed, skipped, and unresolved counts" requirement --
+            // KMK: tracked separately per
+            // the behavior contract's "report successful, failed, skipped, and unresolved counts" requirement --
             // failedCount is an attempt that did not reach Success; skippedCount is an item with no
             // successful search result, so migration was never attempted for it at all.
             var failedCount = 0
@@ -429,12 +429,12 @@ class MigrationListScreenModel(
                 }
 
                 if (failedCount > 0 || skippedCount > 0) {
-                    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: failed/unresolved
+                    // KMK: failed/unresolved
                     // items are still in `items` (never removed by this loop) -- the Result dialog is
                     // an acknowledgement, not a discard. Dismissing it (see dismissResultDialog())
                     // does NOT navigate back, unlike the Follow-up Pass 1 version of this dialog:
                     // navigating away here would leave this screen entirely and hide the very items
-                    // this dialog is telling the user still need attention, defeating the plan's
+                    // this dialog is telling the user still need attention, defeating the behavior contract's
                     // "retryable or explicitly dismissible" requirement. The user stays on this
                     // screen and can retry (Migrate/Copy now) or explicitly Skip each remaining item.
                     mutableState.update { it.copy(dialog = Dialog.Result(failedCount, skippedCount, items.size)) }
@@ -460,7 +460,7 @@ class MigrationListScreenModel(
         navigateBackChannel.send(Unit)
     }
 
-    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: previously (Follow-up Pass 1)
+    // KMK: previously (Follow-up Pass 1)
     // logged a non-Success MigrationOutcome and then called removeManga(mangaId) unconditionally --
     // "logging" is not user-facing failure handling, and the item silently vanished from the list
     // exactly as if it had migrated. Now uses the same MigrationOutcomeReducer decision the bulk
@@ -558,7 +558,7 @@ class MigrationListScreenModel(
         mutableState.update { it.copy(dialog = null) }
     }
 
-    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: the Result dialog acknowledges
+    // KMK: the Result dialog acknowledges
     // a finished (partially-failed/unresolved) bulk run. Dismissing it only closes the dialog and
     // keeps the user on this screen -- the remaining failed/skipped items are still in the list,
     // retryable via Migrate/Copy or explicitly dismissible via Skip. (Corrects the Follow-up Pass 1
@@ -599,7 +599,7 @@ class MigrationListScreenModel(
         // KMK -->
         data object Options : Dialog
         // KMK <--
-        // KMK Confirmed Blocker Remediation follow-up Phase 1, extended by the Corrective Pass:
+        // KMK:
         // shown after a bulk run when one or more items returned a non-Success MigrationOutcome or
         // had no successful search result at all. Failed/skipped items remain in the item list
         // (never removed by this dialog) so the user can retry or explicitly Skip them.

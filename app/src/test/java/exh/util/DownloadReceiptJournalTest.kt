@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 /**
  * Direct tests for [DownloadReceiptJournal] -- the private, bounded, most-recent-first store that
  * lets [ActionHistoryRegistry]'s `downloadFollowUpFor` correlate a rendered `DOWNLOAD_DELETED` event

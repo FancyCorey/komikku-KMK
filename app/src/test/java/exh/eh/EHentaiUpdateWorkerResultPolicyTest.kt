@@ -23,9 +23,9 @@ import org.junit.jupiter.api.Test
 // end-to-end doWork() behavior (CancellationException rethrow through a live CoroutineWorker,
 // and the finally-block notification cleanup call) is verified by code inspection and the
 // `try/catch(CancellationException) { throw e } ... finally { cancelProgressNotification() }`
-// structure itself, not by an instrumented test in this pass -- adding that dependency was
+// structure itself, not by an instrumented test in the implementation -- adding that dependency was
 // judged out of scope for one worker's test coverage. This is stated explicitly rather than
-// silently omitted, per this pass's own reporting requirement.
+// silently omitted, per the documented test scope.
 class EHentaiUpdateWorkerResultPolicyTest {
 
     @Test

@@ -24,7 +24,7 @@ class MigratingManga(
 
     val searchResult = MutableStateFlow<SearchResult>(SearchResult.Searching)
 
-    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: truthful per-item migration
+    // KMK: truthful per-item migration
     // status, set by MigrationListScreenModel.migrateNow()/migrateMangas() via
     // MigrationOutcomeReducer. Null means "no migration attempted yet or last attempt not
     // resolved" -- the item stays visible and retryable in either case; it is never removed from

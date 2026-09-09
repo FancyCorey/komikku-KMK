@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK Confirmed Blocker Remediation Phase 4 2026-07-29, extended by the follow-up pass 2026-07-29 -->
+// KMK -->
 /**
  * Tests for [MigrationOutcome] and its [MigrationOutcome.fromFailure] factory -- the pure decision
  * extracted from [MigrateMangaUseCase.invoke]'s catch block. Proves the confirmed defect fix

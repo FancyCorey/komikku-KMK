@@ -2,15 +2,14 @@ package mihon.feature.migration.list
 
 import mihon.domain.migration.usecases.MigrationOutcome
 
-// KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29 -->
+// KMK -->
 /**
  * Maps a [MigrationOutcome] to the migration-list-specific decision of whether the attempted item
- * may be removed from the pending list. Extracted as a small pure function (per the corrective
- * plan's Phase 1 "preferred implementation shape") so [MigrationListScreenModel]'s bulk loop
+ * may be removed from the pending list. Extracted as a small pure function so
+ * [MigrationListScreenModel]'s bulk loop
  * (`migrateMangas`) and single-item flow (`migrateNow`) share one decision and cannot drift --
- * before this pass, `migrateNow()` logged a non-Success outcome and then removed the item
- * unconditionally, which is exactly the "logging is not user-facing failure handling" defect the
- * corrective plan calls out by name.
+ * `migrateNow()` must retain a non-Success item rather than merely logging the outcome and removing
+ * it, because logging is not user-facing failure handling.
  *
  * [MigrationListItemState.SKIPPED] is not derived from a [MigrationOutcome] at all -- it represents
  * an item with no successful search result yet, so no migration was ever attempted for it. It exists

@@ -171,9 +171,7 @@ class MangaRestorer(
                 version = manga.version,
                 isSyncing = 1,
                 notes = manga.notes,
-                // KMK -->
-                memo = MemoColumnAdapter.encode(manga.memo),
-                // KMK <--
+                memo = manga.memo.let(MemoColumnAdapter::encode),
             )
         }
         return manga
@@ -271,9 +269,7 @@ class MangaRestorer(
                     chapter.dateFetch,
                     chapter.dateUpload,
                     chapter.version,
-                    // KMK -->
                     chapter.memo,
-                    // KMK <--
                 )
             }
         }
@@ -295,11 +291,11 @@ class MangaRestorer(
                     // KMK -->
                     sourceOrder = chapter.sourceOrder,
                     dateUpload = chapter.dateUpload,
-                    memo = MemoColumnAdapter.encode(chapter.memo),
                     // KMK <--
                     chapterId = chapter.id,
                     version = chapter.version,
                     isSyncing = 1,
+                    memo = chapter.memo.let(MemoColumnAdapter::encode),
                 )
             }
         }
@@ -336,9 +332,7 @@ class MangaRestorer(
                 updateStrategy = manga.updateStrategy,
                 version = manga.version,
                 notes = manga.notes,
-                // KMK -->
                 memo = manga.memo,
-                // KMK <--
             )
             mangasQueries.selectLastInsertedRowId()
         }

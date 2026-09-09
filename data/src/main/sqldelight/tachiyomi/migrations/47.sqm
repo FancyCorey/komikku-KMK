@@ -1,45 +1,73 @@
--- KMK --> v0.6.9 source_evaluation table for existing installs (v0.6.8 added the table but no migration)
+-- KMK --> Phase 1: Personal recommendations taste profile tables
 
-CREATE TABLE IF NOT EXISTS source_evaluation (
-    evaluation_key TEXT NOT NULL PRIMARY KEY,
-    source_id INTEGER,
-    extension_pkg_name TEXT NOT NULL,
-    signature_hash TEXT NOT NULL,
-    extension_name TEXT NOT NULL,
-    source_name TEXT NOT NULL,
-    lang TEXT NOT NULL,
-    base_url TEXT,
-    repo_name TEXT,
-    source_count INTEGER NOT NULL,
-    is_nsfw INTEGER NOT NULL,
-    evaluation_version INTEGER NOT NULL,
-    evaluated_at INTEGER NOT NULL,
-    expires_at INTEGER,
-    sample_count INTEGER NOT NULL,
-    popular_count INTEGER NOT NULL,
-    latest_count INTEGER NOT NULL,
-    search_count INTEGER NOT NULL,
-    search_success_count INTEGER NOT NULL,
-    liked_title_match_count INTEGER NOT NULL,
-    preferred_tag_match_count INTEGER NOT NULL,
-    blocked_tag_match_count INTEGER NOT NULL,
-    explicit_signal_count INTEGER NOT NULL,
-    ecchi_signal_count INTEGER NOT NULL,
-    error_count INTEGER NOT NULL,
-    quality_score REAL NOT NULL,
-    recommendation_fit_score REAL NOT NULL,
-    search_reliability_score REAL NOT NULL,
-    explicit_score REAL NOT NULL,
-    ecchi_score REAL NOT NULL,
-    verdict TEXT NOT NULL,
-    sampled_titles_json TEXT,
-    sampled_tags_json TEXT,
-    error_message TEXT
+CREATE TABLE IF NOT EXISTS manga_taste (
+    manga_id INTEGER NOT NULL PRIMARY KEY,
+    source INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    rating INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY(manga_id) REFERENCES mangas(_id)
+    ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS source_evaluation_source_id_index ON source_evaluation(source_id);
-CREATE INDEX IF NOT EXISTS source_evaluation_pkg_index ON source_evaluation(extension_pkg_name);
-CREATE INDEX IF NOT EXISTS source_evaluation_verdict_index ON source_evaluation(verdict);
-CREATE INDEX IF NOT EXISTS source_evaluation_evaluated_at_index ON source_evaluation(evaluated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS manga_taste_source_url_index ON manga_taste(source, url);
+CREATE INDEX IF NOT EXISTS manga_taste_rating_index ON manga_taste(rating);
+
+CREATE TABLE IF NOT EXISTS tag_taste (
+    normalized_tag TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    preference INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS tag_taste_preference_index ON tag_taste(preference);
+
+CREATE TABLE IF NOT EXISTS tag_alias (
+    alias TEXT NOT NULL PRIMARY KEY,
+    normalized_alias TEXT NOT NULL,
+    group_key TEXT NOT NULL,
+    display_name TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS tag_alias_group_key_index ON tag_alias(group_key);
+CREATE INDEX IF NOT EXISTS tag_alias_normalized_index ON tag_alias(normalized_alias);
+
+CREATE TABLE IF NOT EXISTS recommendation_cache (
+    cache_key TEXT NOT NULL PRIMARY KEY,
+    source_id INTEGER NOT NULL,
+    profile_fingerprint TEXT NOT NULL,
+    query_key TEXT NOT NULL,
+    result_manga_ids TEXT NOT NULL,
+    result_scores TEXT,
+    result_reasons TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS recommendation_cache_source_index ON recommendation_cache(source_id);
+CREATE INDEX IF NOT EXISTS recommendation_cache_expires_index ON recommendation_cache(expires_at);
+
+CREATE TABLE IF NOT EXISTS recommendation_disabled_source (
+    source_id INTEGER NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL
+);
+
+-- Seed built-in alias groups for common tag synonyms
+INSERT OR IGNORE INTO tag_alias(alias, normalized_alias, group_key, display_name)
+VALUES
+    ('Yuri', 'yuri', 'girls_love', 'Girls Love'),
+    ('Girls Love', 'girls love', 'girls_love', 'Girls Love'),
+    ('GL', 'gl', 'girls_love', 'Girls Love'),
+    ('Yaoi', 'yaoi', 'boys_love', 'Boys Love'),
+    ('Boys Love', 'boys love', 'boys_love', 'Boys Love'),
+    ('BL', 'bl', 'boys_love', 'Boys Love'),
+    ('Shounen Ai', 'shounen ai', 'boys_love', 'Boys Love'),
+    ('Shoujo Ai', 'shoujo ai', 'girls_love', 'Girls Love'),
+    ('Sci-Fi', 'sci fi', 'sci_fi', 'Sci-Fi'),
+    ('Science Fiction', 'science fiction', 'sci_fi', 'Sci-Fi'),
+    ('Sci Fi', 'sci fi', 'sci_fi', 'Sci-Fi');
 
 -- KMK <--

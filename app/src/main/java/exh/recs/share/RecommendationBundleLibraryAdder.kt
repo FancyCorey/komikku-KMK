@@ -29,8 +29,8 @@ class RecommendationBundleLibraryAdder(
     private val updateManga: UpdateManga = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
-    // KMK Confirmed Blocker Remediation Phase 5 2026-07-29: bundle import's library-add half is
-    // exactly the "library additions" case the plan's classification rules require typed local undo
+    // KMK: bundle import's library-add half is
+    // exactly the "library additions" case the behavior contract's classification rules require typed local undo
     // for -- build-before-write/commit-after-success, same contract every other favorite-flip call
     // site already uses (LibraryUndoRecorder). This is a distinct receipt from the extension-install
     // half (RecommendationBundleImportScreenModel.installMissingExtension, already
@@ -69,7 +69,7 @@ class RecommendationBundleLibraryAdder(
         }
 
         return try {
-            // KMK Confirmed Blocker Remediation Phase 5: build the journal entry from the pre-write
+            // KMK: build the journal entry from the pre-write
             // manga (favorite=false is guaranteed here by the early return above) before the write,
             // commit only after updateManga.awaitUpdateFavorite returns -- see
             // exh.util.LibraryUndoRecorder's own build-before-write/commit-after-success doc.

@@ -51,6 +51,7 @@ android {
         buildConfigField("String", "BUILD_TIME", buildConfigString(buildTime))
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
         buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "${Config.enableGoogleDriveSync}")
         buildConfigField("String", "GOOGLE_DRIVE_CLIENT_SECRETS_ASSET", buildConfigString("client_secrets.json"))
         buildConfigField("String", "GOOGLE_DRIVE_CLIENT_ID", buildConfigString(""))
         buildConfigField("String", "SOURCES_TO_TRY_FIXTURE_SIGNER_SHA256", buildConfigString(""))

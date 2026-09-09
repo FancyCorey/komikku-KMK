@@ -9,7 +9,7 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK Undo Expansion Phase 1 -->
+// KMK -->
 /** Pure conflict check for a favorite/unfavorite entry: compares only `favorite`, never `dateAdded`/covers/etc. */
 fun libraryUndoFavoriteConflicts(expectedPostFavorite: Boolean?, currentFavorite: Boolean?): Boolean =
     expectedPostFavorite != currentFavorite
@@ -21,7 +21,7 @@ fun libraryUndoCategoriesConflict(expectedPostCategoryIds: List<Long>?, currentC
 /**
  * Restore logic for [LibraryUndoJournal] entries (favorite/unfavorite row flip, category-set replace).
  * Never restores cover files, downloaded chapters, remote metadata, or tracker state -- those are real
- * external effects outside this journal's scope by design (see the coverage audit).
+ * external effects outside this journal's scope by design (see the documented coverage boundary).
  */
 class LibraryUndoService(
     private val getManga: GetManga = Injekt.get(),

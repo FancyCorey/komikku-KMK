@@ -37,7 +37,7 @@ internal class RecommendationCandidateEnricher(
             if (!manga.needsEnrichment()) continue
             val smanga = smangaByUrl[manga.url] ?: continue
 
-            // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching -- the plan's
+            // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching -- the behavior contract's
             // explicit instruction is that runCatching must not be the source boundary because it
             // does not record the failure registry. SourceRuntime still rethrows
             // CancellationException and any genuinely fatal Error, exactly as runCatching should

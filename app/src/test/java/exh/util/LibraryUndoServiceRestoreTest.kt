@@ -23,7 +23,7 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 
-// KMK Undo Expansion Phase 1 -->
+// KMK -->
 private class FakeMangaRepository(private val categoryRepository: FakeCategoryRepository) : StubMangaRepository() {
     val byId = mutableMapOf<Long, Manga>()
 

@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 
 // KMK -->
-// Corrective pass 2026-08-03: direct coverage that SourcePreferences.browseFixtureFailureMode() and
+// KMK: direct coverage that SourcePreferences.browseFixtureFailureMode() and
 // SourcePreferences.evaluationFixtureFailureMode() are two independent preference keys, so changing
 // one can never activate the other's debug fixture. This is the structural fix for the bug where
 // BrowseSourceScreenModel.createSourcePagingSource() read the Source-Evaluation-named preference,

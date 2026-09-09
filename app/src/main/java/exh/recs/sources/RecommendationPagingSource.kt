@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import exh.md.similar.MangaDexSimilarPagingSource
 import exh.source.COMICK_IDS
 import exh.source.MANGADEX_IDS

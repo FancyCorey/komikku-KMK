@@ -11,7 +11,7 @@ import tachiyomi.domain.taste.model.MangaTaste
 /**
  * Tests for the group-transparency fields ([LovedDisplayItem.confirmedGroupId],
  * [LovedDisplayItem.memberKeys], [LovedDisplayItem.hasConfirmedGroup]) added in v0.8.0 to
- * [buildGroupedItems] / [buildFlatItems], and specifically the plan's acceptance criterion that
+ * [buildGroupedItems] / [buildFlatItems], and specifically the behavior contract's acceptance criterion that
  * "See Group Recommendations" (driven by [LovedDisplayItem.hasConfirmedGroup]) is visible only for
  * *confirmed* linked groups (user-verified cross-source links) with 2+ versions — never for
  * metadata-similarity groupings alone.
@@ -56,7 +56,7 @@ class RatedMangaDisplayItemGroupingTest {
     fun `metadata-similarity grouping without a confirmed link is NOT treated as a confirmed group`() {
         // Same title + same author, no link group — groups via LovedMangaDuplicateGrouper's
         // metadata-similarity tiers, which must NOT be exposed as hasConfirmedGroup (that flag is
-        // reserved for user-verified LINK_GROUP identity, per the v0.8.0 plan's UX contract).
+        // reserved for user-verified LINK_GROUP identity, per the versioned behavior contract's UX contract).
         val a = MangaTaste(1, 1, "/a", "Same Title", 2, 0L, 0L)
         val mangaA = Manga.create().copy(id = 1, ogTitle = "Same Title", ogAuthor = "Author X", source = 1, url = "/a")
         val b = MangaTaste(2, 2, "/b", "Same Title", 2, 0L, 0L)

@@ -3,7 +3,7 @@ package exh.util
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.track.model.Track
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 /** Pure eligibility decision for a guarded compensating tracker write. */
 object TrackFollowUpPolicy {
     sealed interface RestoreFollowUp {

@@ -11,13 +11,6 @@ import tachiyomi.core.common.preference.Preference
  * Migrates sync preference storage keys to namespaced forms so that
  * connection keys ("connection_*") and sync-toggle keys ("sync_*") no longer
  * collide with unrelated preferences.
- *
- * KMK --> 1.14.0 reconciliation Phase 5: ported from upstream commit 1763d947d
- * ("chore(sync): migrate sync preference keys (#1747)"), extended with KMK's own
- * WebDAV connection keys (which upstream's migration already anticipated and
- * renamed under the same "connection_*" scheme) and the extensionRepoSettings ->
- * sync_extensionStores rename that came with the extension-store reconciliation
- * done earlier in this same reconciliation (Phase 3).
  */
 class SyncPrefKeyMigration : Migration {
     override val version: Float = 80f

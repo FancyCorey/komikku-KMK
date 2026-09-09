@@ -1,6 +1,6 @@
 package exh.recs.bestversion
 
-// KMK Confirmed Blocker Remediation Phase 3 2026-07-29 -->
+// KMK -->
 /**
  * Pure decision for [BestVersionCompareScreenModel.sourceName]'s Evaluation Mode branch, extracted
  * so the privacy invariant ("never the raw source name when Evaluation Mode is enabled") is directly

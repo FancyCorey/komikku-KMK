@@ -3,7 +3,7 @@ package exh.util
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 class MigrationReceiptPrivacyTest {
 
     @Test

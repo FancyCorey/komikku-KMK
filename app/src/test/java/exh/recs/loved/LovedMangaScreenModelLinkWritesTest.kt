@@ -13,9 +13,8 @@ import tachiyomi.domain.taste.model.CrossSourceMangaLink
  * class-level comment above `mergeSelectedIntoGroup()`).
  *
  * `LovedMangaScreenModel` itself cannot be constructed in this project's pure-JVM unit test
- * environment (Injekt-bootstrapped dependencies, no Robolectric), matching the same limitation
- * already documented for other Injekt-heavy screen models in `CURRENT_STATE.md` -- so this test
- * targets the extracted pure map-update logic directly.
+ * environment (Injekt-bootstrapped dependencies, no Robolectric), so this test targets the
+ * extracted pure map-update logic directly.
  */
 class LovedMangaScreenModelLinkWritesTest {
 

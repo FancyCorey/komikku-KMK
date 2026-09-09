@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Small, pure-ish, directly testable coordinator for GROUP_PREVIEW row operations. Extracted out of
  * [RecommendsScreenModel] so bounded-concurrency and timeout behavior can be unit tested without
- * building a full Injekt-backed [RecommendsScreenModel] test harness (plan section 14's
+ * building a full Injekt-backed [RecommendsScreenModel] test harness (documented behavior
  * "max active source operations" / progressive-completion requirements).
  *
  * Responsibilities are deliberately narrow: bound concurrency via [Semaphore], bound wall-clock time
@@ -33,7 +33,7 @@ class GroupPreviewLoadCoordinator(
     // in-flight count across all concurrently active GROUP_PREVIEW sources, not per source. Without
     // this, up to [maxConcurrent] sources could each independently run their own
     // MAX_ENRICH_PER_SOURCE-bounded enrichment fan-out at the same time, multiplying the effective
-    // total far past the intended shared budget (plan section 7).
+    // total far past the intended shared budget (documented behavior).
     val sharedEnrichmentSemaphore: Semaphore = Semaphore(maxConcurrentEnrichment)
 
     /**
@@ -72,7 +72,7 @@ class GroupPreviewLoadCoordinator(
 }
 
 /**
- * Small, pure, directly testable generation/staleness guard (plan section 9's "state updates verify
+ * Small, pure, directly testable generation/staleness guard (documented behavior "state updates verify
  * ... generation before mutation" and "stale results from an old ... generation are ignored").
  * [RecommendsScreenModel] holds one instance; each load captures [next] at start, and every state
  * mutation checks [isCurrent] before applying.

@@ -2,7 +2,7 @@ package mihon.domain.migration.usecases
 
 import mihon.domain.migration.models.MigrationFlag
 
-// KMK Confirmed Blocker Remediation Phase 4 2026-07-29, extended by the follow-up pass 2026-07-29 -->
+// KMK -->
 /**
  * Truthful result of [MigrateMangaUseCase.invoke]. Confirmed defect this fixes: `invoke()`
  * previously returned `Unit` and wrapped its entire body (remote refresh, chapter/history copy,
@@ -12,8 +12,7 @@ import mihon.domain.migration.models.MigrationFlag
  * ([exh.recs.bestversion.BestVersionCompareScreenModel.confirmMigration]) had no way to distinguish
  * a genuine success from a silent partial failure. It unconditionally recorded a non-undoable
  * `MIGRATION_COMPLETED` history event and navigated to `Done` regardless, which is exactly the
- * "never record a successful migration... before the underlying operation returns success" defect
- * the plan's Phase 4 §8 item 5 requires closing.
+ * defect where success was recorded before the underlying operation actually returned success.
  *
  * The follow-up pass extended [completedFlags] to also cover [MigrationFlag.NOTES] and
  * [MigrationFlag.EXTRA] (previously invisible -- they're applied as part of the final manga-row
@@ -26,7 +25,7 @@ import mihon.domain.migration.models.MigrationFlag
  * steps.
  *
  * This is deliberately NOT a reversal/undo contract -- see [MigrateMangaUseCase]'s class doc for why
- * local-state staged reversal and `reverseMigration` are explicitly out of scope this pass. This
+ * local-state staged reversal and `reverseMigration` are explicitly out of scope the implementation. This
  * type only makes the existing (already-happened) side effects *truthfully reported*, so a caller
  * can show an honest error instead of a false success.
  */

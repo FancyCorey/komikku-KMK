@@ -43,7 +43,7 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29: which localized message to show
+// KMK: which localized message to show
 // for a non-Success MigrationOutcome -- kept as a plain enum (not the message string itself) so the
 // screen model stays UI-toolkit-agnostic and directly unit-testable.
 internal enum class MigrationDialogErrorKey { PARTIAL_FAILURE, NOT_STARTED }
@@ -82,7 +82,7 @@ internal fun Screen.MigrateMangaDialog(
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
-                // KMK Confirmed Blocker Remediation Phase 1 2026-07-29: surface a truthful failure
+                // KMK: surface a truthful failure
                 // state instead of silently closing the dialog as if the migration had succeeded --
                 // see MigrateDialogScreenModel.migrateManga's MigrationOutcome handling below.
                 state.errorMessage?.let { key ->
@@ -148,7 +148,7 @@ internal fun Screen.MigrateMangaDialog(
     )
 }
 
-// KMK Confirmed Blocker Remediation follow-up Phase 1: internal (not private) so
+// KMK: internal (not private) so
 // MigrateDialogScreenModelMigrationOutcomeTest can construct it directly with a mocked
 // MigrateMangaUseCase, without needing the use case's full platform-dependency graph.
 internal class MigrateDialogScreenModel(
@@ -197,7 +197,7 @@ internal class MigrateDialogScreenModel(
         }
     }
 
-    // KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29: previously discarded the
+    // KMK: previously discarded the
     // MigrationOutcome entirely and always set isMigrated = true, so a PartialFailure/NotStarted
     // outcome (migrateManga's non-fatal-exception path) closed this dialog exactly as if the
     // migration had fully succeeded. migrateManga(...) itself already catches every non-fatal
@@ -241,7 +241,7 @@ internal class MigrateDialogScreenModel(
         val selectedFlags: Set<MigrationFlag> = emptySet(),
         val isMigrating: Boolean = false,
         val isMigrated: Boolean = false,
-        // KMK Confirmed Blocker Remediation follow-up Phase 1: non-null only after a verified
+        // KMK: non-null only after a verified
         // PartialFailure/NotStarted MigrationOutcome; resolved to localized text in the Composable.
         val errorMessage: MigrationDialogErrorKey? = null,
     )

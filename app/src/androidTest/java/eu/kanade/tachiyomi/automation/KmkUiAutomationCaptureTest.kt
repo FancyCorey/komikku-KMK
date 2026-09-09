@@ -24,7 +24,7 @@ class KmkUiAutomationCaptureTest {
     @Test
     fun verifyTargetPackageOnly() {
         val expectedPackage = InstrumentationRegistry.getArguments()
-            .getString("expected_package", "app.komikku.dev")
+            .getString("expected_package", "app.komikku.kmk.dev")
         assertEquals(expectedPackage, device.currentPackageName)
     }
 

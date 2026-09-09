@@ -3,7 +3,7 @@ package exh.recs
 // KMK v0.8.13 -->
 /**
  * Pure decision for whether `BrowsePersonalRecommendationsScreenModel.searchSource()` should call
- * `discoverAdditionalPage(...)` after a plan's page-1 search.
+ * `discoverAdditionalPage(...)` after a query plan's page-1 search.
  *
  * ## Why this exists
  *

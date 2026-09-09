@@ -155,7 +155,7 @@ object SettingsBrowseScreen : SearchableSettings {
                         title = stringResource(MR.strings.pref_hide_in_library_items),
                     ),
                     Preference.PreferenceItem.TextPreference(
-                        title = stringResource(MR.strings.label_extension_repos),
+                        title = stringResource(MR.strings.extensionStores),
                         subtitle = pluralStringResource(MR.plurals.num_repos, reposCount.toInt(), reposCount),
                         onClick = {
                             navigator.push(ExtensionStoresScreen())

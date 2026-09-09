@@ -2,7 +2,7 @@ package exh.util
 
 import kotlinx.coroutines.CancellationException
 
-// KMK Undo Expansion Phase 1 -->
+// KMK -->
 /**
  * Restore logic for [PreferenceUndoJournal] entries. Generic over the entry's own value type `T`, so
  * one service covers every preference/small-row family (Phase 1's recommendation/tag/schedule

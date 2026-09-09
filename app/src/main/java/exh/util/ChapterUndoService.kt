@@ -7,7 +7,7 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK Undo Expansion Phase 2 -->
+// KMK -->
 /** Pure conflict check: compares only the field(s) this entry's action actually changed. */
 fun chapterUndoConflicts(
     entry: ChapterJournalEntry,

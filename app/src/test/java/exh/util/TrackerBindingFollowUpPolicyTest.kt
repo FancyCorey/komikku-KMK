@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.track.model.Track
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 class TrackerBindingFollowUpPolicyTest {
 
     private val track = Track(

@@ -15,7 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
  *
  * A missing/unknown anchor (e.g. the target row isn't present for the current state -- filtered
  * out, feature disabled, list empty) is a silent no-op: the screen still opens normally, just
- * without a scroll target. This matches the plan's "scrolls/highlights the target subsection when
+ * without a scroll target. This matches the behavior contract's "scrolls/highlights the target subsection when
  * that screen supports it" allowance rather than crashing or showing an error for a stale/irrelevant
  * anchor.
  */

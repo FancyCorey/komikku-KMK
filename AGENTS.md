@@ -1,6 +1,6 @@
 # Komikku – AI Agent Guide
 
-Komikku is an Android manga reader (min SDK 26, target SDK 36, JVM 17 / Kotlin) forked from **Mihon** + **TachiyomiSY**. Stack: Jetpack Compose + Material3, Voyager navigation, SQLDelight, Injekt DI. `applicationId`: `app.komikku`.
+Komikku KMK is an Android manga reader (min SDK 26, target SDK 36, JVM 17 / Kotlin) forked from **Komikku**, **Mihon**, and **TachiyomiSY**. Stack: Jetpack Compose + Material3, Voyager navigation, SQLDelight, Injekt DI. Release `applicationId`: `app.komikku.kmk`.
 
 ---
 
@@ -144,21 +144,6 @@ Gradle `-P` flags (`buildSrc/.../BuildConfig.kt`):
 JDK **17**.
 
 ---
-
-## Android Evaluation Mode evidence workflow
-
-- Read `docs/community/KMK_ANDROID_UI_AUTOMATION_CAPTURE_WORKFLOW_CORRECTION_2026-07-22.md` before capture work.
-- Use `tools/capture_coordinator.py` for policy, route manifests, sidecars, and review state.
-- Use the official AndroidX UI Automator runner for device-side interaction.
-- Never print or save hierarchy content before the privacy gate confirms Evaluation Mode.
-- Never capture unless `app.komikku.dev` is foreground, the activity is allowed, Evaluation Mode is confirmed, and no unrelated overlay is active.
-- Revalidate all conditions immediately before every screenshot; capture authorization is single-use.
-- Start every route from a known state and reject ambiguous selectors.
-- Verify package, activity, overlay state, and a unique marker after every transition.
-- Abort immediately when another app or unknown overlay becomes foreground.
-- Do not use arbitrary shell commands, blind coordinate macros, or unbounded retries.
-- Keep capture and review separate; a written PNG starts as `not-reviewed`.
-- Do not change production behavior or user data as part of capture tooling.
 
 ## Fork-origin markers
 

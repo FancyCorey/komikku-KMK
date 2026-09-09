@@ -6,7 +6,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
-// KMK Undo Expansion Phase 3 -->
+// KMK -->
 /**
  * Covers the composite source-quality-mark restore shape used by
  * `RecommendationsSettingsScreenModel`'s `journalSourceQualityChange()`: liked/disliked/explicit key

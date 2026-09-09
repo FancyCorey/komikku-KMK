@@ -23,10 +23,10 @@ import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 /**
  * Direct tests for [ActionHistoryRegistry]'s `downloadFollowUpFor` -- the download compensating
- * action ("Re-download") described in the Universal Action History Recovery Plan. Mirrors
+ * action ("Re-download"). Mirrors
  * [ActionHistoryRegistryMigrationFollowUpTest]'s own seam-swap pattern.
  */
 class ActionHistoryRegistryDownloadFollowUpTest {

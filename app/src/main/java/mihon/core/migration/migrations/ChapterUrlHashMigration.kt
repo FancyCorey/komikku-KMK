@@ -13,13 +13,7 @@ import tachiyomi.domain.download.service.DownloadPreferences
  * previous download folder naming behavior.
  */
 class ChapterUrlHashMigration : Migration {
-    // KMK v0.8.17 (Komikku v1.14.1 reconciliation): upstream introduced this at its own versionCode
-    // 81 (upstream PR #1800). KMK's local versionCode sequence diverged from upstream's numbering long
-    // before this migration existed (KMK is already past 81), and Migrator only runs a migration whose
-    // `version` falls within the (oldVersionCode+1)..newVersionCode range being upgraded through -- so
-    // this must use KMK's own next versionCode (90, this release) to actually fire for existing KMK
-    // users, not upstream's original 81.
-    override val version: Float = 90f
+    override val version: Float = 81f
 
     override suspend fun invoke(migrationContext: MigrationContext): Boolean = withIOContext {
         val downloadPreferences = migrationContext.get<DownloadPreferences>() ?: return@withIOContext false

@@ -13,7 +13,7 @@ import java.util.concurrent.ExecutionException
  * Covers the new [SourceEvaluationProbeErrorKind.EXTENSION_INCOMPATIBLE] classification, added so
  * a broken/incompletely-packaged extension's [LinkageError] during Source Evaluation probing is
  * recorded as a technical incompatibility -- never as "weak taste fit" or a generic "internal
- * error" -- per the fix3 plan's explicit requirement.
+ * error" -- per the behavior contract's explicit requirement.
  */
 class SourceEvaluationProbeErrorClassifierTest {
 

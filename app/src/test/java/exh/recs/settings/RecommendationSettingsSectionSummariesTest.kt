@@ -51,7 +51,7 @@ class RecommendationSettingsSectionSummariesTest {
 
     private val orderedSources = listOf(1L to "MangaDex", 2L to "Comick", 3L to "Batoto")
 
-    // --- sourcePrioritySummary (KMK Confirmed Blocker Remediation 2026-07-28) ---
+    // --- sourcePrioritySummary (KMK
     // Regression coverage for the centralized privacy branch: the summary's topSourceLabel must
     // never equal a raw source name when evaluationModeEnabled is true, on every input shape below.
 

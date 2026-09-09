@@ -1,15 +1,13 @@
--- KMK --> v0.7.0: Phase 4 – persistent cross-source manga link groups
+-- KMK --> v0.6.18: package-level extension load quarantine
 
-CREATE TABLE IF NOT EXISTS manga_cross_source_link (
-    source INTEGER NOT NULL,
-    url TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    title TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS unsafe_extension_package (
+    pkg_name TEXT NOT NULL PRIMARY KEY,
+    extension_name TEXT,
+    reason TEXT NOT NULL,
+    source TEXT NOT NULL,
+    removable INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    PRIMARY KEY (source, url)
+    updated_at INTEGER NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS manga_cross_source_link_group_index ON manga_cross_source_link(group_id);
 
 -- KMK <--

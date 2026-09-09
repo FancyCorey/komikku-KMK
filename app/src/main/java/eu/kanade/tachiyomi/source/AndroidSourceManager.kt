@@ -162,6 +162,7 @@ class AndroidSourceManager(
                 sourceQName == delegated.originalSourceQualifiedClassName ||
                     (delegated.factory && sourceQName.startsWith(delegated.originalSourceQualifiedClassName))
             }
+            // KMK <--
         } else {
             null
         }

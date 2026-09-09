@@ -11,7 +11,7 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
  *
  * [DeepLinkActivity] is `android:exported="true"`. An explicit intent naming its component
  * bypasses `<intent-filter>` action/category matching entirely -- any app can start it directly
- * with `ComponentName("app.komikku...", "eu.kanade.tachiyomi.ui.deeplink.DeepLinkActivity")` and
+ * with `ComponentName("app.komikku.kmk...", "eu.kanade.tachiyomi.ui.deeplink.DeepLinkActivity")` and
  * an arbitrary action, MIME type, data Uri, extras, categories, or flags. The action/MIME type
  * reaching [DeepLinkActivity.onCreate] must therefore never be assumed to match one of the
  * declared filters (`android.intent.action.SEARCH`, the Google Assistant search action,

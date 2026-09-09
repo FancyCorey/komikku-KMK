@@ -185,7 +185,7 @@ fun MigrationListScreenContent(
                             // KMK <--
                         )
                     }
-                    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: a per-item
+                    // KMK: a per-item
                     // migration attempt status -- shown instead of silently removing the item from
                     // the list on failure (see MigrationListScreenModel.migrateNow()/
                     // migrateMangas()). Retry uses the same Migrate/Copy actions above.
@@ -197,7 +197,7 @@ fun MigrationListScreenContent(
     }
 }
 
-// KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29 -->
+// KMK>
 @Composable
 private fun MigrationListItemStatus(state: MigratingManga.MigrationResultState?) {
     when (state) {

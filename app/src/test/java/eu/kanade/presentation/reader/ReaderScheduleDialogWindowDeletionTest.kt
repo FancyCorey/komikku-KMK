@@ -5,12 +5,12 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import java.time.DayOfWeek
 
-// KMK Confirmed Blocker Remediation 2026-07-28 -->
+// KMK -->
 /**
  * Tests for [ReaderScheduleWindowDeletionPolicy], extracted from [ReaderScheduleDialog]'s
  * pendingDeleteIndex confirm-button handler. No Compose UI test infrastructure exists in this
  * module (no Robolectric/Compose-test dependency is configured), so this covers the exact same
- * removal logic the dialog's confirm button calls, at the pure-function level -- the plan's
+ * removal logic the dialog's confirm button calls, at the pure-function level -- the behavior contract's
  * required behavior matrix maps onto this policy plus the dialog's already-read confirmed source:
  *
  * - Tapping delete opens confirmation and leaves the draft unchanged: confirmed by direct reading

@@ -40,7 +40,7 @@ import uy.kohesive.injekt.api.get
  * - Page 1 only — no pagination, no chapter list fetch, no image fetch.
  * - Per-plan search timeout of [PLAN_TIMEOUT_MS] (30 s).
  * - Per-candidate detail enrichment timeout of [ENRICH_TIMEOUT_MS] (10 s).
- * - At most [ENRICH_CAP_PER_PLAN] candidates enriched per plan (5), sequential.
+ * - At most [ENRICH_CAP_PER_RUN] candidates enriched per run (5), sequential.
  * - Errors are recorded in the outcome, not re-thrown to the caller.
  *
  * This probe intentionally does NOT persist results to the DB itself.
@@ -58,7 +58,7 @@ class SourceRecommendationFitProbe(
         private const val RAW_CAP = 20
 
         // KMK --> v0.7.13: enrichment constants — kept small to bound network calls
-        private const val ENRICH_CAP_PER_PLAN = 5
+        private const val ENRICH_CAP_PER_RUN = 5
         private const val ENRICH_TIMEOUT_MS = 10_000L
         // KMK <--
     }
@@ -128,7 +128,7 @@ class SourceRecommendationFitProbe(
                 // KMK --> v0.7.35: force IO dispatcher — getSearchManga performs network I/O
                 // KMK v0.8.10-fix4: routed through SourceRuntime instead of a raw call inside
                 // withTimeoutOrNull -- records a recoverable extension LinkageError in
-                // SourceRuntimeFailureRegistry and reports it as this plan's own error/reason
+                // SourceRuntimeFailureRegistry and reports it as this query plan's own error/reason
                 // instead of only being caught by the outer per-plan catch(Error) below.
                 val searchResult = withTimeoutOrNull(PLAN_TIMEOUT_MS) {
                     SourceRuntime.run(source, SourceRuntimeOperation.Search, ioDispatcher) {
@@ -169,15 +169,15 @@ class SourceRecommendationFitProbe(
                 // Many extensions omit genre on search results but populate it in getMangaDetails.
                 val smangaByUrl = rawItems.associateBy { it.url }
                 val domainMangas = rawItems.map { it.toDomainManga(source.id) }
-                var planEnrichedCount = 0
+                var enrichedCount = 0
                 var planWeakCount = 0
                 val enrichedMangas = domainMangas.map { manga ->
-                    if (planEnrichedCount < ENRICH_CAP_PER_PLAN && manga.needsProbeEnrichment()) {
+                    if (enrichedCount < ENRICH_CAP_PER_RUN && manga.needsProbeEnrichment()) {
                         val smanga = smangaByUrl[manga.url]
                         if (smanga != null) {
                             // KMK --> v0.7.35: force IO dispatcher — getMangaDetails performs network I/O
                             // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching --
-                            // the plan's explicit instruction is that runCatching must not be the
+                            // the behavior contract's explicit instruction is that runCatching must not be the
                             // source boundary because it does not record the failure registry.
                             val enriched = withTimeoutOrNull(ENRICH_TIMEOUT_MS) {
                                 SourceRuntime.run(source, SourceRuntimeOperation.MangaUpdate, ioDispatcher) {
@@ -191,14 +191,14 @@ class SourceRecommendationFitProbe(
                             }
                             // KMK <--
                             if (enriched != null) {
-                                planEnrichedCount++
+                                enrichedCount++
                                 return@map enriched
                             }
                         }
                     }
                     manga
                 }
-                enrichedCandidateCount += planEnrichedCount
+                enrichedCandidateCount += enrichedCount
                 // KMK <--
 
                 val planVisibleBefore = visibleCandidateCount
@@ -229,7 +229,7 @@ class SourceRecommendationFitProbe(
                 val planVisible = visibleCandidateCount - planVisibleBefore
                 if (planVisible > 0) {
                     // KMK --> v0.7.13: include enrichment info in reason
-                    val enrichNote = if (planEnrichedCount > 0) " ($planEnrichedCount enriched)" else ""
+                    val enrichNote = if (enrichedCount > 0) " ($enrichedCount enriched)" else ""
                     reasons.add("Plan ${plan.type.name}: $planVisible visible$enrichNote")
                     // KMK <--
                 } else if (planWeakCount == enrichedMangas.size && enrichedMangas.isNotEmpty()) {
@@ -254,7 +254,7 @@ class SourceRecommendationFitProbe(
             // KMK v0.8.10-fix4: the fix3 catch(Error) that used to sit here is no longer needed --
             // every direct source call in this loop (getFilterList, getSearchManga, getMangaUpdate)
             // now goes through SourceRuntime.run(), which already unwraps/classifies a recoverable
-            // extension LinkageError into this plan's own errorCount/reasons above (via
+            // extension LinkageError into this query plan's own errorCount/reasons above (via
             // .getOrElse{}/.getOrNull()) and rethrows anything genuinely fatal directly. A raw Error
             // reaching this point would not be from a source call at all, so it is intentionally
             // left to propagate rather than swallowed here.

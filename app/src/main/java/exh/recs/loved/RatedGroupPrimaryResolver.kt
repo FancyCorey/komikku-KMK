@@ -5,7 +5,7 @@ package exh.recs.loved
  * Pure resolution of which group member string-key ("source|url") should be treated as the
  * displayed primary for a confirmed link group. No Android/DB dependencies — fully unit-testable.
  *
- * Rule (plan §Primary Selection Rules):
+ * Primary-selection rule:
  * 1. if the group has a stored primary and that primary is present among this group's currently
  *    loaded members (installed/visible, same rating tier), use it;
  * 2. otherwise fall back to the grouper's own primary-key choice;

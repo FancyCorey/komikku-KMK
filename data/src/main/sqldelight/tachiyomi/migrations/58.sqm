@@ -1,7 +1,25 @@
--- KMK --> v0.7.40: Add retry metadata columns to recommendation_discovery_progress so that
--- transient network failures can be retried with bounded exponential backoff instead of
--- being permanently skipped. All three columns are nullable/defaulted for safe ALTER TABLE.
-ALTER TABLE recommendation_discovery_progress ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE recommendation_discovery_progress ADD COLUMN next_retry_at INTEGER;
-ALTER TABLE recommendation_discovery_progress ADD COLUMN failure_kind TEXT;
+-- KMK --> v0.7.39: For You rolling discovery progress tracker — local-only derived cache,
+-- NOT included in backup/sync. Cleared together with Reset For You discovery history.
+CREATE TABLE IF NOT EXISTS recommendation_discovery_progress (
+    source_id INTEGER NOT NULL,
+    query_signature TEXT NOT NULL,
+    query_tags_json TEXT NOT NULL,
+    query_strategy TEXT,
+    page INTEGER NOT NULL,
+    evaluated_at INTEGER NOT NULL,
+    raw_count INTEGER NOT NULL DEFAULT 0,
+    localized_count INTEGER NOT NULL DEFAULT 0,
+    scored_count INTEGER NOT NULL DEFAULT 0,
+    visible_count INTEGER NOT NULL DEFAULT 0,
+    filtered_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    profile_fingerprint TEXT,
+    PRIMARY KEY (source_id, query_signature, page)
+);
+
+CREATE INDEX IF NOT EXISTS recommendation_discovery_progress_source_index
+    ON recommendation_discovery_progress(source_id);
+CREATE INDEX IF NOT EXISTS recommendation_discovery_progress_query_index
+    ON recommendation_discovery_progress(source_id, query_signature);
 -- KMK <--

@@ -57,9 +57,6 @@ class GetExtensionsByType(
                     // KMK <--
                 }
                 .flatMap { ext ->
-                    if (ext.sources.isEmpty()) {
-                        return@flatMap if (ext.lang in enabledLanguages) listOf(ext) else emptyList()
-                    }
                     ext.sources.filter { it.lang in enabledLanguages }
                         .map {
                             ext.copy(

@@ -24,9 +24,8 @@ class TrustExtensionRepositoryMigration : Migration {
                     // KMK <--
                     name = "Repo #${index + 1}",
                 )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 logcat(LogPriority.ERROR) { "Extension repository migration failed" }
             }
         }

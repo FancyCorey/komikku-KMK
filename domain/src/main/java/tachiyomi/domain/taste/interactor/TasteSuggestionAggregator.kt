@@ -43,7 +43,7 @@ data class TasteSuggestionResult(
  * only decides what to *suggest adding* to the tag-preference table, using the exact same mutation
  * path ([SetTagTaste]) a manually-added tag preference already uses.
  *
- * Rules (see the v0.8.10 plan's Phase E requirements):
+ * Rules:
  * - a group key only becomes a suggestion once at least [MIN_EVIDENCE_COUNT] distinct rated manga
  *   contribute to it -- this is what prevents inferring a blocked tag from one isolated Dislike;
  * - preferred suggestions come from Love/Like ratings' genres (net-positive weight);

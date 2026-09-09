@@ -1,25 +1,29 @@
--- KMK --> v0.7.39: For You rolling discovery progress tracker — local-only derived cache,
--- NOT included in backup/sync. Cleared together with Reset For You discovery history.
-CREATE TABLE IF NOT EXISTS recommendation_discovery_progress (
+-- KMK --> v0.7.38: For You candidate discovery memory — local-only derived cache,
+-- NOT included in backup/sync. Clearable by the user via Reset For You discovery history.
+CREATE TABLE IF NOT EXISTS recommendation_candidate_memory (
     source_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    manga_id INTEGER,
+    title TEXT NOT NULL,
+    thumbnail_url TEXT,
+    normalized_title TEXT NOT NULL,
+    last_score REAL NOT NULL DEFAULT 0.0,
+    matched_groups_json TEXT,
+    result_reasons_json TEXT,
     query_signature TEXT NOT NULL,
     query_tags_json TEXT NOT NULL,
     query_strategy TEXT,
-    page INTEGER NOT NULL,
-    evaluated_at INTEGER NOT NULL,
-    raw_count INTEGER NOT NULL DEFAULT 0,
-    localized_count INTEGER NOT NULL DEFAULT 0,
-    scored_count INTEGER NOT NULL DEFAULT 0,
-    visible_count INTEGER NOT NULL DEFAULT 0,
-    filtered_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL,
-    error_message TEXT,
+    page INTEGER NOT NULL DEFAULT 1,
+    discovered_at INTEGER NOT NULL,
+    last_scored_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
     profile_fingerprint TEXT,
-    PRIMARY KEY (source_id, query_signature, page)
+    filtered_reason TEXT,
+    PRIMARY KEY (source_id, url)
 );
 
-CREATE INDEX IF NOT EXISTS recommendation_discovery_progress_source_index
-    ON recommendation_discovery_progress(source_id);
-CREATE INDEX IF NOT EXISTS recommendation_discovery_progress_query_index
-    ON recommendation_discovery_progress(source_id, query_signature);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_source_index ON recommendation_candidate_memory(source_id);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_score_index ON recommendation_candidate_memory(last_score);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_seen_index ON recommendation_candidate_memory(last_seen_at);
+CREATE INDEX IF NOT EXISTS recommendation_candidate_memory_query_index ON recommendation_candidate_memory(query_signature);
 -- KMK <--

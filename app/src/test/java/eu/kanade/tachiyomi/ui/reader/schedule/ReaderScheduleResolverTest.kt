@@ -197,7 +197,7 @@ class ReaderScheduleResolverTest {
 
     private fun allDayWindow() = ReaderScheduleWindow(DayOfWeek.entries.toSet(), 0, ReaderScheduleWindow.MINUTES_PER_DAY - 1)
 
-    // KMK v0.8.7: explicit allDay flag (plan Finding C) -->
+    // KMK v0.8.7: explicit allDay flag -->
 
     @Test
     fun `an allDay window matches every minute of its configured weekday`() {

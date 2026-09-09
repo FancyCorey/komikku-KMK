@@ -17,7 +17,6 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.browse.SourceFeedUI
 import eu.kanade.tachiyomi.extension.ExtensionManager
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
@@ -36,12 +35,12 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
@@ -76,10 +75,10 @@ import tachiyomi.domain.manga.model.Manga as DomainManga
 open class SourceFeedScreenModel(
     val sourceId: Long,
     uiPreferences: UiPreferences = Injekt.get(),
-    private val sourceManager: SourceManager = Injekt.get(),
+    sourceManager: SourceManager = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
-    private val getFeedSavedSearchBySourceId: GetFeedSavedSearchBySourceId = Injekt.get(),
+    getFeedSavedSearchBySourceId: GetFeedSavedSearchBySourceId = Injekt.get(),
     private val getSavedSearchBySourceIdFeed: GetSavedSearchBySourceIdFeed = Injekt.get(),
     private val countFeedSavedSearchBySourceId: CountFeedSavedSearchBySourceId = Injekt.get(),
     private val insertFeedSavedSearch: InsertFeedSavedSearch = Injekt.get(),
@@ -87,7 +86,7 @@ open class SourceFeedScreenModel(
     private val getExhSavedSearch: GetExhSavedSearch = Injekt.get(),
     // KMK -->
     private val reorderFeed: ReorderFeed = Injekt.get(),
-    private val getIncognitoState: GetIncognitoState = Injekt.get(),
+    getIncognitoState: GetIncognitoState = Injekt.get(),
     private val toggleIncognito: ToggleIncognito = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     sourcePreferences: SourcePreferences = Injekt.get(),
@@ -107,41 +106,30 @@ open class SourceFeedScreenModel(
     // KMK <--
 
     init {
+        setFilters(safeFilterList())
+
         // KMK -->
-        screenModelScope.launch {
-            var retry = 10
-            while (source !is CatalogueSource && retry-- > 0) {
-                // Sometime source is late to load, so we need to wait a bit
-                delay(100)
-                source = sourceManager.getOrStub(sourceId)
+        reloadSavedSearches()
+
+        getIncognitoState.subscribe(sourceId)
+            .onEach {
+                if (!it) sourcePreferences.lastUsedSource().set(source.id)
+                incognitoMode.value = it
             }
-            val source = source
-            if (source !is CatalogueSource) return@launch
-            // KMK <--
+            .launchIn(screenModelScope)
+        // KMK <--
 
-            setFilters(safeFilterList(source))
-            // KMK -->
-            reloadSavedSearches()
-
-            getIncognitoState.subscribe(sourceId)
-                .onEach {
-                    if (!it) sourcePreferences.lastUsedSource().set(source.id)
-                    incognitoMode.value = it
+        getFeedSavedSearchBySourceId.subscribe(source.id)
+            .onEach {
+                val items = getSourcesToGetFeed(it)
+                mutableState.update { state ->
+                    state.copy(
+                        items = items,
+                    )
                 }
-                .launchIn(screenModelScope)
-            // KMK <--
-            getFeedSavedSearchBySourceId.subscribe(source.id)
-                .onEach {
-                    val items = getSourcesToGetFeed(it)
-                    mutableState.update { state ->
-                        state.copy(
-                            items = items,
-                        )
-                    }
-                    getFeed(items)
-                }
-                .launchIn(screenModelScope)
-        }
+                getFeed(items)
+            }
+            .launchIn(screenModelScope)
     }
 
     // KMK-->
@@ -158,11 +146,7 @@ open class SourceFeedScreenModel(
     }
 
     fun resetFilters() {
-        val source = source
-        if (source !is CatalogueSource) return
-
-        setFilters(safeFilterList(source))
-
+        setFilters(safeFilterList())
         reloadSavedSearches()
     }
     // KMK <--
@@ -171,17 +155,13 @@ open class SourceFeedScreenModel(
         mutableState.update { it.copy(filters = filters) }
     }
 
-    // KMK v0.8.10-fix6: source.getFilterList() can run an extension's lazy client-builder for the
-    // first time and throw LinkageError -- route through the shared SourceRuntime boundary instead
-    // of calling it directly, mirroring the already-correct helper in BrowseSourceScreenModel.
-    private fun safeFilterList(src: Source = source): FilterList {
-        return SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
+    private fun safeFilterList(src: Source = source): FilterList =
+        SourceRuntime.runBlockingSourceCall(src, SourceRuntimeOperation.FilterList) {
             getFilterList()
         }.getOrElse {
             logcat(LogPriority.WARN) { "Source feed filter loading failed" }
             FilterList()
         }
-    }
 
     private suspend fun hasTooManyFeeds(): Boolean {
         return countFeedSavedSearchBySourceId.await(source.id) > MaxFeedItems
@@ -216,10 +196,6 @@ open class SourceFeedScreenModel(
     // KMK <--
 
     private suspend fun getSourcesToGetFeed(feedSavedSearch: List<FeedSavedSearch>): ImmutableList<SourceFeedUI> {
-        // KMK -->
-        val source = source
-        // KMK <--
-        if (source !is CatalogueSource) return persistentListOf()
         val savedSearches = getSavedSearchBySourceIdFeed.await(source.id)
             .associateBy { it.id }
 
@@ -245,32 +221,24 @@ open class SourceFeedScreenModel(
      * Initiates get manga per feed.
      */
     private fun getFeed(feedSavedSearch: List<SourceFeedUI>) {
-        // KMK -->
-        val source = source
-        // KMK <--
-        if (source !is CatalogueSource) return
         screenModelScope.launch {
             feedSavedSearch.map { sourceFeed ->
                 async {
-                    // KMK v0.8.10-fix4: routed through the shared SourceRuntime boundary instead of
-                    // a local catch(Error) band-aid (fix3's approach). See FeedScreenModel.kt's
-                    // identical migration for the full reasoning.
-                    val operation = when (sourceFeed) {
-                        is SourceFeedUI.Browse -> SourceRuntimeOperation.Popular
-                        is SourceFeedUI.Latest -> SourceRuntimeOperation.Latest
-                        is SourceFeedUI.SourceSavedSearch -> SourceRuntimeOperation.Search
+                    val page = try {
+                        withContext(coroutineDispatcher) {
+                            when (sourceFeed) {
+                                is SourceFeedUI.Browse -> source.getPopularManga(1)
+                                is SourceFeedUI.Latest -> source.getLatestUpdates(1)
+                                is SourceFeedUI.SourceSavedSearch -> source.getSearchManga(
+                                    page = 1,
+                                    query = sourceFeed.savedSearch.query?.sanitize().orEmpty(),
+                                    filters = getFilterList(sourceFeed.savedSearch, source),
+                                )
+                            }
+                        }.mangas
+                    } catch (_: Exception) {
+                        emptyList()
                     }
-                    val page = SourceRuntime.run(source, operation, coroutineDispatcher) {
-                        when (sourceFeed) {
-                            is SourceFeedUI.Browse -> getPopularManga(1)
-                            is SourceFeedUI.Latest -> getLatestUpdates(1)
-                            is SourceFeedUI.SourceSavedSearch -> getSearchManga(
-                                page = 1,
-                                query = sourceFeed.savedSearch.query?.sanitize().orEmpty(),
-                                filters = getFilterList(sourceFeed.savedSearch, source),
-                            )
-                        }
-                    }.getOrNull()?.mangas ?: emptyList()
 
                     val titles = withIOContext {
                         page.map { it.toDomainManga(source.id) }
@@ -295,10 +263,10 @@ open class SourceFeedScreenModel(
 
     private val filterSerializer = FilterSerializer()
 
-    private fun getFilterList(savedSearch: SavedSearch, source: CatalogueSource): FilterList {
+    private fun getFilterList(savedSearch: SavedSearch, source: Source): FilterList {
         val filters = savedSearch.filtersJson ?: return FilterList()
-        val originalFilters = safeFilterList(source)
         return runCatching {
+            val originalFilters = safeFilterList(source)
             filterSerializer.deserialize(
                 filters = originalFilters,
                 json = Json.decodeFromString(filters),
@@ -333,10 +301,6 @@ open class SourceFeedScreenModel(
             .toImmutableList()
 
     fun onFilter(onBrowseClick: (query: String?, filters: String?) -> Unit) {
-        // KMK -->
-        val source = source
-        // KMK <--
-        if (source !is CatalogueSource) return
         screenModelScope.launchIO {
             val allDefault = state.value.filters == safeFilterList(source)
             dismissDialog()
@@ -362,10 +326,6 @@ open class SourceFeedScreenModel(
         onBrowseClick: (query: String?, searchId: Long) -> Unit,
         onToast: (StringResource) -> Unit,
     ) {
-        // KMK -->
-        val source = source
-        // KMK <--
-        if (source !is CatalogueSource) return
         screenModelScope.launchIO {
             // KMK -->
             val search = getExhSavedSearch.awaitOne(loadedSearch.id) { safeFilterList(source) } ?: loadedSearch

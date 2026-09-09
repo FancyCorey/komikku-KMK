@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK Undo Expansion Phase 1 -->
+// KMK -->
 /** Pure-logic coverage for the favorite/category conflict checks. Interactor-level restore is covered in [LibraryUndoServiceRestoreTest]. */
 class LibraryUndoServiceTest {
 

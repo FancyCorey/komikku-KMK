@@ -32,14 +32,14 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 
-// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
+// KMK -->
 /**
  * Direct fixture-based tests for [MigrationListScreenModel]'s actual `migrateNow()`/`migrateMangas()`
  * caller-level decisions. Confirmed regression this fixes: `migrateNow()` previously logged a
  * non-Success outcome and then called `removeManga(mangaId)` unconditionally, silently discarding
  * the failed item from the pending list.
  *
- * Determinism fix (V2): the two prior Corrective Pass reports used `runBlocking` against the real
+ * Determinism fix (V2): the earlier test implementation used `runBlocking` against the real
  * `Dispatchers.IO` thread pool with wall-clock polling loops, which passed reliably in isolation but
  * intermittently timed out when run as part of the full ~1834-test suite (six failures observed
  * across multiple full-suite runs, root cause not fully isolated). `MigrationListScreenModel` now

@@ -51,7 +51,7 @@ class ReaderScheduleEntitlementTest {
 
     @Test
     fun `OpenedWhileRestricted has no path back to OpenedWhileAllowed even if the schedule becomes ALLOWED`() {
-        // Per the plan's explicit two-path diagram: OpenedWhileRestricted -> Closed only.
+        // Per the behavior contract's explicit two-path diagram: OpenedWhileRestricted -> Closed only.
         assertEquals(
             ReaderScheduleEntitlement.OpenedWhileRestricted,
             next(ReaderScheduleEntitlement.OpenedWhileRestricted, ReaderScheduleResult.ALLOWED),
@@ -128,7 +128,7 @@ class ReaderScheduleEntitlementTest {
     // constructed in a unit test (20+ Injekt dependencies plus a non-defaultable `SavedStateHandle`,
     // the same class of gap already documented for `RecommendsScreenModel` earlier in this project) —
     // the actual wiring at each call site is verified by code inspection only, not an integration
-    // test. See the v0.8.7-fix1 implementation report's Known limitations for this exact gap.
+    // test. Process-death restoration remains outside this pure state-machine test.
 
     @Test
     fun `a session opened while restricted rejects init()'s initial chapter load, including deep links`() {

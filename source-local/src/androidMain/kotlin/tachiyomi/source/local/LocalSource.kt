@@ -2,7 +2,6 @@ package tachiyomi.source.local
 
 import android.content.Context
 import com.hippo.unifile.UniFile
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -58,7 +57,7 @@ class LocalSource(
     // SY -->
     private val allowHiddenFiles: () -> Boolean,
     // SY <--
-) : CatalogueSource, UnmeteredSource {
+) : Source, UnmeteredSource {
 
     private val json: Json by injectLazy()
     private val xml: XML by injectLazy()
@@ -420,7 +419,7 @@ class LocalSource(
                 ?.findFile(chapterName)
                 ?.let(Format.Companion::valueOf)
                 ?: throw Exception(context.stringResource(MR.strings.chapter_not_found))
-        } catch (e: Format.UnknownFormatException) {
+        } catch (_: Format.UnknownFormatException) {
             throw Exception(context.stringResource(MR.strings.local_invalid_format))
         } catch (e: Exception) {
             throw e

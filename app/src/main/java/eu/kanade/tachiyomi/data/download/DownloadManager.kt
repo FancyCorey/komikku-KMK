@@ -44,7 +44,7 @@ class DownloadManager(
     private val getCategories: GetCategories = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
-    // KMK Universal Action History Recovery Plan 2026-08-01: gates DOWNLOAD_DELETED recording below
+    // Gates DOWNLOAD_DELETED recording below
     private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) {
 
@@ -264,7 +264,7 @@ class DownloadManager(
             val deletedChapters = deleteChapterDirectories(chapterDirs)
             cache.removeChapters(deletedChapters, manga)
 
-            // KMK Universal Action History Recovery Plan 2026-08-01: only recorded after the delete
+            // Only recorded after the delete
             // above has genuinely completed, and only with the exact chapter ids that were deleted --
             // see NonUndoableEventType.DOWNLOAD_DELETED and DownloadReceipt's own doc for why
             // deleteManga (below) never records this.

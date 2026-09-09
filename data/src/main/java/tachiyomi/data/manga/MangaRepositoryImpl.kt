@@ -119,7 +119,12 @@ class MangaRepositoryImpl(
         }
     }
 
-    override suspend fun insertNetworkManga(manga: List<Manga>, updateInfo: Boolean): List<Manga> {
+    override suspend fun insertNetworkManga(
+        manga: List<Manga>,
+        // KMK -->
+        updateInfo: Boolean,
+        // KMK <--
+    ): List<Manga> {
         return handler.await(inTransaction = true) {
             manga.map {
                 mangasQueries.insertNetworkManga(
@@ -145,6 +150,7 @@ class MangaRepositoryImpl(
                     dateAdded = it.dateAdded,
                     updateStrategy = it.updateStrategy,
                     version = it.version,
+                    memo = it.memo,
                     // SY -->
                     updateTitle = it.ogTitle.isNotBlank(),
                     updateCover = !it.ogThumbnailUrl.isNullOrBlank(),
@@ -187,9 +193,7 @@ class MangaRepositoryImpl(
                     version = value.version,
                     isSyncing = 0,
                     notes = value.notes,
-                    // KMK -->
                     memo = value.memo?.let(MemoColumnAdapter::encode),
-                    // KMK <--
                 )
             }
         }

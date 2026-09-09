@@ -14,7 +14,7 @@ package eu.kanade.tachiyomi.ui.reader.schedule
  * and opening a different manga (a fresh `ReaderViewModel`, `IDLE` by construction) granted a brand
  * new allowance every time — the schedule was effectively never enforced across reader sessions.
  *
- * State machine (exactly the plan's two paths):
+ * State machine (exactly the behavior contract's two paths):
  * `NotStarted -> OpenedWhileAllowed -> CurrentChapterGrace -> GraceConsumed -> Closed`
  * `NotStarted -> OpenedWhileRestricted -> Closed`
  *
@@ -37,7 +37,7 @@ enum class ReaderScheduleEntitlement {
     /** The [CurrentChapterGrace] allowance has been used (the chapter-grace timer reached its EXPIRED phase). No further reading is permitted this session. */
     GraceConsumed,
 
-    /** The schedule was already RESTRICTED the very first time this session evaluated it. No grace was ever granted — this reader is blocked immediately and stays blocked for its entire session, per the plan's explicit two-path diagram (there is no path back to an allowed state within the same session). */
+    /** The schedule was already RESTRICTED the very first time this session evaluated it. No grace was ever granted — this reader is blocked immediately and stays blocked for its entire session, per the behavior contract's explicit two-path diagram (there is no path back to an allowed state within the same session). */
     OpenedWhileRestricted,
 
     /** The reader has been closed/destroyed. Terminal; a new reader session always starts a fresh instance at [NotStarted] rather than reusing this one. */
@@ -73,7 +73,7 @@ enum class ReaderScheduleEntitlement {
                 }
                 CurrentChapterGrace -> when {
                     graceConsumed -> GraceConsumed
-                    // Per the plan's diagram there is no path back to OpenedWhileAllowed once grace has
+                    // Per the behavior contract's diagram there is no path back to OpenedWhileAllowed once grace has
                     // started, even if the schedule swings back to ALLOWED before the current chapter
                     // finishes — the grace period is bound to "finish this one chapter," not to the
                     // schedule's instantaneous state. It resolves to GraceConsumed only when the chapter

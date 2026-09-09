@@ -12,7 +12,7 @@ import tachiyomi.domain.manga.model.Manga
  * entirely). No existing recommendation cache in this codebase safely keys a group seed together
  * with a per-source preview budget and query-policy version, so this is a new, narrowly-scoped
  * cache rather than an extension of an existing one — no database table is used or required, this
- * is process-memory only and is lost on process death (satisfying plan section 10's "invalidate on
+ * is process-memory only and is lost on process death (satisfying documented behavior "invalidate on
  * ... process death" requirement trivially).
  *
  * Thread-safety: callers on this screen model already run in a single coroutine-confined mutation

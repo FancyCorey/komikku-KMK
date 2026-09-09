@@ -2,7 +2,7 @@ package exh.util
 
 import java.util.UUID
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 /**
  * A private, Evaluation-Mode-only record of one verified-successful [eu.kanade.tachiyomi.data.download.DownloadManager.deleteChapters]
  * call -- the counterpart to [MigrationReceipt] for [NonUndoableEventType.DOWNLOAD_DELETED] events.

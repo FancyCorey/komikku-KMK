@@ -41,7 +41,7 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 
-// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
+// KMK -->
 /**
  * Direct tests for [RecommendationBundleImportScreenModel]'s [RecommendationBundleImportScreenModel.load]
  * -- previously deferred as too fixture-costly since it requires a real Android [Context] (for
@@ -279,7 +279,7 @@ class RecommendationBundleImportScreenModelTest {
         )
     }
 
-    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: direct tests for
+    // KMK: direct tests for
     // addSelected() and installMissingExtension() -- previously deferred as a coverage gap since a
     // full model construction was assumed too costly, but the same mocked-Context/ExtensionManager
     // fixtures already built for load() above are enough to drive both methods directly.
@@ -319,7 +319,7 @@ class RecommendationBundleImportScreenModelTest {
 
     @Test
     fun `addSelected reports a truthful partial summary when one item succeeds and one fails, never claiming full completion`() = runTest {
-        // KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 Phase D item 4:
+        // KMK:
         // the existing addSelected() test only covered a single-item, all-succeeds bundle -- this proves
         // the summary distinguishes a real partial outcome (1 added, 1 failed) instead of collapsing it
         // into a false "fully completed" report, and that addSelected() is still called directly on the

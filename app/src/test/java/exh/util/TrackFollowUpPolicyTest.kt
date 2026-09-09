@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.track.model.Track
 
-// KMK Universal Action History Recovery Plan 2026-08-01 -->
+// KMK -->
 class TrackFollowUpPolicyTest {
 
     private val manga = Manga.create()

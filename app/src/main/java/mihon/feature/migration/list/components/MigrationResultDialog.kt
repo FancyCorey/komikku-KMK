@@ -8,7 +8,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
 
-// KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29, corrected by the Corrective Pass -->
+// KMK -->
 /**
  * Shown after a bulk migration run when one or more items returned a non-[mihon.domain.migration.
  * usecases.MigrationOutcome.Success] result, or had no successful search result at all --

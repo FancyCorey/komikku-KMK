@@ -1,5 +1,15 @@
--- KMK --> v0.7.4: store extension version at evaluation time for update-reassessment detection
-ALTER TABLE source_evaluation ADD COLUMN extension_version_name TEXT;
-ALTER TABLE source_evaluation ADD COLUMN extension_version_code INTEGER;
-ALTER TABLE source_evaluation ADD COLUMN extension_apk_name TEXT;
+-- KMK --> v0.7.0: Phase 4 – persistent cross-source manga link groups
+
+CREATE TABLE IF NOT EXISTS manga_cross_source_link (
+    source INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (source, url)
+);
+
+CREATE INDEX IF NOT EXISTS manga_cross_source_link_group_index ON manga_cross_source_link(group_id);
+
 -- KMK <--

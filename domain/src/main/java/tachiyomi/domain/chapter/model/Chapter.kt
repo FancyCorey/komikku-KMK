@@ -18,10 +18,7 @@ data class Chapter(
     val scanlator: String?,
     val lastModifiedAt: Long,
     val version: Long,
-    // KMK --> 1.14.0 reconciliation: official chapters.memo column, wired end-to-end through
-    // backup/restore, sync, and the source-fetch pipeline (SManga/SChapter -> Chapter -> DB).
     val memo: JsonObject,
-    // KMK <--
 ) {
     val isRecognizedNumber: Boolean
         get() = chapterNumber >= 0f

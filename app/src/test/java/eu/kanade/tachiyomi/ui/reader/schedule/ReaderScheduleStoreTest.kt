@@ -74,7 +74,7 @@ class ReaderScheduleStoreTest {
         assertEquals(ReaderScheduleMode.RESTRICTED, ReaderScheduleStore.parseMode(""))
     }
 
-    // KMK v0.8.7: whole-day representation (plan Finding C) -->
+    // KMK v0.8.7: whole-day representation -->
 
     @Test
     fun `round trip preserves a whole-day window`() {
