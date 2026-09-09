@@ -1,2 +1,0 @@
-# Device interaction is provided by the AndroidX UI Automator test runner.
-# The host coordinator intentionally has no Python UI-automation dependency.

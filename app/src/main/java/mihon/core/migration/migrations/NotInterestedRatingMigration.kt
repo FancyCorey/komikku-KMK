@@ -18,9 +18,7 @@ import tachiyomi.domain.taste.model.MangaRating
  * [MangaRating.NOT_INTERESTED] rating row, so a manga has at most one rating-family state and
  * "clear rating" always goes through the same owner regardless of which of the four states it was.
  *
- * See the full frozen contract this implements:
- * `private/docs/plans/KOMIKKU_FC_AUGUST_PLAN_A_PREFERENCE_AND_RECOMMENDATION_UX_2026-08-23.md`,
- * "AUG-02 frozen contract — resolved, 2026-08-24".
+ * This implements the frozen recommendation-preference migration contract.
  *
  * ## Scope: additive backfill only, no legacy-store cutover risk
  *
@@ -112,3 +110,4 @@ class NotInterestedRatingMigration(
     }
 }
 // KMK <--
+

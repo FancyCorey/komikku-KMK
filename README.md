@@ -51,9 +51,6 @@ categories, themes, backups, updates, and supported external trackers.
 3. Download the APK intended for your device.
 4. Back up your existing library before replacing or migrating an installation.
 
-For a closer look at the added recommendation features, see the
-[Komikku FC feature guide](./docs/recommendations/KOMIKKU_FC_FEATURE_GUIDES.md).
-
 ## Help and Bug Reports
 
 The general [Komikku FAQ](https://komikku-app.github.io/docs/faq/general) is
@@ -88,3 +85,4 @@ Komikku FC is built from the work of contributors to
 The application does not host or provide manga, and its developers are not
 affiliated with content providers. The source is available under the
 [Apache License 2.0](./LICENSE).
+
