@@ -55,7 +55,7 @@ class CreateBackupScreen : Screen() {
         val model = rememberScreenModel { CreateBackupScreenModel() }
         val state by model.state.collectAsState()
 
-        // KMK: the operation is reserved
+        // The operation is reserved
         // at the create-action click, before the picker launches -- see onClickAction below.
         var pendingOperationId by remember { mutableStateOf<String?>(null) }
         val chooseBackupDir = rememberLauncherForActivityResult(
@@ -69,7 +69,7 @@ class CreateBackupScreen : Screen() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
-                // KMK: the
+                // The
                 // picker already created the destination document at this point. Cleanup ownership
                 // for it lives in BackupCleanupRecoveryStore (application-scoped), not in this screen
                 // or its ScreenModel -- see CreateBackupScreenModel.createBackup and
@@ -182,7 +182,7 @@ private class CreateBackupScreenModel : StateScreenModel<CreateBackupScreenModel
         }
     }
 
-    // KMK: this write is
+    // This write is
     // launched in `ProcessLifecycleOwner`'s application-process-scoped `lifecycleScope`, not
     // `screenModelScope` -- if it ran in `screenModelScope`, navigating away from this screen would
     // cancel the coroutine that polls `BackupCreateJob` to a terminal state, even though the
@@ -228,7 +228,7 @@ private class CreateBackupScreenModel : StateScreenModel<CreateBackupScreenModel
     )
 }
 
-// KMK: extracted so the WorkInfo.State ->
+// Extracted so the WorkInfo.State ->
 // SafArtifactOutcome mapping has direct, non-instrumented test coverage. A null state
 // (WorkManager has no record at all, e.g. a pruned or KEEP-dropped enqueue) or any other
 // non-terminal state observed at this point is honestly unresolved, not evidence that the

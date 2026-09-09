@@ -1,8 +1,5 @@
 package exh.util
 
-import eu.kanade.domain.source.service.SourcePreferences
-import exh.recs.SeenMangaKey
-import exh.recs.SeenRecommendationMangaStore
 import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.taste.interactor.ClearMangaTaste
 import tachiyomi.domain.taste.interactor.GetMangaTaste
@@ -14,12 +11,16 @@ import uy.kohesive.injekt.api.get
 // KMK v0.8.19 -->
 /**
  * Pure conflict check, extracted for direct unit testing without a database:
- * true when [currentRating]/[currentNotInterested] no longer match what [entry]'s own action produced
- * (i.e. something else changed the manga after this journal entry was recorded) -- restoring in that
- * case would silently overwrite a newer change, which this feature must never do.
+ * true when [currentRating] no longer matches what [entry]'s own action produced (i.e. something
+ * else changed the manga after this journal entry was recorded) -- restoring in that case would
+ * silently overwrite a newer change, which this feature must never do.
+ *
+ * KMK v0.8.21-fix3: R1 correction -- rating is the only axis now; the prior
+ * `currentNotInterested`/`entry.newNotInterested` comparison is gone along with the second store
+ * it compared against.
  */
-fun evaluationUndoHasConflict(entry: EvaluationJournalEntry, currentRating: Int?, currentNotInterested: Boolean): Boolean =
-    currentRating != entry.newRating || currentNotInterested != entry.newNotInterested
+fun evaluationUndoHasConflict(entry: EvaluationJournalEntry, currentRating: Int?): Boolean =
+    currentRating != entry.newRating
 
 /**
  * Restore logic for [EvaluationModeUndoJournal] entries. Every restore is a typed inverse of exactly
@@ -27,17 +28,15 @@ fun evaluationUndoHasConflict(entry: EvaluationJournalEntry, currentRating: Int?
  * never touches a manga's title/cover/library/history/group state.
  *
  * Restore contract, per entry:
- * 1. Re-read the manga's *current* rating and Not Interested state.
- * 2. If the current state no longer equals [EvaluationJournalEntry.newRating]/[newNotInterested]
- *    (something changed it after this journal entry was recorded), the entry is left unrestored and
- *    reported as a conflict -- never force-restored.
- * 3. Otherwise, write back [EvaluationJournalEntry.previousRating]/[previousNotInterested] through the
- *    exact same interactors ([SetMangaTaste]/[ClearMangaTaste]/`SeenRecommendationMangaStore`) a normal
- *    rating change uses.
+ * 1. Re-read the manga's *current* rating.
+ * 2. If the current rating no longer equals [EvaluationJournalEntry.newRating] (something changed
+ *    it after this journal entry was recorded), the entry is left unrestored and reported as a
+ *    conflict -- never force-restored.
+ * 3. Otherwise, write back [EvaluationJournalEntry.previousRating] through the exact same
+ *    interactors ([SetMangaTaste]/[ClearMangaTaste]) a normal rating change uses.
  * 4. The entry is removed from the journal only after its restore succeeds.
  */
 class EvaluationModeUndoService(
-    private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val getMangaTaste: GetMangaTaste = Injekt.get(),
     private val setMangaTaste: SetMangaTaste = Injekt.get(),
     private val clearMangaTaste: ClearMangaTaste = Injekt.get(),
@@ -84,29 +83,37 @@ class EvaluationModeUndoService(
         return try {
             val currentTaste = getMangaTaste.await(entry.source, entry.url)
             val currentRating = currentTaste?.rating
-            val currentNotInterested = currentSeenState(entry.source, entry.url)
 
-            if (evaluationUndoHasConflict(entry, currentRating, currentNotInterested)) {
+            if (evaluationUndoHasConflict(entry, currentRating)) {
                 return EvaluationUndoItemResult.CONFLICT
             }
 
-            if (EvaluationJournalEntry.FIELD_RATING in entry.changedFields) {
-                if (entry.previousRating == null) {
-                    clearMangaTaste.await(entry.source, entry.url)
-                } else {
-                    val mangaId = entry.mangaId ?: currentTaste?.mangaId
-                    if (mangaId == null) return EvaluationUndoItemResult.MISSING
-                    setMangaTaste.await(
-                        mangaId = mangaId,
-                        source = entry.source,
-                        url = entry.url,
-                        title = currentTaste?.title.orEmpty(),
-                        rating = MangaRating.fromValue(entry.previousRating) ?: return EvaluationUndoItemResult.FAILED,
-                    )
-                }
+            val mangaId = if (EvaluationJournalEntry.FIELD_RATING in entry.changedFields && entry.previousRating != null) {
+                entry.mangaId ?: currentTaste?.mangaId ?: return EvaluationUndoItemResult.MISSING
+            } else {
+                null
             }
-            if (EvaluationJournalEntry.FIELD_NOT_INTERESTED in entry.changedFields) {
-                setSeenState(entry.source, entry.url, entry.previousNotInterested)
+            val previousRating = entry.previousRating?.let(MangaRating::fromValue)
+                ?: if (entry.previousRating == null) null else return EvaluationUndoItemResult.FAILED
+
+            try {
+                if (EvaluationJournalEntry.FIELD_RATING in entry.changedFields) {
+                    if (previousRating == null) {
+                        clearMangaTaste.await(entry.source, entry.url)
+                    } else {
+                        setMangaTaste.await(
+                            mangaId = mangaId!!,
+                            source = entry.source,
+                            url = entry.url,
+                            title = currentTaste?.title.orEmpty(),
+                            rating = previousRating,
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return EvaluationUndoItemResult.FAILED
             }
             EvaluationUndoItemResult.RESTORED
         } catch (e: CancellationException) {
@@ -114,20 +121,6 @@ class EvaluationModeUndoService(
         } catch (e: Exception) {
             EvaluationUndoItemResult.FAILED
         }
-    }
-
-    private fun currentSeenState(source: Long, url: String): Boolean {
-        val raw = sourcePreferences.seenRecommendationMangaKeys().get()
-        val seen = SeenRecommendationMangaStore.parse(raw)
-        return SeenMangaKey(source, url) in seen
-    }
-
-    private fun setSeenState(source: Long, url: String, notInterested: Boolean) {
-        val raw = sourcePreferences.seenRecommendationMangaKeys().get()
-        var seen = SeenRecommendationMangaStore.parse(raw)
-        val key = SeenMangaKey(source, url)
-        seen = if (notInterested) SeenRecommendationMangaStore.add(seen, key) else SeenRecommendationMangaStore.remove(seen, key)
-        sourcePreferences.seenRecommendationMangaKeys().set(SeenRecommendationMangaStore.serialize(seen))
     }
 }
 // KMK <--

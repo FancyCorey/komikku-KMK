@@ -38,7 +38,12 @@ class ReaderTransitionView @JvmOverloads constructor(
         layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
     }
 
-    fun bind(transition: ChapterTransition, downloadManager: DownloadManager, manga: Manga?) {
+    fun bind(
+        transition: ChapterTransition,
+        downloadManager: DownloadManager,
+        manga: Manga?,
+        onAlternateSourceGap: ((Long, Long?) -> Unit)? = null,
+    ) {
         data = if (manga != null) {
             Data(
                 transition = transition,
@@ -54,6 +59,17 @@ class ReaderTransitionView @JvmOverloads constructor(
                             skipCache = true,
                         )
                     } ?: false,
+                onAlternateSourceGap = if (transition is ChapterTransition.Next) {
+                    val precedingId = transition.from.chapter.id
+                    val followingId = transition.to?.chapter?.id
+                    if (precedingId != null && onAlternateSourceGap != null) {
+                        { onAlternateSourceGap(precedingId, followingId) }
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                },
             )
         } else {
             null
@@ -80,6 +96,7 @@ class ReaderTransitionView @JvmOverloads constructor(
                         transition = it.transition,
                         currChapterDownloaded = it.currChapterDownloaded,
                         goingToChapterDownloaded = it.goingToChapterDownloaded,
+                        onAlternateSourceGap = it.onAlternateSourceGap,
                     )
                 }
             }
@@ -90,5 +107,6 @@ class ReaderTransitionView @JvmOverloads constructor(
         val transition: ChapterTransition,
         val currChapterDownloaded: Boolean,
         val goingToChapterDownloaded: Boolean,
+        val onAlternateSourceGap: (() -> Unit)?,
     )
 }

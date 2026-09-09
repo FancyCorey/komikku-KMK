@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK -->
+// KMK Universal Action History Recovery Plan 2026-08-01 -->
 class TrackerBindingReceiptTest {
 
     @AfterEach
@@ -24,10 +24,10 @@ class TrackerBindingReceiptTest {
     )
 
     @Test
-    fun `disabled evaluation mode records nothing`() {
+    fun `disabled evaluation mode still records a generic event and private receipt`() {
         recordSuccessfulTrackerBinding(false, 10L, 20L, 30L)
-        assertTrue(TrackerBindingReceiptJournal.isEmpty())
-        assertTrue(NonUndoableEventJournal.isEmpty())
+        assertEquals(1, TrackerBindingReceiptJournal.snapshot().size)
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
     }
 
     @Test

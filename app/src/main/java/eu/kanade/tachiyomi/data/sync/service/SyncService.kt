@@ -3,9 +3,12 @@ package eu.kanade.tachiyomi.data.sync.service
 import android.content.Context
 import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridge
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridgeMapping
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceIdentityDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
@@ -17,7 +20,9 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
+import eu.kanade.tachiyomi.data.backup.restore.restorers.AlternateSourceBridgeBackupPolicy
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CrossSourceGroupPrimaryRestorePolicy
+import eu.kanade.tachiyomi.data.backup.restore.restorers.CrossSourceIdentityBackupPolicy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
@@ -104,6 +109,18 @@ abstract class SyncService(
             remoteSyncData.backup?.backupCrossSourceGroupPrimaries,
         )
         // KMK <--
+        val mergedCrossSourceIdentityDecisions = mergeCrossSourceIdentityDecisionsPure(
+            localSyncData.backup?.backupCrossSourceIdentityDecisions,
+            remoteSyncData.backup?.backupCrossSourceIdentityDecisions,
+            System.currentTimeMillis(),
+        )
+        val mergedAlternateSourceBridges = mergeAlternateSourceBridgesPure(
+            localSyncData.backup?.backupAlternateSourceBridges,
+            remoteSyncData.backup?.backupAlternateSourceBridges,
+            localSyncData.backup?.backupAlternateSourceBridgeMappings,
+            remoteSyncData.backup?.backupAlternateSourceBridgeMappings,
+            System.currentTimeMillis(),
+        )
         // KMK <--
 
         // Create the merged Backup object
@@ -130,6 +147,9 @@ abstract class SyncService(
             // KMK --> v0.8.1-fix1
             backupCrossSourceGroupPrimaries = mergedCrossSourceGroupPrimaries,
             // KMK <--
+            backupCrossSourceIdentityDecisions = mergedCrossSourceIdentityDecisions,
+            backupAlternateSourceBridges = mergedAlternateSourceBridges.bridges,
+            backupAlternateSourceBridgeMappings = mergedAlternateSourceBridges.mappings,
             // KMK <--
         )
 
@@ -670,6 +690,26 @@ abstract class SyncService(
 
     // KMK --> v0.8.1-fix2
     companion object {
+        internal fun mergeCrossSourceIdentityDecisionsPure(
+            local: List<BackupCrossSourceIdentityDecision>?,
+            remote: List<BackupCrossSourceIdentityDecision>?,
+            now: Long,
+        ): List<BackupCrossSourceIdentityDecision> = CrossSourceIdentityBackupPolicy.merge(local, remote, now)
+
+        internal fun mergeAlternateSourceBridgesPure(
+            localBridges: List<BackupAlternateSourceBridge>?,
+            remoteBridges: List<BackupAlternateSourceBridge>?,
+            localMappings: List<BackupAlternateSourceBridgeMapping>?,
+            remoteMappings: List<BackupAlternateSourceBridgeMapping>?,
+            now: Long,
+        ) = AlternateSourceBridgeBackupPolicy.merge(
+            localBridges,
+            remoteBridges,
+            localMappings,
+            remoteMappings,
+            now,
+        )
+
         /**
          * Invalid rows are filtered here using the same [CrossSourceGroupPrimaryRestorePolicy.isValid]
          * rule restore uses (blank groupId, source == 0L, or blank url) — previously this only

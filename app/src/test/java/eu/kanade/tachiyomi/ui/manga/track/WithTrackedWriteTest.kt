@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.track.model.Track
@@ -60,7 +61,7 @@ class WithTrackedWriteTest {
         val tracker = mockk<Tracker> { every { id } returns 20L }
         var writeCalled = false
 
-        withTrackedWrite(
+        val succeeded = withTrackedWrite(
             tracker = tracker,
             track = track(),
             field = TrackWriteField.STATUS,
@@ -69,6 +70,7 @@ class WithTrackedWriteTest {
             write = { writeCalled = true },
         )
 
+        assertTrue(succeeded)
         assertTrue(writeCalled, "the real write lambda must actually run")
         val event = NonUndoableEventJournal.snapshot().single()
         assertEquals(NonUndoableEventType.TRACKER_WRITE_COMPLETED, event.eventType)
@@ -76,7 +78,7 @@ class WithTrackedWriteTest {
     }
 
     @Test
-    fun `evaluation mode disabled records nothing even on success`() = runTest {
+    fun `normal Action History records a successful write when Evaluation Mode is disabled`() = runTest {
         val tracker = mockk<Tracker> { every { id } returns 20L }
 
         withTrackedWrite(
@@ -87,8 +89,9 @@ class WithTrackedWriteTest {
             write = {},
         )
 
-        assertTrue(NonUndoableEventJournal.isEmpty())
-        assertTrue(TrackWriteReceiptJournal.isEmpty())
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(NonUndoableEventType.TRACKER_WRITE_COMPLETED, NonUndoableEventJournal.snapshot().first().eventType)
+        assertEquals(1, TrackWriteReceiptJournal.snapshot().size)
     }
 
     @Test
@@ -98,7 +101,7 @@ class WithTrackedWriteTest {
         // BaseTracker already logs/surfaces the remote failure elsewhere; withTrackedWrite must
         // swallow it here rather than let it propagate a second time, and must never record a
         // completion receipt for a write that did not actually succeed.
-        withTrackedWrite(
+        val succeeded = withTrackedWrite(
             tracker = tracker,
             track = track(),
             field = TrackWriteField.STATUS,
@@ -106,6 +109,7 @@ class WithTrackedWriteTest {
             write = { throw IllegalStateException("remote tracker rejected the update") },
         )
 
+        assertFalse(succeeded)
         assertTrue(NonUndoableEventJournal.isEmpty(), "an ordinary failure must never record a completion receipt")
         assertTrue(TrackWriteReceiptJournal.isEmpty())
     }

@@ -2,7 +2,7 @@ package exh.util
 
 import java.util.UUID
 
-// KMK -->
+// KMK Undo Expansion Phase 1 -->
 /**
  * Evaluation Mode Undo Journal for single-key local preference/small-row mutations: recommendation
  * numeric/boolean settings, language selection, source order, source exclusion, tag preferences,
@@ -41,6 +41,9 @@ enum class PreferenceJournalActionType {
     SOURCE_QUALITY_MARK,
     SOURCE_QUALITY_CLEAR_ALL,
     READING_SCHEDULE,
+    // KMK EC-04 2026-09-01
+    DISCOVERY_EFFORT_LEVEL,
+    DISCOVERY_CANDIDATE_BUDGET,
 }
 
 /**
@@ -85,6 +88,15 @@ object PreferenceUndoJournal {
                 entries.removeFirst()
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "preference",
+            operation = entry.actionType.name,
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     /** Most recent first. */

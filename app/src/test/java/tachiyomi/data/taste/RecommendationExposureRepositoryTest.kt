@@ -17,7 +17,6 @@ import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 
-// KMK -->
 /**
  * Real SQLDelight coverage for [RecommendationExposureRepositoryImpl] against an in-memory SQLite
  * database -- proves idempotent increment, pruning, clearing, and source-identity collision

@@ -8,6 +8,5 @@ package exh.recs.evaluation
 internal object SourceEvaluationHistoryPolicy {
     fun shouldRecordDataClearedEvent(
         operationSucceeded: Boolean,
-        evaluationModeEnabled: Boolean,
-    ): Boolean = operationSucceeded && evaluationModeEnabled
+    ): Boolean = operationSucceeded
 }

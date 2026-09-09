@@ -8,7 +8,7 @@ import eu.kanade.tachiyomi.util.export.BackupCleanupRecoveryStore
 import tachiyomi.i18n.kmk.KMR
 
 // KMK -->
-// KMK: renders the shared
+// Renders the shared
 // Remove/Keep cleanup dialog for a pending backup-creation SAF document from a host that stays
 // reachable regardless of which screen is currently active -- unlike the other 6 CreateDocument
 // routes' screen/model-scoped dialogs, this one is driven by [BackupCleanupRecoveryStore]'s

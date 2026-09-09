@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 // KMK -->
-// KMK: direct coverage
+// Direct coverage
 // for backupJobOutcomeFor, the WorkInfo.State -> SafArtifactOutcome mapping CreateBackupScreenModel
 // uses to decide whether the SAF document the picker created for a manual backup gets a cleanup
 // offer. The system document picker creates the destination document as soon as a location is

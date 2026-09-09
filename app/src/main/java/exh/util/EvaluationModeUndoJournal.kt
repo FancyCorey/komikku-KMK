@@ -6,8 +6,8 @@ import java.util.UUID
 /**
  * Evaluation Mode Action Undo Journal.
  *
- * Bounded, **in-memory only**, typed journal for reversing supported local actions performed while
- * Evaluation Mode is enabled. This file owns the taste-action entry family; the broader Action
+ * Bounded, **in-memory only**, typed journal for reversing supported local actions performed by
+ * ordinary users or during Evaluation Mode. This file owns the taste-action entry family; the broader Action
  * History screen combines it with sibling typed journals and receipt-backed entries. This is
  * deliberately NOT a database table:
  *
@@ -24,10 +24,15 @@ import java.util.UUID
  *   between persistent and in-memory storage only after inspecting the existing architecture."
  *
  * The journal never performs a generic snapshot/rollback. Every entry is a typed inverse operation
- * (previous rating / previous Not Interested state) restored through the exact same
- * [tachiyomi.domain.taste.interactor.SetMangaTaste]/[tachiyomi.domain.taste.interactor.ClearMangaTaste]/
- * `SeenRecommendationMangaStore` calls a normal rating change already uses -- see
- * `EvaluationModeUndoService.kt` for the restore logic itself.
+ * (previous rating) restored through the exact same
+ * [tachiyomi.domain.taste.interactor.SetMangaTaste]/[tachiyomi.domain.taste.interactor.ClearMangaTaste]
+ * calls a normal rating change already uses -- see `EvaluationModeUndoService.kt` for the restore
+ * logic itself.
+ *
+ * KMK v0.8.21-fix3: R1 correction -- Not Interested is [tachiyomi.domain.taste.model.MangaRating.
+ * NOT_INTERESTED], a real rating value, not a second independently-tracked axis. There used to be
+ * a `previousNotInterested`/`newNotInterested` boolean pair here, backed by a separate preference
+ * key-set; it is gone, along with the dual-store conflict/restore logic it required.
  */
 enum class EvaluationJournalActionType {
     RATE_LOVE,
@@ -55,8 +60,6 @@ data class EvaluationJournalEntry(
     val url: String,
     val previousRating: Int?,
     val newRating: Int?,
-    val previousNotInterested: Boolean,
-    val newNotInterested: Boolean,
     val isBulk: Boolean,
     val bulkOperationId: String?,
     val changedFields: Set<String>,
@@ -64,9 +67,12 @@ data class EvaluationJournalEntry(
     val reversible: Boolean = true,
 ) {
     companion object {
-        const val SCHEMA_VERSION = 1
+        // KMK v0.8.21-fix3: bumped -- previousNotInterested/newNotInterested and
+        // FIELD_NOT_INTERESTED were removed (R1 correction, dual-axis collapse). This journal is
+        // in-memory-only and process-lifetime-bounded (see the class doc above), so there is no
+        // stored-entry migration to write for this bump -- a process restart already clears it.
+        const val SCHEMA_VERSION = 2
         const val FIELD_RATING = "rating"
-        const val FIELD_NOT_INTERESTED = "not_interested"
 
         fun newId(): String = UUID.randomUUID().toString()
         fun newBulkId(): String = UUID.randomUUID().toString()
@@ -75,10 +81,10 @@ data class EvaluationJournalEntry(
 
 /**
  * Result of restoring the journaled previous state against the manga's *current* state.
- * [MATCHED] means the current state equaled [EvaluationJournalEntry.newRating]/[newNotInterested]
- * (i.e. nothing changed the manga since this journal entry was recorded), so it was safe to restore.
- * [CONFLICT] means a later change (by this journal or a plain user action) altered the manga after
- * this entry -- the entry is left in place, unrestored, and reported to the user rather than silently
+ * [MATCHED] means the current state equaled [EvaluationJournalEntry.newRating] (i.e. nothing
+ * changed the manga since this journal entry was recorded), so it was safe to restore. [CONFLICT]
+ * means a later change (by this journal or a plain user action) altered the manga after this entry
+ * -- the entry is left in place, unrestored, and reported to the user rather than silently
  * overwritten or force-restored.
  */
 enum class EvaluationUndoItemResult { RESTORED, CONFLICT, MISSING, FAILED }
@@ -97,8 +103,8 @@ data class EvaluationUndoOutcome(
 
 /**
  * Bounded, thread-safe, in-memory journal. Capacity is fixed at [MAX_ENTRIES] -- chosen as a small
- * round number appropriate for a manual test/evidence-capture session (enough to cover a realistic
- * scripted pass through a handful of screens without unbounded growth). Only the oldest entries are ever evicted --
+ * round number appropriate for a bounded evaluation session: enough to cover a realistic pass
+ * through several screens without unbounded growth. Only the oldest entries are ever evicted --
  * eviction never touches manga, rating, or group data, only this in-memory list.
  *
  * Eviction is operation-aware: if the oldest entry belongs to a bulk operation (shares a
@@ -126,6 +132,15 @@ object EvaluationModeUndoJournal {
                 }
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "taste",
+            operation = entry.actionType.name,
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     /** Most recent first. */

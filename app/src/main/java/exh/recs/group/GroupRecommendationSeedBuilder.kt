@@ -5,6 +5,7 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.model.SManga
+import exh.recs.matching.CrossSourceIdentityAuthorizationResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeoutOrNull
@@ -17,6 +18,7 @@ import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
 
 /**
  * Pure builder that constructs a [GroupRecommendationSeed] from a manga entry.
@@ -39,6 +41,7 @@ class GroupRecommendationSeedBuilder(
     private val getManga: GetManga = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
+    private val identityResolver: CrossSourceIdentityAuthorizationResolver = CrossSourceIdentityAuthorizationResolver(),
 ) {
     companion object {
         /** Members with fewer than this many nonblank genres are candidates for enrichment. */
@@ -76,7 +79,7 @@ class GroupRecommendationSeedBuilder(
             null
         }
 
-        val groupMembers: List<CrossSourceMangaLink> = if (link != null) {
+        val legacyGroupMembers: List<CrossSourceMangaLink> = if (link != null) {
             try {
                 getCrossSourceMangaLinks.awaitByGroupId(link.groupId)
             } catch (e: CancellationException) {
@@ -87,6 +90,8 @@ class GroupRecommendationSeedBuilder(
         } else {
             emptyList()
         }
+
+        val groupMembers = identityResolver.confirmedGroupMembers(sourceId, url, legacyGroupMembers)
 
         val memberKeys: Set<Pair<Long, String>> = groupMembers
             .map { it.source to it.url }
@@ -143,7 +148,7 @@ class GroupRecommendationSeedBuilder(
                             ?: SManga.create().also { it.url = membUrl }
 
                         // KMK v0.8.10-fix4: routed through SourceRuntime instead of runCatching --
-                        // the behavior contract's explicit instruction is that runCatching must not be the source
+                        // the plan's explicit instruction is that runCatching must not be the source
                         // boundary because it does not record the failure registry. SourceRuntime
                         // still rethrows CancellationException and any genuinely fatal Error, exactly
                         // as this code's own manual `if (e is CancellationException) throw e` used to
@@ -186,7 +191,7 @@ class GroupRecommendationSeedBuilder(
         var metadataMemberCount = 0
         for ((_, manga) in mangaByKey) {
             val genres = manga.genre
-                ?.map { it.trim().lowercase() }
+                ?.map { it.trim().lowercase(Locale.ROOT) }
                 ?.filter { it.isNotBlank() }
                 ?: emptyList()
             if (genres.isNotEmpty()) {
@@ -214,7 +219,7 @@ class GroupRecommendationSeedBuilder(
             seedTags = seedTags,
             sourceIds = allSourceIds,
             memberKeys = memberKeys,
-            groupId = link?.groupId,
+            groupId = link?.groupId?.takeIf { groupMembers.size > 1 },
             metadataMemberCount = metadataMemberCount,
             enrichedMemberCount = enrichedMemberCount,
         )
@@ -225,7 +230,7 @@ class GroupRecommendationSeedBuilder(
         val allTags = mutableSetOf<String>()
         for ((_, manga) in mangaByKey) {
             manga.genre
-                ?.map { it.trim().lowercase() }
+                ?.map { it.trim().lowercase(Locale.ROOT) }
                 ?.filter { it.isNotBlank() }
                 ?.let { allTags.addAll(it) }
         }

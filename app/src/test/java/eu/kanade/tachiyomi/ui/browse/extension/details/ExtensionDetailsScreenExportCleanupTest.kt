@@ -22,7 +22,7 @@ import java.io.File
 import java.nio.file.Files
 
 // KMK -->
-// KMK: ExtensionDetailsScreen.kt
+// ExtensionDetailsScreen.kt
 // was retrofitted onto SafExportCoordinator, replacing the old standalone SingleExportArtifactKind
 // enum/singleExportArtifactKindFor mapping this file used to test directly. Coverage now targets the
 // actual defect the user identified -- a non-null picker Uri must never be discarded when the

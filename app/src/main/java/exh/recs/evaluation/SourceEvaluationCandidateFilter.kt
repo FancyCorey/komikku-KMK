@@ -5,6 +5,7 @@ import exh.recs.evaluation.SourceEvaluationUpdatePolicy
 import exh.source.ExplicitSourceClassifier
 import tachiyomi.domain.taste.model.SourceEvaluation
 import tachiyomi.domain.taste.model.SourceEvaluationKeys
+import java.util.Locale
 
 // KMK -->
 object SourceEvaluationCandidateFilter {
@@ -73,7 +74,7 @@ object SourceEvaluationCandidateFilter {
 
             if (ext.pkgName in installedPkgNames) continue
             if (ext.pkgName in untrustedPkgNames) continue
-            if (ext.lang.lowercase() !in recLanguages) continue
+            if (ext.lang.lowercase(Locale.ROOT) !in recLanguages) continue
             if (!nsfwEnabled && ext.isNsfw) continue
 
             val dislikeKey = "a|${ext.signatureHash}|${ext.pkgName}"

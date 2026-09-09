@@ -23,10 +23,10 @@ import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK -->
+// KMK Universal Action History Recovery Plan 2026-07-31 -->
 /**
  * Direct tests for [ActionHistoryRegistry]'s `migrationFollowUpFor` -- the migration compensating
- * action ("Migrate back"). Mirrors
+ * action ("Migrate back") described in the Universal Action History Recovery Plan. Mirrors
  * [ActionHistoryRegistryPackageFollowUpTest]'s own seam-swap pattern (`internal var *Provider`s bound
  * directly, bypassing Injekt's process-wide singleton cache) and restores real Injekt-backed defaults
  * in [tearDown].
@@ -274,7 +274,7 @@ class ActionHistoryRegistryMigrationFollowUpTest {
     }
 
     @Test
-    fun `trigger records nothing when Evaluation Mode is off, even on a successful migration`() = runTest {
+    fun `trigger records a successful migration when Evaluation Mode is off`() = runTest {
         bindFakes()
         sourcePreferences.evaluationMode().set(false)
         val origin = manga(id = 1L, sourceId = 10L, url = "/origin")
@@ -289,8 +289,8 @@ class ActionHistoryRegistryMigrationFollowUpTest {
         val result = followUp.trigger()
 
         assertEquals(ActionHistoryFollowUpResult.Started, result, "the migration itself must still truthfully report success")
-        assertEquals(1, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.MIGRATION_COMPLETED })
-        assertEquals(1, MigrationReceiptJournal.snapshot().size)
+        assertEquals(2, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.MIGRATION_COMPLETED })
+        assertEquals(2, MigrationReceiptJournal.snapshot().size)
     }
 
     @Test

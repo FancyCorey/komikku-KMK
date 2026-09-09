@@ -24,7 +24,6 @@ import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 
-// KMK -->
 /**
  * Proves the tracker failure path through the **production-facing contract** rather than only
  * through the pure reranker.

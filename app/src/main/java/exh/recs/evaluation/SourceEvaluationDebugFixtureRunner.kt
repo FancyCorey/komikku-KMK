@@ -98,7 +98,7 @@ class SourceEvaluationDebugFixtureRunner(
                     }
                     SourceEvaluationDebugFixtureMode.PER_SOURCE_ERROR -> {
                         val results = candidates.mapIndexed { index, candidate ->
-                            // KMK: the completion key must match the real
+                            // Corrective pass 2026-08-03: the completion key must match the real
                             // SourceEvaluationRunner's "${signatureHash}|${pkgName}" format (see
                             // SourceEvaluationRunner.kt and SourceEvaluationContinuationPolicy.kt) so
                             // SourceEvaluationContinuationPolicy can advance its cursor correctly if

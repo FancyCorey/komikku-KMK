@@ -15,6 +15,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
+import eu.kanade.presentation.browse.BrowseSourceTitlePolicy
 import eu.kanade.presentation.browse.MissingSourceScreen
 import eu.kanade.presentation.browse.SourceFeedOrderScreen
 import eu.kanade.presentation.browse.SourceFeedScreen
@@ -40,6 +41,7 @@ import exh.source.ExhPreferences
 import exh.source.anyIs
 import exh.source.isEhBasedSource
 import exh.util.nullIfBlank
+import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.model.SavedSearch
@@ -63,6 +65,11 @@ class SourceFeedScreen(val sourceId: Long) : Screen() {
         val state by screenModel.state.collectAsState()
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
+        val sourceTitle = BrowseSourceTitlePolicy.resolve(
+            evaluationModeEnabled = evaluationModeEnabled,
+            sourceId = screenModel.source.id,
+        ) { screenModel.source.name }
 
         // KMK -->
         screenModel.source.let {
@@ -110,7 +117,7 @@ class SourceFeedScreen(val sourceId: Long) : Screen() {
             } else {
                 // KMK <--
                 SourceFeedScreen(
-                    name = screenModel.source.name,
+                    name = sourceTitle,
                     isLoading = state.isLoading,
                     items = state.items,
                     hasFilters = state.filters.isNotEmpty(),
@@ -142,7 +149,7 @@ class SourceFeedScreen(val sourceId: Long) : Screen() {
                         navigator.push(
                             WebViewScreen(
                                 url = source.baseUrl,
-                                initialTitle = source.name,
+                                initialTitle = sourceTitle,
                                 sourceId = source.id,
                             ),
                         )

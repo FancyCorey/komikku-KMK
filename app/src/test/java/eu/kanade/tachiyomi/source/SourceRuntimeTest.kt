@@ -7,6 +7,9 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -21,7 +24,8 @@ import java.util.concurrent.ExecutionException
 /**
  * Covers the pure classification/unwrap functions behind [SourceRuntime] -- the shared, app-wide
  * runtime boundary superseding the narrower, recommendation-only
- * [exh.recs.RecommendationErrorClassifier] containment.
+ * [exh.recs.RecommendationErrorClassifier] containment. These tests prove the shared classification
+ * and unwrap contract used by every migrated call site.
  */
 class SourceRuntimeTest {
 
@@ -292,9 +296,9 @@ class SourceRuntimeTest {
     // exercise directly. A literal HttpSource-backed test is not feasible in this environment: every
     // HttpSource subclass's `network`/`client` lazy properties call Injekt.get<NetworkHelper>() at
     // construction, and this test suite has no Injekt-bootstrapping harness (the same limitation
-    // shared by RecommendsScreenModel and BrowsePersonalRecommendationsScreenModel). These tests
-    // instead prove runBlockingSourceCall's classification/recording
-    // behavior for the Client/Headers/CoverImage/PreviewImage operations added in the implementation, which is
+    // already documented for RecommendsScreenModel/BrowsePersonalRecommendationsScreenModel in
+    // CURRENT_STATE.md). These tests instead prove runBlockingSourceCall's classification/recording
+    // behavior for the Client/Headers/CoverImage/PreviewImage operations added in this pass, which is
     // the actual boundary safeClientOrNull()/safeHeadersOrNull() route through -- the accessors
     // themselves add no logic beyond calling it.
 
@@ -356,7 +360,7 @@ class SourceRuntimeTest {
         val source = FakeSource(505L, "Repeatedly Broken Source")
         SourceRuntimeFailureRegistry.clear(505L)
 
-        // KMK v0.8.10-fix8 correction: as of the implementation, runBlockingSourceCall() enforces suppression
+        // KMK v0.8.10-fix8 correction: as of this pass, runBlockingSourceCall() enforces suppression
         // -- once a source is temporarily unavailable, subsequent calls within the suppression window
         // are short-circuited *before* touching the source, so they no longer call record() a second
         // or third time. The registry's count now reflects genuine, separately-attempted (i.e.
@@ -397,9 +401,9 @@ class SourceRuntimeTest {
     // KMK <--
 
     // KMK v0.8.10-fix6 -->
-    // Regression coverage for SourceFeedScreenModel/FeedScreenModel/SmartSourceSearchEngine's
+    // Regression tests for Task 7: SourceFeedScreenModel/FeedScreenModel/SmartSourceSearchEngine's
     // safeFilterList()-shaped call sites, RecommendationPagingSource's delegate wrapper, and one more
-    // explicit sibling-isolation proof, per the behavior contract's exact required cases.
+    // explicit sibling-isolation proof, per the fix6 plan's exact required cases.
 
     @Test
     fun `runBlockingSourceCall(FilterList) catches a lazy-client-shaped NoClassDefFoundError and records FilterList`() {
@@ -421,7 +425,7 @@ class SourceRuntimeTest {
 
     @Test
     fun `a fake delegated recommendation source method using SourceRuntime run getOrThrow records the failure before rethrowing it`() {
-        // Mirrors RecommendationPagingSource.RecommendationSource's delegate wrapper shape:
+        // Mirrors RecommendationPagingSource.RecommendationSource's delegate wrapper shape (Task 4):
         // the wrapper's own override calls SourceRuntime.run(...).getOrThrow() and lets the caller
         // receive a normal exception, but the failure must already be classified/recorded by the
         // time that exception reaches the caller.
@@ -538,7 +542,7 @@ class SourceRuntimeTest {
     // KMK v0.8.10-fix8 -->
     // Enforced source-runtime suppression tests: prove run()/runBlockingSourceCall() never touch
     // source.block() at all once a source is temporarily unavailable -- not merely that a subsequent
-    // failure gets classified correctly (that was already true previously; the NEW guarantee is
+    // failure gets classified correctly (that was already true before this pass; the NEW guarantee is
     // that the source is not re-invoked in the first place).
 
     @Test
@@ -757,6 +761,229 @@ class SourceRuntimeTest {
         }
         assertFalse(brokenTouchedAgain)
         assertTrue(secondAttempt.exceptionOrNull() is SourceTemporarilyUnavailableException)
+    }
+    // KMK <--
+
+    // KMK v0.8.21-fix5 -->
+    // R2 correction: SameMangaCandidateSearcher's bounded same-source retry used to call
+    // SourceRuntimeFailureRegistry.clear(source.id) unconditionally before its retry attempt -- a
+    // process-global side effect. These tests exercise the replacement `bypassSuppression` parameter
+    // directly against the real SourceRuntime.run(), proving the exact properties the R2 exit gate
+    // requires: unrelated callers cannot accidentally bypass suppression, diagnostic failure state
+    // is not silently lost by a bypassed attempt, a retry failure records correct (not misleadingly
+    // fresh) state, and a bypassed call is still cancellation-safe.
+
+    @Test
+    fun `bypassSuppression touches the source even while it is suppressed`() = runTest {
+        val source = FakeSource(901L, "Bypass Target")
+        SourceRuntimeFailureRegistry.clear(901L)
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Search) { throw NoClassDefFoundError("x") }
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(901L))
+
+        var touched = false
+        val result = SourceRuntime.run(source, SourceRuntimeOperation.Search, bypassSuppression = true) {
+            touched = true
+            getFilterList()
+        }
+
+        assertTrue(touched, "bypassSuppression must actually invoke the source, not short-circuit like an ordinary call")
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun `an unrelated concurrent caller is still suppressed while another caller bypasses for its own retry`() = runTest {
+        val source = FakeSource(902L, "Shared Source")
+        SourceRuntimeFailureRegistry.clear(902L)
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Search) { throw NoClassDefFoundError("x") }
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(902L))
+
+        // A second, unrelated caller (e.g. a different screen's ordinary load) does NOT opt into
+        // bypassSuppression and must remain suppressed -- bypass is scoped to the one call that
+        // requests it, never a side effect visible to other callers before any outcome is known.
+        var unrelatedTouched = false
+        val unrelatedResult = SourceRuntime.run(source, SourceRuntimeOperation.Popular) {
+            unrelatedTouched = true
+            getFilterList()
+        }
+        assertFalse(unrelatedTouched, "an unrelated caller must not be able to bypass suppression it never asked for")
+        assertTrue(unrelatedResult.exceptionOrNull() is SourceTemporarilyUnavailableException)
+
+        // The bounded retry itself, which DID opt in, still reaches the source.
+        var retryTouched = false
+        val retryResult = SourceRuntime.run(source, SourceRuntimeOperation.Search, bypassSuppression = true) {
+            retryTouched = true
+            getFilterList()
+        }
+        assertTrue(retryTouched)
+        assertTrue(retryResult.isSuccess)
+    }
+
+    @Test
+    fun `a bypassed call that fails again preserves diagnostic evidence -- count increments and firstFailureAt is unchanged`() = runTest {
+        val source = FakeSource(903L, "Still Broken Source")
+        SourceRuntimeFailureRegistry.clear(903L)
+
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Search) { throw NoClassDefFoundError("x") }
+        val firstEntry = SourceRuntimeFailureRegistry.get(903L)
+        assertTrue(firstEntry != null)
+        assertEquals(1, firstEntry!!.count)
+        val originalFirstFailureAt = firstEntry.firstFailureAt
+
+        // The retry bypasses suppression and fails again -- this must NOT look like a brand-new
+        // single-failure entry (which is what the old clear()-before-retry code produced). Evidence
+        // of the original failure (count, firstFailureAt) must survive.
+        val retryResult = SourceRuntime.run(source, SourceRuntimeOperation.Search, bypassSuppression = true) {
+            throw NoClassDefFoundError("x")
+        }
+        assertTrue(retryResult.isFailure)
+
+        val secondEntry = SourceRuntimeFailureRegistry.get(903L)
+        assertTrue(secondEntry != null, "diagnostic failure state must not be silently lost after a failed retry")
+        assertEquals(2, secondEntry!!.count, "a second consecutive failure must increment count, not reset it")
+        assertEquals(originalFirstFailureAt, secondEntry.firstFailureAt, "firstFailureAt must be preserved across the retry")
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(903L), "suppression must re-engage after the retry also fails")
+    }
+
+    @Test
+    fun `a bypassed call that succeeds clears the stale entry so a later unrelated call is no longer suppressed`() = runTest {
+        val source = FakeSource(904L, "Recovered Source")
+        SourceRuntimeFailureRegistry.clear(904L)
+
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Search) { throw NoClassDefFoundError("x") }
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(904L))
+
+        val retryResult = SourceRuntime.run(source, SourceRuntimeOperation.Search, bypassSuppression = true) {
+            getFilterList()
+        }
+        assertTrue(retryResult.isSuccess)
+
+        // Confirmed success is fresh evidence the source is healthy -- unlike the preemptive,
+        // outcome-blind clear() the old code used, this only ever fires after a real success.
+        assertTrue(SourceRuntimeFailureRegistry.get(904L) == null)
+        var laterTouched = false
+        val laterResult = SourceRuntime.run(source, SourceRuntimeOperation.Popular) {
+            laterTouched = true
+            getFilterList()
+        }
+        assertTrue(laterTouched, "a later call must not be wrongly suppressed by a failure already superseded by a confirmed success")
+        assertTrue(laterResult.isSuccess)
+    }
+
+    @Test
+    fun `bypassSuppression does not affect a completely different source's suppression state`() = runTest {
+        val target = FakeSource(905L, "Bypass Target")
+        val sibling = FakeSource(906L, "Untouched Sibling")
+        SourceRuntimeFailureRegistry.clear(905L)
+        SourceRuntimeFailureRegistry.clear(906L)
+
+        SourceRuntime.run<Unit>(target, SourceRuntimeOperation.Search) { throw NoClassDefFoundError("x") }
+        SourceRuntime.run<Unit>(sibling, SourceRuntimeOperation.Search) { throw NoClassDefFoundError("x") }
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(905L))
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(906L))
+
+        SourceRuntime.run(target, SourceRuntimeOperation.Search, bypassSuppression = true) { getFilterList() }
+
+        // Only the bypassed source's entry is affected by its own successful retry -- the sibling's
+        // independent suppression window is completely untouched.
+        assertTrue(SourceRuntimeFailureRegistry.get(905L) == null)
+        assertTrue(SourceRuntimeFailureRegistry.isTemporarilyUnavailable(906L), "an unrelated sibling source's suppression must survive another source's bypassed retry")
+    }
+
+    @Test
+    fun `a bypassed call rethrows CancellationException rather than converting or swallowing it`() {
+        val source = FakeSource(907L, "Cancelled During Bypass")
+        SourceRuntimeFailureRegistry.clear(907L)
+        assertThrows(CancellationException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Search, bypassSuppression = true) {
+                    throw CancellationException("cancelled mid-retry")
+                }
+            }
+        }
+        // Cancellation must never be recorded as a source failure -- the registry stays untouched.
+        assertTrue(SourceRuntimeFailureRegistry.get(907L) == null)
+    }
+    // KMK <--
+
+    // KMK v0.8.21-fix6 -->
+    // R2 concurrency-race correction: a bypassed call's post-success clear() used to be
+    // unconditional. If a concurrent caller recorded a *newer* failure for the same source while
+    // the bypassed attempt was still in flight, that unconditional clear would erase the newer
+    // evidence too. clearIfUnchanged fixes this; these tests deterministically reproduce both
+    // orderings the independent audit named.
+
+    @Test
+    fun `failure-before-success ordering -- a newer concurrent failure recorded while a bypassed call is in flight survives that call's success`() = runTest {
+        val enteredBlock = CompletableDeferred<Unit>()
+        val releaseBlock = CompletableDeferred<Unit>()
+        val source = FakeSource(950L, "Racing Source")
+        SourceRuntimeFailureRegistry.clear(950L)
+
+        // Seed an initial failure so the bypassed call has a real entryBeforeAttempt to compare
+        // against (not just null).
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Popular) { throw NoClassDefFoundError("initial") }
+        assertTrue(SourceRuntimeFailureRegistry.get(950L) != null)
+
+        val bypassedJob = launch {
+            SourceRuntime.run(source, SourceRuntimeOperation.Search, dispatcher = Dispatchers.Unconfined, bypassSuppression = true) {
+                enteredBlock.complete(Unit)
+                releaseBlock.await()
+                "recovered"
+            }
+        }
+
+        // Wait until the bypassed call's block has actually started (entryBeforeAttempt has been
+        // captured), then -- while it is still suspended awaiting releaseBlock -- a concurrent
+        // caller records a newer failure. Recorded directly against the registry (rather than via
+        // a second SourceRuntime.run call) because a second *ordinary* call would itself be
+        // suppressed by the initial seeded failure -- the real-world equivalent is another bypassed
+        // caller's own SourceRuntime.run failing, which reaches SourceRuntimeFailureRegistry.record
+        // the same way.
+        enteredBlock.await()
+        SourceRuntimeFailureRegistry.record(
+            SourceRuntimeFailure(
+                sourceId = 950L,
+                sourceName = source.name,
+                sourceLang = source.lang,
+                operation = SourceRuntimeOperation.PageList,
+                kind = SourceRuntimeFailureKind.ExtensionIncompatible,
+                throwable = NoClassDefFoundError("newer concurrent failure"),
+            ),
+        )
+        val newerEntry = SourceRuntimeFailureRegistry.get(950L)
+        assertTrue(newerEntry != null)
+        assertEquals(SourceRuntimeOperation.PageList, newerEntry!!.operation)
+
+        // Now let the bypassed call finish successfully.
+        releaseBlock.complete(Unit)
+        bypassedJob.join()
+
+        // The newer failure must survive -- the bypassed call's success must not have erased it.
+        val afterEntry = SourceRuntimeFailureRegistry.get(950L)
+        assertTrue(afterEntry != null, "a newer concurrent failure recorded during a bypassed call's flight must survive that call's success")
+        assertEquals(newerEntry, afterEntry)
+    }
+
+    @Test
+    fun `success-before-failure ordering -- a bypassed success that completes with no intervening failure still clears normally`() = runTest {
+        val source = FakeSource(951L, "Non-Racing Source")
+        SourceRuntimeFailureRegistry.clear(951L)
+
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.Popular) { throw NoClassDefFoundError("initial") }
+        assertTrue(SourceRuntimeFailureRegistry.get(951L) != null)
+
+        // The bypassed call completes (success) entirely before any other failure is recorded --
+        // the safe ordering. clearIfUnchanged must still clear in this case, exactly like the old
+        // unconditional clear() did, since nothing raced it.
+        val result = SourceRuntime.run(source, SourceRuntimeOperation.Search, bypassSuppression = true) { "recovered" }
+        assertTrue(result.isSuccess)
+        assertTrue(SourceRuntimeFailureRegistry.get(951L) == null, "a bypassed success with no concurrent interleaving must still clear the stale entry")
+
+        // A failure recorded afterward is unaffected -- fresh evidence, not lost, not merged.
+        SourceRuntime.run<Unit>(source, SourceRuntimeOperation.PageList) { throw NoClassDefFoundError("later, unrelated failure") }
+        val laterEntry = SourceRuntimeFailureRegistry.get(951L)
+        assertTrue(laterEntry != null)
+        assertEquals(1, laterEntry!!.count)
     }
     // KMK <--
 }

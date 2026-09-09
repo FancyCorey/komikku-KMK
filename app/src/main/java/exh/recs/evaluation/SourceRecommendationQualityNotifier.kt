@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -13,8 +14,11 @@ import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import tachiyomi.core.common.Constants
+import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.kmk.KMR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 // KMK --> v0.7.43
 /**
@@ -25,7 +29,10 @@ import tachiyomi.i18n.kmk.KMR
  * collides with a running full Source Evaluation notification. Tapping still deep-links into the
  * Source Evaluation screen, since that is where compatibility progress is displayed.
  */
-class SourceRecommendationQualityNotifier(private val context: Context) : SourceRecommendationQualityWorkerNotifier {
+class SourceRecommendationQualityNotifier(
+    private val context: Context,
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
+) : SourceRecommendationQualityWorkerNotifier {
 
     private val openSourceEvaluationIntent: PendingIntent by lazy {
         PendingIntent.getActivity(
@@ -53,7 +60,9 @@ class SourceRecommendationQualityNotifier(private val context: Context) : Source
     }
 
     fun buildProgressNotification(queueState: SourceRecommendationQualityQueueState): NotificationCompat.Builder {
-        val currentName = queueState.currentSourceName
+        val currentName = queueState.currentSourceName?.let {
+            SourceEvaluationProgressLabelPolicy.sourceLabel(it, sourcePreferences.evaluationMode().get())
+        }
             ?: context.stringResource(KMR.strings.source_evaluation_starting)
         return progressBuilder.apply {
             setContentText(currentName)
@@ -89,7 +98,11 @@ class SourceRecommendationQualityNotifier(private val context: Context) : Source
             setContentIntent(openSourceEvaluationIntent)
             if (checkedCount > 0) {
                 setContentText(
-                    context.stringResource(KMR.strings.source_recommendation_quality_job_checked_count, checkedCount),
+                    context.pluralStringResource(
+                        KMR.plurals.source_recommendation_quality_job_checked_count,
+                        count = checkedCount,
+                        checkedCount,
+                    ),
                 )
             }
         }

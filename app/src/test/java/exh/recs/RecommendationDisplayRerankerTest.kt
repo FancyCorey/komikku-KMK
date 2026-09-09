@@ -10,13 +10,12 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 
-// KMK
 /**
  * Reranker invariant tests. Each named invariant in [RecommendationDisplayReranker]'s KDoc has a
  * direct test here: permutation-never-deletion, base score never mutated, strong personalized match
  * never displaced by novelty alone, deterministic/jitter-free ordering, and fail-open behavior.
  *
- * KMK: migrated from url-only keys to the full
+ * migrated from url-only keys to the full
  * `(sourceId, url)` [ExposureKey], and extended with the three independent positive-interaction
  * exemptions (library / rated / tracked) plus a cross-source url-collision test.
  */
@@ -144,7 +143,7 @@ class RecommendationDisplayRerankerTest {
         assertEquals("/b", out.first().manga.url)
     }
 
-    // KMK: the tri-state's whole reason for existing.
+    // The tri-state's whole reason for existing.
 
     @Test
     fun `an unknown tracker state produces no penalty at all`() {

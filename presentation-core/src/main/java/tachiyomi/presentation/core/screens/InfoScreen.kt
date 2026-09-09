@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -42,6 +43,16 @@ fun InfoScreen(
     canAccept: Boolean = true,
     rejectText: String? = null,
     onRejectClick: (() -> Unit)? = null,
+    // KMK F2-05.0 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): a stable, locale- and
+    // text-independent Compose semantics tag for this screen's accept button, so a Compose-level
+    // test (e.g. ComposeTestRule.onNodeWithTag) can find and click it without locale-sensitive text
+    // matching or raw coordinates. NOTE: this is Modifier.testTag() only -- it does NOT yet expose a
+    // matching Android View resource-id for UI Automator's own By.res() matching (that requires
+    // additionally enabling testTagsAsResourceId semantics at the Compose root, which F2-05.1's own
+    // benchmark harness work should wire up together with its actual UI Automator driver code, once
+    // it needs it). Null (the default) preserves every existing InfoScreen caller's behavior exactly;
+    // this is additive only.
+    acceptButtonTestTag: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold(
@@ -66,7 +77,9 @@ fun InfoScreen(
                     ),
             ) {
                 Button(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .let { if (acceptButtonTestTag != null) it.testTag(acceptButtonTestTag) else it },
                     enabled = canAccept,
                     onClick = onAcceptClick,
                 ) {

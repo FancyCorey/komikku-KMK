@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK
 /**
  * Pure, deterministic, **display-only** reorder applied to one source's already-accepted candidate
  * list.
@@ -56,7 +55,7 @@ object RecommendationDisplayReranker {
     /**
      * Tracker state for one refresh's candidates.
      *
-     * KMK: this is a **tri-state**, not a set, because a bare
+     * this is a **tri-state**, not a set, because a bare
      * `Set<ExposureKey>` cannot distinguish the two cases that must behave differently:
      *
      * - `Known(emptySet())` — the tracker table was read successfully and **no** candidate is
@@ -130,7 +129,7 @@ object RecommendationDisplayReranker {
     ): List<PersonalRecommendation> {
         if (candidates.size < 2 || exposureByKey.isEmpty()) return candidates
 
-        // KMK: tracker state could not be determined for this
+        // Tracker state could not be determined for this
         // batch. Any penalty applied here might land on a title the user actively tracks, so no
         // candidate may be penalised. Returning the input unchanged is still a valid permutation --
         // nothing is removed, reordered, hidden, or down-rated.

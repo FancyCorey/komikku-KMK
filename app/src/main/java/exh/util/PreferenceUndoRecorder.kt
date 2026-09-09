@@ -7,13 +7,15 @@ import tachiyomi.domain.taste.interactor.GetTagTaste
 import tachiyomi.domain.taste.interactor.SetTagTaste
 import tachiyomi.domain.taste.model.TagPreference
 
-// KMK -->
+// KMK Undo Expansion Phase 1 -->
 /**
  * Builds not-yet-committed [PreferenceUndoEntry] snapshots. Same build-before-write/commit-after-success
  * contract as every other recorder in this package: callers read the previous value, perform their
  * write, and only call [PreferenceUndoJournal.record] with the built entry after the write succeeds.
  *
- * No-ops (returns `null`) when Evaluation Mode is disabled.
+ * No-ops (returns `null`) only when the requested value is unchanged. The
+ * journal is a normal-user recovery surface; Evaluation Mode is unrelated to
+ * whether a local preference change is recorded.
  */
 object PreferenceUndoRecorder {
 
@@ -30,7 +32,7 @@ object PreferenceUndoRecorder {
         previousValue: T,
         newValue: T,
     ): PreferenceUndoEntry<T>? {
-        if (!sourcePreferences.evaluationMode().get() || previousValue == newValue) return null
+        if (previousValue == newValue) return null
         return PreferenceUndoEntry(
             id = PreferenceUndoEntry.newId(),
             timestamp = System.currentTimeMillis(),
@@ -54,7 +56,7 @@ object PreferenceUndoRecorder {
         previousPreference: TagPreference?,
         newPreference: TagPreference?,
     ): PreferenceUndoEntry<TagPreference?>? {
-        if (!sourcePreferences.evaluationMode().get() || previousPreference == newPreference) return null
+        if (previousPreference == newPreference) return null
         return PreferenceUndoEntry(
             id = PreferenceUndoEntry.newId(),
             timestamp = System.currentTimeMillis(),

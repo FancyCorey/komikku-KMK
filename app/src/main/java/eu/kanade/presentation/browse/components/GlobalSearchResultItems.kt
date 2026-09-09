@@ -95,7 +95,10 @@ fun GlobalSearchLoadingResultItem() {
 }
 
 @Composable
-fun GlobalSearchErrorResultItem(message: String?) {
+fun GlobalSearchErrorResultItem(
+    message: String?,
+    action: (@Composable () -> Unit)? = null,
+) {
     Column(
         modifier = Modifier
             .padding(
@@ -112,5 +115,6 @@ fun GlobalSearchErrorResultItem(message: String?) {
             text = message ?: stringResource(MR.strings.unknown_error),
             textAlign = TextAlign.Center,
         )
+        action?.invoke()
     }
 }

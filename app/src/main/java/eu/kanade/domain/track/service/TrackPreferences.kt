@@ -54,5 +54,12 @@ class TrackPreferences(
 
     // KMK -->
     fun autoSyncProgressFromTrackers() = preferenceStore.getBoolean("pref_auto_sync_progress_from_trackers_key", true)
+
+    /**
+     * Controls whether read progress may be inherited by other user-confirmed local versions.
+     * Enabled by default so confirmed versions follow the same automatic progress behavior as
+     * external trackers; users can still disable propagation from Tracking settings.
+     */
+    fun autoInheritLocalProgress() = preferenceStore.getBoolean("pref_auto_inherit_local_progress_key", true)
     // KMK <--
 }

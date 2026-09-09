@@ -8,8 +8,8 @@ import org.junit.jupiter.api.Test
 // KMK v0.8.9 -->
 /**
  * Tests for [KmkRecsReleaseNotes]. `MARKDOWN` remains a plain string (not a structured model) — see
- * the in-code comment on `KmkRecsReleaseNotes.MARKDOWN` for why that was the safer choice given
- * `WhatsNewScreen`'s existing `MarkdownRender`/`GFMFlavourDescriptor`
+ * the v0.8.9 implementation report and the in-code comment on `KmkRecsReleaseNotes.MARKDOWN` for why
+ * that was the safer choice given `WhatsNewScreen`'s existing `MarkdownRender`/`GFMFlavourDescriptor`
  * renderer already fully supports the required hierarchy. These tests parse the same heading pattern
  * the renderer treats as a version boundary (`## KMK-Recs vX.Y.Z`) so regressions in history
  * ordering/completeness/duplication are still caught mechanically, without a structured data model.
@@ -26,6 +26,21 @@ class KmkRecsReleaseNotesTest {
     fun `the current VERSION_NAME appears as the first (newest) heading`() {
         val first = headings().first()
         assertEquals(KmkRecsReleaseNotes.VERSION_NAME.removePrefix("KMK-Recs "), first)
+    }
+
+    @Test
+    fun `the display version uses the approved forward-facing product name`() {
+        assertEquals("Komikku FC v0.8.21-fix2", KmkRecsReleaseNotes.DISPLAY_VERSION_NAME)
+        assertTrue(KmkRecsReleaseNotes.VERSION_NAME.startsWith("KMK-Recs "))
+    }
+
+    @Test
+    fun `rendered release notes use the forward-facing product name`() {
+        val displayMarkdown = KmkRecsReleaseNotes.displayMarkdown()
+
+        assertTrue(displayMarkdown.contains("## Komikku FC v0.8.21-fix2"))
+        assertFalse(displayMarkdown.contains("KMK-Recs"))
+        assertTrue(KmkRecsReleaseNotes.MARKDOWN.contains("## KMK-Recs v0.8.21-fix2"))
     }
 
     @Test
@@ -117,17 +132,18 @@ class KmkRecsReleaseNotesTest {
     @Test
     fun `headings are in strictly descending chronological order as written (newest-first)`() {
         // The renderer relies on source order for "newest first" -- verify the file wasn't
-        // accidentally reordered. v0.8.20-fix5 is expected to be exactly first.
+        // accidentally reordered. v0.8.21-fix2 is expected to be exactly first.
         val all = headings()
-        assertEquals("v0.8.20-fix5", all[0])
-        assertEquals("v0.8.20-fix4", all[1])
-        assertEquals("v0.8.20-fix3", all[2])
-        assertEquals("v0.8.20-fix2", all[3])
-        assertEquals("v0.8.20-fix1", all[4])
-        assertEquals("v0.8.20", all[5])
-        assertEquals("v0.8.19", all[6])
-        assertEquals("v0.8.18-fix1", all[7])
-        assertEquals("v0.8.18", all[8])
+        assertEquals("v0.8.21-fix2", all[0])
+        assertEquals("v0.8.21", all[1])
+        assertEquals("v0.8.20-fix5", all[2])
+        assertEquals("v0.8.20-fix4", all[3])
+        assertEquals("v0.8.20-fix3", all[4])
+        assertEquals("v0.8.20-fix2", all[5])
+        assertEquals("v0.8.20-fix1", all[6])
+        assertEquals("v0.8.20", all[7])
+        assertEquals("v0.8.19", all[8])
+        assertEquals("v0.8.18-fix1", all[9])
     }
 
     @Test
@@ -172,5 +188,71 @@ class KmkRecsReleaseNotesTest {
         val currentSection = sections.first().second.lowercase()
         assertFalse(currentSection.contains("rating menu"), "current changelog entry should not describe Find best version as inside a rating menu")
     }
+
+    /** v0.8.21 itself (not "first" -- v0.8.21-fix2 is now first) retains its own historical claims unchanged. */
+    private fun v0821Section(): String = sectionBodies().first { it.first == "v0.8.21" }.second
+
+    @Test
+    fun `the v0_8_21 entry covers the accepted focused recommendation and alignment changes`() {
+        val section = v0821Section()
+        assertTrue(section.contains("For You focus"))
+        assertTrue(section.contains("16 KB ELF"))
+        assertTrue(section.contains("Komikku FC"))
+    }
+
+    @Test
+    fun `the v0_8_21 entry records the complete accepted scope without claiming gated work shipped`() {
+        val section = v0821Section()
+        val acceptedScope = listOf(
+            "Love/Like/Dislike/Not interested",
+            "recommendation eligibility",
+            "contextual settings navigation",
+            "Best Version image reliability",
+            "delayed-action acknowledgement",
+            "search-action clarity",
+            "extension chapter recovery",
+            "cross-source identity",
+            "tag and metadata diagnostics",
+            "chapter-line continuity",
+            "upstream/intended/actual comparison",
+            "diagram-readability",
+        )
+        acceptedScope.forEach { topic ->
+            assertTrue(section.contains(topic), "v0.8.21 entry omitted accepted scope: $topic")
+        }
+        assertTrue(section.contains("Local internal tracker"))
+        assertTrue(section.contains("remains a separately contracted feature"))
+        assertTrue(section.contains("not a claim that an unopened gate has shipped"))
+    }
+
+    // KMK v0.8.21-fix2 -->
+    @Test
+    fun `the v0_8_21-fix2 entry is the current newest entry`() {
+        assertEquals("v0.8.21-fix2", sectionBodies().first().first)
+    }
+
+    @Test
+    fun `the v0_8_21-fix2 entry documents the local tracking status list workflow`() {
+        val currentSection = sectionBodies().first().second
+        assertTrue(currentSection.contains("Local tracking status/list workflow"))
+        assertTrue(currentSection.contains("Reading, Plan to read, On hold, Completed, Dropped"))
+    }
+
+    @Test
+    fun `the v0_8_21-fix2 entry documents duplicate-tap protection for rating actions`() {
+        val currentSection = sectionBodies().first().second
+        assertTrue(currentSection.contains("Duplicate-tap protection"))
+        assertTrue(currentSection.contains("reader completion prompt"))
+        assertTrue(currentSection.contains("Rated Manga"))
+    }
+
+    @Test
+    fun `the v0_8_21-fix2 entry does not restate v0_8_21's accepted-scope list`() {
+        // A -fix release documents only what changed in that patch, not the whole parent
+        // version's scope -- avoids stale duplication as later fixes are added.
+        val currentSection = sectionBodies().first().second
+        assertFalse(currentSection.contains("remains a separately contracted feature"))
+    }
+    // KMK <--
 }
 // KMK <--

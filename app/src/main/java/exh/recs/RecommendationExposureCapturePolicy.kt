@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK -->
 /**
  * Pure gate for [BrowsePersonalRecommendationsScreenModel.recordVisibleExposure], extracted so the
  * "only a loaded, non-empty, fully-settled, not-already-recorded generation" contract is directly

@@ -8,21 +8,24 @@ import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 
-// KMK, extended
-// KMK
 /**
- * [MangaPreferencePresentationPolicy] makes the manga-detail primary rate action's precedence
- * explicit and directly testable, per the behavior contract's requirement that the button visibly reflect Not
- * Interested rather than only an ordinary [MangaRating]. Covers every combination of no state, each
- * ordinary rating, Not Interested only, and the coexistence/transition case where both a rating and
- * Not Interested are stored simultaneously, plus the shared dropdown action list/labels used by
- * every [MangaPreferenceAction] surface.
+ * [MangaPreferencePresentationPolicy] makes the manga-detail primary rate action's presentation
+ * explicit and directly testable. Covers every [MangaRating] value (including
+ * [MangaRating.NOT_INTERESTED], a real fourth rating-family member) plus the shared dropdown
+ * action list/labels used by every [MangaPreferenceAction] surface.
+ *
+ * KMK v0.8.21-fix3: R1 correction -- [MangaPreferencePresentationPolicy.resolve] now takes a
+ * single `rating: MangaRating?` parameter. The prior two-parameter `resolve(rating,
+ * isNotInterested)` and its "coexistence"/"transition" tests are removed: Not Interested and an
+ * ordinary rating were never actually independent state in the corrected architecture (both are
+ * the same `MangaTaste.rating` column), so a test asserting they could simultaneously hold two
+ * different values would be asserting an invariant violation, not a real behavior.
  */
 class MangaPreferencePresentationPolicyTest {
 
     @Test
     fun `no state at all resolves to the neutral marker`() {
-        val presentation = MangaPreferencePresentationPolicy.resolve(rating = null, isNotInterested = false)
+        val presentation = MangaPreferencePresentationPolicy.resolve(rating = null)
 
         assertEquals(MangaPreferencePresentationPolicy.Marker.NONE, presentation.marker)
         assertEquals(KMR.strings.taste_rating, presentation.titleRes)
@@ -31,8 +34,8 @@ class MangaPreferencePresentationPolicyTest {
     }
 
     @Test
-    fun `LOVE with no Not Interested state resolves to the love marker`() {
-        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.LOVE, isNotInterested = false)
+    fun `LOVE resolves to the love marker`() {
+        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.LOVE)
 
         assertEquals(MangaPreferencePresentationPolicy.Marker.LOVE, presentation.marker)
         assertEquals(KMR.strings.taste_love, presentation.titleRes)
@@ -41,8 +44,8 @@ class MangaPreferencePresentationPolicyTest {
     }
 
     @Test
-    fun `LIKE with no Not Interested state resolves to the like marker`() {
-        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.LIKE, isNotInterested = false)
+    fun `LIKE resolves to the like marker`() {
+        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.LIKE)
 
         assertEquals(MangaPreferencePresentationPolicy.Marker.LIKE, presentation.marker)
         assertEquals(KMR.strings.taste_like, presentation.titleRes)
@@ -50,8 +53,8 @@ class MangaPreferencePresentationPolicyTest {
     }
 
     @Test
-    fun `DISLIKE with no Not Interested state resolves to the dislike marker`() {
-        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.DISLIKE, isNotInterested = false)
+    fun `DISLIKE resolves to the dislike marker`() {
+        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.DISLIKE)
 
         assertEquals(MangaPreferencePresentationPolicy.Marker.DISLIKE, presentation.marker)
         assertEquals(KMR.strings.taste_dislike, presentation.titleRes)
@@ -59,8 +62,8 @@ class MangaPreferencePresentationPolicyTest {
     }
 
     @Test
-    fun `Not Interested alone resolves to the not-interested marker`() {
-        val presentation = MangaPreferencePresentationPolicy.resolve(rating = null, isNotInterested = true)
+    fun `NOT_INTERESTED resolves to the not-interested marker, as a real rating value`() {
+        val presentation = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.NOT_INTERESTED)
 
         assertEquals(MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED, presentation.marker)
         assertEquals(KMR.strings.rec_mark_seen, presentation.titleRes)
@@ -69,38 +72,29 @@ class MangaPreferencePresentationPolicyTest {
     }
 
     @Test
-    fun `coexistence -- Not Interested takes visual precedence over an underlying rating`() {
-        // Not Interested and MangaRating are stored independently (SeenRecommendationMangaStore vs.
-        // the MangaTaste table); this proves the explicit precedence decision: the primary button
-        // shows Not Interested, never a
-        // contradictory or ambiguous combined state, when both are present.
-        for (rating in listOf(MangaRating.LOVE, MangaRating.LIKE, MangaRating.DISLIKE)) {
-            val presentation = MangaPreferencePresentationPolicy.resolve(rating = rating, isNotInterested = true)
+    fun `resolve accepts exactly one rating -- it is structurally impossible to report two markers active at once`() {
+        // R1 adversarial coverage: resolve()'s signature is `(rating: MangaRating?)`, a single
+        // nullable value. There is no second parameter through which a caller could ever supply a
+        // contradictory "also Not Interested" flag alongside an ordinary rating -- every one of the
+        // five possible inputs (null + the four MangaRating values) maps to exactly one Marker.
+        val allInputs = listOf(null) + MangaRating.entries
+        val markers = allInputs.map { MangaPreferencePresentationPolicy.resolve(it).marker }
 
-            assertEquals(
+        assertEquals(allInputs.size, markers.size)
+        assertEquals(
+            setOf(
+                MangaPreferencePresentationPolicy.Marker.NONE,
+                MangaPreferencePresentationPolicy.Marker.LOVE,
+                MangaPreferencePresentationPolicy.Marker.LIKE,
+                MangaPreferencePresentationPolicy.Marker.DISLIKE,
                 MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED,
-                presentation.marker,
-                "Not Interested must take precedence over $rating",
-            )
-            assertEquals(KMR.strings.rec_mark_seen, presentation.titleRes)
-            assertTrue(presentation.selected)
-        }
+            ),
+            markers.toSet(),
+        )
     }
 
     @Test
-    fun `transition -- clearing Not Interested while a rating remains reveals the underlying rating`() {
-        // Simulates the true -> false transition: once Not Interested is cleared, precedence falls
-        // through to whatever rating (if any) remains underneath -- no state is silently lost.
-        val whileActive = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.LIKE, isNotInterested = true)
-        val afterClearing = MangaPreferencePresentationPolicy.resolve(rating = MangaRating.LIKE, isNotInterested = false)
-
-        assertEquals(MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED, whileActive.marker)
-        assertEquals(MangaPreferencePresentationPolicy.Marker.LIKE, afterClearing.marker)
-        assertEquals(KMR.strings.taste_like, afterClearing.titleRes)
-    }
-
-    @Test
-    fun `dropdownActions returns Love, Like, Dislike, then Not Interested in one shared stable order`() {
+    fun `dropdownActions returns Love, Like, Dislike, then Not Interested, all as Rating, in one shared stable order`() {
         val actions = MangaPreferencePresentationPolicy.dropdownActions()
 
         assertEquals(
@@ -108,26 +102,28 @@ class MangaPreferencePresentationPolicyTest {
                 MangaPreferenceAction.Rating(MangaRating.LOVE),
                 MangaPreferenceAction.Rating(MangaRating.LIKE),
                 MangaPreferenceAction.Rating(MangaRating.DISLIKE),
-                MangaPreferenceAction.NotInterested,
+                MangaPreferenceAction.Rating(MangaRating.NOT_INTERESTED),
             ),
             actions,
         )
+        // Every action is the same MangaPreferenceAction.Rating shape -- Not Interested is not a
+        // structurally distinct action variant (R1 correction; MangaPreferenceAction.NotInterested
+        // no longer exists).
+        assertTrue(actions.all { it is MangaPreferenceAction.Rating })
     }
 
     @Test
-    fun `labelFor returns the matching static label for each rating action`() {
+    fun `labelFor returns the matching static label for every rating action, including Not Interested`() {
         assertEquals(KMR.strings.taste_love, MangaPreferencePresentationPolicy.labelFor(MangaPreferenceAction.Rating(MangaRating.LOVE)))
         assertEquals(KMR.strings.taste_like, MangaPreferencePresentationPolicy.labelFor(MangaPreferenceAction.Rating(MangaRating.LIKE)))
         assertEquals(
             KMR.strings.taste_dislike,
             MangaPreferencePresentationPolicy.labelFor(MangaPreferenceAction.Rating(MangaRating.DISLIKE)),
         )
-    }
-
-    @Test
-    fun `notInterestedToggleLabel switches between mark and undo labels based on current state`() {
-        assertEquals(KMR.strings.rec_mark_seen, MangaPreferencePresentationPolicy.notInterestedToggleLabel(isNotInterested = false))
-        assertEquals(KMR.strings.rec_clear_seen, MangaPreferencePresentationPolicy.notInterestedToggleLabel(isNotInterested = true))
+        assertEquals(
+            KMR.strings.rec_mark_seen,
+            MangaPreferencePresentationPolicy.labelFor(MangaPreferenceAction.Rating(MangaRating.NOT_INTERESTED)),
+        )
     }
 }
 // KMK <--

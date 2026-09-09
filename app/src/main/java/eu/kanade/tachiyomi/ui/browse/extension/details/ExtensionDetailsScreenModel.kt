@@ -51,11 +51,11 @@ class ExtensionDetailsScreenModel(
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleIncognito: ToggleIncognito = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
-    // KMK:
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 (post-report follow-up):
     // uninstallExtension()'s verification coroutine previously used the top-level `launchIO {}` extension,
     // hardcoded to real Dispatchers.IO with no injection seam -- the same class of gap already fixed for
     // ExtensionsScreenModel/BestVersionCompareScreenModel in the V2/V3 dispatcher-injection passes, but
-    // left unfixed here because the current test scope was only "add a direct test," not a dispatcher
+    // left unfixed here because this pass's own scope was only "add a direct test," not a dispatcher
     // refactor. That forced the test to poll real wall-clock time with a short bound instead of proving
     // the real 10s production timeout via virtual time. Injectable now, defaulting to the exact same
     // Dispatchers.IO in production.
@@ -65,7 +65,6 @@ class ExtensionDetailsScreenModel(
     private val _events: Channel<ExtensionDetailsEvent> = Channel()
     val events: Flow<ExtensionDetailsEvent> = _events.receiveAsFlow()
 
-    // KMK:
     // screenModelScope-owned, not Composable-`remember`-owned -- survives recomposition/navigation
     // for as long as this screen model stays alive on the back stack.
     // A successful export is removable only in the debug fixture build. Release-derived builds
@@ -183,7 +182,7 @@ class ExtensionDetailsScreenModel(
     fun uninstallExtension() {
         val extension = state.value.extension ?: return
         extensionManager.uninstallExtension(extension)
-        // KMK: this screen is a
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: this screen is a
         // separate uninstall call site from ExtensionsScreenModel.uninstallExtension() -- without this,
         // uninstalling from Extension Details produced no Action History entry and no
         // PackageOperationReceipt (no verified-removal confirmation, no reinstall follow-up eligibility),

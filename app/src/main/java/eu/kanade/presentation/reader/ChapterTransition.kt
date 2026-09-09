@@ -22,6 +22,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.secondaryItemAlpha
@@ -50,6 +52,7 @@ fun ChapterTransition(
     transition: ChapterTransition,
     currChapterDownloaded: Boolean,
     goingToChapterDownloaded: Boolean,
+    onAlternateSourceGap: (() -> Unit)? = null,
 ) {
     val currChapter = transition.from.chapter.toDomainChapter()
     val goingToChapter = transition.to?.chapter?.toDomainChapter()
@@ -66,6 +69,7 @@ fun ChapterTransition(
                     bottomChapterDownloaded = currChapterDownloaded,
                     fallbackLabel = stringResource(MR.strings.transition_no_previous),
                     chapterGap = calculateChapterGap(currChapter, goingToChapter),
+                    onChapterGapAction = null,
                 )
             }
             is ChapterTransition.Next -> {
@@ -78,6 +82,7 @@ fun ChapterTransition(
                     bottomChapterDownloaded = goingToChapterDownloaded,
                     fallbackLabel = stringResource(MR.strings.transition_no_next),
                     chapterGap = calculateChapterGap(goingToChapter, currChapter),
+                    onChapterGapAction = onAlternateSourceGap,
                 )
             }
         }
@@ -94,6 +99,7 @@ private fun TransitionText(
     bottomChapterDownloaded: Boolean,
     fallbackLabel: String,
     chapterGap: Int,
+    onChapterGapAction: (() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
@@ -120,6 +126,7 @@ private fun TransitionText(
             if (chapterGap > 0) {
                 ChapterGapWarning(
                     gapCount = chapterGap,
+                    onAlternateSourceGap = onChapterGapAction,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 )
             }
@@ -133,10 +140,20 @@ private fun TransitionText(
                 downloaded = bottomChapterDownloaded,
             )
         } else {
+            // KMK -->
+            // The primary source genuinely has no further chapter at all (true end-of-source),
+            // not merely a numbered gap between two known chapters -- calculateChapterGap()
+            // returns 0 whenever either chapter is null, so the ChapterGapWarning branch above is
+            // structurally unreachable here regardless of onChapterGapAction. AlternateSourceBridgePolicy
+            // already accepts a PRIMARY_MISSING mapping with only a preceding anchor
+            // (ReaderViewModel.alternateSourceEntryRequest's followingChapterId is nullable), so the
+            // continuity action must still be offered here when the caller supplied one.
             NoChapterNotification(
                 text = fallbackLabel,
+                onAlternateSourceGap = onChapterGapAction,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
+            // KMK <--
         }
     }
 }
@@ -145,55 +162,82 @@ private fun TransitionText(
 private fun NoChapterNotification(
     text: String,
     modifier: Modifier = Modifier,
+    // KMK -->
+    onAlternateSourceGap: (() -> Unit)? = null,
+    // KMK <--
 ) {
     OutlinedCard(
         modifier = modifier,
         colors = CardColor,
     ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Info,
-                tint = MaterialTheme.colorScheme.primary,
-                contentDescription = null,
-            )
+        // KMK -->
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    tint = MaterialTheme.colorScheme.primary,
+                    contentDescription = null,
+                )
 
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            onAlternateSourceGap?.let { action ->
+                TextButton(
+                    onClick = action,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .height(48.dp),
+                ) {
+                    Text(stringResource(KMR.strings.alternate_source_reader_gap_action))
+                }
+            }
         }
+        // KMK <--
     }
 }
 
 @Composable
 private fun ChapterGapWarning(
     gapCount: Int,
+    onAlternateSourceGap: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     OutlinedCard(
         modifier = modifier,
         colors = CardColor,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Warning,
-                tint = MaterialTheme.colorScheme.error,
-                contentDescription = null,
-            )
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Warning,
+                    tint = MaterialTheme.colorScheme.error,
+                    contentDescription = null,
+                )
 
-            Text(
-                text = pluralStringResource(MR.plurals.missing_chapters_warning, count = gapCount, gapCount),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+                Text(
+                    text = pluralStringResource(MR.plurals.missing_chapters_warning, count = gapCount, gapCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            onAlternateSourceGap?.let { action ->
+                TextButton(
+                    onClick = action,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .height(48.dp),
+                ) {
+                    Text(stringResource(KMR.strings.alternate_source_reader_gap_action))
+                }
+            }
         }
     }
 }

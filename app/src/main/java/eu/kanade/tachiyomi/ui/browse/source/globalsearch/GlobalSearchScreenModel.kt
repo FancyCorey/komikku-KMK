@@ -5,12 +5,19 @@ import eu.kanade.tachiyomi.source.Source
 class GlobalSearchScreenModel(
     initialQuery: String = "",
     initialExtensionFilter: String? = null,
-) : SearchScreenModel(State(searchQuery = initialQuery)) {
+    returnSelection: Boolean = false,
+) : SearchScreenModel(
+    initialState = State(
+        searchQuery = initialQuery,
+        sourceFilter = if (returnSelection) SourceFilter.All else SourceFilter.PinnedOnly,
+    ),
+    forceAllSources = returnSelection,
+) {
 
     init {
         extensionFilter = initialExtensionFilter
         if (initialQuery.isNotBlank() || !initialExtensionFilter.isNullOrBlank()) {
-            if (extensionFilter != null) {
+            if (extensionFilter != null || returnSelection) {
                 // we're going to use custom extension filter instead
                 setSourceFilter(SourceFilter.All)
             }

@@ -19,7 +19,7 @@ import uy.kohesive.injekt.api.get
 import java.util.UUID
 
 // KMK -->
-// KMK: application-scoped SAF
+// Application-scoped SAF
 // cleanup recovery store for the backup-creation route.
 //
 // Every other `CreateDocument` writer in this app is fully driven by a UI action that starts and
@@ -35,9 +35,9 @@ import java.util.UUID
 //  1. In-memory: offer ownership lives in application scope (a plain singleton object, not tied to
 //     any Activity/Screen/ScreenModel), keyed by an opaque `operationId` -- same atomic
 //     beginOperation/registerUri/performWrite/clear contract as `SafExportCoordinator`
-//     (KMK), guarded by a single `synchronized`
+//     contract, guarded by a single `synchronized`
 //     critical section so a reservation race can never report two winners or silently lose one.
-//  2. Durable (Phase 4, 2026-08-05): every state transition is mirrored into a single JSON record in
+//  2. Durable: every state transition is mirrored into a single JSON record in
 //     [PreferenceStore] under an app-state key (never exposed in backups/exports, never a user
 //     preference). On process recreation, [reconcileOnStartup] reloads that record, and if it names a
 //     WorkManager request id, re-polls that job to a terminal state via
@@ -58,7 +58,7 @@ import java.util.UUID
 object BackupCleanupRecoveryStore {
     data class Entry(val operationId: String, val uri: Uri, val outcome: SafArtifactOutcome)
 
-    // KMK: durable proof of whether
+    // Durable proof of whether
     // `BackupCreateJob.startNow` was ever actually called for an operation -- see [markEnqueueAttempted]
     // and [reconcileOnStartup]. Without this, "no matching WorkManager job found" was ambiguous
     // between "nothing was ever enqueued, safe to treat as an empty/incomplete document" and "a real
@@ -122,7 +122,7 @@ object BackupCleanupRecoveryStore {
         return preferenceStore.getString(Preference.appStateKey(RECORD_PREFERENCE_KEY), "")
     }
 
-    // KMK: a failed on-disk write must never
+    // A failed on-disk write must never
     // crash the caller (registerUri/markEnqueueAttempted/attachWorkRequest/etc. all run inside a
     // `synchronized` critical section that also drives in-memory state) -- if persistence itself
     // fails, the safest outcome is "the durable record is whatever it was before this call" (the
@@ -145,7 +145,7 @@ object BackupCleanupRecoveryStore {
         }
     }
 
-    // KMK: [loadRecord] previously
+    // [loadRecord] previously
     // validated only JSON syntax and the schema [BackupCleanupRecord.version] -- it trusted
     // [BackupCleanupRecord.operationType] and [BackupCleanupRecord.uriString] at face value. Since
     // this record drives a real deletion decision once restored into [offer], every field that
@@ -178,7 +178,7 @@ object BackupCleanupRecoveryStore {
             logcat(LogPriority.WARN) { "BackupCleanupRecoveryStore: discarding unparseable record" }
             return null
         }
-        // KMK: a record from a *newer* schema
+        // A record from a *newer* schema
         // than this build understands is never trusted (unchanged from before) -- but a record from
         // an *older*, still-recognized schema (currently: version 1, which predates
         // [BackupEnqueueState] tracking) is migrated conservatively rather than discarded outright,

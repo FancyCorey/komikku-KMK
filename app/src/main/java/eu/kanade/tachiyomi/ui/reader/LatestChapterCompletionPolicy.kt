@@ -19,7 +19,9 @@ object LatestChapterCompletionPolicy {
      * @param pageIndex the page index just reached.
      * @param lastPageIndex the completed chapter's last page index (`pages.lastIndex`), or null if pages aren't loaded (never a genuine completion).
      * @param hasExtraPage true when the viewer's extra-page (double-page) mode means the second-to-last index is the effective end.
-     * @param hasNextChapter true when the reader's chapter list has a chapter after this one (i.e. this is NOT the latest available chapter).
+     * @param hasNextChapter true when the reader's chapter list has a chapter after this one.
+     * @param currentChapterNumber the numeric chapter number currently being read, when recognized.
+     * @param nextChapterNumber the numeric chapter number of the next reader entry, when recognized.
      * @param isErrorPage true when the reached page is in an error state (never a genuine completion).
      */
     fun isGenuineLatestChapterCompletion(
@@ -28,9 +30,17 @@ object LatestChapterCompletionPolicy {
         hasExtraPage: Boolean,
         hasNextChapter: Boolean,
         isErrorPage: Boolean,
+        currentChapterNumber: Float? = null,
+        nextChapterNumber: Float? = null,
     ): Boolean {
         if (isErrorPage || lastPageIndex == null) return false
-        if (hasNextChapter) return false // not the latest chapter
+        val hasLaterChapter = when {
+            !hasNextChapter -> false
+            currentChapterNumber != null && nextChapterNumber != null ->
+                nextChapterNumber > currentChapterNumber
+            else -> true
+        }
+        if (hasLaterChapter) return false // not the latest chapter; same-number source copies do not count
         val reachedLastPage = pageIndex == lastPageIndex || (hasExtraPage && pageIndex == lastPageIndex - 1)
         return reachedLastPage
     }

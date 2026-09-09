@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK
 /**
  * Budget tests proving the Latest lane stays bounded and that personalized search remains dominant:
  * Latest is capped both as a share of attempted sources and by an absolute per-refresh ceiling, and
@@ -19,22 +18,25 @@ class RecommendationLatestBudgetPolicyTest {
     }
 
     @Test
-    fun `supported values include an explicit off switch`() {
-        assertEquals(listOf(0, 10, 20, 30, 50), RecommendationLatestBudgetPolicy.SUPPORTED_VALUES)
+    fun `supported values are bounded integers and enablement is separate`() {
+        assertEquals((1..100).toList(), RecommendationLatestBudgetPolicy.SUPPORTED_VALUES)
         assertTrue(RecommendationLatestBudgetPolicy.isDisabled(0))
-        assertFalse(RecommendationLatestBudgetPolicy.isDisabled(20))
+        assertFalse(RecommendationLatestBudgetPolicy.isDisabled(1))
     }
 
     @Test
     fun `a malformed persisted percentage falls back to the default`() {
-        listOf(-10, 1, 15, 25, 99, 100, 1000, Int.MIN_VALUE, Int.MAX_VALUE).forEach {
+        listOf(-10, 0, 101, 1000, Int.MIN_VALUE, Int.MAX_VALUE).forEach {
             assertEquals(20, RecommendationLatestBudgetPolicy.validate(it), "percent $it must fall back")
         }
+        assertEquals(1, RecommendationLatestBudgetPolicy.validate(1))
+        assertEquals(100, RecommendationLatestBudgetPolicy.validate(100))
     }
 
     @Test
     fun `a zero percentage disables the lane so no Latest call is ever attempted`() {
         assertEquals(0, RecommendationLatestBudgetPolicy.resolveAttempts(0, attemptedSourceCount = 40))
+        assertEquals(0, RecommendationLatestBudgetPolicy.resolveAttempts(false, 100, attemptedSourceCount = 40))
     }
 
     @Test
@@ -69,13 +71,12 @@ class RecommendationLatestBudgetPolicyTest {
     fun `personalized search stays dominant -- Latest never probes a majority of sources`() {
         // At every supported non-zero share and a realistic source count, Latest touches a small
         // minority of the sources the refresh attempts.
-        listOf(10, 20, 30, 50).forEach { percent ->
+        listOf(1, 20, 50, 100).forEach { percent ->
             val attempts = RecommendationLatestBudgetPolicy.resolveAttempts(percent, attemptedSourceCount = 30)
             assertTrue(attempts < 30 / 2, "percent $percent produced $attempts attempts, which is not a minority")
         }
     }
 
-    // KMK -->
     // resolveAdditiveSlotsPerSource: bounds how many Latest candidates may compete for one source's
     // row alongside already-found personalized results (Domain A structural fix -- Latest must be
     // additive, not fallback-only).
@@ -95,7 +96,7 @@ class RecommendationLatestBudgetPolicyTest {
     @Test
     fun `additive slots never exceed the absolute per-source ceiling`() {
         for (displayLimit in listOf(5, 10, 15, 20, 30)) {
-            for (percent in listOf(10, 20, 30, 50)) {
+            for (percent in listOf(1, 20, 50, 100)) {
                 val slots = RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource(displayLimit, percent)
                 assertTrue(
                     slots <= RecommendationLatestBudgetPolicy.MAX_ADDITIVE_SLOTS_PER_SOURCE,
@@ -123,7 +124,7 @@ class RecommendationLatestBudgetPolicyTest {
 
     @Test
     fun `the worst-case additive share is 40 percent of the smallest supported row`() {
-        val slots = RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource(displayLimit = 5, configuredPercent = 50)
+        val slots = RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource(displayLimit = 5, configuredPercent = 100)
         assertEquals(2, slots)
         assertTrue(slots.toDouble() / 5 < 0.5)
     }

@@ -11,7 +11,6 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.BackupRestoreStatus
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -58,7 +57,7 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
 
         return try {
             val outcome = BackupRestorer(context, notifier, isSync).restore(uri, options)
-            // KMK: a non-undoable Action History event is
+            // KMK Code-Only Completion Plan 2026-07-31: a non-undoable Action History event is
             // recorded only for a manual (non-sync), fully successful restore -- never for a sync-
             // triggered restore (the user didn't consciously choose to restore a backup in that
             // case) and never for BackupRestoreOutcome.PartialSuccess (see that type's own doc for
@@ -66,8 +65,7 @@ class BackupRestoreJob(private val context: Context, workerParams: WorkerParamet
             // never reach this line at all, since restore() still throws for those exactly as
             // before this change. Decision itself lives in the pure, directly-testable
             // shouldRecordBackupRestoreEvent().
-            val sourcePreferences: SourcePreferences = Injekt.get()
-            if (shouldRecordBackupRestoreEvent(isSync, outcome, sourcePreferences.evaluationMode().get())) {
+            if (shouldRecordBackupRestoreEvent(isSync, outcome)) {
                 NonUndoableEventJournal.record(
                     NonUndoableEvent(
                         id = NonUndoableEvent.newId(),

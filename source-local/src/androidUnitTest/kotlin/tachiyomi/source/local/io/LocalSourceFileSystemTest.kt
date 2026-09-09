@@ -14,8 +14,8 @@ import tachiyomi.domain.storage.service.StorageManager
 import java.io.File
 
 // KMK -->
-// This module previously had no
-// unit test source set previously (see source-local/build.gradle.kts's new androidUnitTest
+// This module had no
+// unit test source set before this pass (see source-local/build.gradle.kts's new androidUnitTest
 // block). [UniFile.fromFile] wraps a plain java.io.File without needing a real Android Context, so
 // the local-source directory-enumeration contract can be exercised directly on a real temp
 // directory tree -- no emulator required. [StorageManager] itself is mocked since it needs a real

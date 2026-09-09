@@ -25,7 +25,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,11 +38,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.Add
@@ -55,6 +62,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
@@ -68,20 +76,24 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -89,18 +101,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.presentation.components.AppBar
+import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.more.settings.widget.ListPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.PreferenceGroupHeader
 import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
+import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.ui.home.HomeScreen
 import exh.recs.RecommendationSourceRunStatus
 import exh.recs.RecommendationSourceStatus
 import exh.recs.RecommendationSourceStatusExplanationPolicy
@@ -114,6 +136,7 @@ import exh.util.EvaluationModeFormatter
 import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableSet
+import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 import tachiyomi.domain.taste.interactor.TasteDiagnosticsResult
 import tachiyomi.domain.taste.interactor.TasteSuggestionCandidate
@@ -124,9 +147,12 @@ import tachiyomi.domain.taste.model.TagTaste
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
+import java.util.Locale
+import kotlin.math.roundToInt
 
-// KMK v0.8.7: optional one-line state summary under the title (documented behavior). Derived from
+// KMK v0.8.7: optional one-line state summary under the title (plan section 5.2). Derived from
 // state by the caller (never hardcoded) so it updates automatically whenever the underlying
 // preference/process state changes, same as any other Compose recomposition.
 // KMK v0.8.11: delegates to the official settings PreferenceGroupHeader (secondary color,
@@ -136,6 +162,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 @Composable
 internal fun SectionHeader(title: String, summary: String? = null) {
     Column {
+        HorizontalDivider(modifier = Modifier.padding(top = MaterialTheme.padding.small))
         PreferenceGroupHeader(title = title)
         if (summary != null) {
             Text(
@@ -146,6 +173,55 @@ internal fun SectionHeader(title: String, summary: String? = null) {
             )
         }
     }
+}
+
+/** Opens the For You tab through the same root-and-tab route from every settings surface. */
+@Composable
+internal fun rememberOpenForYouFromRecommendationSettings(navigator: Navigator): () -> Unit {
+    val scope = rememberCoroutineScope()
+    return {
+        navigator.popUntilRoot()
+        scope.launch {
+            HomeScreen.openTab(HomeScreen.Tab.Browse(toForYou = true))
+        }
+    }
+}
+
+/**
+ * Shared actions for every recommendation-settings detail screen.
+ *
+ * Search always returns to the detail screen through the normal Voyager stack. The optional Home
+ * action is supplied by callers that expose the existing For You shortcut; keeping the callback
+ * outside this helper preserves each screen's existing tab-selection and visibility rules.
+ */
+@Composable
+internal fun RecommendationSettingsDetailActions(
+    onSearch: () -> Unit,
+    onHome: (() -> Unit)? = null,
+) {
+    val actions = if (onHome == null) {
+        kotlinx.collections.immutable.persistentListOf(
+            AppBar.Action(
+                title = stringResource(KMR.strings.rec_settings_search),
+                icon = Icons.Outlined.Search,
+                onClick = onSearch,
+            ),
+        )
+    } else {
+        kotlinx.collections.immutable.persistentListOf(
+            AppBar.Action(
+                title = stringResource(KMR.strings.rec_settings_search),
+                icon = Icons.Outlined.Search,
+                onClick = onSearch,
+            ),
+            AppBar.Action(
+                title = stringResource(KMR.strings.source_evaluation_go_to_for_you),
+                icon = Icons.Filled.Home,
+                onClick = onHome,
+            ),
+        )
+    }
+    AppBarActions(actions)
 }
 
 // KMK v0.8.11: official SwitchPreferenceWidget instead of a hand-built Row/Switch, so this row is
@@ -189,6 +265,57 @@ internal fun RatedVisibilityContent(
     }
 }
 
+// KMK --> EC-04 2026-09-01: configurable discovery-effort policy. Same FlowRow-of-FilterChip
+// pattern as RatedVisibilityContent above -- reused, not a new picker widget. Each chip shows its
+// per-level description underneath so the real, measured trade-off (see DiscoveryEffortLevel's own
+// KDoc) is disclosed at the point of choice, not hidden behind a generic label.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun DiscoveryEffortLevelContent(
+    current: exh.recs.memory.DiscoveryEffortLevel,
+    onSelect: (exh.recs.memory.DiscoveryEffortLevel) -> Unit,
+) {
+    val options = listOf(
+        Triple(
+            exh.recs.memory.DiscoveryEffortLevel.OFF,
+            KMR.strings.rec_discovery_effort_off,
+            KMR.strings.rec_discovery_effort_off_description,
+        ),
+        Triple(
+            exh.recs.memory.DiscoveryEffortLevel.STANDARD,
+            KMR.strings.rec_discovery_effort_standard,
+            KMR.strings.rec_discovery_effort_standard_description,
+        ),
+        Triple(
+            exh.recs.memory.DiscoveryEffortLevel.EXTENDED,
+            KMR.strings.rec_discovery_effort_extended,
+            KMR.strings.rec_discovery_effort_extended_description,
+        ),
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium),
+    ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small)) {
+            options.forEach { (option, labelRes, _) ->
+                FilterChip(
+                    selected = current == option,
+                    onClick = { onSelect(option) },
+                    label = { Text(stringResource(labelRes)) },
+                )
+            }
+        }
+        Text(
+            text = stringResource(options.first { it.first == current }.third),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+        )
+    }
+}
+// KMK <--
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun LanguageSelectorContent(
@@ -207,7 +334,7 @@ internal fun LanguageSelectorContent(
             FilterChip(
                 selected = selected,
                 onClick = { onToggle(lang) },
-                label = { Text(lang.uppercase()) },
+                label = { Text(lang.uppercase(Locale.ROOT)) },
             )
         }
     }
@@ -280,7 +407,10 @@ private fun TagPreferenceGroup(
                     },
                     trailingIcon = {
                         IconButton(onClick = { onDeleteClicked(tag.normalizedTag) }) {
-                            Icon(Icons.Outlined.Delete, contentDescription = null)
+                            Icon(
+                                Icons.Outlined.Delete,
+                                contentDescription = stringResource(KMR.strings.accessibility_delete_tag),
+                            )
                         }
                     },
                     colors = FilterChipDefaults.filterChipColors(
@@ -298,10 +428,7 @@ private fun TagPreferenceGroup(
             if (TasteSuggestionVisibilityPolicy.canShowMore(tags.size, visibleCount)) {
                 TextButton(onClick = { visibleCount = TasteSuggestionVisibilityPolicy.nextVisibleCount(tags.size, visibleCount) }) {
                     Text(
-                        stringResource(
-                            KMR.strings.taste_settings_tag_group_show_n_more,
-                            TasteSuggestionVisibilityPolicy.nextVisibleCount(tags.size, visibleCount) - visibleCount,
-                        ),
+                        pluralStringResource(KMR.plurals.taste_settings_tag_group_show_n_more, count = TasteSuggestionVisibilityPolicy.nextVisibleCount(tags.size, visibleCount) - visibleCount, TasteSuggestionVisibilityPolicy.nextVisibleCount(tags.size, visibleCount) - visibleCount),
                     )
                 }
             }
@@ -487,6 +614,104 @@ internal fun SameMangaSwitchRow(
         onCheckedChanged = { onToggle() },
     )
 }
+
+/**
+ * Shared bounded numeric setting used by recommendation budgets and by preferences that need an
+ * independent switch and a user-entered value. The slider is quick for ordinary changes; the
+ * field handles exact values. When a switch is supplied, the value row remains visible while
+ * disabled so the last configured value is discoverable and preserved for re-enabling.
+ */
+@Composable
+internal fun BoundedIntPreferenceRow(
+    title: String,
+    summary: String,
+    valueTitle: String,
+    current: Int,
+    enabled: Boolean,
+    min: Int,
+    max: Int,
+    valueLabel: @Composable (Int) -> String,
+    onEnabledChange: ((Boolean) -> Unit)? = null,
+    onValueChange: (Int) -> Unit,
+) {
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+    val hasSwitch = onEnabledChange != null
+    onEnabledChange?.let { onToggle ->
+        SwitchPreferenceWidget(
+            title = title,
+            subtitle = summary,
+            checked = enabled,
+            onCheckedChanged = onToggle,
+        )
+    }
+    TextPreferenceWidget(
+        title = if (hasSwitch) valueTitle else title,
+        subtitle = if (hasSwitch) valueLabel(current) else "${summary}\n${valueLabel(current)}",
+        onPreferenceClick = { if (enabled) showDialog = true },
+    )
+    if (showDialog) {
+        var sliderValue by rememberSaveable(current) { mutableStateOf(current.toFloat()) }
+        var textValue by rememberSaveable(current) { mutableStateOf(current.toString()) }
+        val typedValue = textValue.toIntOrNull()
+        val valid = typedValue != null && typedValue in min..max
+        val sliderLabel = valueLabel(sliderValue.roundToInt())
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(valueTitle) },
+            text = {
+                Column {
+                    Text(sliderLabel, style = MaterialTheme.typography.titleMedium)
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = {
+                            sliderValue = it
+                            textValue = it.roundToInt().toString()
+                        },
+                        valueRange = min.toFloat()..max.toFloat(),
+                        steps = (max - min - 1).coerceAtLeast(0),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { stateDescription = sliderLabel },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = textValue,
+                        onValueChange = { value ->
+                            textValue = value.filter(Char::isDigit)
+                            textValue.toIntOrNull()?.let { if (it in min..max) sliderValue = it.toFloat() }
+                        },
+                        label = { Text(valueTitle) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = textValue.isNotEmpty() && !valid,
+                        supportingText = if (textValue.isNotEmpty() && !valid) {
+                            { Text(stringResource(KMR.strings.rec_numeric_value_range, min, max)) }
+                        } else {
+                            null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onValueChange(typedValue ?: return@TextButton)
+                        showDialog = false
+                    },
+                    enabled = valid,
+                ) {
+                    Text(stringResource(MR.strings.action_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(MR.strings.action_cancel))
+                }
+            },
+        )
+    }
+}
 // KMK <--
 
 @Composable
@@ -502,8 +727,37 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
     onLike: () -> Unit,
     onDislike: () -> Unit,
     onToggle: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val sourceDisplayLabel = if (evaluationModeEnabled) {
+        EvaluationModeFormatter.sourceLabel(source.id)
+    } else {
+        source.name
+    }
+    val moveUpLabel = stringResource(KMR.strings.action_move_up)
+    val moveDownLabel = stringResource(KMR.strings.action_move_down)
+    val sourceEnabledDescription = stringResource(KMR.strings.accessibility_source_enabled, sourceDisplayLabel)
+    val reorderActions = buildList {
+        onMoveUp?.let { move ->
+            add(
+                CustomAccessibilityAction(moveUpLabel) {
+                    move()
+                    true
+                },
+            )
+        }
+        onMoveDown?.let { move ->
+            add(
+                CustomAccessibilityAction(moveDownLabel) {
+                    move()
+                    true
+                },
+            )
+        }
+    }
     ElevatedCard(
         modifier = modifier
             .fillMaxWidth()
@@ -522,24 +776,23 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
         ) {
             Icon(
                 imageVector = Icons.Outlined.DragHandle,
-                contentDescription = null,
+                contentDescription = stringResource(KMR.strings.accessibility_reorder_source, sourceDisplayLabel),
                 modifier = Modifier
                     .padding(MaterialTheme.padding.small)
-                    .draggableHandle(),
+                    .draggableHandle()
+                    .semantics { customActions = reorderActions },
             )
             Column(modifier = Modifier.weight(1f)) {
+                // KMK --> v0.8.19: evaluation mode source-name obfuscation
+                Text(
+                    text = sourceDisplayLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                // KMK <--
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // KMK --> v0.8.19: evaluation mode source-name obfuscation
-                    Text(
-                        text = if (rememberEvaluationModeEnabled()) {
-                            EvaluationModeFormatter.sourceLabel(source.id)
-                        } else {
-                            source.name
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    // KMK <--
                     if (isBoosted) {
                         Badge(
                             modifier = Modifier.padding(start = MaterialTheme.padding.small),
@@ -634,7 +887,7 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
                     !enabled -> stringResource(KMR.strings.rec_source_status_disabled)
                     status == null -> stringResource(KMR.strings.rec_source_status_not_checked)
                     else -> when (status.status) {
-                        RecommendationSourceStatus.Shown -> stringResource(KMR.strings.rec_source_status_shown, status.visibleCount)
+                        RecommendationSourceStatus.Shown -> pluralStringResource(KMR.plurals.rec_source_status_shown, count = status.visibleCount, status.visibleCount)
                         RecommendationSourceStatus.NoMatches -> stringResource(KMR.strings.rec_source_status_no_matches)
                         RecommendationSourceStatus.FilteredOut -> stringResource(KMR.strings.rec_source_status_filtered)
                         RecommendationSourceStatus.Error -> stringResource(KMR.strings.rec_source_status_error)
@@ -643,17 +896,24 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
                         RecommendationSourceStatus.HiddenByDuplicateHandling -> stringResource(KMR.strings.rec_source_status_duplicate_hidden)
                     }
                 }
+                val statusLine = buildString {
+                    append("${source.lang.uppercase(Locale.ROOT)} · #$rank · $statusText")
+                }
                 // KMK v0.8.17 (Phase C: diagnostic-first For You quality) -- statusText above was
                 // already a correct explanation, just crammed into this one dense line with no way to
                 // see more. Tap it to see the full plain-language explanation instead of lengthening
                 // the always-visible line.
                 var showStatusExplanation by remember { mutableStateOf(false) }
                 Text(
-                    text = "${source.lang.uppercase()} · #$rank · $statusText",
+                    text = statusLine,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isDisliked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = if (status != null) {
-                        Modifier.clickable { showStatusExplanation = true }
+                        Modifier.clickable(
+                            onClickLabel = stringResource(KMR.strings.accessibility_source_status_details),
+                            role = Role.Button,
+                            onClick = { showStatusExplanation = true },
+                        )
                     } else {
                         Modifier
                     },
@@ -685,19 +945,18 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (isLiked) {
+                    Text(
+                        text = stringResource(KMR.strings.rec_source_preference_preferred_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             // KMK v0.8.11: like/dislike-for-For-You moved from two always-visible IconButtons into
             // one overflow menu (Phase E) -- drag handle, title, badges, and the enable switch
-            // remain immediately visible; the current preference (if any) still shows as a small
-            // badge so state isn't hidden behind the menu.
-            if (isLiked) {
-                Text(
-                    text = stringResource(KMR.strings.rec_source_preference_preferred_badge),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(end = MaterialTheme.padding.extraSmall),
-                )
-            }
+            // remain immediately visible; the current preference (if any) stays in the source
+            // information column so long status lines cannot collide with it.
             var showPrefMenu by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { showPrefMenu = true }) {
@@ -733,6 +992,9 @@ internal fun ReorderableCollectionItemScope.SourcePriorityItem(
             Switch(
                 checked = enabled,
                 onCheckedChange = { onToggle() },
+                modifier = Modifier.semantics {
+                    contentDescription = sourceEnabledDescription
+                },
             )
         }
     }
@@ -773,6 +1035,7 @@ internal fun SourcesToTrySortRow(
 internal fun SourceSuggestionItem(
     suggestion: NonInstalledSourceSuggestion,
     onInstall: () -> Unit,
+    onCancelInstall: () -> Unit,
     onDismiss: () -> Unit,
     isLiked: Boolean,
     isDisliked: Boolean,
@@ -831,13 +1094,13 @@ internal fun SourceSuggestionItem(
                     SuggestionConfidence.MEDIUM -> stringResource(KMR.strings.rec_suggestion_confidence_medium)
                 }
                 val repoNameLabel = if (evaluationModeEnabled) {
-                    stringResource(KMR.strings.evaluation_mode_repo_label)
+                    EvaluationModeFormatter.repoLabel(suggestion.displayRepoName)
                 } else {
                     suggestion.displayRepoName
                 }
                 Text(
                     text = buildString {
-                        append(suggestion.displayLang.uppercase())
+                        append(suggestion.displayLang.uppercase(Locale.ROOT))
                         if (suggestion.displayRepoName.isNotEmpty()) {
                             append(" · $repoNameLabel")
                         }
@@ -867,7 +1130,7 @@ internal fun SourceSuggestionItem(
                     }
                 }.distinct()
                 // KMK v0.8.10: an empty reason list is shown explicitly as "not enough evidence"
-                // rather than silently rendering nothing, matching the behavior contract's "including 'not enough
+                // rather than silently rendering nothing, matching the plan's "including 'not enough
                 // evidence' rather than inventing certainty" requirement.
                 Text(
                     text = reasonTexts.takeIf { it.isNotEmpty() }
@@ -883,13 +1146,26 @@ internal fun SourceSuggestionItem(
                 // this (bulk actions take over). A small badge below still shows an existing
                 // like/quality mark so that state remains visible without a fifth icon.
                 if (!selectionMode) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
-                        verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                     ) {
                         Button(onClick = onInstall, enabled = !isInstalling) {
-                            Text(stringResource(KMR.strings.rec_suggestion_install))
+                            Text(
+                                stringResource(
+                                    if (isInstalling) {
+                                        KMR.strings.rec_suggestion_installing
+                                    } else {
+                                        KMR.strings.rec_suggestion_install
+                                    },
+                                ),
+                            )
+                        }
+                        if (isInstalling) {
+                            TextButton(onClick = onCancelInstall) {
+                                Text(stringResource(KMR.strings.rec_suggestion_cancel_install))
+                            }
                         }
                         var showMenu by remember { mutableStateOf(false) }
                         Box {
@@ -995,7 +1271,7 @@ private fun TasteSuggestionRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = candidate.displayName, style = MaterialTheme.typography.bodyMedium)
             Text(
-                text = stringResource(KMR.strings.taste_suggestions_evidence_count, candidate.evidenceCount),
+                text = pluralStringResource(KMR.plurals.taste_suggestions_evidence_count, count = candidate.evidenceCount, candidate.evidenceCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1037,10 +1313,7 @@ private fun TasteSuggestionGroup(
             if (TasteSuggestionVisibilityPolicy.canShowMore(candidates.size, visibleCount)) {
                 TextButton(onClick = { visibleCount = TasteSuggestionVisibilityPolicy.nextVisibleCount(candidates.size, visibleCount) }) {
                     Text(
-                        stringResource(
-                            KMR.strings.taste_settings_tag_group_show_n_more,
-                            TasteSuggestionVisibilityPolicy.nextVisibleCount(candidates.size, visibleCount) - visibleCount,
-                        ),
+                        pluralStringResource(KMR.plurals.taste_settings_tag_group_show_n_more, count = TasteSuggestionVisibilityPolicy.nextVisibleCount(candidates.size, visibleCount) - visibleCount, TasteSuggestionVisibilityPolicy.nextVisibleCount(candidates.size, visibleCount) - visibleCount),
                     )
                 }
             }
@@ -1151,8 +1424,16 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
         Text(
             text = stringResource(
                 KMR.strings.taste_diagnostics_confidence,
-                diagnostics.confidence.usablePositiveTagCount,
-                diagnostics.confidence.usableNegativeTagCount,
+                pluralStringResource(
+                    KMR.plurals.taste_diagnostics_positive_signal_fragment,
+                    count = diagnostics.confidence.usablePositiveTagCount,
+                    diagnostics.confidence.usablePositiveTagCount,
+                ),
+                pluralStringResource(
+                    KMR.plurals.taste_diagnostics_negative_signal_fragment,
+                    count = diagnostics.confidence.usableNegativeTagCount,
+                    diagnostics.confidence.usableNegativeTagCount,
+                ),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1172,7 +1453,7 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
 
         if (summary.preferredTagEvidence.isNotEmpty()) {
             Text(
-                text = stringResource(KMR.strings.taste_diagnostics_preferred_tags_header, summary.explicitPreferredTagCount),
+                text = pluralStringResource(KMR.plurals.taste_diagnostics_preferred_tags_header, count = summary.explicitPreferredTagCount, summary.explicitPreferredTagCount),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = MaterialTheme.padding.medium),
@@ -1180,8 +1461,9 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
             // KMK --> v0.8.19: evaluation mode tag-label obfuscation
             summary.preferredTagEvidence.forEach { evidence ->
                 Text(
-                    text = stringResource(
-                        KMR.strings.taste_diagnostics_tag_evidence_row,
+                    text = pluralStringResource(
+                        KMR.plurals.taste_diagnostics_tag_evidence_row,
+                        count = evidence.evidenceCount,
                         if (evaluationModeEnabled) {
                             EvaluationModeFormatter.likedTagLabel(evidence.displayName)
                         } else {
@@ -1198,7 +1480,7 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
 
         if (summary.blockedTagEvidence.isNotEmpty()) {
             Text(
-                text = stringResource(KMR.strings.taste_diagnostics_blocked_tags_header, summary.explicitBlockedTagCount),
+                text = pluralStringResource(KMR.plurals.taste_diagnostics_blocked_tags_header, count = summary.explicitBlockedTagCount, summary.explicitBlockedTagCount),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = MaterialTheme.padding.medium),
@@ -1206,8 +1488,9 @@ internal fun TasteDiagnosticsContent(diagnostics: TasteDiagnosticsResult?) {
             // KMK --> v0.8.19: evaluation mode tag-label obfuscation
             summary.blockedTagEvidence.forEach { evidence ->
                 Text(
-                    text = stringResource(
-                        KMR.strings.taste_diagnostics_tag_evidence_row,
+                    text = pluralStringResource(
+                        KMR.plurals.taste_diagnostics_tag_evidence_row,
+                        count = evidence.evidenceCount,
                         if (evaluationModeEnabled) {
                             EvaluationModeFormatter.blockedTagLabel(evidence.displayName)
                         } else {
@@ -1289,14 +1572,31 @@ internal fun RecommendationSettingsQuickAccessRow(
     current: RecommendationSettingsQuickAccessDestination,
     onNavigate: (RecommendationSettingsQuickAccessDestination) -> Unit,
 ) {
-    Row(
+    val quickAccessDescription = stringResource(KMR.strings.rec_settings_quick_access_group)
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(current) {
+        val selectedIndex = RecommendationSettingsQuickAccessDestination.entries.indexOf(current)
+        if (selectedIndex >= 0) {
+            listState.animateScrollToItem(selectedIndex)
+        }
+    }
+
+    LazyRow(
+        state = listState,
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .semantics {
+                contentDescription = quickAccessDescription
+            }
             .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
+        contentPadding = PaddingValues(horizontal = MaterialTheme.padding.small),
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
     ) {
-        RecommendationSettingsQuickAccessDestination.entries.forEach { destination ->
+        items(
+            items = RecommendationSettingsQuickAccessDestination.entries,
+            key = { it.name },
+        ) { destination ->
             val selected = destination == current
             FilterChip(
                 selected = selected,
@@ -1363,7 +1663,7 @@ internal fun <T> EdgeQuickAccessPanel(
             exit = slideOutHorizontally(tween(200)) { it },
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
-            // KMK: layout repair. See
+            // Layout repair. See
             // EdgeQuickAccessPanelLayoutPolicy for the audited defect list and why each value was
             // chosen. Destinations, navigation, scrim, BackHandler, and the deliberately-narrow
             // handle geometry are all unchanged -- only sizing/arrangement/semantics changed.
@@ -1375,75 +1675,87 @@ internal fun <T> EdgeQuickAccessPanel(
             // MAX_HEIGHT_FRACTION, centers what fits, and scrolls when it does not.
             val itemWidth = EdgeQuickAccessPanelLayoutPolicy
                 .itemWidthDp(LocalConfiguration.current.screenWidthDp).dp
-            Surface(
-                modifier = Modifier
-                    .fillMaxHeight(EdgeQuickAccessPanelLayoutPolicy.MAX_HEIGHT_FRACTION)
-                    .wrapContentHeight()
-                    .wrapContentWidth(),
-                shape = MaterialTheme.shapes.large,
-                tonalElevation = 6.dp,
-                shadowElevation = 6.dp,
-            ) {
-                Column(
+            val maxPanelHeight = (
+                LocalConfiguration.current.screenHeightDp *
+                    EdgeQuickAccessPanelLayoutPolicy.MAX_HEIGHT_FRACTION
+                ).dp
+            // Reserve the full touch target at the edge so the handle never covers a wrapped
+            // destination label. The painted handle remains narrow; only the safe layout inset
+            // changes, which keeps the shared panel readable at phone width.
+            Box(modifier = Modifier.padding(end = EdgeQuickAccessPanelLayoutPolicy.MIN_TOUCH_TARGET_DP.dp)) {
+                Surface(
                     modifier = Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(MaterialTheme.padding.small),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall, Alignment.CenterVertically),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        // Keep the scrollable child under a finite max constraint. Combining
+                        // fillMaxHeight with wrapContentHeight can otherwise measure verticalScroll
+                        // with an infinite height on some Android/Compose window configurations.
+                        .heightIn(max = maxPanelHeight)
+                        .wrapContentHeight()
+                        .wrapContentWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 6.dp,
                 ) {
-                    destinations.forEach { destination ->
-                        val selected = destination == current
-                        val destinationTitle = title(destination)
-                        val selectedLabel = stringResource(MR.strings.selected)
-                        val notSelectedLabel = stringResource(MR.strings.not_selected)
-                        Column(
-                            modifier = Modifier
-                                .width(itemWidth)
-                                .heightIn(min = EdgeQuickAccessPanelLayoutPolicy.ITEM_MIN_HEIGHT_DP.dp)
-                                .clip(MaterialTheme.shapes.medium)
-                                // Selected state is no longer conveyed by colour alone -- a container
-                                // tint plus an explicit accessibility state description carry it too.
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    Column(
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(MaterialTheme.padding.small),
+                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall, Alignment.CenterVertically),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        destinations.forEach { destination ->
+                            val selected = destination == current
+                            val destinationTitle = title(destination)
+                            val selectedLabel = stringResource(MR.strings.selected)
+                            val notSelectedLabel = stringResource(MR.strings.not_selected)
+                            Column(
+                                modifier = Modifier
+                                    .width(itemWidth)
+                                    .heightIn(min = EdgeQuickAccessPanelLayoutPolicy.ITEM_MIN_HEIGHT_DP.dp)
+                                    .clip(MaterialTheme.shapes.medium)
+                                    // Selected state is no longer conveyed by colour alone -- a container
+                                    // tint plus an explicit accessibility state description carry it too.
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                                    )
+                                    .clickable(onClickLabel = destinationTitle) {
+                                        expanded = false
+                                        if (!selected) onNavigate(destination)
+                                    }
+                                    .semantics {
+                                        stateDescription = if (selected) selectedLabel else notSelectedLabel
+                                    }
+                                    .padding(
+                                        horizontal = MaterialTheme.padding.extraSmall,
+                                        vertical = MaterialTheme.padding.small,
+                                    ),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    imageVector = icon(destination),
+                                    contentDescription = null,
+                                    tint = if (selected) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                 )
-                                .clickable(onClickLabel = destinationTitle) {
-                                    expanded = false
-                                    if (!selected) onNavigate(destination)
-                                }
-                                .semantics {
-                                    stateDescription = if (selected) selectedLabel else notSelectedLabel
-                                }
-                                .padding(
-                                    horizontal = MaterialTheme.padding.extraSmall,
-                                    vertical = MaterialTheme.padding.small,
-                                ),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                        ) {
-                            Icon(
-                                imageVector = icon(destination),
-                                contentDescription = null,
-                                tint = if (selected) {
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                            Text(
-                                text = destinationTitle,
-                                // Was labelSmall forced down to 10sp; the unmodified theme token is
-                                // readable and keeps the panel consistent with the rest of settings.
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (selected) {
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                // No maxLines cap: the widened item plus wrapping content height lets
-                                // the longest destination title wrap instead of truncating.
-                                modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
-                            )
+                                Text(
+                                    text = destinationTitle,
+                                    // Was labelSmall forced down to 10sp; the unmodified theme token is
+                                    // readable and keeps the panel consistent with the rest of settings.
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    // No maxLines cap: the widened item plus wrapping content height lets
+                                    // the longest destination title wrap instead of truncating.
+                                    modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+                                )
+                            }
                         }
                     }
                 }
@@ -1455,6 +1767,13 @@ internal fun <T> EdgeQuickAccessPanel(
         // enlarges the interactive region without changing the drawn geometry or introducing any
         // swipe coordinates. Always visible; tapping it while expanded closes the panel.
         val handleDescription = stringResource(KMR.strings.rec_settings_quick_access_handle)
+        // The handle's icon toggles (Close vs KeyboardArrowLeft) but its label did not, so the panel's
+        // open/closed state was conveyed visually only. State goes on the clickable parent -- matching
+        // DisclosureToggleRow -- rather than onto the icon, which stays decorative so the control is not
+        // announced twice. Both strings already exist; no new resource, so no new translation gate.
+        val handleState = stringResource(
+            if (expanded) KMR.strings.accessibility_state_expanded else KMR.strings.accessibility_state_collapsed,
+        )
         Surface(
             onClick = { expanded = !expanded },
             modifier = Modifier
@@ -1463,7 +1782,9 @@ internal fun <T> EdgeQuickAccessPanel(
                 .width(EdgeQuickAccessPanelLayoutPolicy.HANDLE_VISUAL_WIDTH_DP.dp)
                 .semantics {
                     contentDescription = handleDescription
+                    stateDescription = handleState
                 },
+            // KMK <--
             shape = MaterialTheme.shapes.large,
             tonalElevation = 3.dp,
             shadowElevation = 3.dp,

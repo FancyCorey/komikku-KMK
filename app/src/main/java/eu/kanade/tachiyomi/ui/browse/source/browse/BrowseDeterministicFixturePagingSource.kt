@@ -6,7 +6,7 @@ import exh.metadata.metadata.RaisedSearchMetadata
 import tachiyomi.domain.manga.model.Manga
 
 // KMK -->
-// KMK: named modes for the Browse debug-only fixture, separate from
+// Corrective pass 2026-08-03: named modes for the Browse debug-only fixture, separate from
 // SourceEvaluationDebugFixtureMode. "Off" is the default/production value and must never activate
 // the fixture path -- see selectBrowseSourcePagingSource, the only call site that reads this value
 // and only does so behind `BuildConfig.DEBUG`.
@@ -27,7 +27,7 @@ enum class BrowseDebugFixtureMode(val prefValue: String) {
 // mutation). Never touches a real [eu.kanade.tachiyomi.source.Source], the network, or any real
 // source/package/repository identity. Constructed only from
 // `BrowseSourceScreenModel.createSourcePagingSource` behind `BuildConfig.DEBUG` and the private
-// `browseFixtureFailureMode()` opt-in (KMK: previously and incorrectly read
+// `browseFixtureFailureMode()` opt-in (corrective pass 2026-08-03: previously and incorrectly read
 // evaluationFixtureFailureMode(), coupling this to the unrelated Source Evaluation fixture) -- see
 // selectBrowseSourcePagingSource for the gating.
 class BrowseDeterministicFixturePagingSource : PagingSource<Long, Pair<Manga, RaisedSearchMetadata?>>() {

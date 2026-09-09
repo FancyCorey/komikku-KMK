@@ -1,6 +1,5 @@
 package exh.recs.settings
 
-// KMK
 /**
  * Pure layout policy for [EdgeQuickAccessPanel], extracted so the panel's sizing decisions are
  * testable without rendering Compose or reading a screenshot.

@@ -193,7 +193,7 @@ class GetTasteProfileTest {
         override suspend fun deleteCrossSourceMangaLink(source: Long, url: String) {}
         override suspend fun deleteCrossSourceMangaLinksByGroupId(groupId: String) {}
         override suspend fun deleteAllCrossSourceMangaLinks() {}
-        // KMK: this local
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: this local
         // fake predates TasteRepository's deleteCrossSourceGroupCompletely/
         // restoreCrossSourceGroupState (added for the Undo Journal's atomic group-restore
         // contract); this test never exercises either method, so no-op stubs are sufficient --
@@ -214,6 +214,21 @@ class GetTasteProfileTest {
         override suspend fun deleteCrossSourceGroupPrimary(groupId: String) {}
         override suspend fun deleteAllCrossSourceGroupPrimaries() {}
         // KMK <--
+        override suspend fun getCrossSourceIdentityDecision(
+            pair: tachiyomi.domain.taste.model.CrossSourceIdentityPair,
+        ): tachiyomi.domain.taste.model.CrossSourceIdentityDecision? = null
+        override suspend fun getAllCrossSourceIdentityDecisions(): List<tachiyomi.domain.taste.model.CrossSourceIdentityDecision> = emptyList()
+        override suspend fun upsertCrossSourceIdentityDecisions(
+            decisions: List<tachiyomi.domain.taste.model.CrossSourceIdentityDecision>,
+        ) {}
+        override suspend fun replaceCrossSourceIdentityDecision(
+            expected: tachiyomi.domain.taste.model.CrossSourceIdentityDecision?,
+            replacement: tachiyomi.domain.taste.model.CrossSourceIdentityDecision?,
+        ): Boolean = false
+        override suspend fun replaceCrossSourceIdentityDecisions(
+            replacements: List<tachiyomi.domain.taste.model.CrossSourceIdentityReplacement>,
+        ): Boolean = false
+        override suspend fun tombstoneAllCrossSourceIdentityDecisions(updatedAt: Long) {}
         // KMK <-- (v0.7.3 source/url getMangaTaste)
     }
 

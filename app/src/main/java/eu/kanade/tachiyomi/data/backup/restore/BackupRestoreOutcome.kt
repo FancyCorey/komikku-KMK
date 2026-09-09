@@ -1,6 +1,6 @@
 package eu.kanade.tachiyomi.data.backup.restore
 
-// KMK -->
+// KMK Code-Only Completion Plan 2026-07-31 -->
 /**
  * Truthful result of [BackupRestorer.restore] once it returns normally (without throwing).
  *
@@ -38,12 +38,10 @@ sealed interface BackupRestoreOutcome {
 /**
  * Pure decision extracted from [BackupRestoreJob.doWork] so it is directly unit-testable without a
  * `CoroutineWorker`/`Context`/`WorkerParameters` harness -- an Action History event is recorded only
- * for a manual (non-sync) restore that completed with zero item-level errors, and only while
- * Evaluation Mode is enabled (matching every other non-undoable event in the app).
+ * for a manual (non-sync) restore that completed with zero item-level errors.
  */
 fun shouldRecordBackupRestoreEvent(
     isSync: Boolean,
     outcome: BackupRestoreOutcome,
-    evaluationModeEnabled: Boolean,
-): Boolean = !isSync && outcome is BackupRestoreOutcome.Success && evaluationModeEnabled
+): Boolean = !isSync && outcome is BackupRestoreOutcome.Success
 // KMK <--

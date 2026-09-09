@@ -71,17 +71,17 @@ class TopPicksScreen(
         val state by screenModel.state.collectAsState()
 
         // KMK --> v0.7.5: export Top Picks as JSON bundle
-        // KMK: input snapshotted at the moment the
+        // input snapshotted at the moment the
         // export is requested (before the picker even opens), not re-read from live state after the
         // picker returns -- the manga list backing the export cannot change out from under a bundle
         // that may already be mid-write. The SAF document lifecycle (register-before-write, retain on
         // empty/failed/cancelled, exact-Uri-only cleanup) is owned by SafExportCoordinator.
-        // KMK: the
+        // the
         // coordinator now lives on TopPicksScreenModel (screenModelScope-owned), not `remember`ed in
         // this Composable, so navigation/recomposition of this screen alone cannot destroy a retained
         // cleanup offer for as long as the screen stays on the back stack.
         var mangasToExport by remember { mutableStateOf<List<Manga>?>(null) }
-        // KMK: the operation is reserved
+        // The operation is reserved
         // at the export-click, before the picker launches -- see the export action's onClick below.
         var pendingOperationId by remember { mutableStateOf<String?>(null) }
         val cleanupOffer by screenModel.exportCoordinator.cleanupOffer.collectAsState()
@@ -193,7 +193,7 @@ class TopPicksScreen(
             }
         }
 
-        // KMK: exact-Uri-only Remove/Keep
+        // Exact-Uri-only Remove/Keep
         // cleanup, offered for every outcome (not only success) -- see SafExportCoordinator.
         cleanupOffer?.let { offer ->
             SafArtifactCleanupDialog(
@@ -220,7 +220,6 @@ private class TopPicksScreenModel(
     private val getManga: GetManga = Injekt.get(),
 ) : StateScreenModel<TopPicksScreenModel.State>(State()) {
 
-    // KMK:
     // screenModelScope-owned, not Composable-`remember`-owned.
     val exportCoordinator = SafExportCoordinator()
 

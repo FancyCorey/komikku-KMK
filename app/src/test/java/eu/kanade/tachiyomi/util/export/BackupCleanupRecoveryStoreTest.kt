@@ -43,12 +43,12 @@ import uy.kohesive.injekt.api.get
 import java.util.UUID
 
 // KMK -->
-// KMK: real boundary tests for
+// Real boundary tests for
 // BackupCleanupRecoveryStore -- the application-scoped (not screen/model-scoped), now atomic and
 // durably-persisted SAF cleanup store the backup-creation route uses. Mirrors
 // SafExportCoordinatorTest's coverage (beginOperation/registerUri/performWrite/clear, IN_PROGRESS as
 // non-terminal, atomic reservation under contention, stale-callback safety), plus the
-// persistence/reconciliation behavior specific to this store: a durable record survives
+// persistence/reconciliation behavior specific to this store (Finding 4): a durable record survives
 // process recreation and is reconciled against real WorkManager state on [reconcileOnStartup].
 //
 // BackupCleanupRecoveryStore is a plain singleton object -- its in-memory state persists across test
@@ -85,11 +85,11 @@ class BackupCleanupRecoveryStoreTest {
         fakePreferenceStore.failWrites = false
         fakePreferenceStore.getString(RECORD_PREFERENCE_KEY, "").delete()
         BackupCleanupRecoveryStore.resetForTesting()
-        // reconcileOnStartup() and loadRecord()'s structural validation both call
+        // reconcileOnStartup() and loadRecord()'s Finding-3 structural validation both call
         // `.toUri()` (androidx.core.net's `Uri.parse(this)` wrapper) on the persisted URI string --
         // android.net.Uri.parse is an unstubbed Android-framework method in a pure JVM unit test, so
         // it must be mocked here for every test that exercises a seeded record. Rather than a single
-        // fixed relaxed mock (which would fail shape validation for every test, including
+        // fixed relaxed mock (which would fail Finding 3's shape validation for every test, including
         // ones that don't care about URI shape), this answers with a Uri double whose
         // scheme/authority/pathSegments are derived from actually parsing the input string --
         // realistic enough for both the happy-path tests and the dedicated invalid-URI tests below.
@@ -307,7 +307,7 @@ class BackupCleanupRecoveryStoreTest {
         assertEquals(SafArtifactOutcome.SUCCESS, outcome)
     }
 
-    // --- concurrency ---
+    // --- concurrency (Finding 3) ---
 
     @Test
     fun `concurrent beginOperation calls under contention -- exactly one wins`() {
@@ -331,7 +331,7 @@ class BackupCleanupRecoveryStoreTest {
         assertEquals(1, results.count { it != null }, "exactly one concurrent beginOperation call must win the reservation")
     }
 
-    // --- persistence / reconciliation ---
+    // --- persistence / reconciliation (Finding 4) ---
 
     @Test
     fun `process recreation with an in-progress backup and an attached work request re-polls WorkManager to a terminal state`() = runTest {
@@ -398,7 +398,7 @@ class BackupCleanupRecoveryStoreTest {
         assertNull(BackupCleanupRecoveryStore.offer.value)
     }
 
-    // --- process-death race: no attached workRequestId ---
+    // --- Finding 2: process-death race -- no attached workRequestId ---
 
     @Test
     fun `case F -- UNKNOWN legacy record with no attached id and no matching WorkManager job is UNRESOLVED, never PARTIAL_OR_EMPTY`() = runTest {
@@ -519,7 +519,7 @@ class BackupCleanupRecoveryStoreTest {
         assertNull(BackupCleanupRecoveryStore.offer.value, "a corrupted record must be discarded, not crash reconciliation")
     }
 
-    // --- structural validation of the durable record ---
+    // --- Finding 3: structural validation of the durable record ---
 
     private fun seedRawRecord(json: String) {
         fakePreferenceStore.getString(RECORD_PREFERENCE_KEY, "").set(json)
@@ -630,7 +630,7 @@ class BackupCleanupRecoveryStoreTest {
         assertEquals(SafArtifactOutcome.PARTIAL_OR_EMPTY, restored?.outcome)
     }
 
-    // --- handleUnregisterableBackupUri / adoptUnregisterableUri ---
+    // --- Finding 1: handleUnregisterableBackupUri / adoptUnregisterableUri ---
 
     private val deletedMessage: dev.icerock.moko.resources.StringResource = mockk()
     private val retainedMessage: dev.icerock.moko.resources.StringResource = mockk()
@@ -785,7 +785,7 @@ class BackupCleanupRecoveryStoreTest {
         uri: Uri,
         workRequestId: UUID?,
         outcome: SafArtifactOutcome,
-        // null -- a legacy (pre-KMK) v1 record
+        // A null value indicates a legacy v1 record
         // with no enqueueStateName field at all, exactly what a record persisted by an older build
         // looks like on disk; loadRecord() migrates this to BackupEnqueueState.UNKNOWN. Pass an
         // explicit state to simulate a record already written by *this* build (v2, ATTEMPTED/
@@ -812,7 +812,7 @@ class BackupCleanupRecoveryStoreTest {
         fakePreferenceStore.getString(RECORD_PREFERENCE_KEY, "").set(json)
     }
 
-    // --- KMK: enqueue-state reconciliation matrix ---
+    // --- enqueue-state reconciliation matrix ---
 
     @Test
     fun `case A -- NOT_ATTEMPTED with no matching job is PARTIAL_OR_EMPTY without ever consulting WorkManager`() = runTest {

@@ -4,12 +4,13 @@ import android.content.Context
 import android.text.format.Formatter
 import com.jakewharton.disklrucache.DiskLruCache
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.ReaderEffectiveResourcePolicy
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.saveTo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -40,19 +41,23 @@ class ChapterCache(
 ) {
 
     // --> EH
-    private val scope = CoroutineScope(Job() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /** Cache class used for cache management.  */
-    private var diskCache = setupDiskCache(readerPreferences.cacheSize().get().toLong())
+    private val diskCache = setupDiskCache(
+        ReaderEffectiveResourcePolicy.effectiveCacheSizeBytes(readerPreferences.cacheSize().get()),
+    )
 
     init {
         readerPreferences.cacheSize().changes()
             .drop(1)
-            .onEach {
-                // Save old cache for destruction later
-                val oldCache = diskCache
-                diskCache = setupDiskCache(it.toLong())
-                oldCache.close()
+            .onEach { rawCacheSizeMb ->
+                when (ChapterCacheCapacityPolicy.apply(rawCacheSizeMb, diskCache::setMaxSize)) {
+                    is ChapterCacheCapacityUpdate.Applied -> Unit
+                    is ChapterCacheCapacityUpdate.Failed -> {
+                        logcat(LogPriority.WARN) { "Failed to update chapter cache capacity" }
+                    }
+                }
             }
             .launchIn(scope)
     }
@@ -76,13 +81,12 @@ class ChapterCache(
         get() = Formatter.formatFileSize(context, realSize)
 
     // --> EH
-    // Cache size is in MB
-    private fun setupDiskCache(cacheSize: Long): DiskLruCache {
+    private fun setupDiskCache(cacheSizeBytes: Long): DiskLruCache {
         return DiskLruCache.open(
             File(context.cacheDir, "chapter_disk_cache"),
             PARAMETER_APP_VERSION,
             PARAMETER_VALUE_COUNT,
-            cacheSize * 1024 * 1024,
+            cacheSizeBytes,
         )
     }
     // <-- EH
@@ -130,8 +134,8 @@ class ChapterCache(
             diskCache.flush()
             editor.commit()
             editor.abortUnlessCommitted()
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Failed to put page list to cache" }
+        } catch (_: Exception) {
+            logcat(LogPriority.WARN) { "Failed to put page list to cache" }
             // Ignore.
         } finally {
             editor?.abortUnlessCommitted()
@@ -219,8 +223,8 @@ class ChapterCache(
             val key = file.substringBeforeLast(".")
             // Remove file from cache
             diskCache.remove(key)
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Failed to remove file from cache" }
+        } catch (_: Exception) {
+            logcat(LogPriority.WARN) { "Failed to remove file from cache" }
             false
         }
     }
@@ -235,6 +239,3 @@ private const val PARAMETER_APP_VERSION = 1
 
 /** The number of values per cache entry. Must be positive.  */
 private const val PARAMETER_VALUE_COUNT = 1
-
-/** The maximum number of bytes this cache should use to store.  */
-private const val PARAMETER_CACHE_SIZE = 100L * 1024 * 1024

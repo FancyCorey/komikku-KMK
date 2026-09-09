@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.timer
 
 // KMK v0.8.4 -->
 /**
- * Pure data model for the active-reading timer. See [ReaderTimerReducer] for the state machine.
+ * Pure data model for the active-reading timer. [ReaderTimerReducer] owns its state machine.
  *
  * The timer counts only monotonic elapsed time accumulated while [ReaderTimerPhase] is one of the
  * "actively counting" phases (RUNNING, CHAPTER_GRACE, EXTRA_CHAPTER_GRACE) and the reader is in the
@@ -101,6 +101,8 @@ sealed interface ReaderTimerEvent {
     data class Tick(val nowMonotonicMs: Long) : ReaderTimerEvent
     /** Process was recreated; a previously-counting phase must be downgraded to a background pause since no ticks occurred while dead. */
     data object ProcessRestored : ReaderTimerEvent
+    /** Restore a session retained for a later ReaderActivity instance of the same manga/chapter. */
+    data class Restore(val session: ReaderTimerSession) : ReaderTimerEvent
     /** Persisted state failed to parse/validate; the session must reset to IDLE rather than crash. */
     data object InvalidPersistedState : ReaderTimerEvent
 }

@@ -37,6 +37,7 @@ import eu.kanade.presentation.util.Screen
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK --> v0.8.0: optional focusedGroupId scopes the manager to a single group ("Manage Group"
@@ -133,7 +134,11 @@ private fun LinkGroupCard(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        text = stringResource(KMR.strings.link_group_management_source_count, group.links.size),
+                        text = pluralStringResource(
+                            KMR.plurals.link_group_management_source_count,
+                            count = group.links.size,
+                            group.links.size,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -141,7 +146,13 @@ private fun LinkGroupCard(
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = null,
+                        contentDescription = stringResource(
+                            if (expanded) {
+                                KMR.strings.accessibility_collapse_link_group
+                            } else {
+                                KMR.strings.accessibility_expand_link_group
+                            },
+                        ),
                     )
                 }
                 IconButton(onClick = onDeleteGroup) {

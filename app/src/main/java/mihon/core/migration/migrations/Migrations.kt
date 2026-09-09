@@ -52,9 +52,14 @@ val migrations: List<Migration>
         TrustExtensionRepositoryMigration(),
         CategoryPreferencesCleanupMigration(),
         RemoveDuplicateReaderPreferenceMigration(),
-        // KMK -->
-        DisabledRepoMigration(),
         SyncPrefKeyMigration(),
+        // KMK v0.8.17 (Komikku v1.14.1 reconciliation) -->
+        DisabledRepoMigration(),
         ChapterUrlHashMigration(),
+        // KMK <--
+        RecommendationLanguageInitializationMigration(),
+        // KMK v0.8.21-fix2: AUG-02 redesign -- migrates legacy seenRecommendationMangaKeys into
+        // real MangaRating.NOT_INTERESTED rows.
+        NotInterestedRatingMigration(),
         // KMK <--
     )

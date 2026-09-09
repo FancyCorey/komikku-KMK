@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * KMK: direct tests for the shared
+ * KMK Code-Only Completion Plan 2026-07-31, follow-up: direct tests for the shared
  * [ExtensionManager.installAndRecordUserInitiated] helper -- extracted after
  * `SourceEvaluationScreenModel.reinstallRuntimeHealthExtension()` was found bypassing the
  * `recordUserInitiatedInstall()`/`recordPackageOperationReceipt()` chain entirely. Both
@@ -85,7 +85,7 @@ class InstallAndRecordUserInitiatedTest {
     }
 
     @Test
-    fun `Evaluation Mode off records nothing even on a successful install`() = runTest {
+    fun `Evaluation Mode off still records a successful install`() = runTest {
         val ext = availableExtension()
         val extensionManager = mockk<ExtensionManager>()
         every { extensionManager.installExtension(ext) } returns flowOf(InstallStep.Installed)
@@ -93,8 +93,8 @@ class InstallAndRecordUserInitiatedTest {
         val step = extensionManager.installAndRecordUserInitiated(ext) { false }
 
         assertEquals(InstallStep.Installed, step)
-        assertTrue(NonUndoableEventJournal.snapshot().isEmpty())
-        assertTrue(PackageOperationJournal.snapshot().isEmpty())
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(1, PackageOperationJournal.snapshot().size)
     }
 
     @Test

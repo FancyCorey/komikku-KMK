@@ -15,7 +15,7 @@ import eu.kanade.tachiyomi.util.system.toast
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
 
-// KMK: the outcome -> rendered-action mapping
+// The outcome -> rendered-action mapping
 // is extracted into this plain, non-@Composable function specifically so it can be exercised by a pure
 // JVM behavioral test (no Compose test runtime available in this module's unit tests) -- proving
 // SafArtifactOutcome.UNRESOLVED can never resolve to [SafCleanupDialogAction.REMOVE_OR_KEEP] is a
@@ -57,7 +57,7 @@ internal fun performSafRemoveAction(context: Context, uri: Uri, onRemoved: (Uri)
 }
 
 // KMK -->
-// KMK: one shared Remove/Keep cleanup dialog for
+// One shared Remove/Keep cleanup dialog for
 // every `CreateDocument` writer in the app, so the extension-export-specific gaps found and fixed in
 // earlier passes (SUCCESSFUL vs EMPTY_OR_PARTIAL wording, exact-Uri-only deletion, never automatic)
 // do not need to be independently rediscovered for recommendation-bundle, CSV, or backup exports.
@@ -80,20 +80,20 @@ fun SafArtifactCleanupDialog(
     onRemoved: (Uri) -> Unit,
     onKept: () -> Unit,
     onDismissed: () -> Unit,
-    // KMK: defaulted to shared generic copy
+    // Defaulted to shared generic copy
     // so none of the existing (non-backup) call sites need updating -- SafArtifactOutcome.UNRESOLVED
     // is currently only ever produced by the backup-recovery route, but any future caller gets a
     // truthful fallback for free.
     unresolvedTitleRes: StringResource = KMR.strings.generic_export_cleanup_unresolved_title,
     unresolvedBodyRes: StringResource = KMR.strings.generic_export_cleanup_unresolved_body,
 ) {
-    // KMK: a document is reserved and
+    // A document is reserved and
     // its writer may still be actively streaming bytes to `offer.uri` while the outcome is
     // `IN_PROGRESS` -- Remove must be structurally unreachable during that window, not merely
     // discouraged by a comment. Rendering nothing at all (rather than a progress dialog with a
     // disabled Remove button) is deliberate: it also means no dialog window exists to intercept the
     // system back button or a screen-navigation-triggered dismiss while a write is in flight.
-    // KMK: which branch renders is decided by
+    // which branch renders is decided by
     // [safCleanupDialogActionFor], not by this composable re-deriving it inline -- see that function's
     // KDoc for why. NONE covers both `IN_PROGRESS` (a write may still be actively streaming bytes to
     // `offer.uri` -- Remove must be structurally unreachable, and rendering nothing at all, rather than
@@ -129,7 +129,7 @@ fun SafArtifactCleanupDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    // KMK: [onRemoved]
+                    // [onRemoved]
                     // (which clears the retained cleanup offer) must only fire on a *successful*
                     // deletion. Calling it unconditionally previously cleared the offer -- and closed
                     // the dialog -- even when `deleteSafDocument` returned `false`, silently losing

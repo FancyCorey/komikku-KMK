@@ -296,12 +296,11 @@ class RecommendationCandidateMemoryRankerTest {
     }
     // KMK <--
 
-    // KMK -->
     // Domain C: end-to-end proof that a *persisted* minimum-chapter preference value actually changes
     // pipeline output -- not just that RecommendationMinChapterCountPolicy.resolve() returns the
     // right number in isolation. This exercises resolve() feeding directly into the real
     // RecommendationCandidateMemoryRanker.merge()/PersonalRecommendationScorer pipeline the production
-    // ScreenModel calls, closing the coverage gap the earlier implementation's policy-only tests left open.
+    // ScreenModel calls, closing the coverage gap the prior pass's policy-only tests left open.
 
     @Test
     fun `a persisted 20-chapter preference hides a below-threshold candidate through the real merge pipeline`() {
@@ -319,7 +318,7 @@ class RecommendationCandidateMemoryRankerTest {
         assertTrue(result.any { it.manga.id == 31L }, "a 25-chapter candidate must remain visible once the persisted 20 threshold resolves and reaches merge()")
     }
 
-    // KMK: the remaining supported values (0/5/10/50)
+    // The remaining supported values (0/5/10/50)
     // exercised through the same real pipeline, so every option the settings row offers is proven,
     // not just the representative 20.
     @Test
@@ -403,9 +402,9 @@ class RecommendationCandidateMemoryRankerTest {
 
     @Test
     fun `a malformed persisted threshold resolves to Off and never filters through the real merge pipeline`() {
-        // 7 is not a supported value (0/5/10/20/50) -- proves the malformed-value fallback actually
+        // 51 is outside the bounded range (0..50) -- proves the malformed-value fallback actually
         // reaches the pipeline, not only RecommendationMinChapterCountPolicyTest's isolated assertion.
-        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(7)
+        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(51)
         assertEquals(0, resolvedThreshold)
         val m = actionManga(id = 32L)
         val result = mergeWithMinChapters(listOf(rec(m)), minChapterCount = resolvedThreshold, chapterCounts = mapOf(32L to 1L))
@@ -427,7 +426,6 @@ class RecommendationCandidateMemoryRankerTest {
     }
     // KMK <--
 
-    // KMK -->
     // Domain B: proves exposure-aware reranking is applied BEFORE the take(limit) cap inside the
     // real merge() the production ScreenModel calls -- not merely that the pure reranker permutes
     // correctly in isolation (RecommendationDisplayRerankerTest already covers that). This is what
@@ -445,7 +443,7 @@ class RecommendationCandidateMemoryRankerTest {
     fun `exposure reordering can promote a less-exposed candidate into a capped row`() {
         // Two equally-scored candidates (same tag), one heavily exposed. With limit=1 only the
         // reordered winner survives the cap -- proving reordering happened BEFORE take(limit), which
-        // is the exact defect the implementation fixes (reordering after the cap could never promote anything).
+        // is the exact defect this pass fixes (reordering after the cap could never promote anything).
         val exposed = actionManga(id = 40L)
         val fresh = actionManga(id = 41L)
         val result = RecommendationCandidateMemoryRanker.merge(

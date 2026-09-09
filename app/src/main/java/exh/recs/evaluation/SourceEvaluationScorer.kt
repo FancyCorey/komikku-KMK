@@ -10,6 +10,7 @@ import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 import tachiyomi.domain.taste.model.TagPreference
 import tachiyomi.domain.taste.model.TasteProfile
 import tachiyomi.domain.taste.model.normalizeTag
+import java.util.Locale
 
 // KMK -->
 /**
@@ -24,8 +25,7 @@ import tachiyomi.domain.taste.model.normalizeTag
  * ([SourceEvaluationCatalogueEnricher]) before reaching this scorer, and evidence is split into
  * distinct positive/negative/blocked/adult/metadata counters instead of one ambiguous
  * `preferredTagMatchCount` (which previously counted *any* positive-scoring candidate, not
- * candidates with an actual preferred-tag match — see
- * `docs/recommendations/KMK.md`). Metadata-sparse
+ * candidates with an actual preferred-tag match). Metadata-sparse
  * evidence now routes to [SourceEvaluationVerdict.NEEDS_MANUAL_REVIEW] instead of a confident
  * [SourceEvaluationVerdict.WEAK], and noisy/adult/blocked-tag-heavy sources cannot reach
  * [SourceEvaluationVerdict.STRONG_FIT] purely because a few broad positive tags appeared.
@@ -125,8 +125,8 @@ object SourceEvaluationScorer {
                 (tasteProfile.learnedTagWeights[it] ?: 0.0) < 0.0
         }
 
-        val titleLower = candidate.title.lowercase()
-        val tagsLower = genres.map { it.lowercase() }
+        val titleLower = candidate.title.lowercase(Locale.ROOT)
+        val tagsLower = genres.map { it.lowercase(Locale.ROOT) }
         val hasAdultSignal = groups.any { it in ADULT_RISK_GROUPS } ||
             ADULT_RISK_TERMS.any { term -> titleLower.contains(term) || tagsLower.any { it.contains(term) } }
 
@@ -183,8 +183,8 @@ object SourceEvaluationScorer {
     ): SourceEvaluation {
         val sampledTitles = catalogueSamples.map { it.title }
         val sampledTags = catalogueSamples.flatMap { it.genre.orEmpty() }
-        val allTitlesLower = sampledTitles.map { it.lowercase() }
-        val allTagsLower = sampledTags.map { it.lowercase() }
+        val allTitlesLower = sampledTitles.map { it.lowercase(Locale.ROOT) }
+        val allTagsLower = sampledTags.map { it.lowercase(Locale.ROOT) }
 
         // Explicit signal counting (signal-level, drives EXPLICIT_HEAVY only)
         val explicitFromTitles = allTitlesLower.count { t -> EXPLICIT_TITLE_TERMS.any { t.contains(it) } }

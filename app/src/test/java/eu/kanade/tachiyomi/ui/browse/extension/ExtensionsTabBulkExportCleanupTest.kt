@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 // KMK -->
-// KMK:
 // ExtensionsTab.kt's bulk extension export was retrofitted onto SafExportCoordinator, replacing the
 // old standalone BulkExportArtifactKind enum/bulkExportArtifactKindFor mapping and its own ad hoc
 // `remember`-scoped `bulkExportCleanupUri`/`bulkExportCleanupKind` state (which had the same
@@ -251,7 +250,7 @@ class ExtensionsTabBulkExportCleanupTest {
 
     @Test
     fun `bulk export selection is snapshotted before the picker launches, not reconstructed from state after it returns`() {
-        // KMK: the launcher
+        // The launcher
         // callback (which runs after the external CreateDocument picker returns) must read a
         // pre-captured `selectedExtensionsForExport` snapshot, never reconstruct the selection from
         // live `state.selectedExtensionKeys`/`state.items` -- the picker is an external lifecycle

@@ -20,8 +20,7 @@ import tachiyomi.domain.taste.model.TasteProfile
  * v0.7.47: catalogue samples are bounded-enriched via `getMangaDetails()` before reaching this
  * scorer (see [SourceEvaluationCatalogueEnricher] for enrichment-specific tests). This scorer's own
  * coverage focuses on the split evidence counters, the metadata-sparse -> NEEDS_MANUAL_REVIEW gate,
- * and the noisy/adult false-positive gate on STRONG_FIT — see
- * docs/recommendations/KMK.md.
+ * and the noisy/adult false-positive gate on STRONG_FIT.
  *
  * Run with: ./gradlew :app:testDebugUnitTest --tests "*.SourceEvaluationScorerTest"
  */

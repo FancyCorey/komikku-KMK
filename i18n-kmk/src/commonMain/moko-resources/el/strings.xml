@@ -131,7 +131,7 @@
     <string name="pref_discord_show_buttons_summary">Εμφάνιση κουμπιών για λήψη της εφαρμογής ή σύνδεση με τον διακομιστή Discord</string>
     <string name="pref_discord_show_discord_button_summary">Εμφανίζει ένα κουμπί για να συνδεθεί με τον διακομιστή του Discord</string>
     <string name="pref_connections_summary">Discord, περισσότερα για να έρθει..</string>
-    <string name="connections_discord_info">Αυτή η υπηρεσία του Discord λειτουργεί μέσω καταγραφής συμβόλων. Χρησιμοποιήστε το με δική σας ευθύνη. Το διακριτικό αποθηκεύεται τοπικά και το Anikku δεν το μοιράζεται πουθενά αλλού</string>
+    <string name="connections_discord_info">Αυτή η υπηρεσία του Discord λειτουργεί μέσω καταγραφής συμβόλων. Χρησιμοποιήστε το με δική σας ευθύνη. Το διακριτικό αποθηκεύεται τοπικά και το %s δεν το μοιράζεται πουθενά αλλού</string>
     <string name="show_chapters_titles_subtitle">Εμφάνιση του τίτλου του επεισοδίου που παρακολουθείτε</string>
     <string name="pref_enable_discord_rpc">Ενεργοποίηση Discord Rich Presence</string>
     <string name="pref_discord_status">Κατάσταση Discord</string>

@@ -16,10 +16,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for [SourceEvaluationCatalogueEnricher].
- *
- * See docs/recommendations/KMK.md
- * ("Catalogue Detail Enrichment", required test list).
+ * Tests the bounded catalogue-detail enrichment contract, including missing metadata, failures, and
+ * cancellation.
  *
  * Run with: ./gradlew :app:testDebugUnitTest --tests "*.SourceEvaluationCatalogueEnricherTest"
  */

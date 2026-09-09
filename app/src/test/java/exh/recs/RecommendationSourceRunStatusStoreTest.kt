@@ -95,6 +95,30 @@ class RecommendationSourceRunStatusStoreTest {
     }
 
     @Test
+    fun `evaluated candidate count round trips`() {
+        val original = RecommendationSourceRunStatus(
+            sourceId = 7L,
+            status = RecommendationSourceStatus.Shown,
+            visibleCount = 4,
+            updatedAt = 9999L,
+            evaluatedCount = 42,
+        )
+
+        val recovered = RecommendationSourceRunStatusStore.parse(
+            RecommendationSourceRunStatusStore.serialize(listOf(original)),
+        )[7L]!!
+
+        assertEquals(42, recovered.evaluatedCount)
+    }
+
+    @Test
+    fun `legacy status rows default evaluated count to zero`() {
+        val parsed = RecommendationSourceRunStatusStore.parse("7|Shown|4|9999")
+
+        assertEquals(0, parsed[7L]!!.evaluatedCount)
+    }
+
+    @Test
     fun `serialize and parse HiddenByDuplicateHandling round-trips correctly`() {
         val s = status(9L, RecommendationSourceStatus.HiddenByDuplicateHandling, 0, 6000L)
         val parsed = RecommendationSourceRunStatusStore.parse(RecommendationSourceRunStatusStore.serialize(listOf(s)))

@@ -2,8 +2,8 @@ package exh.util
 
 import java.util.UUID
 
-// KMK -->
-/** Private, Evaluation-Mode-only state needed to compensate for one remote tracker write. */
+// KMK Universal Action History Recovery Plan 2026-08-01 -->
+/** Private, bounded state needed to compensate for one remote tracker write. */
 enum class TrackWriteField {
     STATUS,
     SCORE,
@@ -38,7 +38,7 @@ data class TrackWriteReceipt(
     }
 }
 
-/** Bounded, in-memory, Evaluation-Mode-only store of [TrackWriteReceipt]s. */
+/** Bounded, in-memory store of [TrackWriteReceipt]s; never rendered as raw payload. */
 object TrackWriteReceiptJournal {
     const val MAX_ENTRIES = 20
 
@@ -76,8 +76,6 @@ fun recordSuccessfulTrackWrite(
     previousFinishDate: Long? = null,
     previousPrivate: Boolean? = null,
 ) {
-    if (!evaluationModeEnabled) return
-
     val id = TrackWriteReceipt.newId()
     val timestamp = System.currentTimeMillis()
     NonUndoableEventJournal.record(

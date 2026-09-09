@@ -2,6 +2,8 @@ package tachiyomi.domain.taste.repository
 
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.taste.model.CrossSourceGroupPrimary
+import tachiyomi.domain.taste.model.CrossSourceIdentityDecision
+import tachiyomi.domain.taste.model.CrossSourceIdentityPair
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.TagAlias
@@ -102,6 +104,27 @@ interface TasteRepository {
     suspend fun deleteCrossSourceGroupPrimary(groupId: String)
 
     suspend fun deleteAllCrossSourceGroupPrimaries()
+
+    // KMK <--
+
+    // --- manga_cross_source_identity_decision --- KMK A11.4
+
+    suspend fun getCrossSourceIdentityDecision(pair: CrossSourceIdentityPair): CrossSourceIdentityDecision?
+
+    suspend fun getAllCrossSourceIdentityDecisions(): List<CrossSourceIdentityDecision>
+
+    suspend fun upsertCrossSourceIdentityDecisions(decisions: List<CrossSourceIdentityDecision>)
+
+    suspend fun replaceCrossSourceIdentityDecision(
+        expected: CrossSourceIdentityDecision?,
+        replacement: CrossSourceIdentityDecision?,
+    ): Boolean
+
+    suspend fun replaceCrossSourceIdentityDecisions(
+        replacements: List<tachiyomi.domain.taste.model.CrossSourceIdentityReplacement>,
+    ): Boolean
+
+    suspend fun tombstoneAllCrossSourceIdentityDecisions(updatedAt: Long)
 
     // KMK <--
 

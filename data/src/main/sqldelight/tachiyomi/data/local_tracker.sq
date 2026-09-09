@@ -1,0 +1,245 @@
+CREATE TABLE local_tracked_work (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 128),
+    title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 4096),
+    normalized_title TEXT NOT NULL CHECK(length(normalized_title) BETWEEN 1 AND 4096),
+    status TEXT NOT NULL CHECK(status IN ('READING', 'ON_HOLD', 'COMPLETED', 'DROPPED', 'PLANNED')),
+    last_chapter_source INTEGER,
+    last_chapter_number REAL,
+    last_chapter_url TEXT CHECK(last_chapter_url IS NULL OR length(last_chapter_url) BETWEEN 1 AND 4096),
+    last_chapter_label TEXT CHECK(last_chapter_label IS NULL OR length(last_chapter_label) BETWEEN 1 AND 4096),
+    last_progress_at INTEGER,
+    score REAL CHECK(score IS NULL OR score >= 0.0),
+    start_date INTEGER CHECK(start_date IS NULL OR start_date > 0),
+    finish_date INTEGER CHECK(finish_date IS NULL OR finish_date > 0),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at)
+);
+
+getWork:
+SELECT * FROM local_tracked_work WHERE id = :id;
+
+getAllWorks:
+SELECT * FROM local_tracked_work ORDER BY updated_at DESC, id ASC;
+
+upsertWork:
+INSERT INTO local_tracked_work(
+    id, title, normalized_title, status, last_chapter_source, last_chapter_url,
+    last_chapter_number, last_chapter_label, last_progress_at, score, start_date, finish_date,
+    created_at, updated_at
+)
+VALUES(
+    :id, :title, :normalizedTitle, :status, :lastChapterSource, :lastChapterUrl,
+    :lastChapterNumber, :lastChapterLabel, :lastProgressAt, :score, :startDate, :finishDate,
+    :createdAt, :updatedAt
+)
+ON CONFLICT(id) DO UPDATE SET
+    title = :title,
+    normalized_title = :normalizedTitle,
+    status = :status,
+    last_chapter_source = :lastChapterSource,
+    last_chapter_number = :lastChapterNumber,
+    last_chapter_url = :lastChapterUrl,
+    last_chapter_label = :lastChapterLabel,
+    last_progress_at = :lastProgressAt,
+    score = :score,
+    start_date = :startDate,
+    finish_date = :finishDate,
+    updated_at = :updatedAt;
+
+deleteWork:
+DELETE FROM local_tracked_work WHERE id = :id;
+
+deleteSources:
+DELETE FROM local_tracked_work_source WHERE work_id = :workId;
+
+CREATE TABLE local_tracked_work_source (
+    work_id TEXT NOT NULL,
+    source INTEGER NOT NULL CHECK(source > 0),
+    url TEXT NOT NULL CHECK(length(url) BETWEEN 1 AND 4096),
+    title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 4096),
+    confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
+    confirmation TEXT NOT NULL CHECK(confirmation IN ('USER_CONFIRMED', 'SUGGESTED')),
+    inheritance_opted_out INTEGER NOT NULL DEFAULT 0 CHECK(inheritance_opted_out IN (0, 1)),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    PRIMARY KEY(work_id, source, url),
+    FOREIGN KEY(work_id) REFERENCES local_tracked_work(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX local_tracked_work_source_identity_index
+ON local_tracked_work_source(source, url);
+
+CREATE TABLE local_tracked_work_source_progress (
+    work_id TEXT NOT NULL,
+    source INTEGER NOT NULL CHECK(source > 0),
+    url TEXT NOT NULL CHECK(length(url) BETWEEN 1 AND 4096),
+    chapter_number REAL CHECK(chapter_number IS NULL OR chapter_number = chapter_number),
+    chapter_url TEXT NOT NULL CHECK(length(chapter_url) BETWEEN 1 AND 4096),
+    chapter_label TEXT NOT NULL CHECK(length(chapter_label) BETWEEN 1 AND 4096),
+    progress_at INTEGER NOT NULL CHECK(progress_at > 0),
+    inherited_from_source INTEGER CHECK(inherited_from_source IS NULL OR inherited_from_source > 0),
+    inherited_from_url TEXT CHECK(inherited_from_url IS NULL OR length(inherited_from_url) BETWEEN 1 AND 4096),
+    updated_at INTEGER NOT NULL CHECK(updated_at > 0),
+    PRIMARY KEY(work_id, source, url),
+    FOREIGN KEY(work_id) REFERENCES local_tracked_work(id) ON DELETE CASCADE
+);
+
+getSourceProgress:
+SELECT * FROM local_tracked_work_source_progress
+WHERE work_id = :workId AND source = :source AND url = :url;
+
+hasSource:
+SELECT EXISTS(
+    SELECT 1 FROM local_tracked_work_source
+    WHERE work_id = :workId AND source = :source AND url = :url
+);
+
+upsertSourceProgress:
+INSERT INTO local_tracked_work_source_progress(
+    work_id, source, url, chapter_number, chapter_url, chapter_label, progress_at,
+    inherited_from_source, inherited_from_url, updated_at
+)
+VALUES(
+    :workId, :source, :url, :chapterNumber, :chapterUrl, :chapterLabel, :progressAt,
+    :inheritedFromSource, :inheritedFromUrl, :updatedAt
+)
+ON CONFLICT(work_id, source, url) DO UPDATE SET
+    chapter_number = :chapterNumber,
+    chapter_url = :chapterUrl,
+    chapter_label = :chapterLabel,
+    progress_at = :progressAt,
+    inherited_from_source = :inheritedFromSource,
+    inherited_from_url = :inheritedFromUrl,
+    updated_at = max(local_tracked_work_source_progress.updated_at, :updatedAt)
+WHERE excluded.updated_at >= local_tracked_work_source_progress.updated_at;
+
+recordSourceProgress:
+INSERT INTO local_tracked_work_source_progress(
+    work_id, source, url, chapter_number, chapter_url, chapter_label, progress_at,
+    inherited_from_source, inherited_from_url, updated_at
+)
+VALUES(
+    :workId, :source, :url, :chapterNumber, :chapterUrl, :chapterLabel, :progressAt,
+    :inheritedFromSource, :inheritedFromUrl, :updatedAt
+)
+ON CONFLICT(work_id, source, url) DO UPDATE SET
+    chapter_number = :chapterNumber,
+    chapter_url = :chapterUrl,
+    chapter_label = :chapterLabel,
+    progress_at = :progressAt,
+    inherited_from_source = :inheritedFromSource,
+    inherited_from_url = :inheritedFromUrl,
+    updated_at = max(local_tracked_work_source_progress.updated_at, :updatedAt)
+WHERE
+    (
+        local_tracked_work_source_progress.chapter_number IS NULL
+        AND :chapterNumber IS NOT NULL
+    )
+    OR (
+        :chapterNumber IS NOT NULL
+        AND local_tracked_work_source_progress.chapter_number IS NOT NULL
+        AND (
+            :chapterNumber > local_tracked_work_source_progress.chapter_number
+            OR (
+                :chapterNumber = local_tracked_work_source_progress.chapter_number
+                AND :progressAt >= local_tracked_work_source_progress.progress_at
+            )
+        )
+    )
+    OR (
+        :chapterNumber IS NULL
+        AND local_tracked_work_source_progress.chapter_number IS NULL
+        AND :progressAt >= local_tracked_work_source_progress.progress_at
+    );
+
+deleteSourceProgress:
+DELETE FROM local_tracked_work_source_progress
+WHERE work_id = :workId AND source = :source AND url = :url;
+
+deleteWorkSourceProgress:
+DELETE FROM local_tracked_work_source_progress WHERE work_id = :workId;
+
+setInheritanceOptedOut:
+UPDATE local_tracked_work_source
+SET inheritance_opted_out = :optedOut, updated_at = :updatedAt
+WHERE work_id = :workId AND source = :source AND url = :url;
+
+getSources:
+SELECT * FROM local_tracked_work_source
+WHERE work_id = :workId ORDER BY updated_at DESC, source ASC, url ASC;
+
+getWorkIdBySourceUrl:
+SELECT work_id FROM local_tracked_work_source
+WHERE source = :source AND url = :url;
+
+recordProgress:
+UPDATE local_tracked_work
+SET
+    last_chapter_source = :source,
+    last_chapter_number = :chapterNumber,
+    last_chapter_url = :chapterUrl,
+    last_chapter_label = :chapterLabel,
+    last_progress_at = :progressAt,
+    status = CASE WHEN status = 'PLANNED' THEN 'READING' ELSE status END,
+    start_date = coalesce(start_date, :progressAt),
+    updated_at = max(updated_at, :progressAt)
+WHERE id = :workId
+  AND (
+      last_progress_at IS NULL
+      OR (
+      :chapterNumber IS NOT NULL
+      AND (last_chapter_number IS NULL OR :chapterNumber >= last_chapter_number)
+      AND (
+          last_chapter_number IS NULL
+          OR :chapterNumber > last_chapter_number
+          OR :progressAt >= coalesce(last_progress_at, :progressAt)
+      )
+      )
+      OR (
+          :chapterNumber IS NULL
+          AND last_chapter_number IS NULL
+          AND :progressAt >= last_progress_at
+      )
+  );
+
+upsertSource:
+INSERT INTO local_tracked_work_source(
+    work_id, source, url, title, confidence, confirmation, inheritance_opted_out, created_at, updated_at
+)
+VALUES(:workId, :source, :url, :title, :confidence, :confirmation, :inheritanceOptedOut, :createdAt, :updatedAt)
+ON CONFLICT(work_id, source, url) DO UPDATE SET
+    title = :title,
+    confidence = :confidence,
+    confirmation = :confirmation,
+    inheritance_opted_out = :inheritanceOptedOut,
+    updated_at = :updatedAt
+WHERE excluded.updated_at >= local_tracked_work_source.updated_at;
+
+deleteSource:
+DELETE FROM local_tracked_work_source
+WHERE work_id = :workId AND source = :source AND url = :url;
+
+CREATE TABLE local_tracked_work_list (
+    work_id TEXT NOT NULL,
+    list_name TEXT NOT NULL CHECK(length(list_name) BETWEEN 1 AND 256),
+    normalized_name TEXT NOT NULL CHECK(length(normalized_name) BETWEEN 1 AND 256),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    PRIMARY KEY(work_id, normalized_name),
+    FOREIGN KEY(work_id) REFERENCES local_tracked_work(id) ON DELETE CASCADE
+);
+
+getLists:
+SELECT list_name FROM local_tracked_work_list
+WHERE work_id = :workId ORDER BY normalized_name ASC;
+
+getListEntries:
+SELECT list_name, created_at FROM local_tracked_work_list
+WHERE work_id = :workId ORDER BY normalized_name ASC;
+
+deleteLists:
+DELETE FROM local_tracked_work_list WHERE work_id = :workId;
+
+insertList:
+INSERT INTO local_tracked_work_list(work_id, list_name, normalized_name, created_at)
+VALUES(:workId, :listName, :normalizedName, :createdAt)
+ON CONFLICT(work_id, normalized_name) DO NOTHING;

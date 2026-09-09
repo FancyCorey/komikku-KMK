@@ -2,7 +2,6 @@ package tachiyomi.domain.taste.repository
 
 import tachiyomi.domain.taste.model.RecommendationExposure
 
-// KMK -->
 interface RecommendationExposureRepository {
 
     suspend fun getBySourceUrls(keys: List<Pair<Long, String>>): List<RecommendationExposure>

@@ -4,9 +4,8 @@ package exh.recs
 /**
  * Pure decision for how [BrowsePersonalRecommendationsTab]'s selection bottom bar lays out its
  * actions at a given width. Six always-visible text buttons (Love/Like/Dislike/Not interested/Find
- * best version/Open) fit wide layouts but are too crowded for phone portrait. This does not remove
- * any action: on wide
- * layouts every action stays directly visible; on compact layouts the less-common actions move into
+ * best version/Open) fit wide layouts but crowd compact portrait layouts. This does not remove any
+ * action: on wide layouts every action stays directly visible; on compact layouts less-common actions move into
  * a "More" overflow, never disappearing.
  */
 object ForYouSelectionActionLayoutPolicy {

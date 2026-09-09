@@ -1,0 +1,34 @@
+{
+  "settings-advanced": {
+    "steps": [
+      {"action": "click-text", "value": "More"},
+      {"action": "scroll-to-text", "value": "Settings"},
+      {"action": "click-text", "value": "Settings"},
+      {"action": "scroll-to-text", "value": "Advanced"},
+      {"action": "click-text", "value": "Advanced"}
+    ],
+    "verify": {"selector": "text", "value": "Advanced"}
+  },
+  "recommendation-settings": {
+    "steps": [
+      {"action": "back-until-text", "value": "More", "max_backs": 4},
+      {"action": "ensure-bottom-navigation-text", "value": "Browse"},
+      {"action": "click-tab-text", "value": "For You"},
+      {"action": "click-description", "value": "Recommendation Settings"}
+    ],
+    "verify": {"selector": "text", "value": "Recommendation Settings"}
+  },
+  "browse": {
+    "steps": [
+      {"action": "click-bottom-navigation-text", "value": "Browse"}
+    ],
+    "verify": {"selector": "text", "value": "Sources"}
+  },
+  "for-you": {
+    "steps": [
+      {"action": "click-text", "value": "Browse"},
+      {"action": "click-text", "value": "For You"}
+    ],
+    "verify": {"selector": "text", "value": "For You"}
+  }
+}

@@ -3,14 +3,16 @@ package exh.util
 import eu.kanade.domain.source.service.SourcePreferences
 import tachiyomi.domain.manga.model.Manga
 
-// KMK -->
+// KMK Undo Expansion Phase 1 -->
 /**
  * Builds not-yet-committed [LibraryJournalEntry] snapshots for favorite/unfavorite and category-set
  * mutations. Mirrors [EvaluationModeJournalRecorder]/[GroupUndoRecorder]'s build-before-write /
  * commit-after-success contract exactly: callers must call [LibraryUndoJournal.record] themselves, and
  * only after their write has been confirmed to have taken effect.
  *
- * No-ops (returns `null`) when Evaluation Mode is disabled.
+ * No-ops only when there is no meaningful library change. Action History is
+ * available to ordinary users; Evaluation Mode controls presentation privacy,
+ * not local undo capture.
  */
 object LibraryUndoRecorder {
 
@@ -20,7 +22,6 @@ object LibraryUndoRecorder {
         previousManga: Manga,
         newFavorite: Boolean,
     ): LibraryJournalEntry? {
-        if (!sourcePreferences.evaluationMode().get()) return null
         return LibraryJournalEntry(
             id = LibraryJournalEntry.newId(),
             timestamp = System.currentTimeMillis(),
@@ -40,7 +41,7 @@ object LibraryUndoRecorder {
         previousMangas: List<Manga>,
         newFavorite: Boolean,
     ): List<LibraryJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || previousMangas.isEmpty()) return emptyList()
+        if (previousMangas.isEmpty()) return emptyList()
         val bulkId = if (previousMangas.size > 1) LibraryJournalEntry.newBulkId() else null
         return previousMangas.map { manga ->
             LibraryJournalEntry(
@@ -66,7 +67,6 @@ object LibraryUndoRecorder {
         previousCategoryIds: List<Long>,
         newCategoryIds: List<Long>,
     ): LibraryJournalEntry? {
-        if (!sourcePreferences.evaluationMode().get()) return null
         if (previousCategoryIds.toSet() == newCategoryIds.toSet()) return null
         return LibraryJournalEntry(
             id = LibraryJournalEntry.newId(),

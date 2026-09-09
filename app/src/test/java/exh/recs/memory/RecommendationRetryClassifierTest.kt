@@ -1,6 +1,9 @@
 package exh.recs.memory
 
 // KMK --> v0.7.41: conservative retry classification tests
+import eu.kanade.tachiyomi.network.HttpException
+import exh.recs.RecommendationErrorClassifier
+import exh.recs.isRetryableForDiscovery
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -13,9 +16,9 @@ import java.net.UnknownHostException
 /**
  * Tests for [RecommendationRetryClassifier].
  *
- * v0.7.41 correction D: only connectivity/I/O/timeout failures are retryable; HTTP 4xx,
- * UnsupportedOperation, and unknown/runtime exceptions are permanent (fail closed) so broken
- * extension code is not repeatedly re-invoked.
+ * Transient HTTP responses (429 and 5xx) are retryable, while client errors, unsupported
+ * operations, and unknown/runtime exceptions remain permanent so broken extension code is not
+ * repeatedly re-invoked.
  *
  * Run with: ./gradlew :app:testDebugUnitTest --tests "*.RecommendationRetryClassifierTest"
  */
@@ -41,6 +44,13 @@ class RecommendationRetryClassifierTest {
         assertEquals(retryable, RecommendationRetryClassifier.classify(SocketTimeoutException("timeout")))
     }
 
+    @Test
+    fun `HTTP 429 and 5xx are retryable`() {
+        assertEquals(retryable, RecommendationRetryClassifier.classify(HttpException(429)))
+        assertEquals(retryable, RecommendationRetryClassifier.classify(HttpException(500)))
+        assertEquals(retryable, RecommendationRetryClassifier.classify(HttpException(502)))
+    }
+
     // ---- Permanent ----
 
     @Test
@@ -52,6 +62,13 @@ class RecommendationRetryClassifierTest {
     fun `HTTP 4xx wrapped in IOException is permanent`() {
         // Client errors (404, 403…) are commonly wrapped in an IOException but must not be retried.
         assertEquals(permanent, RecommendationRetryClassifier.classify(IOException("HTTP 404 Not Found")))
+    }
+
+    @Test
+    fun `typed HTTP client errors are permanent`() {
+        assertEquals(permanent, RecommendationRetryClassifier.classify(HttpException(400)))
+        assertEquals(permanent, RecommendationRetryClassifier.classify(HttpException(401)))
+        assertEquals(permanent, RecommendationRetryClassifier.classify(HttpException(404)))
     }
 
     @Test
@@ -97,6 +114,33 @@ class RecommendationRetryClassifierTest {
         assertTrue(second > first) { "Backoff should grow: first=$first second=$second" }
         val huge = RecommendationRetryClassifier.nextRetryAt(30, base) - base
         assertTrue(huge <= RecommendationRetryClassifier.MAX_DELAY_MS) { "Backoff must be capped at MAX_DELAY_MS" }
+    }
+
+    // ---- AG14 candidate finding: HTTP handling reconciled with RecommendationErrorClassifier ----
+
+    /**
+     * [RecommendationRetryClassifier] (discovery-page-level retry/backoff) and
+     * [exh.recs.RecommendationErrorClassifier.isRetryableForDiscovery] (per-source-request-level
+     * retry gating) are two independent, differently-scoped classifiers that must still agree on
+     * which HTTP outcomes are worth retrying a second time -- otherwise one owner could keep
+     * hammering a permanently-failing source while the other gives up on a merely rate-limited one.
+     * Pins that agreement directly for every status this codebase treats as meaningfully distinct.
+     */
+    @Test
+    fun `HTTP retryability agrees with RecommendationErrorClassifier for every distinguished status`() {
+        val statuses = listOf(429, 500, 502, 503, 400, 401, 403, 404)
+        statuses.forEach { status ->
+            val retryClassifierSaysRetryable =
+                RecommendationRetryClassifier.classify(HttpException(status)) == retryable
+            val errorClassifierSaysRetryable =
+                RecommendationErrorClassifier.classify(HttpException(status)).isRetryableForDiscovery()
+            assertEquals(
+                retryClassifierSaysRetryable,
+                errorClassifierSaysRetryable,
+                "HTTP $status: RecommendationRetryClassifier retryable=$retryClassifierSaysRetryable but " +
+                    "RecommendationErrorClassifier.isRetryableForDiscovery=$errorClassifierSaysRetryable",
+            )
+        }
     }
 }
 // KMK <--

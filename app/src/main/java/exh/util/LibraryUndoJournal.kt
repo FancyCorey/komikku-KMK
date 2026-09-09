@@ -2,7 +2,7 @@ package exh.util
 
 import java.util.UUID
 
-// KMK -->
+// KMK Undo Expansion Phase 1 -->
 /**
  * Evaluation Mode Undo Journal for local library membership and category-assignment mutations --
  * a sibling to [EvaluationModeUndoJournal] (taste) and [GroupUndoJournal] (cross-source links), with
@@ -12,7 +12,7 @@ import java.util.UUID
  * or the category-id-set replacement for one manga. It never describes the coupled side effects a
  * favorite/unfavorite can trigger elsewhere (cover-file removal, downloaded-chapter deletion, remote
  * metadata/chapter fetch, enhanced-tracker binding) -- those are real external effects and are never
- * restored by this journal, per the documented scope.
+ * restored by this journal, per the audit's explicit non-goal.
  */
 enum class LibraryJournalActionType { FAVORITE, UNFAVORITE, SET_CATEGORIES }
 
@@ -60,6 +60,15 @@ object LibraryUndoJournal {
                 }
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "library",
+            operation = entry.actionType.name,
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     fun snapshot(): List<LibraryJournalEntry> = synchronized(lock) { entries.toList().asReversed() }

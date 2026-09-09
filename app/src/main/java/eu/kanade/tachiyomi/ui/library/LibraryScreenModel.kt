@@ -36,6 +36,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import eu.kanade.tachiyomi.source.online.all.MergedSource
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import exh.favorites.FavoritesSyncHelper
@@ -101,6 +102,7 @@ import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetMergedChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.repository.ChapterLinePreferenceRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -140,12 +142,14 @@ class LibraryScreenModel(
     private val getNextChapters: GetNextChapters = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val getBookmarkedChaptersByMangaId: GetBookmarkedChaptersByMangaId = Injekt.get(),
+    private val chapterLinePreferenceRepository: ChapterLinePreferenceRepository = Injekt.get(),
     private val setReadStatus: SetReadStatus = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val preferences: BasePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
+    private val readerPreferences: ReaderPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
@@ -874,11 +878,20 @@ class LibraryScreenModel(
     suspend fun getNextUnreadChapter(manga: Manga): Chapter? {
         // SY -->
         val mergedManga = getMergedMangaById.await(manga.id).associateBy { it.id }
+        val linePreference = manga.source
+            .takeUnless { it == MERGED_SOURCE_ID }
+            ?.let { chapterLinePreferenceRepository.getOnce(manga.id, it) }
         return if (manga.id == MERGED_SOURCE_ID) {
             getMergedChaptersByMangaId.await(manga.id, applyFilter = true)
         } else {
             getChaptersByMangaId.await(manga.id, applyFilter = true)
-        }.getNextUnread(manga, downloadManager, mergedManga)
+        }.getNextUnread(
+            manga = manga,
+            downloadManager = downloadManager,
+            mergedManga = mergedManga,
+            skipDuplicateChapterNumbers = readerPreferences.skipDupe().get(),
+            linePreference = linePreference,
+        )
         // SY <--
     }
 
@@ -1136,7 +1149,7 @@ class LibraryScreenModel(
         screenModelScope.launchNonCancellable {
             if (deleteFromLibrary) {
                 val distinctMangas = mangas.distinctBy { it.id }
-                // KMK: build before write, commit only after success. Never
+                // KMK Undo Expansion Phase 1: build before write, commit only after success. Never
                 // journals the cover removal above or the chapter-delete branch below.
                 val undoEntries = exh.util.LibraryUndoRecorder.buildFavoriteEntries(sourcePreferences, distinctMangas, false)
                 val toDelete = distinctMangas
@@ -1191,7 +1204,7 @@ class LibraryScreenModel(
                     .plus(addCategories)
                     .toList()
 
-                // KMK: build before write, commit only after -- per-item so a
+                // KMK Undo Expansion Phase 1: build before write, commit only after -- per-item so a
                 // failure partway through the bulk selection only journals the manga that changed.
                 val undoEntry = exh.util.LibraryUndoRecorder.buildCategoriesEntry(sourcePreferences, manga.id, previousCategoryIds, categoryIds)
                 setMangaCategories.await(manga.id, categoryIds)

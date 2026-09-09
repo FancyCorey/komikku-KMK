@@ -28,14 +28,14 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 Phase D-A -->
 /**
  * Direct caller test for [ExtensionDetailsScreenModel.uninstallExtension] -- the V2 pass wired this
  * call site to [exh.util.verifyAndRecordUninstall] (previously it bypassed Action History entirely) but
  * added no direct test for it, unlike every other uninstall call site this remediation touched. Filling
  * exactly that gap, per V3 Phase D item 1.
  *
- * KMK:
+ * KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 (post-report follow-up):
  * [ExtensionDetailsScreenModel] originally dispatched `uninstallExtension()`'s verification coroutine via
  * the top-level `screenModelScope.launchIO {}` extension, hardcoded to real `Dispatchers.IO` with no
  * injection seam -- these tests first shipped polling real wall-clock time with a short bounded timeout
@@ -150,7 +150,7 @@ class ExtensionDetailsScreenModelUninstallTest {
     }
 
     @Test
-    fun `Evaluation Mode off records neither event nor receipt even for a verified removal`() = runTest {
+    fun `normal Action History records an event and receipt for a verified removal`() = runTest {
         val extension = installedExtension("eu.kanade.tachiyomi.extension.en.b")
         val preferences = SourcePreferences(FakePreferenceStore())
         preferences.evaluationMode().set(false)
@@ -166,8 +166,10 @@ class ExtensionDetailsScreenModelUninstallTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { extensionManager.uninstallExtension(extension) }
-        assertTrue(NonUndoableEventJournal.isEmpty(), "Evaluation Mode is off -- no event may be recorded")
-        assertTrue(PackageOperationJournal.isEmpty(), "Evaluation Mode is off -- no receipt may be recorded")
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(NonUndoableEventType.EXTENSION_UNINSTALLED, NonUndoableEventJournal.snapshot().first().eventType)
+        assertEquals(1, PackageOperationJournal.snapshot().size)
+        assertEquals(extension.pkgName, PackageOperationJournal.snapshot().first().packageName)
     }
 }
 // KMK <--

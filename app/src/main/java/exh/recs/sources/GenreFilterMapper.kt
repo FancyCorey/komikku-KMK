@@ -44,6 +44,8 @@ internal object GenreFilterMapper {
         "sci fi" to listOf("Sci-Fi", "Sci Fi", "Science Fiction"),
         "isekai" to listOf("Isekai", "Another World"),
         "martial arts" to listOf("Martial Arts", "Wuxia", "Murim"),
+        // Common source spelling variant; keep the canonical focus group as "fantasy".
+        "fantasy" to listOf("Fantasy", "Fantacy"),
         "reincarnation" to listOf("Reincarnation", "Reborn"),
         "regression" to listOf("Regression", "Second Chance", "Returner"),
     )

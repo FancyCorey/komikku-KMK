@@ -31,7 +31,7 @@ class EvaluationModeInstallEventRecorderTest {
         assertEquals(NonUndoableEventType.EXTENSION_INSTALLED, NonUndoableEventJournal.snapshot().single().eventType)
     }
 
-    // KMK -->
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
     @Test
     fun `an update passes EXTENSION_UPDATED, not EXTENSION_INSTALLED`() = runTest {
         flowOf(InstallStep.Pending, InstallStep.Installed)
@@ -62,12 +62,12 @@ class EvaluationModeInstallEventRecorderTest {
     }
 
     @Test
-    fun `evaluation mode disabled does not record`() = runTest {
+    fun `evaluation mode disabled still records a successful event`() = runTest {
         flowOf(InstallStep.Installed)
             .recordUserInitiatedInstall { false }
             .toList()
 
-        assertEquals(0, NonUndoableEventJournal.snapshot().size)
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
     }
 
     @Test
@@ -83,7 +83,7 @@ class EvaluationModeInstallEventRecorderTest {
         assertEquals(2, NonUndoableEventJournal.snapshot().size)
     }
 
-    // KMK -->
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
     @Test
     fun `recordPackageOperationReceipt records a typed receipt with the full identity on success`() = runTest {
         flowOf(InstallStep.Pending, InstallStep.Installed)
@@ -120,7 +120,7 @@ class EvaluationModeInstallEventRecorderTest {
     }
 
     @Test
-    fun `recordPackageOperationReceipt does not record when Evaluation Mode is disabled`() = runTest {
+    fun `recordPackageOperationReceipt records when Evaluation Mode is disabled`() = runTest {
         flowOf(InstallStep.Installed)
             .recordPackageOperationReceipt(
                 kind = PackageOperationKind.INSTALL,
@@ -131,7 +131,7 @@ class EvaluationModeInstallEventRecorderTest {
             ) { false }
             .toList()
 
-        assertTrue(PackageOperationJournal.isEmpty())
+        assertEquals(1, PackageOperationJournal.snapshot().size)
     }
 
     @Test

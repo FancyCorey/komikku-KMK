@@ -45,6 +45,7 @@ import tachiyomi.domain.taste.model.SourceRecommendationFit
 import tachiyomi.domain.taste.model.TasteProfile
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
 
 // KMK -->
 // Minimal contract
@@ -339,70 +340,8 @@ class SourceEvaluationRunner(
             }
             // KMK <-- (closes v0.6.14 load timeout block)
 
-            val catalogueSources = installedExt.sources.filterIsInstance<CatalogueSource>()
-
-            if (catalogueSources.isEmpty()) {
+            if (!evaluateCatalogueSources(ext, installedExt, tasteProfile, aliasMap, batchId, extStartedAt)) {
                 return recordExtensionError(ext, "No catalogue sources found in extension")
-            }
-
-            // Probe each source
-            for (source in catalogueSources) {
-                if (_state.value.status == SourceEvaluationQueueState.Status.Cancelling) break
-                try {
-                    val evaluation = probeAndScore(ext, installedExt, source, tasteProfile, aliasMap, batchId, extStartedAt)
-                    upsertSourceEvaluation.await(evaluation)
-                    addResult(ext, source, evaluation.verdict)
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    logcat(LogPriority.WARN) { "KMK SourceEvaluation: source probe failed" }
-                    val errRecord = SourceEvaluationScorer.errorRecord(
-                        extensionName = ext.name,
-                        pkgName = ext.pkgName,
-                        signatureHash = ext.signatureHash,
-                        sourceId = source.id,
-                        sourceName = source.name,
-                        lang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang,
-                        repoName = ext.storeName,
-                        isNsfw = ext.isNsfw,
-                        // KMK v0.7.45: classified key, not the raw exception message — see
-                        // SourceEvaluationProbeErrorClassifier and EvaluationResultRow's rendering.
-                        errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e),
-                        // KMK --> v0.7.4: record extension version
-                        extensionVersionName = ext.versionName,
-                        extensionVersionCode = ext.versionCode,
-                        extensionApkName = ext.apkUrl,
-                        // KMK <--
-                    )
-                    upsertSourceEvaluation.await(errRecord)
-                    addResult(ext, source, SourceEvaluationVerdict.ERROR)
-                } catch (e: Error) {
-                    // KMK v0.8.10-fix3: a broken/incompletely-packaged extension can throw a
-                    // LinkageError (e.g. NoClassDefFoundError) from Popular/Latest/Search/detail
-                    // calls inside probeAndScore() -- previously uncaught here, aborting the whole
-                    // evaluation batch instead of recording this one source as a technical
-                    // incompatibility and continuing to the next source. Genuinely fatal VM errors
-                    // still rethrow.
-                    val unwrapped = e.unwrapSourceRuntimeCause()
-                    if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
-                    logcat(LogPriority.WARN) { "KMK SourceEvaluation: source probe failed due to extension linkage" }
-                    val errRecord = SourceEvaluationScorer.errorRecord(
-                        extensionName = ext.name,
-                        pkgName = ext.pkgName,
-                        signatureHash = ext.signatureHash,
-                        sourceId = source.id,
-                        sourceName = source.name,
-                        lang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang,
-                        repoName = ext.storeName,
-                        isNsfw = ext.isNsfw,
-                        errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(unwrapped),
-                        extensionVersionName = ext.versionName,
-                        extensionVersionCode = ext.versionCode,
-                        extensionApkName = ext.apkUrl,
-                    )
-                    upsertSourceEvaluation.await(errRecord)
-                    addResult(ext, source, SourceEvaluationVerdict.ERROR)
-                }
-                delay(500L) // inter-source delay
             }
             return true
         } catch (e: CancellationException) {
@@ -451,6 +390,69 @@ class SourceEvaluationRunner(
             _state.update { it.copy(completedCount = it.completedCount + 1) }
             // KMK <--
         }
+    }
+
+    private suspend fun evaluateCatalogueSources(
+        ext: Extension.Available,
+        installedExt: Extension.Installed,
+        tasteProfile: TasteProfile,
+        aliasMap: Map<String, String>,
+        batchId: String,
+        startedAt: Long,
+    ): Boolean {
+        val catalogueSources = installedExt.sources.filterIsInstance<CatalogueSource>()
+        if (catalogueSources.isEmpty()) return false
+
+        for (source in catalogueSources) {
+            if (_state.value.status == SourceEvaluationQueueState.Status.Cancelling) break
+            try {
+                val evaluation = probeAndScore(ext, installedExt, source, tasteProfile, aliasMap, batchId, startedAt)
+                upsertSourceEvaluation.await(evaluation)
+                addResult(ext, source, evaluation.verdict)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                recordSourceProbeError(ext, source, e, "KMK SourceEvaluation: source probe failed")
+            } catch (e: Error) {
+                // Recoverable extension linkage failures are source-level incompatibilities.
+                // Genuinely fatal VM errors must still abort the evaluation.
+                val unwrapped = e.unwrapSourceRuntimeCause()
+                if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+                recordSourceProbeError(
+                    ext,
+                    source,
+                    unwrapped,
+                    "KMK SourceEvaluation: source probe failed due to extension linkage",
+                )
+            }
+            delay(500L) // inter-source delay
+        }
+        return true
+    }
+
+    private suspend fun recordSourceProbeError(
+        ext: Extension.Available,
+        source: CatalogueSource,
+        error: Throwable,
+        logMessage: String,
+    ) {
+        logcat(LogPriority.WARN) { logMessage }
+        val errRecord = SourceEvaluationScorer.errorRecord(
+            extensionName = ext.name,
+            pkgName = ext.pkgName,
+            signatureHash = ext.signatureHash,
+            sourceId = source.id,
+            sourceName = source.name,
+            lang = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.lang ?: ext.lang,
+            repoName = ext.storeName,
+            isNsfw = ext.isNsfw,
+            // Store a classified key rather than a raw exception message.
+            errorMessage = SourceEvaluationProbeErrorClassifier.classifyToStorageKey(error),
+            extensionVersionName = ext.versionName,
+            extensionVersionCode = ext.versionCode,
+            extensionApkName = ext.apkUrl,
+        )
+        upsertSourceEvaluation.await(errRecord)
+        addResult(ext, source, SourceEvaluationVerdict.ERROR)
     }
 
     // KMK --> v0.6.16: crash quarantine — write probe marker to DB before risky operations
@@ -636,7 +638,7 @@ class SourceEvaluationRunner(
                 val outcome = probe.probe(source, tasteProfile)
                 val qualityScore = SourceRecommendationFitScorer.score(outcome.toScorerOutcome())
                 val label = outcome.label()
-                val verdict = RecommendationQualityVerdict.fromSerialized(label.name.lowercase())
+                val verdict = RecommendationQualityVerdict.fromSerialized(label.name.lowercase(Locale.ROOT))
                 val fit = SourceRecommendationFit(
                     fitKey = SourceRecommendationFit.fitKeyFor(evaluation.evaluationKey),
                     evaluationKey = evaluation.evaluationKey,

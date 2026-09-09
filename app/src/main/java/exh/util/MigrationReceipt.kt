@@ -2,7 +2,7 @@ package exh.util
 
 import java.util.UUID
 
-// KMK -->
+// KMK Universal Action History Recovery Plan 2026-07-31 -->
 /**
  * A private, Evaluation-Mode-only record of one verified-successful migration -- the counterpart to
  * [PackageOperationReceipt] for [NonUndoableEventType.MIGRATION_COMPLETED] events. Never rendered
@@ -58,6 +58,10 @@ object MigrationReceiptJournal {
 
     /** The receipt sharing [id] with a rendered [NonUndoableEvent], if still retained. */
     fun forId(id: String): MigrationReceipt? = synchronized(lock) { entries.find { it.id == id } }
+
+    fun removeById(id: String) {
+        synchronized(lock) { entries.removeAll { it.id == id } }
+    }
 
     fun clear() {
         synchronized(lock) { entries.clear() }

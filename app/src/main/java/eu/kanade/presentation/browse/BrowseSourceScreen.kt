@@ -22,7 +22,9 @@ import eu.kanade.presentation.browse.components.BrowseSourceEHentaiList
 import eu.kanade.presentation.browse.components.BrowseSourceList
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.formattedMessage
+import eu.kanade.tachiyomi.source.DebugBrowseFixtureSource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseDeterministicFixtureException
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.source.isEhBasedSource
 import exh.util.rememberEvaluationModeEnabled
@@ -34,6 +36,7 @@ import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
@@ -44,6 +47,8 @@ import tachiyomi.source.local.LocalSource
 @Composable
 fun BrowseSourceContent(
     source: Source?,
+    sourceId: Long? = source?.id,
+    isDeterministicFixtureSource: Boolean = false,
     mangaList: LazyPagingItems<StateFlow</* SY --> */Pair<Manga, RaisedSearchMetadata?>/* SY <-- */>>,
     columns: GridCells,
     // SY -->
@@ -65,11 +70,23 @@ fun BrowseSourceContent(
 ) {
     val context = LocalContext.current
 
-    val errorState = mangaList.loadState.refresh.takeIf { it is LoadState.Error }
-        ?: mangaList.loadState.append.takeIf { it is LoadState.Error }
+    val emptyStatePolicy = resolveBrowseEmptyStatePolicy(
+        sourceId = sourceId,
+        sourceName = source?.name,
+        isDeterministicFixtureSource = isDeterministicFixtureSource,
+        isLocalSource = source is LocalSource,
+        localSourceHelpAvailable = onLocalSourceHelpClick != null,
+        refresh = mangaList.loadState.refresh,
+        append = mangaList.loadState.append,
+    )
+    val errorState = emptyStatePolicy.error
 
     val getErrorMessage: (LoadState.Error) -> String = { state ->
-        with(context) { state.error.formattedMessage }
+        if (isDeterministicBrowseFixtureError(state.error)) {
+            context.stringResource(KMR.strings.rec_error_network)
+        } else {
+            with(context) { state.error.formattedMessage }
+        }
     }
 
     LaunchedEffect(errorState) {
@@ -94,16 +111,18 @@ fun BrowseSourceContent(
     if (mangaList.itemCount == 0) {
         EmptyScreen(
             modifier = Modifier.padding(contentPadding),
-            message = when (errorState) {
-                is LoadState.Error -> getErrorMessage(errorState)
-                else -> stringResource(MR.strings.no_results_found)
+            message = when (emptyStatePolicy.message) {
+                BrowseEmptyStateMessage.ERROR -> getErrorMessage(requireNotNull(errorState))
+                BrowseEmptyStateMessage.SOURCE_UNAVAILABLE ->
+                    context.stringResource(KMR.strings.rec_error_network)
+                BrowseEmptyStateMessage.NO_RESULTS -> stringResource(MR.strings.no_results_found)
             },
-            actions = if (source is LocalSource /* SY --> */ && onLocalSourceHelpClick != null /* SY <-- */) {
+            actions = if (!emptyStatePolicy.showRetry) {
                 persistentListOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.local_source_help_guide,
                         icon = Icons.AutoMirrored.Outlined.HelpOutline,
-                        onClick = onLocalSourceHelpClick,
+                        onClick = requireNotNull(onLocalSourceHelpClick),
                     ),
                 )
             } else {
@@ -208,6 +227,54 @@ fun BrowseSourceContent(
         }
     }
 }
+
+internal fun isDeterministicBrowseFixtureError(error: Throwable): Boolean =
+    error is BrowseDeterministicFixtureException
+
+internal enum class BrowseEmptyStateMessage {
+    ERROR,
+    SOURCE_UNAVAILABLE,
+    NO_RESULTS,
+}
+
+internal data class BrowseEmptyStatePolicy(
+    val message: BrowseEmptyStateMessage,
+    val error: LoadState.Error?,
+    val showRetry: Boolean,
+)
+
+internal fun resolveBrowseEmptyStatePolicy(
+    sourceId: Long?,
+    sourceName: String?,
+    isDeterministicFixtureSource: Boolean = false,
+    isLocalSource: Boolean,
+    localSourceHelpAvailable: Boolean,
+    refresh: LoadState,
+    append: LoadState,
+): BrowseEmptyStatePolicy {
+    val error = refresh as? LoadState.Error ?: append as? LoadState.Error
+    val isFixture = isDeterministicFixtureSource
+    val message = when {
+        error != null && isDeterministicBrowseFixtureError(error.error) ->
+            BrowseEmptyStateMessage.SOURCE_UNAVAILABLE
+        error != null -> BrowseEmptyStateMessage.ERROR
+        isFixture -> BrowseEmptyStateMessage.SOURCE_UNAVAILABLE
+        else -> BrowseEmptyStateMessage.NO_RESULTS
+    }
+    return BrowseEmptyStatePolicy(
+        message = message,
+        error = error,
+        showRetry = !(isLocalSource && localSourceHelpAvailable),
+    )
+}
+
+internal fun isDeterministicBrowseFixtureSource(
+    source: Source?,
+    sourceId: Long? = source?.id,
+): Boolean =
+    sourceId == DebugBrowseFixtureSource.ID ||
+        source?.id == DebugBrowseFixtureSource.ID ||
+        source?.name == DebugBrowseFixtureSource().name
 
 @Composable
 internal fun MissingSourceScreen(

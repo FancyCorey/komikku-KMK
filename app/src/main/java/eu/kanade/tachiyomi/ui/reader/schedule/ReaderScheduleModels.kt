@@ -4,10 +4,12 @@ import java.time.DayOfWeek
 
 // KMK v0.8.5 -->
 /**
- * Pure data model for the optional local reading schedule. See [ReaderScheduleResolver].
+ * Pure data model for the optional local reading schedule. [ReaderScheduleResolver] owns the
+ * corresponding window and enforcement decisions.
  *
- * A schedule has exactly one [ReaderScheduleMode] applied to every window it contains.
- * uses one mode per schedule to keep overlap handling deterministic: windows of the same mode
+ * A schedule has exactly one [ReaderScheduleMode] applied to every window it contains. The model
+ * deliberately uses one shared rule rather than mixed per-window behavior ("If the product does not need mixed rules, use one
+ * mode per schedule") to make overlap handling trivially deterministic: windows of the same mode
  * simply OR together (any match is a match), so there is no cross-window priority to define.
  */
 enum class ReaderScheduleMode {
@@ -30,11 +32,12 @@ data class ReaderScheduleWindow(
     val weekdays: Set<DayOfWeek>,
     val startMinuteOfDay: Int,
     val endMinuteOfDay: Int,
-    // KMK v0.8.7: explicit whole-day representation. When true, this window matches
+    // KMK v0.8.7: explicit whole-day representation (plan Finding C). When true, this window matches
     // every minute of every selected weekday, regardless of [startMinuteOfDay]/[endMinuteOfDay] (kept
     // at 0/0 by convention for a whole-day window, but never read when [allDay] is true — see
     // ReaderScheduleResolver.windowMatches). This is a distinct, unambiguous flag rather than
-    // overloading equal start/end times; this is a deliberate, tested model distinction.
+    // overloading equal start/end times, per the plan's explicit instruction not to do that without
+    // a deliberate, tested model change — which this is.
     val allDay: Boolean = false,
 ) {
     val crossesMidnight: Boolean get() = !allDay && endMinuteOfDay <= startMinuteOfDay

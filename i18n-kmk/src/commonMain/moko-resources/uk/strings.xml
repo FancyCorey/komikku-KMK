@@ -137,7 +137,7 @@
     <string name="sponsor_me">Підтримати мене</string>
     <string name="custom_theme_palette_outrun">Аутран</string>
     <string name="custom_theme_palette_springfield">Springfield</string>
-    <string name="connections_discord_info">Цей сервіс Discord працює через систему з використанням жетонів. Використовуйте на ваш власний ризик. Ваш токен зберігається на локальному і Anikku не поширює його ніде інше</string>
+    <string name="connections_discord_info">Цей сервіс Discord працює через систему з використанням жетонів. Використовуйте на ваш власний ризик. Ваш токен зберігається на локальному і %s не поширює його ніде інше</string>
     <string name="pref_discord_rpc">Rich Presence Discord</string>
     <string name="pref_enable_discord_rpc">Увімкнути Rich Presence в Discord</string>
     <string name="pref_discord_status">Статус Discord</string>

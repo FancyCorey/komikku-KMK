@@ -3,7 +3,13 @@ package tachiyomi.data.taste
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.taste.model.CrossSourceGroupPrimary
+import tachiyomi.domain.taste.model.CrossSourceIdentityDecision
+import tachiyomi.domain.taste.model.CrossSourceIdentityDecisionPolicy
+import tachiyomi.domain.taste.model.CrossSourceIdentityDecisionValue
+import tachiyomi.domain.taste.model.CrossSourceIdentityPair
+import tachiyomi.domain.taste.model.CrossSourceIdentityReviewState
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
+import tachiyomi.domain.taste.model.CrossSourceRecordKey
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.TagAlias
 import tachiyomi.domain.taste.model.TagTaste
@@ -284,6 +290,123 @@ class TasteRepositoryImpl(
 
     // endregion KMK <--
 
+    // region manga_cross_source_identity_decision
+
+    override suspend fun getCrossSourceIdentityDecision(pair: CrossSourceIdentityPair): CrossSourceIdentityDecision? {
+        val canonical = CrossSourceIdentityDecisionPolicy.canonicalPair(pair.left, pair.right)
+        return handler.awaitOneOrNull {
+            manga_cross_source_identity_decisionQueries.getByPair(
+                canonical.left.source,
+                canonical.left.url,
+                canonical.right.source,
+                canonical.right.url,
+                crossSourceIdentityDecisionMapper,
+            )
+        }
+    }
+
+    override suspend fun getAllCrossSourceIdentityDecisions(): List<CrossSourceIdentityDecision> {
+        return handler.awaitList {
+            manga_cross_source_identity_decisionQueries.getAll(crossSourceIdentityDecisionMapper)
+        }
+    }
+
+    override suspend fun upsertCrossSourceIdentityDecisions(decisions: List<CrossSourceIdentityDecision>) {
+        require(decisions.size <= CrossSourceIdentityDecisionPolicy.MAX_TRANSFER_ROWS)
+        val now = System.currentTimeMillis()
+        val canonical = decisions
+            .map(CrossSourceIdentityDecisionPolicy::canonicalize)
+            .groupBy { it.pair }
+            .map { (_, rows) -> rows.reduce(CrossSourceIdentityDecisionPolicy::merge) }
+        require(canonical.all { CrossSourceIdentityDecisionPolicy.isValid(it, now) })
+        handler.await(inTransaction = true) {
+            for (decision in canonical) {
+                upsertCrossSourceIdentityDecision(decision)
+            }
+        }
+    }
+
+    override suspend fun replaceCrossSourceIdentityDecision(
+        expected: CrossSourceIdentityDecision?,
+        replacement: CrossSourceIdentityDecision?,
+    ): Boolean = replaceCrossSourceIdentityDecisions(
+        listOf(tachiyomi.domain.taste.model.CrossSourceIdentityReplacement(expected, replacement)),
+    )
+
+    override suspend fun replaceCrossSourceIdentityDecisions(
+        replacements: List<tachiyomi.domain.taste.model.CrossSourceIdentityReplacement>,
+    ): Boolean {
+        if (replacements.isEmpty()) return false
+        require(replacements.size <= CrossSourceIdentityDecisionPolicy.MAX_TRANSFER_ROWS)
+        val canonical = replacements.map { change ->
+            val pair = change.replacement?.pair ?: change.expected?.pair
+                ?: throw IllegalArgumentException("Identity replacement must name a pair")
+            Triple(
+                CrossSourceIdentityDecisionPolicy.canonicalPair(pair.left, pair.right),
+                change.expected?.let(CrossSourceIdentityDecisionPolicy::canonicalize),
+                change.replacement?.let(CrossSourceIdentityDecisionPolicy::canonicalize),
+            )
+        }
+        require(canonical.map { it.first }.distinct().size == canonical.size)
+        val now = System.currentTimeMillis()
+        require(
+            canonical.all { (_, _, replacement) ->
+                replacement == null || CrossSourceIdentityDecisionPolicy.isValid(replacement, now)
+            },
+        )
+        return handler.await(inTransaction = true) {
+            for ((pair, expected, _) in canonical) {
+                val current = manga_cross_source_identity_decisionQueries.getByPair(
+                    pair.left.source,
+                    pair.left.url,
+                    pair.right.source,
+                    pair.right.url,
+                    crossSourceIdentityDecisionMapper,
+                ).executeAsOneOrNull()
+                if (current != expected) return@await false
+            }
+            for ((pair, _, replacement) in canonical) {
+                if (replacement == null) {
+                    manga_cross_source_identity_decisionQueries.deleteByPair(
+                        pair.left.source,
+                        pair.left.url,
+                        pair.right.source,
+                        pair.right.url,
+                    )
+                } else {
+                    upsertCrossSourceIdentityDecision(replacement)
+                }
+            }
+            true
+        }
+    }
+
+    override suspend fun tombstoneAllCrossSourceIdentityDecisions(updatedAt: Long) {
+        require(updatedAt > 0L && updatedAt <= System.currentTimeMillis() + CrossSourceIdentityDecisionPolicy.MAX_FUTURE_SKEW_MS)
+        handler.await(inTransaction = true) {
+            manga_cross_source_identity_decisionQueries.tombstoneAll(updatedAt)
+        }
+    }
+
+    private fun tachiyomi.data.Database.upsertCrossSourceIdentityDecision(decision: CrossSourceIdentityDecision) {
+        manga_cross_source_identity_decisionQueries.upsert(
+            leftSource = decision.pair.left.source,
+            leftUrl = decision.pair.left.url,
+            rightSource = decision.pair.right.source,
+            rightUrl = decision.pair.right.url,
+            decision = decision.decision.name,
+            decisionVersion = decision.decisionVersion.toLong(),
+            evidenceVersion = decision.evidenceVersion.toLong(),
+            reasonCodes = CrossSourceIdentityDecisionPolicy.encodeReasonCodes(decision.reasonCodes),
+            reviewState = decision.reviewState.name,
+            createdAt = decision.createdAt,
+            updatedAt = decision.updatedAt,
+            deletedAt = decision.deletedAt,
+        )
+    }
+
+    // endregion
+
     // region recommendation_disabled_source
 
     override suspend fun getAllDisabledSourceIds(): List<Long> {
@@ -380,4 +503,36 @@ private val crossSourceGroupPrimaryMapper = { groupId: String, source: Long, url
     )
 }
 // KMK <--
+
+private val crossSourceIdentityDecisionMapper = {
+        leftSource: Long,
+        leftUrl: String,
+        rightSource: Long,
+        rightUrl: String,
+        decision: String,
+        decisionVersion: Long,
+        evidenceVersion: Long,
+        reasonCodes: String,
+        reviewState: String,
+        createdAt: Long,
+        updatedAt: Long,
+        deletedAt: Long?,
+    ->
+    CrossSourceIdentityDecision(
+        pair = CrossSourceIdentityPair(
+            CrossSourceRecordKey(leftSource, leftUrl),
+            CrossSourceRecordKey(rightSource, rightUrl),
+        ),
+        decision = CrossSourceIdentityDecisionValue.valueOf(decision),
+        decisionVersion = decisionVersion.toInt(),
+        evidenceVersion = evidenceVersion.toInt(),
+        reasonCodes = requireNotNull(CrossSourceIdentityDecisionPolicy.decodeReasonCodes(reasonCodes)) {
+            "Invalid cross-source identity reason codes"
+        },
+        reviewState = CrossSourceIdentityReviewState.valueOf(reviewState),
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        deletedAt = deletedAt,
+    )
+}
 // KMK <--

@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK
 /**
  * Pure, I/O-free policy for the bounded Latest-catalogue exploration lane.
  *

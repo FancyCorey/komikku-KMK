@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 // KMK -->
-// KMK: source-level assertions proving every
+// Source-level assertions proving every
 // `ActivityResultContracts.CreateDocument` writer in the app registers its picker `Uri` through
 // `SafExportCoordinator` (or, for the two extension-export routes, an equivalent Uri-retained-on-
 // every-outcome design already independently fixed and tested in ExtensionsTabBulkExportCleanupTest
@@ -40,7 +40,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
         )
     }
 
-    // KMK: screen and
+    // Screen and
     // coordinator now live in different files for these routes -- the coordinator was moved
     // from a Composable-`remember`ed instance into the route's existing ScreenModel
     // (screenModelScope-owned), so the picker/dialog wiring (CreateDocument + SafArtifactCleanupDialog)
@@ -89,7 +89,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `SettingsDataScreen CSV export uses a SafExportCoordinator owned by SettingsDataScreenModel, not a remember-scoped instance`() {
-        // KMK: this route no
+        // This route no
         // longer accepts the "stateless settings object" exception -- SettingsDataScreen is itself a
         // Voyager Screen (SearchableSettings : Screen), so rememberScreenModel correctly scopes
         // SettingsDataScreenModel's lifetime to it, the same guarantee every other CreateDocument
@@ -113,9 +113,10 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `extension bulk export uses a SafExportCoordinator owned by ExtensionsScreenModel`() {
-        // KMK: retrofitted onto the shared coordinator, owned by ExtensionsScreenModel
-        // (screenModelScope-scoped), replacing the old standalone BulkExportArtifactKind design whose
-        // Composable-remember-scoped cleanup dialog cleared its retained Uri even when deletion failed.
+        // Bulk export uses the shared coordinator owned by ExtensionsScreenModel; this
+        // replaces the old standalone BulkExportArtifactKind design. The coordinator is
+        // screenModelScope-scoped, so its cleanup offer survives Composable navigation; the old
+        // Composable-scoped dialog could clear a retained Uri even when deletion failed.
         assertUsesCreateDocumentAndModelOwnedCoordinator(
             screenPath = "src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt",
             modelPath = "src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt",
@@ -125,12 +126,12 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `single extension export uses a SafExportCoordinator owned by ExtensionDetailsScreenModel`() {
-        // KMK: retrofitted
+        // Retrofitted
         // onto the shared coordinator -- registers the picker Uri before checking whether the
         // pre-picker extension snapshot is still valid, so a stale/null extension no longer discards a
         // non-null Uri, and performWrite captures cancellation instead of the old "set uri/kind only
         // after the write attempt completes" pattern that silently skipped cleanup tracking on cancel.
-        // KMK: the
+        // the
         // coordinator itself was further moved off this Composable's `remember` and onto
         // ExtensionDetailsScreenModel (screenModelScope-scoped).
         assertUsesCreateDocumentAndModelOwnedCoordinator(
@@ -142,7 +143,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `CreateBackupScreen registers through BackupCleanupRecoveryStore (application-scoped), and never labels the write as Undo`() {
-        // KMK: a
+        // A
         // screenModelScope-owned SafExportCoordinator was still not safe for backup creation -- the
         // WorkManager job it tracks is designed to outlive CreateBackupScreen, and navigating away
         // disposed the model (and cancelled its screenModelScope coroutine polling the job) before a
@@ -191,7 +192,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `every CreateDocument route renders its cleanup dialog unconditionally on a non-null offer, with no extra gate that could suppress it`() {
-        // KMK: this is the
+        // This is the
         // actual mechanism that makes SafExportCoordinator.registerUri's overlap guard
         // defense-in-depth rather than the primary safeguard -- SafArtifactCleanupDialog is a modal
         // AlertDialog that appears the instant an offer becomes non-null (registerUri sets it
@@ -220,7 +221,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `every CreateDocument route reserves an operation via beginOperation before launching the picker`() {
-        // KMK: every route must reserve
+        // Every route must reserve
         // an operationId before the picker launches, not merely register the returned Uri afterward --
         // otherwise a rejected/racing registration silently discards the document the picker created.
         val beginOperationPaths = listOf(
@@ -243,7 +244,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `SafArtifactCleanupDialog gates rendering on the IN_PROGRESS outcome`() {
-        // KMK: this now has a real behavioral
+        // This now has a real behavioral
         // equivalent -- eu.kanade.presentation.components.safCleanupDialogActionFor, exercised
         // directly in SafArtifactCleanupDialogActionTest -- rather than only a source-text check.
         assertEquals(
@@ -253,11 +254,11 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
         )
     }
 
-    // --- KMK design review ---
+    // --- SAF export lifecycle coverage ---
 
     @Test
     fun `every route's handleUnregisterableUri fallback passes its owning coordinator, never discarding an unregisterable Uri`() {
-        // A rejected registration must never silently drop the picker-created document --
+        // Finding 1: a rejected registration must never silently drop the picker-created document --
         // every call site must pass its own coordinator (or, for backup, use the dedicated
         // handleUnregisterableBackupUri overload) so a failed deletion can still be adopted into that
         // route's normal Remove/Keep cleanup UI.
@@ -299,15 +300,14 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `startNow tags the manual WorkManager job with its destination uri so a later process can find it`() {
-        // WorkInfo never exposes a job's input data (only id/state/tags/output survive a
+        // Finding 2: WorkInfo never exposes a job's input data (only id/state/tags/output survive a
         // query), so the destination uri must also be added as a queryable tag for
         // findManualJobIdForUri to be able to recover the real job id after a process death that
         // happened before attachWorkRequest persisted it durably. This is deliberately a source-level
         // assertion, not a runtime WorkManager query test: exercising a real WorkManager unique-work
         // KEEP-policy race (the "competing KEEP work" scenario) requires an actual WorkManager
-        // scheduler, which is outside these host-only unit tests and would require Robolectric,
-        // which this
-        // project does not currently depend on.
+        // scheduler. These host-only unit tests intentionally stop at the source contract because the
+        // project does not currently depend on Robolectric or WorkManager's runtime test harness.
         val path = "src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt"
         val source = readSource(path)
         assertTrue(
@@ -329,7 +329,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `reconcileOnStartup recovers a missing work request id via findManualJobIdForUri instead of assuming resolution`() {
-        // A record left IN_PROGRESS with no attached workRequestId must not be treated as
+        // Finding 2: a record left IN_PROGRESS with no attached workRequestId must not be treated as
         // immediately resolved -- it must first try to recover the real job id from WorkManager itself.
         val path = "src/main/java/eu/kanade/tachiyomi/util/export/BackupCleanupRecoveryStore.kt"
         val source = readSource(path)
@@ -341,7 +341,7 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `loadRecord validates operationType, operationId, and uri shape, not only JSON syntax and schema version`() {
-        // Validate the durable record beyond JSON syntax and schema version.
+        // Finding 3.
         val path = "src/main/java/eu/kanade/tachiyomi/util/export/BackupCleanupRecoveryStore.kt"
         val source = readSource(path)
         assertTrue(source.contains("isValidOperationId(record.operationId)"), "$path must validate operationId format")
@@ -354,19 +354,20 @@ class SafExportCoordinatorAdoptionSourceAssertionsTest {
 
     @Test
     fun `SafExportCoordinator documents that non-backup export process-death recovery is intentionally out of scope`() {
-        // Only backup
-        // creation (a real WorkManager job that outlives the app process) gets durable persistence.
-        // The six routes using SafExportCoordinator remain screen/process-lifetime-bounded by design.
+        // This is a documented, audited scope decision, not an oversight: only backup creation (a
+        // real WorkManager job that outlives the app process) gets durable persistence. The six
+        // routes using SafExportCoordinator remain screen/process-lifetime-bounded by design.
         val path = "src/main/java/eu/kanade/tachiyomi/util/export/SafExportCoordinator.kt"
         val source = readSource(path)
         assertTrue(
-            source.contains("Process-lifetime boundary -- deliberately not durable"),
+            source.contains("Deliberately bounded, not") &&
+                source.contains("This is an intentional, audited scope decision, not an"),
             "$path must document that non-backup export routes are intentionally not durable",
         )
         assertTrue(
             !source.contains("PreferenceStore") && !source.contains("Injekt"),
             "$path must remain structurally in-memory-only (no PreferenceStore/Injekt persistence) -- " +
-                "if this ever changes, the KDoc boundary above must be revisited, not silently invalidated",
+                "if this ever changes, the KDoc decision above must be revisited, not silently invalidated",
         )
         val storeSource = readSource("src/main/java/eu/kanade/tachiyomi/util/export/BackupCleanupRecoveryStore.kt")
         assertTrue(

@@ -182,5 +182,111 @@ class RecommendationDiscoveryPlannerTest {
         val known = setOf("url1", "url2")
         assert(!RecommendationDiscoveryPlanner.isExhausted(setOf("url1", "url3"), known))
     }
+
+    // ---- EC-04 2026-09-01: planAdditionalPages (configurable discovery-effort policy) ----
+
+    private fun plan(records: List<RecommendationDiscoveryProgress>, maxAdditionalPages: Int, nowMs: Long = now) =
+        RecommendationDiscoveryPlanner.planAdditionalPages(records, maxAdditionalPages, nowMs)
+
+    @Test
+    fun `zero or negative maxAdditionalPages plans nothing — the Off effort level`() {
+        assertEquals(emptyList<Int>(), plan(listOf(successRecord(1)), maxAdditionalPages = 0))
+        assertEquals(emptyList<Int>(), plan(listOf(successRecord(1)), maxAdditionalPages = -1))
+    }
+
+    @Test
+    fun `single-page plan matches nextPageToProbe exactly — preserves the pre-existing effort level`() {
+        val records = listOf(successRecord(1))
+        assertEquals(listOf(probe(records)), plan(records, maxAdditionalPages = 1))
+    }
+
+    @Test
+    fun `multi-page plan advances the simulated frontier sequentially`() {
+        // Only page 1 evaluated so far -> planning 3 additional pages should sequentially plan 2, 3, 4.
+        val records = listOf(successRecord(1))
+        assertEquals(listOf(2, 3, 4), plan(records, maxAdditionalPages = 3))
+    }
+
+    @Test
+    fun `multi-page plan starting mid-frontier continues from the real frontier, not from 1`() {
+        val records = listOf(successRecord(1), successRecord(2), successRecord(3))
+        assertEquals(listOf(4, 5), plan(records, maxAdditionalPages = 2))
+    }
+
+    @Test
+    fun `plan stops early when the lifetime cap is reached, never planning past it`() {
+        val cap = RecommendationDiscoveryPlanner.MAX_DISCOVERY_PAGE_PER_SOURCE_QUERY
+        val records = listOf(successRecord(cap - 1))
+        // Requesting 5 additional pages from one page before the cap can only yield the cap page itself.
+        assertEquals(listOf(cap), plan(records, maxAdditionalPages = 5))
+    }
+
+    @Test
+    fun `plan is empty when there are no progress records yet — page 1 must be evaluated first`() {
+        assertEquals(emptyList<Int>(), plan(emptyList(), maxAdditionalPages = 3))
+    }
+
+    @Test
+    fun `a due retryable page can only be the first planned page, then the plan advances past it`() {
+        val pastRetryAt = now - 1000L
+        val records = listOf(successRecord(1), retryableErrorRecord(page = 2, nextRetryAt = pastRetryAt))
+        // Page 2 is retried first; the simulated post-retry frontier then advances to 3.
+        assertEquals(listOf(2, 3), plan(records, maxAdditionalPages = 2))
+    }
+
+    @Test
+    fun `a not-yet-due retryable page halts planning entirely, matching nextPageToProbe`() {
+        val futureRetryAt = now + 60_000L
+        val records = listOf(successRecord(1), retryableErrorRecord(page = 2, nextRetryAt = futureRetryAt))
+        assertEquals(emptyList<Int>(), plan(records, maxAdditionalPages = 3))
+    }
+
+    // ---- EC-04 2026-09-01: DiscoveryEffortLevel ----
+
+    @Test
+    fun `OFF plans zero additional pages`() {
+        assertEquals(0, DiscoveryEffortLevel.OFF.additionalPagesPerRefresh)
+    }
+
+    @Test
+    fun `STANDARD reproduces the pre-existing hardcoded page count exactly`() {
+        assertEquals(
+            RecommendationDiscoveryPlanner.MAX_NEW_PAGES_PER_SOURCE_REFRESH,
+            DiscoveryEffortLevel.STANDARD.additionalPagesPerRefresh,
+        )
+    }
+
+    @Test
+    fun `STANDARD is the default, not OFF -- introducing configurability must not silently change existing behavior`() {
+        assertEquals(DiscoveryEffortLevel.STANDARD, DiscoveryEffortLevel.DEFAULT)
+    }
+
+    @Test
+    fun `EXTENDED plans more pages than STANDARD but stays a small bounded value`() {
+        assert(DiscoveryEffortLevel.EXTENDED.additionalPagesPerRefresh > DiscoveryEffortLevel.STANDARD.additionalPagesPerRefresh)
+        assert(DiscoveryEffortLevel.EXTENDED.additionalPagesPerRefresh <= RecommendationDiscoveryPlanner.MAX_DISCOVERY_PAGE_PER_SOURCE_QUERY)
+    }
+
+    @Test
+    fun `resolve recovers every stored value exactly`() {
+        DiscoveryEffortLevel.entries.forEach { level ->
+            assertEquals(level, DiscoveryEffortLevel.resolve(level.storedValue))
+        }
+    }
+
+    @Test
+    fun `resolve falls back to the default for an unknown or blank stored value`() {
+        assertEquals(DiscoveryEffortLevel.DEFAULT, DiscoveryEffortLevel.resolve(""))
+        assertEquals(DiscoveryEffortLevel.DEFAULT, DiscoveryEffortLevel.resolve("nonsense"))
+    }
+
+    @Test
+    fun `planAdditionalPages driven by every effort level behaves as documented`() {
+        val records = listOf(successRecord(1))
+        DiscoveryEffortLevel.entries.forEach { level ->
+            val planned = plan(records, maxAdditionalPages = level.additionalPagesPerRefresh)
+            assertEquals(level.additionalPagesPerRefresh, planned.size)
+        }
+    }
 }
 // KMK <--

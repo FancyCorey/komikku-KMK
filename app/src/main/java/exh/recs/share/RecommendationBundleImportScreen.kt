@@ -38,6 +38,7 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -50,9 +51,9 @@ private fun LoadErrorKey.toLocalString(): String = when (this) {
     is LoadErrorKey.UnsupportedVersion ->
         stringResource(KMR.strings.rec_bundle_load_error_unsupported_version, found)
     LoadErrorKey.TooManyItems ->
-        stringResource(KMR.strings.rec_bundle_load_error_too_many_items, RecommendationBundleValidator.MAX_ITEMS)
+        pluralStringResource(KMR.plurals.rec_bundle_load_error_too_many_items, count = RecommendationBundleValidator.MAX_ITEMS, RecommendationBundleValidator.MAX_ITEMS)
     LoadErrorKey.TooManySources ->
-        stringResource(KMR.strings.rec_bundle_load_error_too_many_sources, RecommendationBundleValidator.MAX_SOURCES)
+        pluralStringResource(KMR.plurals.rec_bundle_load_error_too_many_sources, count = RecommendationBundleValidator.MAX_SOURCES, RecommendationBundleValidator.MAX_SOURCES)
     LoadErrorKey.FileTooLarge ->
         stringResource(KMR.strings.rec_bundle_load_error_file_too_large)
     is LoadErrorKey.MalformedJson ->
@@ -273,8 +274,16 @@ class RecommendationBundleImportScreen(
                     text = stringResource(
                         KMR.strings.rec_bundle_import_bundle_info,
                         dateStr,
-                        bundle.items.size,
-                        bundle.requiredSources.size,
+                        pluralStringResource(
+                            KMR.plurals.rec_bundle_item_fragment,
+                            count = bundle.items.size,
+                            bundle.items.size,
+                        ),
+                        pluralStringResource(
+                            KMR.plurals.rec_bundle_source_fragment,
+                            count = bundle.requiredSources.size,
+                            bundle.requiredSources.size,
+                        ),
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,

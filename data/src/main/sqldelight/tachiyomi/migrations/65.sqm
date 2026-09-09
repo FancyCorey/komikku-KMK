@@ -1,0 +1,20 @@
+-- KMK A11.4: durable exact-record identity decisions. Additive only; legacy groups remain unchanged.
+CREATE TABLE IF NOT EXISTS manga_cross_source_identity_decision (
+    left_source INTEGER NOT NULL CHECK(left_source > 0),
+    left_url TEXT NOT NULL CHECK(length(left_url) BETWEEN 1 AND 4096),
+    right_source INTEGER NOT NULL CHECK(right_source > 0),
+    right_url TEXT NOT NULL CHECK(length(right_url) BETWEEN 1 AND 4096),
+    decision TEXT NOT NULL CHECK(decision IN ('USER_CONFIRMED', 'USER_REJECTED')),
+    decision_version INTEGER NOT NULL CHECK(decision_version = 1),
+    evidence_version INTEGER NOT NULL CHECK(evidence_version = 1),
+    reason_codes TEXT NOT NULL,
+    review_state TEXT NOT NULL CHECK(review_state IN ('CURRENT', 'NEEDS_REVIEW')),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    deleted_at INTEGER CHECK(deleted_at IS NULL OR (deleted_at >= created_at AND deleted_at <= updated_at)),
+    PRIMARY KEY (left_source, left_url, right_source, right_url),
+    CHECK(left_source < right_source OR (left_source = right_source AND left_url < right_url))
+);
+
+CREATE INDEX IF NOT EXISTS manga_cross_source_identity_decision_updated_index
+ON manga_cross_source_identity_decision(updated_at);

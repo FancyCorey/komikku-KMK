@@ -3,7 +3,6 @@ package tachiyomi.domain.taste.interactor
 import tachiyomi.domain.taste.model.RecommendationExposure
 import tachiyomi.domain.taste.repository.RecommendationExposureRepository
 
-// KMK -->
 class GetRecommendationExposure(
     private val repository: RecommendationExposureRepository,
 ) {

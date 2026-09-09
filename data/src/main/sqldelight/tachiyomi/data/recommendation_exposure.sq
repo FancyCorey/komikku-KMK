@@ -1,4 +1,3 @@
--- KMK -->
 -- Local-only For You exposure history: records that a card was actually present in a loaded,
 -- visible result state (never a fetch-only page), so repeatedly-shown-but-untouched candidates can
 -- be softly reordered lower without ever being hidden or deleted. Identity is (source_id, url), the

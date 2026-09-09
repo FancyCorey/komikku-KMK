@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.animateItemFastScroll
+import eu.kanade.tachiyomi.library.LibraryUpdateErrorMessageKey
 import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorItem
 import exh.util.EvaluationModeFormatter
 import tachiyomi.domain.libraryUpdateError.model.LibraryUpdateErrorWithRelations
@@ -60,7 +61,7 @@ internal fun LazyListScope.libraryUpdateErrorUiItems(
                 ) {
                     ListGroupHeader(
                         modifier = Modifier.animateItemFastScroll(),
-                        text = uiModel.errorMessage,
+                        text = stringResource(uiModel.errorKey.messageResource()),
                         tonalElevation = 1.dp,
                         count = uiModel.count,
                     )
@@ -228,9 +229,15 @@ fun DismissBackground(dismissState: SwipeToDismissBoxState) {
     }
 }
 
+private fun LibraryUpdateErrorMessageKey.messageResource() = when (this) {
+    LibraryUpdateErrorMessageKey.NoChapters -> MR.strings.no_chapters_error
+    LibraryUpdateErrorMessageKey.SourceNotFound -> MR.strings.loader_not_implemented_error
+    LibraryUpdateErrorMessageKey.Unknown -> MR.strings.unknown_error
+}
+
 sealed class LibraryUpdateErrorUiModel {
 
-    data class Header(val errorMessage: String, val count: Int) : LibraryUpdateErrorUiModel()
+    data class Header(val errorKey: LibraryUpdateErrorMessageKey, val count: Int) : LibraryUpdateErrorUiModel()
 
     data class Item(val item: LibraryUpdateErrorItem) : LibraryUpdateErrorUiModel()
 }

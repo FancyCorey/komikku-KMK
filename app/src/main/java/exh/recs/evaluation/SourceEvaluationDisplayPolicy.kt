@@ -8,10 +8,8 @@ import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 /**
  * Pure, Android-free policy for how a [SourceEvaluation] row should be treated for display and
  * sorting: as current trustworthy evidence, or as stale/inconclusive evidence that must not be
- * shown or sorted as if it were a confident current verdict.
- *
- * See `docs/recommendations/KMK.md`
- * ("Stale Row Handling").
+ * shown or sorted as if it were a confident current verdict. Stale rows remain available only as
+ * explicitly inconclusive evidence until reassessment produces a compatible current result.
  */
 internal object SourceEvaluationDisplayPolicy {
 

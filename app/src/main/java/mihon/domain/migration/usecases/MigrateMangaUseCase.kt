@@ -23,9 +23,15 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.tracker.model.LocalTrackedSourceProgressPolicy
+import tachiyomi.domain.tracker.model.LocalTrackedWork
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSource
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSourceConfirmation
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSourceProgress
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import java.time.Instant
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Phase 4 2026-07-29 -->
 /**
  * Not a transaction: this performs a remote target refresh, chapter/history copy, category
  * replacement, optional enhanced-tracker migration, optional download deletion, cover copy, and a
@@ -41,7 +47,7 @@ import java.time.Instant
  * exactly which flag-gated steps completed before any failure -- but this is a truthful *report*,
  * not an undo: none of the side effects those completed steps produced are reversed by this class.
  *
- * Deliberately out of scope for this operation:
+ * Deliberately out of scope for this fix (see the implementation plan's Phase 4 §8, items 2 and 4):
  * staged local-state retention for a supported partial reversal, and an explicit `reverseMigration`
  * use case for "migrate back." Both would require a new bounded snapshot/staging store for chapter/
  * history/category pre-state, which is a materially larger, separate feature with its own conflict-
@@ -66,6 +72,8 @@ class MigrateMangaUseCase(
     // KMK -->
     private val getHistory: GetHistory,
     private val upsertHistory: UpsertHistory,
+    // KMK v0.8.21-fix2: explicit manga migration must carry local tracking's source relationship.
+    private val localTrackerRepository: LocalTrackerRepository,
     // KMK <--
 ) {
     private val enhancedServices by lazy { trackerManager.trackers.filterIsInstance<EnhancedTracker>() }
@@ -80,12 +88,13 @@ class MigrateMangaUseCase(
         // SY -->
         throttleFunc: suspend () -> Unit = {},
         // SY <--
+        // KMK Confirmed Blocker Remediation Phase 4 -->
     ): MigrationOutcome {
         val targetSource = sourceManager.get(target.source) ?: return MigrationOutcome.NotStarted(null)
         val currentSource = sourceManager.get(current.source)
         val flags = /* KMK --> */ presetFlags ?: /* KMK <-- */ sourcePreferences.migrationFlags().get()
         val completedFlags = mutableSetOf<MigrationFlag>()
-        // KMK: a requested flag whose
+        // KMK Confirmed Blocker Remediation follow-up Phase 1 2026-07-29: a requested flag whose
         // step was determined not applicable (e.g. CUSTOM_COVER requested but the manga has none) is
         // truthfully reported as skipped, distinct from either completed or failed.
         val skippedFlags = mutableSetOf<MigrationFlag>()
@@ -178,6 +187,94 @@ class MigrateMangaUseCase(
             if (MigrationFlag.TRACK in flags) {
                 currentStep = MigrationFlag.TRACK
                 // SY <--
+                // Local tracking is keyed by concrete source identity rather than manga id. An
+                // explicit migration authorizes adding the target source to the same local work,
+                // while a different existing owner is a real conflict and must not be merged.
+                // Keep the old source relationship and its progress so local history is never lost.
+                val localWorkId = localTrackerRepository.getWorkIdBySourceUrl(current.source, current.url)
+                if (localWorkId != null) {
+                    val targetLocalWorkId = localTrackerRepository.getWorkIdBySourceUrl(target.source, target.url)
+                    if (targetLocalWorkId != null && targetLocalWorkId != localWorkId) {
+                        error("Local tracker target source is already owned by another work")
+                    }
+                    val localWork = localTrackerRepository.getWork(localWorkId)
+                        ?: error("Local tracker work is missing for the current source")
+                    val currentLocalSource = localTrackerRepository.getSources(localWorkId)
+                        .firstOrNull { it.source == current.source && it.url == current.url }
+                        ?: error("Local tracker source relationship is missing for the current source")
+                    val now = System.currentTimeMillis()
+                    val targetSource = if (targetLocalWorkId == null) {
+                        LocalTrackedWorkSource(
+                            workId = localWork.id,
+                            source = target.source,
+                            url = target.url,
+                            title = target.title,
+                            confidence = 100,
+                            confirmation = LocalTrackedWorkSourceConfirmation.USER_CONFIRMED,
+                            inheritanceOptedOut = currentLocalSource.inheritanceOptedOut,
+                            createdAt = now,
+                            updatedAt = now,
+                        )
+                    } else {
+                        localTrackerRepository.getSources(localWorkId)
+                            .firstOrNull { it.source == target.source && it.url == target.url }
+                            ?: error("Local tracker target source relationship is missing")
+                    }
+
+                    // Carry the source-specific progress as well as the relationship. The shared
+                    // work row alone is not enough: the local tracker screen resolves chapter
+                    // context per concrete source, and a migrated target would otherwise appear
+                    // tracked while still showing no progress. Only copy an exact recognized
+                    // chapter number; source-specific labels and offsets are not safe to infer in
+                    // the migration path.
+                    val currentProgress = localTrackerRepository.getSourceProgress(
+                        workId = localWorkId,
+                        source = current.source,
+                        url = current.url,
+                    )
+                    val targetChapter = LocalTrackerMigrationProgressPolicy.exactTargetChapter(
+                        progress = currentProgress,
+                        targetChapters = getChaptersByMangaId.await(target.id),
+                    )
+                    var updatedWork: LocalTrackedWork? = null
+                    val targetProgress = if (currentProgress != null && targetChapter != null) {
+                        val targetProgress = LocalTrackedWorkSourceProgress(
+                            workId = localWorkId,
+                            source = target.source,
+                            url = target.url,
+                            chapterNumber = targetChapter.chapterNumber,
+                            chapterUrl = targetChapter.url,
+                            chapterLabel = targetChapter.name,
+                            progressAt = currentProgress.progressAt,
+                            inheritedFromSource = current.source,
+                            inheritedFromUrl = current.url,
+                            updatedAt = currentProgress.updatedAt,
+                        )
+                        val existingTargetProgress = localTrackerRepository.getSourceProgress(
+                            workId = localWorkId,
+                            source = target.source,
+                            url = target.url,
+                        )
+                        if (LocalTrackedSourceProgressPolicy.accepts(existingTargetProgress, targetProgress)) {
+                            updatedWork = localWork.copy(
+                                title = target.title,
+                                normalizedTitle = target.title.trim().lowercase(),
+                                lastChapterSource = target.source,
+                                lastChapterNumber = targetChapter.chapterNumber,
+                                lastChapterUrl = targetChapter.url,
+                                lastChapterLabel = targetChapter.name,
+                                lastProgressAt = currentProgress.progressAt,
+                                updatedAt = maxOf(localWork.updatedAt, currentProgress.updatedAt),
+                            )
+                            targetProgress
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                    localTrackerRepository.migrateSourceRelationship(targetSource, targetProgress, updatedWork)
+                }
                 getTracks.await(current.id).mapNotNull { track ->
                     val updatedTrack = track.copy(mangaId = target.id)
 
@@ -202,7 +299,7 @@ class MigrateMangaUseCase(
                     downloadManager.deleteManga(current, currentSource)
                     completedFlags += MigrationFlag.REMOVE_DOWNLOAD
                 } else {
-                    // KMK: requested but the
+                    // KMK Confirmed Blocker Remediation follow-up Phase 1: requested but the
                     // current source could not be resolved -- there is nothing to delete from,
                     // truthfully a skip rather than a silent no-op folded into "completed".
                     skippedFlags += MigrationFlag.REMOVE_DOWNLOAD
@@ -216,7 +313,7 @@ class MigrateMangaUseCase(
                     coverCache.setCustomCoverToCache(target, coverCache.getCustomCoverFile(current.id).inputStream())
                     completedFlags += MigrationFlag.CUSTOM_COVER
                 } else {
-                    // KMK: requested but the
+                    // KMK Confirmed Blocker Remediation follow-up Phase 1: requested but the
                     // source manga has no custom cover to copy -- truthfully a skip.
                     skippedFlags += MigrationFlag.CUSTOM_COVER
                 }
@@ -228,7 +325,7 @@ class MigrateMangaUseCase(
                 dateAdded = 0,
             )
                 .takeIf { replace }
-            // KMK: NOTES is only meaningfully
+            // KMK Confirmed Blocker Remediation follow-up Phase 1: NOTES is only meaningfully
             // applied when there is something to copy -- mirrors MigrateMangaDialog's own
             // `MigrationFlag.NOTES -> current.notes.isNotBlank()` applicability check, tracked here
             // (not changing the write itself) so a requested-but-blank NOTES flag is truthfully
@@ -253,7 +350,7 @@ class MigrateMangaUseCase(
             )
 
             currentStep = null
-            // KMK: this is the step that actually
+            // KMK Confirmed Blocker Remediation follow-up Phase 1: this is the step that actually
             // commits favorite/category-visible state (and NOTES/EXTRA, which have no earlier
             // flag-gated block of their own) -- a failure here must be distinguishable from a
             // failure in one of the earlier per-flag steps, see MigrationOutcome.PartialFailure.
@@ -271,7 +368,7 @@ class MigrateMangaUseCase(
             // catch previously swallowed OutOfMemoryError/StackOverflowError/etc. along with ordinary
             // per-migration failures.
             rethrowIfFatal(e)
-            // KMK: a
+            // KMK Confirmed Blocker Remediation Phase 4 (extended by the follow-up pass): a
             // non-fatal exception here previously vanished with no signal to the caller. Now
             // reported truthfully -- completedFlags/skippedFlags list exactly which flag-gated
             // steps already ran or were determined not applicable (and therefore, for completed

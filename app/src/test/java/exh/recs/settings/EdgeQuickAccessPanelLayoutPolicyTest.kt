@@ -5,10 +5,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK
 /**
  * Pure layout-policy tests for the repaired [EdgeQuickAccessPanel]. Each audited defect from the
- * documented layout defects has a corresponding assertion here, so the repair is proven
+ * implementation ledger's finding L1-4 has a corresponding assertion here, so the repair is proven
  * without needing a device screenshot.
  */
 class EdgeQuickAccessPanelLayoutPolicyTest {

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK
 /**
  * Exposure-policy tests: window boundaries, malformed timestamps, repeated exposure, expiration,
  * and -- most importantly -- the product rule that an ignored card is not negative feedback.
@@ -23,15 +22,17 @@ class RecommendationExposurePolicyTest {
     }
 
     @Test
-    fun `supported windows are 7, 14 and 30 days`() {
-        assertEquals(listOf(7, 14, 30), RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS)
+    fun `supported windows are bounded integer days`() {
+        assertEquals((1..100).toList(), RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS)
     }
 
     @Test
     fun `a malformed window value falls back to the 14-day default`() {
-        listOf(-1, 0, 1, 13, 15, 365, Int.MAX_VALUE).forEach {
+        listOf(-1, 0, 101, 365, Int.MAX_VALUE).forEach {
             assertEquals(14, RecommendationExposurePolicy.validateWindowDays(it), "window $it must fall back")
         }
+        assertEquals(1, RecommendationExposurePolicy.validateWindowDays(1))
+        assertEquals(100, RecommendationExposurePolicy.validateWindowDays(100))
     }
 
     // --- Visible exposure event ---
@@ -99,6 +100,17 @@ class RecommendationExposurePolicyTest {
             isUntouched = false,
         )
         assertEquals(0.0, penalty)
+        assertEquals(
+            0.0,
+            RecommendationExposurePolicy.softPenalty(
+                enabled = false,
+                now = now,
+                lastExposedAt = now,
+                exposureCount = 50,
+                windowDays = 14,
+                isUntouched = true,
+            ),
+        )
     }
 
     // --- Penalty shape ---

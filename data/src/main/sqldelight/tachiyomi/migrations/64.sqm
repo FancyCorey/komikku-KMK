@@ -1,8 +1,8 @@
--- KMK: additive-only migration for the
+-- Additive-only migration for the
 -- local-only For You exposure history table -- see recommendation_exposure.sq for the full schema
 -- rationale. No existing table is altered, renamed, or dropped.
 --
--- KMK: CREATE statements now carry IF NOT EXISTS, matching the
+-- CREATE statements now carry IF NOT EXISTS, matching the
 -- idempotency contract every other KMK migration follows and KmkMigrationTest enforces. Without it,
 -- re-running this migration against a database that already has the table would fail instead of
 -- being a no-op.

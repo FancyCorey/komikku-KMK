@@ -229,7 +229,7 @@ private fun ExtensionContent(
                                     {
                                         Button(onClick = { navigator?.push(ExtensionStoresScreen()) }) {
                                             Text(
-                                                text = stringResource(MR.strings.action_addExtensionStore),
+                                                text = stringResource(MR.strings.action_add_repo),
                                                 style = LocalTextStyle.current.copy(
                                                     color = MaterialTheme.colorScheme.onPrimary,
                                                 ),

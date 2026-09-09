@@ -30,10 +30,20 @@ abstract class PageLoader {
     open suspend fun loadPage(page: ReaderPage) {}
 
     /**
-     * Retries the given [page] in case it failed to load. This method only makes sense when an
-     * online source is used.
+     * Retries every currently failed page in [page]'s chapter. This method only makes sense when
+     * an online source is used; already-ready, queued, loading, and unrelated chapter pages are
+     * left untouched.
      */
     open fun retryPage(page: ReaderPage) {}
+
+    /** Releases optional retained resources when Android reports memory pressure. */
+    open fun onMemoryPressure() {}
+
+    /** Stops owned foreground work while the reader is not active. */
+    open fun onReaderBackground() {}
+
+    /** Restarts owned foreground work after the reader becomes active again. */
+    open fun onReaderForeground() {}
 
     /**
      * Recycles this loader. Implementations must override this method to clean up any active

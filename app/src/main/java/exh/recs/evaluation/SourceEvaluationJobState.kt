@@ -14,6 +14,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * and candidate/options are only written before the job is enqueued.
  */
 object SourceEvaluationJobState {
+    data class PendingRun(
+        val generation: Long,
+        val candidates: List<EvaluationCandidate>,
+        val options: SourceEvaluationOptions,
+    )
+
+    private val lock = Any()
+
+    @Volatile
+    private var activeGeneration: Long = 0L
+
+    @Volatile
+    private var pendingGeneration: Long? = null
+
     /** Current state of the active evaluation run. Null means no run has started or it was reset. */
     val activeQueueState = MutableStateFlow<SourceEvaluationQueueState?>(null)
 
@@ -55,18 +69,85 @@ object SourceEvaluationJobState {
     var pendingIsStaleRun: Boolean = false
     // KMK <--
 
-    fun reset() {
+    fun beginRun(
+        candidates: List<EvaluationCandidate>,
+        options: SourceEvaluationOptions,
+        continuationMetadata: SourceEvaluationContinuationMetadata,
+    ): Long = synchronized(lock) {
+        val generation = activeGeneration + 1L
+        activeGeneration = generation
+        pendingGeneration = generation
+        pendingCandidates = candidates
+        pendingOptions = options
+        pendingCursorFingerprint = continuationMetadata.fingerprint
+        pendingAllCandidates = continuationMetadata.allCandidates
+        pendingIsStaleRun = continuationMetadata.isStaleRun
+        lastCompletedCandidateKeys = emptySet()
+        activeQueueState.value = SourceEvaluationQueueState(
+            status = SourceEvaluationQueueState.Status.Running,
+            totalCount = candidates.size,
+            installerMode = options.installerMode,
+            batchSize = options.batchSize,
+        )
+        generation
+    }
+
+    fun pendingRun(): PendingRun? = synchronized(lock) {
+        val generation = pendingGeneration ?: return@synchronized null
+        val candidates = pendingCandidates ?: return@synchronized null
+        val options = pendingOptions ?: return@synchronized null
+        PendingRun(generation, candidates, options)
+    }
+
+    fun stateFor(generation: Long): SourceEvaluationQueueState? = synchronized(lock) {
+        activeQueueState.value.takeIf { generation == activeGeneration }
+    }
+
+    fun publish(generation: Long, state: SourceEvaluationQueueState?): Boolean = synchronized(lock) {
+        if (generation != activeGeneration) return@synchronized false
+        activeQueueState.value = state
+        true
+    }
+
+    fun finish(generation: Long, completedCandidateKeys: Set<String>): Boolean = synchronized(lock) {
+        if (generation != activeGeneration) return@synchronized false
+        lastCompletedCandidateKeys = completedCandidateKeys
+        if (pendingGeneration == generation) {
+            pendingGeneration = null
+            pendingCandidates = null
+            pendingOptions = null
+        }
+        true
+    }
+
+    fun cancelActive() = synchronized(lock) {
+        activeGeneration += 1L
+        pendingGeneration = null
         pendingCandidates = null
         pendingOptions = null
         lastCompletedCandidateKeys = emptySet()
-        activeQueueState.value = null
-        // KMK --> v0.7.6
-        pendingCursorFingerprint = null
-        pendingAllCandidates = null
-        // KMK <--
-        // KMK --> v0.8.1-fix3
-        pendingIsStaleRun = false
-        // KMK <--
+        activeQueueState.value =
+            activeQueueState.value
+                ?.copy(status = SourceEvaluationQueueState.Status.Cancelled)
+                ?: SourceEvaluationQueueState(status = SourceEvaluationQueueState.Status.Cancelled)
+    }
+
+    fun reset() {
+        synchronized(lock) {
+            activeGeneration += 1L
+            pendingGeneration = null
+            pendingCandidates = null
+            pendingOptions = null
+            lastCompletedCandidateKeys = emptySet()
+            activeQueueState.value = null
+            // KMK --> v0.7.6
+            pendingCursorFingerprint = null
+            pendingAllCandidates = null
+            // KMK <--
+            // KMK --> v0.8.1-fix3
+            pendingIsStaleRun = false
+            // KMK <--
+        }
     }
 }
 // KMK <--

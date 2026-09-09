@@ -152,6 +152,11 @@ object SettingsTrackingScreen : SearchableSettings {
                 preference = trackPreferences.autoSyncProgressFromTrackers(),
                 title = stringResource(KMR.strings.pref_auto_sync_progress_from_trackers),
             ),
+            Preference.PreferenceItem.SwitchPreference(
+                preference = trackPreferences.autoInheritLocalProgress(),
+                title = stringResource(KMR.strings.pref_auto_inherit_local_progress),
+                subtitle = stringResource(KMR.strings.pref_auto_inherit_local_progress_summary),
+            ),
             // KMK <--
             // SY -->
             Preference.PreferenceItem.SwitchPreference(

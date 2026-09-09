@@ -4,7 +4,6 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.taste.model.RecommendationExposure
 import tachiyomi.domain.taste.repository.RecommendationExposureRepository
 
-// KMK -->
 class RecommendationExposureRepositoryImpl(
     private val handler: DatabaseHandler,
 ) : RecommendationExposureRepository {

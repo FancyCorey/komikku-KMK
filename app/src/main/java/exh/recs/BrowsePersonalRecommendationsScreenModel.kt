@@ -9,7 +9,7 @@ import androidx.compose.runtime.produceState
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
-import eu.kanade.presentation.util.ioCoroutineScope
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
@@ -19,9 +19,12 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.rethrowIfFatal
 import eu.kanade.tachiyomi.util.export.SafArtifactOutcome
 import eu.kanade.tachiyomi.util.export.SafExportCoordinator
+import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.isOnline
 import eu.kanade.tachiyomi.util.system.toast
 import exh.recs.RecommendationCandidateEnricher.Companion.needsEnrichment
+import exh.recs.matching.ConfirmedGroupLocalTrackingPropagator
+import exh.recs.matching.ConfirmedMangaGroupTargets
 import exh.recs.memory.RecommendationCandidateMemoryEntry
 import exh.recs.memory.RecommendationCandidateMemoryRanker
 import exh.recs.memory.RecommendationCandidateMemoryStore
@@ -48,8 +51,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -82,16 +90,18 @@ import tachiyomi.domain.taste.model.RecommendationCacheEntry
 import tachiyomi.domain.taste.model.RecommendationDiscoveryProgress
 import tachiyomi.domain.taste.model.TasteProfile
 import tachiyomi.domain.taste.model.normalizeTag
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.security.MessageDigest
+import java.util.Locale
+import java.util.UUID
 
 data class PersonalRecommendation(
     val manga: Manga,
     val score: Double,
     val matchedGroups: List<String>,
-    // KMK -->
     /**
      * Which discovery lane produced this candidate. Carried all the way through the merge so the
      * personalized-majority invariant can be asserted on the **final displayed list**, not merely on
@@ -114,6 +124,27 @@ sealed interface PersonalRecommendationResult {
             .joinToString(", ")
             .ifBlank { null }
     }
+}
+
+/** Returns the source rows that currently expose the inline Retry action. */
+internal fun retryableRecommendationSourceIds(
+    items: Map<Long, PersonalRecommendationResult>,
+): Set<Long> = items.asSequence()
+    .filter { (_, result) -> result is PersonalRecommendationResult.Error }
+    .map { (sourceId, _) -> sourceId }
+    .toSet()
+
+internal fun <T> selectRecommendationCandidates(
+    sources: List<T>,
+    retrySourceIds: Set<Long>?,
+    maxAttempts: Int,
+    sourceId: (T) -> Long,
+): List<T> = if (retrySourceIds == null) {
+    sources.take(maxAttempts)
+} else {
+    sources
+        .filter { sourceId(it) in retrySourceIds }
+        .distinctBy(sourceId)
 }
 
 data class RecommendationSearchContext(
@@ -167,10 +198,29 @@ internal fun filterVisibleCandidates(
         chapterCounts = chapterCounts,
     ) == CandidateVisibility.VISIBLE
 }
+
+/** Reconciles retry-created Source instances without duplicating a source-id in the UI order. */
+internal fun reconcileSourceOrder(
+    current: PersistentList<Source>,
+    incoming: List<Source>,
+): PersistentList<Source> {
+    val replacements = incoming.associateBy { it.id }
+    val seen = mutableSetOf<Long>()
+    val result = buildList {
+        current.forEach { source ->
+            val replacement = replacements[source.id] ?: source
+            if (seen.add(replacement.id)) add(replacement)
+        }
+        incoming.forEach { source ->
+            if (seen.add(source.id)) add(source)
+        }
+    }
+    return result.toPersistentList()
+}
 // KMK <--
 
 private fun normalizedTitleKey(title: String): String =
-    title.lowercase()
+    title.lowercase(Locale.ROOT)
         .replace(Regex("""\([^)]*\)|\[[^\]]*\]"""), "")
         .replace(Regex("[^a-z0-9]"), " ")
         .trim()
@@ -179,9 +229,17 @@ private fun normalizedTitleKey(title: String): String =
 class BrowsePersonalRecommendationsScreenModel(
     // KMK --> v0.7.25: connectivity check before starting For You queries
     private val context: Context = Injekt.get<Application>(),
-    // KMK: tests can construct the real
+    private val isOnline: () -> Boolean = { context.isOnline() },
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val searchDispatcher: kotlinx.coroutines.CoroutineDispatcher =
+        kotlinx.coroutines.Dispatchers.IO.limitedParallelism(5),
+    private val isLowRamDevice: Boolean = DeviceUtil.isLowRamDevice(context),
+    // Tests can construct the real
     // ScreenModel without starting the Android/network load before collaborators are ready.
     private val autoLoad: Boolean = true,
+    // Keep debug-only fixture eligibility injectable for host tests that run under a non-debug
+    // variant. Production callers retain the real build flag by default.
+    private val isDebugBuild: Boolean = BuildConfig.DEBUG,
     // KMK <--
     private val getTasteProfile: GetTasteProfile = Injekt.get(),
     private val getTagAliases: GetTagAliases = Injekt.get(),
@@ -211,24 +269,35 @@ class BrowsePersonalRecommendationsScreenModel(
     private val setMangaTasteBatch: tachiyomi.domain.taste.interactor.SetMangaTasteBatch = Injekt.get(),
     // KMK v0.8.17-fix1: Clear Rating for For You selection, same interactor manga detail already uses.
     private val clearMangaTaste: tachiyomi.domain.taste.interactor.ClearMangaTaste = Injekt.get(),
+    private val localTrackerRepository: LocalTrackerRepository = Injekt.get(),
+    private val confirmedMangaGroupTargets: ConfirmedMangaGroupTargets = Injekt.get(),
+    private val confirmedGroupLocalTrackingPropagator: ConfirmedGroupLocalTrackingPropagator =
+        ConfirmedGroupLocalTrackingPropagator(localTrackerRepository),
     // KMK <--
-    // KMK: batched tracker lookup so a tracked title is
+    // batched tracker lookup so a tracked title is
     // genuinely exempt from the exposure penalty. Fails open (see resolveTrackedExposureKeys).
     private val getTracks: tachiyomi.domain.track.interactor.GetTracks = Injekt.get(),
-    // KMK: local-only For You exposure
+    // Local-only For You exposure
     // history (soft display reordering only -- see RecommendationExposureRepository KDoc)
     private val getRecommendationExposure: tachiyomi.domain.taste.interactor.GetRecommendationExposure = Injekt.get(),
     private val recordRecommendationExposure: tachiyomi.domain.taste.interactor.RecordRecommendationExposure = Injekt.get(),
     private val pruneRecommendationExposure: tachiyomi.domain.taste.interactor.PruneRecommendationExposure = Injekt.get(),
 ) : StateScreenModel<BrowsePersonalRecommendationsScreenModel.State>(State()) {
+    // Keep all source fetches in the refresh under one device-aware aggregate limit. The caller's
+    // dispatcher remains injectable for host tests; only its effective parallelism changes.
+    private val effectiveSearchDispatcher = searchDispatcher.limitedParallelism(
+        RecommendationEffectiveResourcePolicy.sourceConcurrency(isLowRamDevice),
+    )
 
-    private val coroutineDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(5)
+    // All downstream source work, including SourceRuntime and enrichment, must share the effective
+    // device-aware limit. Passing the raw constructor dispatcher here would bypass the low-RAM cap
+    // whenever a nested owner switches context for its own I/O.
+    private val coroutineDispatcher = effectiveSearchDispatcher
 
-    // KMK:
     // screenModelScope-owned, not Composable-`remember`-owned.
     val exportCoordinator = SafExportCoordinator()
 
-    // KMK: [snapshot],
+    // [snapshot],
     // [targetSource], and [isTopPicks] are all captured by the caller (personalRecommendationsTab) at
     // the moment the export is requested, before the picker opens.
     fun exportRecommendationBundle(
@@ -295,6 +364,8 @@ class BrowsePersonalRecommendationsScreenModel(
     }
 
     private var searchJob: Job? = null
+    private var loadJob: Job? = null
+    private val loadLaunchLock = Any()
     private val enricher = RecommendationCandidateEnricher(networkToLocalManga, coroutineDispatcher)
     // KMK --> v0.7.38: candidate discovery memory helpers
     private val memoryStore = RecommendationCandidateMemoryStore(getMemory, upsertMemory, pruneMemory)
@@ -307,23 +378,23 @@ class BrowsePersonalRecommendationsScreenModel(
     private val accumulatorLock = Any()
     private val combinedAccumulator = CombinedPicksAccumulator()
 
+    /**
+     * Rejects late results from a superseded refresh before they can mutate the shared accumulator
+     * or the rendered source map. Cancellation is cooperative, so an HTTP/enrichment completion can
+     * still reach [updateItem] after a newer refresh has started.
+     */
+    private val activeRefreshGeneration = java.util.concurrent.atomic.AtomicLong(-1L)
+
     @Volatile private var currentBoostedSourceIds: Set<Long> = emptySet()
 
-    // KMK
-    /**
-     * Latest-lane attempt budget for the *current* refresh, resolved once in [load] from
-     * [RecommendationLatestBudgetPolicy] and consumed by [tryLatestCatalogueLane].
-     *
-     * [latestAttemptsUsed] is an [AtomicInteger] because sources within a batch are searched
-     * concurrently (`batch.map { async { searchSource(...) } }`), so several coroutines can reach the
-     * lane at once; a plain `Int` would let them collectively overshoot the budget. Both are reset at
-     * the start of every refresh so a budget is per-refresh, never cumulative across refreshes.
-     */
-    @Volatile private var latestExplorationBudget: Int = 0
-    private val latestAttemptsUsed = java.util.concurrent.atomic.AtomicInteger(0)
+    /** Refresh-owned budget state; never shared by overlapping or superseded refreshes. */
+    private data class LatestExplorationBudgetState(
+        val limit: Int,
+        val attemptsUsed: java.util.concurrent.atomic.AtomicInteger =
+            java.util.concurrent.atomic.AtomicInteger(0),
+    )
     // KMK <--
 
-    // KMK -->
     /**
      * One wall-clock reading per refresh, used by every exposure-reranking comparison this refresh
      * makes -- deterministic ordering requires a single `now`, never a fresh read per source/card.
@@ -345,15 +416,122 @@ class BrowsePersonalRecommendationsScreenModel(
 
     init {
         if (autoLoad) {
-            screenModelScope.launch { load(forceRefresh = false) }
+            requestLoad(forceRefresh = false)
         }
     }
 
-    fun refresh() {
-        screenModelScope.launch { load(forceRefresh = true) }
+    // KMK v0.8.21-fix2: AUG-14 slice 3 UI -- saved For You focus modes. Deliberately UI-adjacent
+    // state (a plain preference), not part of the main [State]: reactive to the preference's own
+    // changes() so a save/rename/delete from anywhere updates every observer immediately, exactly
+    // like every other Preference-backed reactive value in this codebase.
+    val savedFocusModes: kotlinx.coroutines.flow.StateFlow<List<SavedFocusMode>> =
+        sourcePreferences.savedFocusModes().changes()
+            .map { SavedFocusModeStore.parse(it) }
+            .stateIn(
+                screenModelScope,
+                SharingStarted.Eagerly,
+                SavedFocusModeStore.parse(sourcePreferences.savedFocusModes().get()),
+            )
+
+    /** Applied focus survives screen/process recreation without becoming taste or saved-mode data. */
+    internal val activeFocusCriteria: kotlinx.coroutines.flow.StateFlow<RecommendationFocusPolicy.FocusCriteria> =
+        sourcePreferences.activeForYouFocus().changes()
+            .map(ActiveFocusStore::parse)
+            .stateIn(
+                screenModelScope,
+                SharingStarted.Eagerly,
+                ActiveFocusStore.parse(sourcePreferences.activeForYouFocus().get()),
+            )
+
+    internal fun setActiveFocus(criteria: RecommendationFocusPolicy.FocusCriteria) {
+        sourcePreferences.activeForYouFocus().set(ActiveFocusStore.serialize(criteria))
+        // Applying or clearing focus is a new discovery request, not only a presentation filter.
+        // Reuse the existing refresh owner so every eligible source gets a fresh bounded search.
+        refresh()
     }
 
-    // KMK -->
+    /** No-ops on a blank [name], per [SavedFocusModeStore.create]'s own contract. */
+    fun saveFocusMode(name: String, includeGroups: Set<String>, excludeGroups: Set<String> = emptySet(), matchAll: Boolean = true) {
+        val updated = SavedFocusModeStore.create(
+            current = savedFocusModes.value,
+            name = name,
+            includeGroups = includeGroups,
+            excludeGroups = excludeGroups,
+            matchAll = matchAll,
+            now = clock(),
+            newId = { UUID.randomUUID().toString() },
+        )
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    // KMK v0.8.21-fix4: R4/AUG-14 completion -- rename/edit/delete/reorder were already fully
+    // implemented and tested at the SavedFocusModeStore level (slice 3); only the screen-model
+    // and UI wiring were the deferred remainder. Each simply delegates to the store's pure
+    // function and writes the result back through the same reactive preference every other
+    // mutation here already uses -- no new persistence mechanism.
+    /** No-ops on a blank [newName], per [SavedFocusModeStore.rename]'s own contract. */
+    fun renameFocusMode(id: String, newName: String) {
+        val updated = SavedFocusModeStore.rename(savedFocusModes.value, id, newName, now = clock())
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    fun updateFocusModeCriteria(id: String, includeGroups: Set<String>, excludeGroups: Set<String>, matchAll: Boolean) {
+        val updated = SavedFocusModeStore.updateCriteria(savedFocusModes.value, id, includeGroups, excludeGroups, matchAll, now = clock())
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    fun deleteFocusMode(id: String) {
+        val updated = SavedFocusModeStore.delete(savedFocusModes.value, id)
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    fun reorderFocusModes(orderedIds: List<String>) {
+        val updated = SavedFocusModeStore.reorder(savedFocusModes.value, orderedIds)
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    fun refresh() {
+        requestLoad(forceRefresh = true)
+    }
+
+    /**
+     * Re-runs only the source rows currently showing an error. A full refresh remains the fallback
+     * for offline/empty states and the pull-to-refresh gesture, while an inline Retry action must
+     * not discard successful source results or issue duplicate requests for them.
+     */
+    fun retryFailedSourcesOrRefresh() {
+        val failedSourceIds = retryableRecommendationSourceIds(
+            mutableState.value.items.mapKeys { (source, _) -> source.id },
+        )
+        requestLoad(
+            forceRefresh = true,
+            retrySourceIds = failedSourceIds.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    /** Serializes refresh requests so a superseded load cannot cancel a newer search job. */
+    private fun requestLoad(forceRefresh: Boolean, retrySourceIds: Set<Long>? = null) {
+        synchronized(loadLaunchLock) {
+            loadJob?.cancel()
+            searchJob?.cancel()
+            // Reserve the generation before launching work. A cancelled older load can otherwise
+            // reach its late state reset after this request and steal the active-generation slot.
+            val refreshGeneration = mutableState.updateAndGet {
+                it.copy(resultGeneration = it.resultGeneration + 1)
+            }.resultGeneration
+            activeRefreshGeneration.updateAndGet { currentGeneration ->
+                RecommendationRefreshGenerationPolicy.activate(currentGeneration, refreshGeneration)
+            }
+            loadJob = screenModelScope.launch {
+                load(
+                    forceRefresh = forceRefresh,
+                    retrySourceIds = retrySourceIds,
+                    refreshGeneration = refreshGeneration,
+                )
+            }
+        }
+    }
+
     /**
      * Records that the current [State.resultGeneration]'s cards are actually visible on screen.
      *
@@ -399,7 +577,7 @@ class BrowsePersonalRecommendationsScreenModel(
 
         screenModelScope.launch {
             try {
-                recordRecommendationExposure.await(keys, mangaIds, System.currentTimeMillis())
+                recordRecommendationExposure.await(keys, mangaIds, clock())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -410,33 +588,68 @@ class BrowsePersonalRecommendationsScreenModel(
     }
     // KMK <--
 
-    private suspend fun load(forceRefresh: Boolean) {
+    private suspend fun load(
+        forceRefresh: Boolean,
+        retrySourceIds: Set<Long>? = null,
+        refreshGeneration: Long,
+    ) {
+        if (activeRefreshGeneration.get() != refreshGeneration) return
+        val retryOnly = retrySourceIds?.takeIf { it.isNotEmpty() }
+        val fixtureMode = ForYouDebugFixture.resolveMode(
+            isDebugBuild = isDebugBuild || BuildConfig.KMK_BENCHMARK_FIXTURE,
+            preferenceValue = sourcePreferences.forYouFixtureMode().get(),
+        )
         // KMK --> v0.7.25: reset offline state when starting a new load
-        mutableState.update { it.copy(isLoading = true, profileIsEmpty = false, isOffline = false) }
+        mutableState.update {
+            if (it.resultGeneration != refreshGeneration) return@update it
+            it.copy(
+                isLoading = retryOnly == null,
+                profileIsEmpty = false,
+                isOffline = false,
+            )
+        }
 
-        if (!context.isOnline()) {
-            mutableState.update { State(isLoading = false, isOffline = true) }
+        if (!ForYouDebugFixture.usesSyntheticInputs(fixtureMode) && !isOnline()) {
+            mutableState.update {
+                if (it.resultGeneration != refreshGeneration) {
+                    it
+                } else {
+                    State(isLoading = false, isOffline = true, resultGeneration = refreshGeneration)
+                }
+            }
             return
         }
         // KMK <--
 
         clearRecommendationCache.awaitExpired()
-        // KMK: prune exposure rows older
+        // Prune exposure rows older
         // than the configured window plus its grace period on every refresh -- ordering history only,
         // never touches ratings/library/manga/taste. A failed prune must never block the refresh.
         try {
             val windowDays = RecommendationExposurePolicy.validateWindowDays(
                 sourcePreferences.recommendationExposureWindowDays().get(),
             )
-            pruneRecommendationExposure.await(RecommendationExposurePolicy.pruneBefore(System.currentTimeMillis(), windowDays))
+            pruneRecommendationExposure.await(RecommendationExposurePolicy.pruneBefore(clock(), windowDays))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
         }
 
-        val profile = getTasteProfile.await()
+        val profile = ForYouDebugFixture.profile(fixtureMode) { getTasteProfile.await() }
         if (profile.isEmpty()) {
-            mutableState.update { State(isLoading = false, profileIsEmpty = true) }
+            if (retryOnly == null) {
+                mutableState.update {
+                    if (it.resultGeneration != refreshGeneration) {
+                        it
+                    } else {
+                        it.copy(isLoading = false, profileIsEmpty = true)
+                    }
+                }
+            } else {
+                mutableState.update {
+                    if (it.resultGeneration != refreshGeneration) it else it.copy(isLoading = false)
+                }
+            }
             return
         }
 
@@ -457,29 +670,75 @@ class BrowsePersonalRecommendationsScreenModel(
 
         val topTags = topSearchTags(profile)
         if (topTags.isEmpty()) {
-            mutableState.update { State(isLoading = false, profileIsEmpty = true) }
+            if (retryOnly == null) {
+                mutableState.update {
+                    if (it.resultGeneration != refreshGeneration) {
+                        it
+                    } else {
+                        it.copy(isLoading = false, profileIsEmpty = true)
+                    }
+                }
+            } else {
+                mutableState.update {
+                    if (it.resultGeneration != refreshGeneration) it else it.copy(isLoading = false)
+                }
+            }
             return
         }
 
         val aliasCandidates = buildAliasCandidates(topTags, groupToAliases)
+        // Reuse the same aliasMap/groupToAliases
+        // already fetched above (no second GetTagAliases call) to build the Focus feature's own
+        // alias map + known-group universe -- see buildFocusAliasMap/buildFocusKnownGroups.
+        val focusAliasMap = buildFocusAliasMap(aliasMap)
+        // KMK C3 (HR-2026-08-26-FOCUS-CRITERION-CATALOG-COMPLETENESS, E4.3): third union input --
+        // genre-like labels extracted from eligible sources' own FilterList, accumulated across this
+        // process's lifetime (not just this load) via SourceGenreCatalogCache. See its own doc for
+        // why this makes the catalog a real source-filter-style contract instead of only loaded-
+        // result genres plus the alias/synonym systems.
+        val focusKnownGroups = buildFocusKnownGroups(
+            groupToAliases,
+            exh.recs.sources.SourceGenreCatalogCache.snapshot(),
+            focusAliasMap,
+        )
 
         val recommendationLanguages = sourcePreferences.recommendationSourceLanguages().get()
         val storedOrder = RecommendationSourceOrdering.parse(sourcePreferences.recommendationSourceOrder().get())
         // KMK --> v0.7.40: use shared selector (language filter + ordering + disabled exclusion)
         val orderedEnabledSources = RecommendationSourceSelector.select(
-            sources = sourceManager.getVisibleSources(),
-            languages = recommendationLanguages,
-            storedOrder = storedOrder,
-            effectiveDisabledIds = effectiveDisabledIds,
+            sources = ForYouDebugFixture.sources(fixtureMode, sourceManager.getVisibleSources()),
+            languages = if (ForYouDebugFixture.usesSyntheticInputs(fixtureMode)) setOf("en") else recommendationLanguages,
+            storedOrder = if (ForYouDebugFixture.usesSyntheticInputs(fixtureMode)) {
+                ForYouDebugFixture.sourceIds(fixtureMode).toList()
+            } else {
+                storedOrder
+            },
+            effectiveDisabledIds = if (ForYouDebugFixture.usesSyntheticInputs(fixtureMode)) emptySet() else effectiveDisabledIds,
         )
         // KMK <--
 
         // Boosted sources are fixed: always the top BOOSTED_SOURCE_COUNT eligible sources
         val boostedSourceIds = orderedEnabledSources.take(BOOSTED_SOURCE_COUNT).map { it.id }.toSet()
 
+        val retryCombined: Pair<PersonalRecommendationResult?, PersonalRecommendationResult?>?
         synchronized(accumulatorLock) {
             combinedAccumulator.clear()
             currentBoostedSourceIds = boostedSourceIds
+            if (retryOnly != null) {
+                mutableState.value.items.forEach { (source, result) ->
+                    if (source.id !in retryOnly && result is PersonalRecommendationResult.Success && result.result.isNotEmpty()) {
+                        combinedAccumulator.add(result.result, source.id)
+                    }
+                }
+            }
+            val rowRanked = combinedAccumulator.rank(boostedSourceIds, TOP_PICKS_ROW_CAP)
+            val detailRanked = combinedAccumulator.rank(boostedSourceIds, TOP_PICKS_DETAIL_CAP)
+            retryCombined = if (retryOnly == null) {
+                null
+            } else {
+                (rowRanked.takeIf { it.isNotEmpty() }?.let { PersonalRecommendationResult.Success(it) }) to
+                    (detailRanked.takeIf { it.isNotEmpty() }?.let { PersonalRecommendationResult.Success(it) })
+            }
         }
 
         val strategyMap = RecommendationQueryPlanner.parseStrategies(
@@ -492,20 +751,34 @@ class BrowsePersonalRecommendationsScreenModel(
         )
 
         val hideKnownManga = sourcePreferences.recommendationHideKnownManga().get()
-        // KMK --> v0.6.20: seen manga keys always filter from For You regardless of hideKnownManga
-        val seenKeys = SeenRecommendationMangaStore.parse(
-            sourcePreferences.seenRecommendationMangaKeys().get(),
-        )
+        // KMK v0.8.21-fix3: R1 correction -- Not Interested exclusion now reads MangaTaste (the
+        // single rating-family source of truth) instead of the legacy seenRecommendationMangaKeys
+        // preference. seenKeys keeps its existing Set<SeenMangaKey> shape (a plain (source, url)
+        // value tuple, not tied to the preference's own persistence) so every downstream consumer
+        // of this variable is unaffected -- only where it's computed FROM changes.
+        val allTastes = getMangaTaste.awaitAll()
+        val seenKeys = allTastes
+            .asSequence()
+            .filter { it.rating == tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED.value }
+            .map { SeenMangaKey(it.source, it.url) }
+            .toSet()
         val seenMangaCount = seenKeys.size
-        // KMK <--
         // KMK --> v0.7.43: Not Interested (internal storage still "seen") becomes a mild negative
         // signal — similar candidates are slightly deprioritized, much weaker than Dislike. Query
         // tag selection above (topTags) intentionally still uses the raw, unadjusted profile; only
         // scoring/ranking uses scoringProfile.
-        val scoringProfile = buildNotInterestedAdjustedProfile(profile, seenKeys, aliasMap)
+        // Synthetic debug fixtures must remain deterministic and independent of the preserved
+        // user's real Not Interested history. Production refreshes retain the live adjustment;
+        // otherwise a user's accumulated genre penalties can make the fixture's intentionally
+        // positive candidates disappear before the mixed-result device gate is observable.
+        val scoringProfile = if (ForYouDebugFixture.usesSyntheticInputs(fixtureMode)) {
+            profile
+        } else {
+            buildNotInterestedAdjustedProfile(profile, seenKeys, aliasMap)
+        }
         // KMK <--
         // KMK --> v0.7.26: minimum locally-known chapter count filter (0 = off)
-        // KMK: resolved through the shared
+        // resolved through the shared
         // supported-value policy before it reaches searchSource(), the visibility policy, the
         // memory merge, and profileFingerprint() below -- so every consumer of this refresh uses
         // one identical threshold and an unsupported persisted value cannot silently filter at a
@@ -520,139 +793,270 @@ class BrowsePersonalRecommendationsScreenModel(
         val fingerprint = profileFingerprint(topTags, profile, aliasMap, effectiveDisabledIds, storedOrder, recommendationLanguages, hideKnownManga, seenMangaCount, minChapterCount, resultBudget)
         val queryKey = topTags.sorted().joinToString(",")
 
-        val allTastes = getMangaTaste.awaitAll()
         val tasteByKey = allTastes.associate { MangaTasteKey(it.source, it.url) to it }
         val visibility = sourcePreferences.recommendationRatedMangaVisibility().get()
         val fallbackQuery = topTags.take(3).joinToString(" ")
 
         // Reset UI state — sources will be added in batches
+        //
+        // KMK F2-03 atomicity correction (2026-08-27): an independent review correctly found that
+        // capturing refreshGeneration via a SEPARATE `mutableState.value.resultGeneration` read
+        // AFTER this update() call was not atomic with the increment itself -- two overlapping
+        // refresh() invocations could both finish their own update() (each correctly incrementing
+        // resultGeneration by exactly 1 from whatever it currently was) and then both read the SAME
+        // final `.value` afterward if a second update() from the other invocation landed between the
+        // first invocation's update() and its OWN subsequent `.value` read. That would hand both
+        // refreshes the identical generation number, defeating the entire point of a per-refresh
+        // generation ("capture a unique immutable generation for each load invocation"). `update {}`'s
+        // own increment (`it.resultGeneration + 1`) is internally atomic (a compareAndSet retry loop),
+        // but the OLD code's separate `.value` read after it was not part of that same atomic step.
+        // `updateAndGet {}` returns the POST-update state from the SAME atomic operation that performed
+        // the update, so the generation captured below is guaranteed to be the exact one THIS
+        // invocation's update produced, even under real concurrent overlapping refresh() calls.
         mutableState.update {
-            it.copy(
-                items = persistentMapOf(),
-                sourceOrder = persistentListOf(),
-                combinedResult = null,
-                combinedDetailResult = null,
-                sourceStatuses = persistentMapOf(),
-                searchContexts = persistentMapOf(),
-                isLoading = false,
-                profileIsEmpty = false,
-                // KMK: a new generation
-                // invalidates the Tab's exposure-recording effect for the previous refresh.
-                resultGeneration = it.resultGeneration + 1,
+            if (it.resultGeneration != refreshGeneration) return@update it
+            if (retryOnly == null) {
+                it.copy(
+                    items = persistentMapOf(),
+                    sourceOrder = persistentListOf(),
+                    combinedResult = null,
+                    combinedDetailResult = null,
+                    sourceStatuses = persistentMapOf(),
+                    searchContexts = persistentMapOf(),
+                    // Keep the full-refresh loading state active until the asynchronous source
+                    // batches below have reached their terminal boundary. Clearing it here lets
+                    // the renderer present an empty/non-loading surface while the first batch is
+                    // still in flight.
+                    isLoading = true,
+                    profileIsEmpty = false,
+                    // A new generation invalidates the Tab's exposure-recording effect for the
+                    // previous refresh.
+                    resultGeneration = refreshGeneration,
+                    focusAliasMap = focusAliasMap,
+                    focusKnownGroups = focusKnownGroups,
+                )
+            } else {
+                it.copy(
+                    items = it.items.mutate { map ->
+                        map.entries
+                            .filter { (source, result) -> source.id in retryOnly && result is PersonalRecommendationResult.Error }
+                            .forEach { (source, _) -> map[source] = PersonalRecommendationResult.Loading }
+                    },
+                    combinedResult = retryCombined?.first,
+                    combinedDetailResult = retryCombined?.second,
+                    sourceStatuses = it.sourceStatuses.mutate { map -> retryOnly.forEach(map::remove) },
+                    isLoading = false,
+                    profileIsEmpty = false,
+                    resultGeneration = refreshGeneration,
+                    focusAliasMap = focusAliasMap,
+                    focusKnownGroups = focusKnownGroups,
+                )
+            }
+        }
+        // KMK F2-03 corrective slice B: reuses the request-reserved resultGeneration (rather than
+        // inventing a second, parallel counter) as SourceGenreCatalogCache's own per-source staleness
+        // generation -- it is already the exact "monotonically increasing, fixed for this whole
+        // refresh's lifetime, captured before any per-source async work starts" value the cache needs.
+        // See SourceGenreCatalogCache.record's own doc.
+        // KMK F2-03 corrective slice B (2026-08-27, tombstone-generation follow-up correction
+        // 2026-08-28, atomicity correction 2026-08-27, production-caller-boundary correction
+        // 2026-08-27): explicit pruning owner for "a source is removed, disabled, or no longer
+        // eligible" (see SourceGenreCatalogCache.pruneIneligibleSources's own doc for why this is
+        // scoped to installed-and-not-disabled, independent of the language filter). Passes
+        // refreshGeneration -- captured above, immutable for this whole refresh -- so pruning also
+        // raises this source's staleness barrier to at least this refresh's generation.
+        //
+        // This call site deliberately passes ONLY this refresh's own current eligible source ids --
+        // it does NOT need to compute or track which sources have disappeared since an earlier
+        // refresh. A THIRD independent review found that an earlier version of this fix (passing an
+        // extra "known ineligible" set computed HERE from sourceManager.getVisibleSources()) still
+        // could not protect a source that was eligible in an OLDER refresh, never recorded anything,
+        // and was UNINSTALLED before this refresh -- such a source is invisible to
+        // getVisibleSources() entirely, so no caller-side computation at this call site could ever
+        // reconstruct it. SourceGenreCatalogCache.everEligibleSourceIds now owns that history
+        // instead (see its own doc): the cache remembers every source id ANY past call here ever
+        // marked eligible, so a source this call's own installedAndEnabledSourceIds omits but a
+        // PAST call's didn't is still discoverable as "known, now ineligible" -- without this call
+        // site needing to know anything about the past. Skipped entirely under a synthetic debug
+        // fixture run (ForYouDebugFixture) so a developer's fixture session can never prune the real
+        // catalog (and, as importantly, never pollutes everEligibleSourceIds with fixture-only ids).
+        if (!ForYouDebugFixture.usesSyntheticInputs(fixtureMode)) {
+            val installedAndEnabledSourceIds = sourceManager.getVisibleSources()
+                .asSequence()
+                .map { it.id }
+                .filterNot { it in effectiveDisabledIds }
+                .toSet()
+            exh.recs.sources.SourceGenreCatalogCache.pruneIneligibleSources(
+                eligibleSourceIds = installedAndEnabledSourceIds,
+                generation = refreshGeneration,
             )
         }
 
-        searchJob?.cancel()
-        searchJob = ioCoroutineScope.launch {
-            val allStatuses = mutableMapOf<Long, RecommendationSourceRunStatus>()
-            var usefulCount = 0
+        currentCoroutineContext().ensureActive()
+        val loadIsActive = currentCoroutineContext().isActive
+        synchronized(loadLaunchLock) {
+            if (!loadIsActive) return
+            searchJob?.cancel()
+            searchJob = screenModelScope.launch(effectiveSearchDispatcher) {
+                val allStatuses = mutableMapOf<Long, RecommendationSourceRunStatus>()
+                var usefulCount = 0
 
-            val candidateSources = orderedEnabledSources.take(MAX_SOURCE_ATTEMPTS)
+                val candidateSources = selectRecommendationCandidates(
+                    sources = orderedEnabledSources,
+                    retrySourceIds = retryOnly,
+                    maxAttempts = MAX_SOURCE_ATTEMPTS,
+                    sourceId = Source::id,
+                )
 
-            // KMK: resolve this refresh's bounded
-            // Latest exploration budget from the number of sources actually about to be attempted,
-            // and reset the counter so budgets never accumulate across refreshes. A user-configured
-            // 0% resolves to 0 attempts, which disables the lane entirely without any other change.
-            latestExplorationBudget = RecommendationLatestBudgetPolicy.resolveAttempts(
-                configuredPercent = sourcePreferences.recommendationLatestExplorationPercent().get(),
-                attemptedSourceCount = candidateSources.size,
-            )
-            latestAttemptsUsed.set(0)
-            currentRefreshTimestamp = System.currentTimeMillis()
+                // Resolve a private Latest budget for this refresh. It is passed to every source
+                // search instead of living on the ScreenModel, so a cancelled older refresh cannot
+                // reset or consume the newer refresh's counter.
+                val latestBudgetState = LatestExplorationBudgetState(
+                    limit = RecommendationLatestBudgetPolicy.resolveAttempts(
+                        enabled = sourcePreferences.recommendationLatestExplorationEnabled().get(),
+                        configuredPercent = sourcePreferences.recommendationLatestExplorationPercent().get(),
+                        attemptedSourceCount = candidateSources.size,
+                    ),
+                )
+                currentRefreshTimestamp = clock()
 
-            for (batch in candidateSources.chunked(SOURCE_BATCH_SIZE)) {
-                if (!isActive) break
+                for (batch in candidateSources.chunked(SOURCE_BATCH_SIZE)) {
+                    if (!isActive) break
 
-                // Register batch in UI as Loading before searching
-                val initialContexts = batch.associate { it.id to RecommendationSearchContext(fallbackQuery, topTags) }
-                mutableState.update { state ->
-                    state.copy(
-                        items = state.items.mutate { map -> batch.forEach { src -> map[src] = PersonalRecommendationResult.Loading } },
-                        sourceOrder = state.sourceOrder.addAll(batch),
-                        searchContexts = state.searchContexts.mutate { map -> initialContexts.forEach { (id, ctx) -> map[id] = ctx } },
-                    )
-                }
-
-                val outcomes = batch.map { source ->
-                    async {
-                        searchSource(
-                            source, queryKey, fingerprint, topTags, scoringProfile, aliasMap, aliasCandidates,
-                            tasteByKey, visibility, hideKnownManga, seenKeys, forceRefresh,
-                            source.id in boostedSourceIds,
-                            lastStrategy = strategyMap[source.id],
-                            // KMK v0.8.13
-                            lastRunStatus = lastStatusMap[source.id],
-                            // KMK --> v0.7.26
-                            minChapterCount = minChapterCount,
-                            // KMK <--
-                            // KMK v0.8.2
-                            resultBudget = resultBudget,
-                            // KMK <--
+                    // Register batch in UI as Loading before searching
+                    val initialContexts = batch.associate { it.id to RecommendationSearchContext(fallbackQuery, topTags) }
+                    mutableState.update { state ->
+                        val batchIds = batch.map { it.id }.toSet()
+                        state.copy(
+                            items = state.items.mutate { map ->
+                                map.keys.filter { it.id in batchIds }.forEach { map.remove(it) }
+                                batch.forEach { src -> map[src] = PersonalRecommendationResult.Loading }
+                            },
+                            sourceOrder = reconcileSourceOrder(state.sourceOrder, batch),
+                            searchContexts = state.searchContexts.mutate { map -> initialContexts.forEach { (id, ctx) -> map[id] = ctx } },
                         )
                     }
-                }.awaitAll()
 
-                for (outcome in outcomes) {
-                    if (outcome.successfulStrategy != null) {
-                        synchronized(strategyMap) { strategyMap[outcome.source.id] = outcome.successfulStrategy }
-                    } else if (RecommendationStrategyRecoveryPolicy.shouldForgetAfterRun(outcome.status)) {
-                        // KMK v0.8.13: a failed/no-result run disproves the persisted strategy hint
-                        // for this source -- remove only this source's entry, never the whole map.
-                        synchronized(strategyMap) { strategyMap.remove(outcome.source.id) }
+                    val outcomes = batch.map { source ->
+                        async {
+                            searchSource(
+                                source, queryKey, fingerprint, topTags, scoringProfile, aliasMap, aliasCandidates,
+                                tasteByKey, visibility, hideKnownManga, seenKeys, forceRefresh,
+                                source.id in boostedSourceIds,
+                                lastStrategy = strategyMap[source.id],
+                                // KMK v0.8.13
+                                lastRunStatus = lastStatusMap[source.id],
+                                // KMK --> v0.7.26
+                                minChapterCount = minChapterCount,
+                                // KMK <--
+                                // KMK v0.8.2
+                                resultBudget = resultBudget,
+                                latestBudgetState = latestBudgetState,
+                                // KMK <--
+                                refreshGeneration = refreshGeneration,
+                                // An inline Retry is an explicit user-requested attempt and must bypass
+                                // automatic suppression for the selected failed sources only.
+                                bypassSourceFailureSuppression = retryOnly != null,
+                            )
+                        }
+                    }.awaitAll()
+
+                    for (outcome in outcomes) {
+                        if (outcome.successfulStrategy != null) {
+                            synchronized(strategyMap) { strategyMap[outcome.source.id] = outcome.successfulStrategy }
+                        } else if (RecommendationStrategyRecoveryPolicy.shouldForgetAfterRun(outcome.status)) {
+                            // KMK v0.8.13: a failed/no-result run disproves the persisted strategy hint
+                            // for this source -- remove only this source's entry, never the whole map.
+                            synchronized(strategyMap) { strategyMap.remove(outcome.source.id) }
+                        }
+                        allStatuses[outcome.source.id] = outcome.status
+                        if (outcome.isUseful) usefulCount++
+                        updateItem(refreshGeneration, outcome.source, outcome.result, outcome.status)
                     }
-                    allStatuses[outcome.source.id] = outcome.status
-                    if (outcome.isUseful) usefulCount++
-                    updateItem(outcome.source, outcome.result, outcome.status)
+
+                    if (usefulCount >= MAX_VISIBLE_SOURCE_ROWS) break
                 }
 
-                if (usefulCount >= MAX_VISIBLE_SOURCE_ROWS) break
-            }
+                // Adjust statuses to reflect post-dedupe visibility (Shown → HiddenByDuplicateHandling
+                // when all of a source's cards were hidden by cross-source display dedupe).
+                if (isActive) {
+                    val dedupedMap = mutableState.value.dedupedItems()
+                    val sourceHasVisible = mutableState.value.items.keys.associate { src ->
+                        val result = dedupedMap[src]
+                        src.id to (result is PersonalRecommendationResult.Success && !result.isEmpty)
+                    }
+                    val adjusted = adjustStatusesForDedupe(allStatuses, sourceHasVisible)
+                    allStatuses.clear()
+                    allStatuses.putAll(adjusted)
+                    mutableState.update { state ->
+                        state.copy(sourceStatuses = adjusted.toPersistentMap())
+                    }
 
-            // Adjust statuses to reflect post-dedupe visibility (Shown → HiddenByDuplicateHandling
-            // when all of a source's cards were hidden by cross-source display dedupe).
-            if (isActive) {
-                val dedupedMap = mutableState.value.dedupedItems()
-                val sourceHasVisible = mutableState.value.items.keys.associate { src ->
-                    val result = dedupedMap[src]
-                    src.id to (result is PersonalRecommendationResult.Success && !result.isEmpty)
+                    // KMK v0.8.14-fix1: persist a read-only preview snapshot for Recommendation Settings'
+                    // "For You sources" screen once this refresh has at least one visible row -- see
+                    // RecommendationForYouPreviewSnapshotStore. Built from already-finalized display state
+                    // (dedupedMap/combinedResult), not raw fetch data, so the preview matches exactly what
+                    // this run's real For You page shows.
+                    persistForYouPreviewSnapshot(dedupedMap)
+
+                    // KMK F2-03 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM) correction:
+                    // the EARLIER focusKnownGroups written into State (below, before searchJob was even
+                    // launched) snapshotted SourceGenreCatalogCache before this refresh's own per-source
+                    // getFilterList() calls (inside searchSource(), one per batch above) had recorded
+                    // anything into it -- on a truly fresh process, that snapshot is empty, so a newly
+                    // discovered source's genre filters could never appear in the focus picker until an
+                    // UNRELATED later refresh happened to re-snapshot a since-populated cache. This
+                    // second, later recomputation -- now that every batch's searchSource() calls have
+                    // completed and recorded their filter lists -- makes newly discovered criteria
+                    // available within the SAME logically requested refresh instead of a hidden second
+                    // one. Guarded by isActive (this whole block already is) so a cancelled refresh never
+                    // writes a stale/inconsistent focusKnownGroups.
+                    val refreshedFocusKnownGroups = buildFocusKnownGroups(
+                        groupToAliases,
+                        exh.recs.sources.SourceGenreCatalogCache.snapshot(),
+                        focusAliasMap,
+                    )
+                    if (refreshedFocusKnownGroups != focusKnownGroups) {
+                        mutableState.update { it.copy(focusKnownGroups = refreshedFocusKnownGroups) }
+                    }
                 }
-                val adjusted = adjustStatusesForDedupe(allStatuses, sourceHasVisible)
-                allStatuses.clear()
-                allStatuses.putAll(adjusted)
-                mutableState.update { state ->
-                    state.copy(sourceStatuses = adjusted.toPersistentMap())
-                }
 
-                // KMK v0.8.14-fix1: persist a read-only preview snapshot for Recommendation Settings'
-                // "For You sources" screen once this refresh has at least one visible row -- see
-                // RecommendationForYouPreviewSnapshotStore. Built from already-finalized display state
-                // (dedupedMap/combinedResult), not raw fetch data, so the preview matches exactly what
-                // this run's real For You page shows.
-                persistForYouPreviewSnapshot(dedupedMap)
-            }
+                // A superseded refresh may observe cancellation at the batch boundary rather
+                // than while awaiting a source. Its partial strategy/status/fit data must not
+                // overwrite the newer refresh's durable state.
+                if (!isActive) return@launch
 
-            // Persist strategy map and source run statuses
-            sourcePreferences.recommendationSourceStrategies().set(
-                RecommendationQueryPlanner.serializeStrategies(strategyMap),
-            )
-            sourcePreferences.recommendationLastSourceRunStatuses().set(
-                RecommendationSourceRunStatusStore.serialize(allStatuses.values),
-            )
-            // KMK --> v0.7.19: merge this run into rolling source fit stats
-            val currentFitStats = SourceFitStatsStore.parse(sourcePreferences.recommendationSourceFitStats().get())
-            // KMK --> v0.7.32: D2 — collect source IDs that ended up in the final Top Picks row
-            val topPicksContributors = (mutableState.value.combinedResult as? PersonalRecommendationResult.Success)
-                ?.result?.map { it.manga.source }?.toSet() ?: emptySet()
-            // KMK <--
-            val updatedFitStats = SourceFitStatsStore.mergeRun(
-                currentFitStats,
-                allStatuses.values,
-                // KMK --> v0.7.32: D2
-                topPicksContributors,
+                // Persist strategy map and source run statuses
+                sourcePreferences.recommendationSourceStrategies().set(
+                    RecommendationQueryPlanner.serializeStrategies(strategyMap),
+                )
+                sourcePreferences.recommendationLastSourceRunStatuses().set(
+                    RecommendationSourceRunStatusStore.serialize(allStatuses.values),
+                )
+                // KMK --> v0.7.19: merge this run into rolling source fit stats
+                val currentFitStats = SourceFitStatsStore.parse(sourcePreferences.recommendationSourceFitStats().get())
+                // KMK --> v0.7.32: D2 — collect source IDs that ended up in the final Top Picks row
+                val topPicksContributors = (mutableState.value.combinedResult as? PersonalRecommendationResult.Success)
+                    ?.result?.map { it.manga.source }?.toSet() ?: emptySet()
                 // KMK <--
-            )
-            sourcePreferences.recommendationSourceFitStats().set(SourceFitStatsStore.serialize(updatedFitStats.values))
-            // KMK <--
+                val updatedFitStats = SourceFitStatsStore.mergeRun(
+                    currentFitStats,
+                    allStatuses.values,
+                    // KMK --> v0.7.32: D2
+                    topPicksContributors,
+                    // KMK <--
+                )
+                sourcePreferences.recommendationSourceFitStats().set(SourceFitStatsStore.serialize(updatedFitStats.values))
+                // KMK <--
+
+                mutableState.update { state ->
+                    if (state.resultGeneration == refreshGeneration) {
+                        state.copy(isLoading = false)
+                    } else {
+                        state
+                    }
+                }
+            }
         }
     }
 
@@ -686,6 +1090,12 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK v0.8.2: user-configured visible-card budget (raw preference value; validated inside
         // ForYouResultBudgetPolicy.resolve() below, never trusted directly).
         resultBudget: Int = ForYouResultBudgetPolicy.DEFAULT,
+        latestBudgetState: LatestExplorationBudgetState = LatestExplorationBudgetState(0),
+        // KMK F2-03 corrective slice B: this refresh()'s own resultGeneration, threaded through so
+        // SourceGenreCatalogCache.record() can reject a stale, superseded refresh's late-arriving
+        // result -- see that call site's own comment and SourceGenreCatalogCache.record's doc.
+        refreshGeneration: Long = 0,
+        bypassSourceFailureSuppression: Boolean = false,
     ): SourceSearchOutcome {
         // KMK --> v0.7.38: load remembered candidates before cache check so they are available for merge
         val remembered = try {
@@ -753,6 +1163,7 @@ class BrowsePersonalRecommendationsScreenModel(
                     sourceId = source.id,
                     status = if (merged.isNotEmpty()) RecommendationSourceStatus.Shown else RecommendationSourceStatus.NoMatches,
                     visibleCount = merged.size,
+                    evaluatedCount = progressRecords.sumOf { it.rawCount }.coerceAtLeast(0),
                 )
                 return SourceSearchOutcome(
                     source = source,
@@ -786,262 +1197,41 @@ class BrowsePersonalRecommendationsScreenModel(
         // NoClassDefFoundError: okhttp3.zstd.Zstd from the Asura Scans extension constructing its
         // HTTP client) was never caught here at all and crashed the whole For You load. See the new
         // catch(Error) branch below and RecommendationErrorClassifier.isRecoverableSourceFailure.
-        var lastError: Throwable? = null
-        var hadRawResults = false
+        val personalized = runPersonalizedPlans(
+            source = source,
+            queryKey = queryKey,
+            fingerprint = fingerprint,
+            topTags = topTags,
+            profile = profile,
+            aliasMap = aliasMap,
+            aliasCandidates = aliasCandidates,
+            tasteByKey = tasteByKey,
+            visibility = visibility,
+            hideKnownManga = hideKnownManga,
+            seenKeys = seenKeys,
+            forceRefresh = forceRefresh,
+            isBoosted = isBoosted,
+            lastStrategy = lastStrategy,
+            lastRunStatus = lastRunStatus,
+            minChapterCount = minChapterCount,
+            resultBudget = resultBudget,
+            latestBudgetState = latestBudgetState,
+            refreshGeneration = refreshGeneration,
+            bypassSourceFailureSuppression = bypassSourceFailureSuppression,
+            remembered = remembered,
+            progressRecords = progressRecords,
+            displayLimit = displayLimit,
+            enrichLimit = enrichLimit,
+            rawCap = rawCap,
+            minUseful = minUseful,
+            plans = plans,
+        )
+        if (personalized.outcome != null) return personalized.outcome
+        var hadRawResults = personalized.hadRawResults
+        var lastError = personalized.lastError
 
-        for (plan in plans) {
-            if (!currentCoroutineContext().isActive) {
-                return SourceSearchOutcome(
-                    source,
-                    PersonalRecommendationResult.Success(emptyList()),
-                    null,
-                    RecommendationSourceRunStatus(source.id, RecommendationSourceStatus.NoMatches),
-                    false,
-                )
-            }
-            try {
-                // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
-                // try/catch(Exception) -- a recoverable failure (ordinary Exception or an extension
-                // LinkageError such as the confirmed Asura Scans NoClassDefFoundError) now also
-                // gets recorded in SourceRuntimeFailureRegistry, not just silently swallowed.
-                val filterList = SourceRuntime.run(source, SourceRuntimeOperation.FilterList, coroutineDispatcher) {
-                    getFilterList()
-                }.getOrElse { FilterList() }
-                val searchParams = GenreFilterMapper.buildSearch(
-                    filterList,
-                    plan.tags,
-                    aliasCandidates,
-                    plan.forceTextOnly,
-                    // KMK --> v0.7.0: Phase 7 — push blocked tags as exclusion filters
-                    blockedGenres = profile.blockedGroups.toList(),
-                    // KMK <--
-                )
-
-                if (currentCoroutineContext().isActive) {
-                    val ctx = RecommendationSearchContext(searchParams.textQuery, plan.tags)
-                    mutableState.update { s ->
-                        s.copy(searchContexts = s.searchContexts.mutate { it[source.id] = ctx })
-                    }
-                }
-
-                // KMK v0.8.10-fix7: routed through SourceRuntime instead of a raw call inside
-                // withContext -- getOrThrowSourceRuntimeException() converts a recoverable failure
-                // (which may be a raw LinkageError, an Error not an Exception) into
-                // RecoverableSourceRuntimeException so the existing outer catch(Exception) below
-                // records it as lastError through the primary containment path, not the defensive
-                // catch(Error) below. A genuinely fatal error or CancellationException still
-                // propagates directly out of SourceRuntime.run() itself, before ever reaching this
-                // line.
-                val page = SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
-                    getSearchManga(1, searchParams.textQuery, searchParams.filters)
-                }.getOrThrowSourceRuntimeException()
-
-                val rawSMangas = page.mangas.take(rawCap).distinctBy { it.url }
-                if (rawSMangas.isNotEmpty()) hadRawResults = true
-
-                // KMK v0.8.13: extracted -- identical raw-manga-to-scored-recommendations pipeline
-                // used by both this plan loop and the catalogue fallback (see processRawCandidates).
-                val processed = processRawCandidates(
-                    source, rawSMangas, tasteByKey, visibility, seenKeys, minChapterCount,
-                    hideKnownManga, enrichLimit, displayLimit, profile, aliasMap,
-                )
-                val localized = processed.localized
-                val knownIds = processed.knownIds
-                val scoredCount = processed.scoredCount
-                val recommendations = processed.recommendations
-
-                if (recommendations.size < minUseful && plan != plans.last()) {
-                    lastError = null
-                    continue
-                }
-
-                val reason = recommendations.flatMap { it.matchedGroups }
-                    .distinct().take(MAX_REASON_TAGS).joinToString(", ").ifBlank { null }
-                saveToCache(source.id, queryKey, fingerprint, recommendations.map { it.manga }, recommendations.map { it.score }, reason)
-
-                // KMK --> v0.7.38: upsert page-1 results to memory + try additional page
-                // memoryStore.upsertBatch already rethrows CancellationException and swallows
-                // ordinary exceptions internally (RecommendationCandidateMemoryStore); this
-                // try/catch only guards against a future change to that internal contract.
-                try {
-                    memoryStore.upsertBatch(
-                        sourceId = source.id,
-                        querySignature = queryKey,
-                        queryTags = topTags,
-                        queryStrategy = plan.type.name,
-                        page = 1,
-                        profileFingerprint = fingerprint,
-                        recommendations = recommendations,
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                }
-                // KMK --> v0.7.39: record page-1 progress so the planner can advance to page 2
-                try {
-                    progressStore.recordProgress(
-                        sourceId = source.id,
-                        querySignature = queryKey,
-                        queryTags = topTags,
-                        queryStrategy = plan.type.name,
-                        page = 1,
-                        profileFingerprint = fingerprint,
-                        rawCount = rawSMangas.size,
-                        localizedCount = localized.size,
-                        scoredCount = scoredCount,
-                        visibleCount = recommendations.size,
-                        filteredCount = rawSMangas.size - localized.size,
-                        status = when {
-                            recommendations.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
-                            rawSMangas.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_FILTERED
-                            else -> RecommendationDiscoveryProgress.STATUS_EMPTY
-                        },
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                }
-                // KMK <--
-
-                // KMK v0.8.13: do not probe additional pages for a query that already proved it
-                // returns nothing raw on page 1 -- see RecommendationAdditionalPagePolicy's KDoc for
-                // the confirmed source TEXT_ONLY_TOP_TAGS page-crawl evidence this prevents.
-                val additionalResults = if (
-                    RecommendationAdditionalPagePolicy.shouldDiscoverAdditionalPage(
-                        planType = plan.type,
-                        pageOneRawCount = rawSMangas.size,
-                        pageOneVisibleCount = recommendations.size,
-                        lastError = null,
-                    )
-                ) {
-                    discoverAdditionalPage(
-                        source = source,
-                        progressRecords = progressRecords,
-                        queryKey = queryKey,
-                        topTags = topTags,
-                        fingerprint = fingerprint,
-                        queryStrategy = plan.type.name,
-                        searchParams = searchParams,
-                        tasteByKey = tasteByKey,
-                        visibility = visibility,
-                        seenKeys = seenKeys,
-                        profile = profile,
-                        aliasMap = aliasMap,
-                        minChapterCount = minChapterCount,
-                        // KMK --> v0.7.41 follow-up
-                        hideKnownManga = hideKnownManga,
-                        // KMK <--
-                    )
-                } else {
-                    emptyList<PersonalRecommendation>() to 0
-                }
-                if (additionalResults.first.isNotEmpty()) {
-                    // memoryStore.upsertBatch already rethrows CancellationException and swallows
-                    // ordinary exceptions internally; this try/catch only guards against a future
-                    // change to that internal contract.
-                    try {
-                        memoryStore.upsertBatch(
-                            sourceId = source.id,
-                            querySignature = queryKey,
-                            queryTags = topTags,
-                            queryStrategy = plan.type.name,
-                            page = additionalResults.second,
-                            profileFingerprint = fingerprint,
-                            recommendations = additionalResults.first,
-                        )
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                    }
-                }
-                try {
-                    memoryStore.pruneIfNeeded(source.id)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                }
-
-                // KMK v0.8.13: extracted -- identical remembered+fresh merge pipeline used by both
-                // this plan loop and the catalogue fallback (see mergeFreshAndRememberedCandidates).
-                // additionalResults.first is already known-filtered inside discoverAdditionalPage
-                // (same hide-known context as page one), so knownIds (page-1) is sufficient for the
-                // merge; no redundant DB round-trip is needed.
-                val allNew = recommendations + additionalResults.first
-                // KMK: bounded additive
-                // Latest augmentation -- see tryAdditiveLatestAugmentation's KDoc for why this is the
-                // structural fix for "Latest does not run when personalized results already exist".
-                // Only ever reached from this success path (mutually exclusive with the
-                // hadRawResults == false rescue path further below), and shares the same per-refresh
-                // budget pool, so total Latest source-touches per refresh stay bounded either way.
-                val latestAdditive = tryAdditiveLatestAugmentation(
-                    source, queryKey, fingerprint, topTags, profile, aliasMap, tasteByKey, visibility,
-                    seenKeys, hideKnownManga, minChapterCount, enrichLimit, displayLimit, rawCap,
-                    excludeMangaIds = allNew.mapNotNull { it.manga.id.takeIf { id -> id != 0L } }.toSet(),
-                )
-                // KMK: bounded soft
-                // reordering by local exposure history -- see ExposureRerankContext/
-                // RecommendationDisplayReranker. Batched once per source (not once per card); a
-                // failed lookup fails open to no reordering (ExposureRerankContext.NONE), never to
-                // hiding results. "Interacted" is derived live from favorite + existing taste data
-                // already loaded for this refresh -- not a stored copy -- so it is always current.
-                val candidatePool = allNew + latestAdditive
-                val exposureContext = buildExposureRerankContext(source.id, candidatePool, tasteByKey)
-                val mergedRecommendations = mergeFreshAndRememberedCandidates(
-                    remembered, candidatePool, profile, aliasMap, tasteByKey, visibility, seenKeys,
-                    knownIds, displayLimit, minChapterCount, exposureContext,
-                )
-
-                val status = RecommendationSourceRunStatus(
-                    sourceId = source.id,
-                    status = if (mergedRecommendations.isNotEmpty()) {
-                        RecommendationSourceStatus.Shown
-                    } else if (hadRawResults) {
-                        RecommendationSourceStatus.FilteredOut
-                    } else {
-                        RecommendationSourceStatus.NoMatches
-                    },
-                    visibleCount = mergedRecommendations.size,
-                )
-                return SourceSearchOutcome(
-                    source = source,
-                    result = PersonalRecommendationResult.Success(mergedRecommendations),
-                    // KMK --> v0.7.44 Phase D.3: only persist this strategy as "successful" when it
-                    // actually produced a visible result. Previously this was set unconditionally
-                    // once the last plan in the chain was reached, so a source could get "locked"
-                    // onto a strategy that produced zero results just because it was tried last.
-                    successfulStrategy = plan.type.takeIf { mergedRecommendations.isNotEmpty() },
-                    // KMK <--
-                    status = status,
-                    isUseful = mergedRecommendations.isNotEmpty(),
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // KMK v0.8.10-fix7: both source calls above now use
-                // getOrThrowSourceRuntimeException(), so a recoverable extension-linkage failure
-                // (e.g. NoClassDefFoundError) reaches this primary catch as
-                // RecoverableSourceRuntimeException (an Exception), not as a raw Error. This is the
-                // main containment path now, not the defensive catch(Error) below.
-                lastError = e
-            } catch (e: Error) {
-                // KMK v0.8.10-fix7: defensive-only guard for any remaining path that has not been
-                // migrated to getOrThrowSourceRuntimeException() -- SourceRuntime.run() itself
-                // already rethrows CancellationException and any genuinely fatal Error directly
-                // from *inside* its run()/runBlockingSourceCall() blocks (they never reach this
-                // catch clause from there). KMK v0.8.12-fix1 correction: that guarantee does not
-                // cover this whole try block -- enrichment, scoring, and memory/DB lookups between
-                // the SourceRuntime calls run outside SourceRuntime's boundary but still inside this
-                // try, so an unconditional `catch (e: Error)` here previously swallowed every Error
-                // subtype unconditionally, including OutOfMemoryError/StackOverflowError/ThreadDeath.
-                // rethrowIfFatal() rethrows anything that is not a recoverable per-source failure
-                // (i.e. everything except LinkageError and its subtypes) before this branch ever
-                // records it as a per-source lastError.
-                rethrowIfFatal(e)
-                lastError = e
-            }
-        }
-
-        // KMK: bounded Latest exploration lane.
+        // Bounded Latest exploration lane.
+        // Bounded Latest exploration lane.
         // Deliberately placed AFTER the full personalized strict-to-lenient chain and BEFORE the
         // existing Popular fallback, so:
         //   - personalized relevance remains the dominant lane and is never pre-empted;
@@ -1054,7 +1244,7 @@ class BrowsePersonalRecommendationsScreenModel(
         val latest = tryLatestCatalogueLane(
             source, queryKey, fingerprint, topTags, profile, aliasMap, tasteByKey, visibility,
             seenKeys, hideKnownManga, minChapterCount, enrichLimit, displayLimit, rawCap,
-            remembered, hadRawResults, lastError,
+            remembered, hadRawResults, lastError, latestBudgetState,
         )
         if (latest.outcome != null) return latest.outcome
         hadRawResults = latest.hadRawResults
@@ -1073,7 +1263,541 @@ class BrowsePersonalRecommendationsScreenModel(
         return finalEmptyOutcome(source, hadRawResults, lastError)
     }
 
-    // KMK
+    private data class PersonalizedPlanSearchOutcome(
+        val outcome: SourceSearchOutcome?,
+        val hadRawResults: Boolean,
+        val lastError: Throwable?,
+    )
+
+    /**
+     * Runs the personalized query plan chain separately from the source orchestration method.
+     *
+     * Keeping the plan loop behind this owner-local seam prevents the orchestration method from
+     * exceeding Android's compiler instruction limit while preserving the existing per-source
+     * cancellation and recoverable-error boundaries.
+     */
+    private data class PersonalizedPlanAttemptResult(
+        val outcome: SourceSearchOutcome?,
+        val hadRawResults: Boolean,
+        val lastError: Throwable?,
+        val shouldContinue: Boolean,
+    )
+
+    private suspend fun runPersonalizedPlans(
+        source: Source,
+        queryKey: String,
+        fingerprint: String,
+        topTags: List<String>,
+        profile: TasteProfile,
+        aliasMap: Map<String, String>,
+        aliasCandidates: Map<String, List<String>>,
+        tasteByKey: Map<MangaTasteKey, MangaTaste>,
+        visibility: RatedMangaVisibility,
+        hideKnownManga: Boolean,
+        seenKeys: Set<SeenMangaKey>,
+        forceRefresh: Boolean,
+        isBoosted: Boolean,
+        lastStrategy: RecommendationQueryStrategyType?,
+        lastRunStatus: RecommendationSourceRunStatus?,
+        minChapterCount: Int,
+        resultBudget: Int,
+        latestBudgetState: LatestExplorationBudgetState,
+        refreshGeneration: Long,
+        bypassSourceFailureSuppression: Boolean,
+        remembered: List<RecommendationCandidateMemoryEntry>,
+        progressRecords: List<RecommendationDiscoveryProgress>,
+        displayLimit: Int,
+        enrichLimit: Int,
+        rawCap: Int,
+        minUseful: Int,
+        plans: List<RecommendationQueryPlan>,
+    ): PersonalizedPlanSearchOutcome {
+        var lastError: Throwable? = null
+        var hadRawResults = false
+
+        for ((index, plan) in plans.withIndex()) {
+            if (!currentCoroutineContext().isActive) {
+                return PersonalizedPlanSearchOutcome(
+                    outcome = SourceSearchOutcome(
+                        source,
+                        PersonalRecommendationResult.Success(emptyList()),
+                        null,
+                        RecommendationSourceRunStatus(source.id, RecommendationSourceStatus.NoMatches),
+                        false,
+                    ),
+                    hadRawResults = hadRawResults,
+                    lastError = lastError,
+                )
+            }
+            val attempt = executePersonalizedPlan(
+                source = source,
+                queryKey = queryKey,
+                fingerprint = fingerprint,
+                topTags = topTags,
+                profile = profile,
+                aliasMap = aliasMap,
+                aliasCandidates = aliasCandidates,
+                tasteByKey = tasteByKey,
+                visibility = visibility,
+                hideKnownManga = hideKnownManga,
+                seenKeys = seenKeys,
+                forceRefresh = forceRefresh,
+                isBoosted = isBoosted,
+                lastStrategy = lastStrategy,
+                lastRunStatus = lastRunStatus,
+                minChapterCount = minChapterCount,
+                resultBudget = resultBudget,
+                latestBudgetState = latestBudgetState,
+                refreshGeneration = refreshGeneration,
+                bypassSourceFailureSuppression = bypassSourceFailureSuppression,
+                remembered = remembered,
+                progressRecords = progressRecords,
+                displayLimit = displayLimit,
+                enrichLimit = enrichLimit,
+                rawCap = rawCap,
+                minUseful = minUseful,
+                plan = plan,
+                isLastPlan = index == plans.lastIndex,
+            )
+            hadRawResults = hadRawResults || attempt.hadRawResults
+            lastError = attempt.lastError
+            if (attempt.outcome != null) {
+                return PersonalizedPlanSearchOutcome(
+                    outcome = attempt.outcome,
+                    hadRawResults = hadRawResults,
+                    lastError = lastError,
+                )
+            }
+            if (attempt.shouldContinue) continue
+        }
+
+        return PersonalizedPlanSearchOutcome(
+            outcome = null,
+            hadRawResults = hadRawResults,
+            lastError = lastError,
+        )
+    }
+
+    private suspend fun executePersonalizedPlan(
+        source: Source,
+        queryKey: String,
+        fingerprint: String,
+        topTags: List<String>,
+        profile: TasteProfile,
+        aliasMap: Map<String, String>,
+        aliasCandidates: Map<String, List<String>>,
+        tasteByKey: Map<MangaTasteKey, MangaTaste>,
+        visibility: RatedMangaVisibility,
+        hideKnownManga: Boolean,
+        seenKeys: Set<SeenMangaKey>,
+        forceRefresh: Boolean,
+        isBoosted: Boolean,
+        lastStrategy: RecommendationQueryStrategyType?,
+        lastRunStatus: RecommendationSourceRunStatus?,
+        minChapterCount: Int,
+        resultBudget: Int,
+        latestBudgetState: LatestExplorationBudgetState,
+        refreshGeneration: Long,
+        bypassSourceFailureSuppression: Boolean,
+        remembered: List<RecommendationCandidateMemoryEntry>,
+        progressRecords: List<RecommendationDiscoveryProgress>,
+        displayLimit: Int,
+        enrichLimit: Int,
+        rawCap: Int,
+        minUseful: Int,
+        plan: RecommendationQueryPlan,
+        isLastPlan: Boolean,
+    ): PersonalizedPlanAttemptResult {
+        var lastError: Throwable? = null
+        var hadRawResults = false
+        if (!currentCoroutineContext().isActive) {
+            return PersonalizedPlanAttemptResult(
+                outcome = SourceSearchOutcome(
+                    source,
+                    PersonalRecommendationResult.Success(emptyList()),
+                    null,
+                    RecommendationSourceRunStatus(source.id, RecommendationSourceStatus.NoMatches),
+                    false,
+                ),
+                hadRawResults = hadRawResults,
+                lastError = lastError,
+                shouldContinue = false,
+            )
+        }
+        try {
+            // KMK v0.8.10-fix4: routed through SourceRuntime instead of a local
+            // try/catch(Exception) -- a recoverable failure (ordinary Exception or an extension
+            // LinkageError such as the confirmed Asura Scans NoClassDefFoundError) now also
+            // gets recorded in SourceRuntimeFailureRegistry, not just silently swallowed.
+            val filterListResult = SourceRuntime.run(
+                source,
+                SourceRuntimeOperation.FilterList,
+                coroutineDispatcher,
+                bypassSuppression = bypassSourceFailureSuppression,
+            ) {
+                getFilterList()
+            }
+            // KMK C3 (E4.3): free byproduct of the FilterList fetch this call site already makes
+            // for search-query purposes -- records this source's genre-like filter labels into
+            // the process-lifetime focus criterion catalog cache, no extra network call. See
+            // SourceGenreCatalogCache's own doc for why this is "not limited to currently loaded
+            // recommendation results."
+            //
+            // KMK F2-03 corrective slice B: passes the raw Result (not an already-collapsed
+            // FilterList) so record() can distinguish a genuinely successful empty extraction
+            // (prunes stale labels) from a fetch failure (retains the last known-good labels) --
+            // see SourceGenreCatalogCache.record's own doc. refreshGeneration is this whole
+            // refresh()'s own resultGeneration, captured once before any per-source search began
+            // (see refresh()'s own comment on refreshGeneration), so a stale, superseded refresh's
+            // late-arriving result can never overwrite a newer refresh's fresher one for the same
+            // source.
+            exh.recs.sources.SourceGenreCatalogCache.record(source.id, refreshGeneration, filterListResult)
+            val filterList = filterListResult.getOrElse { FilterList() }
+            val searchParams = GenreFilterMapper.buildSearch(
+                filterList,
+                plan.tags,
+                aliasCandidates,
+                plan.forceTextOnly,
+                // KMK --> v0.7.0: Phase 7 — push blocked tags as exclusion filters
+                blockedGenres = profile.blockedGroups.toList(),
+                // KMK <--
+            )
+
+            if (currentCoroutineContext().isActive) {
+                val ctx = RecommendationSearchContext(searchParams.textQuery, plan.tags)
+                mutableState.update { s ->
+                    s.copy(searchContexts = s.searchContexts.mutate { it[source.id] = ctx })
+                }
+            }
+
+            // KMK v0.8.10-fix7: routed through SourceRuntime instead of a raw call inside
+            // withContext -- getOrThrowSourceRuntimeException() converts a recoverable failure
+            // (which may be a raw LinkageError, an Error not an Exception) into
+            // RecoverableSourceRuntimeException so the existing outer catch(Exception) below
+            // records it as lastError through the primary containment path, not the defensive
+            // catch(Error) below. A genuinely fatal error or CancellationException still
+            // propagates directly out of SourceRuntime.run() itself, before ever reaching this
+            // line.
+            val page = SourceRuntime.run(
+                source,
+                SourceRuntimeOperation.Search,
+                coroutineDispatcher,
+                bypassSuppression = bypassSourceFailureSuppression,
+            ) {
+                getSearchManga(1, searchParams.textQuery, searchParams.filters)
+            }.getOrThrowSourceRuntimeException()
+
+            val rawSMangas = RecommendationRawCandidatePolicy.distinctWithinLimit(page.mangas, rawCap) { it.url }
+            if (rawSMangas.isNotEmpty()) hadRawResults = true
+
+            // KMK v0.8.13: extracted -- identical raw-manga-to-scored-recommendations pipeline
+            // used by both this plan loop and the catalogue fallback (see processRawCandidates).
+            val processed = processRawCandidates(
+                source, rawSMangas, tasteByKey, visibility, seenKeys, minChapterCount,
+                hideKnownManga, enrichLimit, displayLimit, profile, aliasMap,
+            )
+            val localized = processed.localized
+            val knownIds = processed.knownIds
+            val scoredCount = processed.scoredCount
+            val recommendations = processed.recommendations
+
+            if (recommendations.size < minUseful && !isLastPlan) {
+                lastError = null
+                return PersonalizedPlanAttemptResult(
+                    outcome = null,
+                    hadRawResults = hadRawResults,
+                    lastError = null,
+                    shouldContinue = true,
+                )
+            }
+
+            val reason = recommendations.flatMap { it.matchedGroups }
+                .distinct().take(MAX_REASON_TAGS).joinToString(", ").ifBlank { null }
+            saveToCache(source.id, queryKey, fingerprint, recommendations.map { it.manga }, recommendations.map { it.score }, reason)
+
+            // KMK --> v0.7.38: upsert page-1 results to memory + try additional page
+            // memoryStore.upsertBatch already rethrows CancellationException and swallows
+            // ordinary exceptions internally (RecommendationCandidateMemoryStore); this
+            // try/catch only guards against a future change to that internal contract.
+            try {
+                memoryStore.upsertBatch(
+                    sourceId = source.id,
+                    querySignature = queryKey,
+                    queryTags = topTags,
+                    queryStrategy = plan.type.name,
+                    page = 1,
+                    profileFingerprint = fingerprint,
+                    recommendations = recommendations,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+            // KMK --> v0.7.39: record page-1 progress so the planner can advance to page 2
+            var currentProgressRecords = progressRecords
+            try {
+                progressStore.recordProgress(
+                    sourceId = source.id,
+                    querySignature = queryKey,
+                    queryTags = topTags,
+                    queryStrategy = plan.type.name,
+                    page = 1,
+                    profileFingerprint = fingerprint,
+                    rawCount = rawSMangas.size,
+                    localizedCount = localized.size,
+                    scoredCount = scoredCount,
+                    visibleCount = recommendations.size,
+                    filteredCount = rawSMangas.size - localized.size,
+                    status = when {
+                        recommendations.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
+                        rawSMangas.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_FILTERED
+                        else -> RecommendationDiscoveryProgress.STATUS_EMPTY
+                    },
+                )
+                // Keep the planner's local snapshot in step with the page-1 write. Without
+                // this, a fresh query has an empty pre-refresh snapshot and cannot schedule
+                // its first additional page until a later refresh, regardless of the user's
+                // configured discovery effort.
+                currentProgressRecords = currentProgressRecords
+                    .filterNot { it.page == 1 }
+                    .plus(
+                        RecommendationDiscoveryProgress(
+                            sourceId = source.id,
+                            querySignature = queryKey,
+                            queryTagsJson = topTags.joinToString(","),
+                            queryStrategy = plan.type.name,
+                            page = 1,
+                            evaluatedAt = clock(),
+                            rawCount = rawSMangas.size,
+                            localizedCount = localized.size,
+                            scoredCount = scoredCount,
+                            visibleCount = recommendations.size,
+                            filteredCount = rawSMangas.size - localized.size,
+                            status = when {
+                                recommendations.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_SUCCESS
+                                rawSMangas.isNotEmpty() -> RecommendationDiscoveryProgress.STATUS_FILTERED
+                                else -> RecommendationDiscoveryProgress.STATUS_EMPTY
+                            },
+                            errorMessage = null,
+                            profileFingerprint = fingerprint,
+                        ),
+                    )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+            // KMK <--
+
+            // KMK v0.8.13: do not probe additional pages for a query that already proved it
+            // returns nothing raw on page 1 -- see RecommendationAdditionalPagePolicy's KDoc for
+            // the confirmed source TEXT_ONLY_TOP_TAGS page-crawl evidence this prevents.
+            // KMK --> EC-04 2026-09-01: configurable discovery-effort policy. Probes up to
+            // discoveryEffortLevel.additionalPagesPerRefresh pages THIS refresh --
+            // DiscoveryEffortLevel.STANDARD's value of 1 reproduces the exact pre-existing
+            // single-probe behavior byte-for-byte (same single discoverAdditionalPage call,
+            // same single upsertBatch call), so existing users see no behavior change unless
+            // they explicitly change the setting. Each iteration after the first re-derives
+            // progressRecords from progressStore so the loop reacts to the REAL outcome the
+            // previous iteration's discoverAdditionalPage just wrote (success/empty/error/
+            // backoff/cap) via that function's own nextPageToProbe() call -- no separate
+            // early-stop check is needed here: a page with nothing left to probe simply returns
+            // (emptyList(), 0), which this loop treats as "stop early." discoverAdditionalPage
+            // itself is completely unchanged.
+            val discoveryEffortLevel = exh.recs.memory.DiscoveryEffortLevel.resolve(
+                sourcePreferences.recommendationDiscoveryEffortLevel().get(),
+            )
+            var remainingCandidateBudget = exh.recs.memory.RecommendationDiscoveryCandidateBudgetPolicy.resolve(
+                sourcePreferences.recommendationDiscoveryCandidateBudget().get(),
+            )
+            val additionalPageResults = mutableListOf<PersonalRecommendation>()
+            var lastAdditionalPage = 0
+            if (
+                discoveryEffortLevel.additionalPagesPerRefresh > 0 &&
+                remainingCandidateBudget > 0 &&
+                RecommendationAdditionalPagePolicy.shouldDiscoverAdditionalPage(
+                    planType = plan.type,
+                    pageOneRawCount = rawSMangas.size,
+                    pageOneVisibleCount = recommendations.size,
+                    lastError = null,
+                )
+            ) {
+                val plannedPages = RecommendationDiscoveryPlanner.planAdditionalPages(
+                    progressRecords = currentProgressRecords,
+                    maxAdditionalPages = discoveryEffortLevel.additionalPagesPerRefresh,
+                    nowMs = clock(),
+                )
+                for ((iteration, plannedPage) in plannedPages.withIndex()) {
+                    if (!currentCoroutineContext().isActive) break
+                    // The planner assumes each earlier probe succeeds. Reconcile that plan
+                    // against the persisted frontier before each probe so a retryable,
+                    // blocked, or exhausted result never causes a later page to be probed.
+                    val nextPage = RecommendationDiscoveryPlanner.nextPageToProbe(
+                        currentProgressRecords,
+                        clock(),
+                    ) ?: break
+                    if (nextPage != plannedPage) break
+                    val (pageResults, probedPage, consumedCandidateCount) = discoverAdditionalPage(
+                        source = source,
+                        progressRecords = currentProgressRecords,
+                        queryKey = queryKey,
+                        topTags = topTags,
+                        fingerprint = fingerprint,
+                        queryStrategy = plan.type.name,
+                        searchParams = searchParams,
+                        tasteByKey = tasteByKey,
+                        visibility = visibility,
+                        seenKeys = seenKeys,
+                        profile = profile,
+                        aliasMap = aliasMap,
+                        minChapterCount = minChapterCount,
+                        // KMK --> v0.7.41 follow-up
+                        hideKnownManga = hideKnownManga,
+                        // KMK <--
+                        candidateBudget = remainingCandidateBudget,
+                    )
+                    if (probedPage == 0) break
+                    lastAdditionalPage = probedPage
+                    remainingCandidateBudget -= consumedCandidateCount
+                    if (pageResults.isNotEmpty()) {
+                        additionalPageResults += pageResults
+                        // memoryStore.upsertBatch already rethrows CancellationException and
+                        // swallows ordinary exceptions internally; this try/catch only guards
+                        // against a future change to that internal contract.
+                        try {
+                            memoryStore.upsertBatch(
+                                sourceId = source.id,
+                                querySignature = queryKey,
+                                queryTags = topTags,
+                                queryStrategy = plan.type.name,
+                                page = probedPage,
+                                profileFingerprint = fingerprint,
+                                recommendations = pageResults,
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                        }
+                    }
+                    // The candidate budget is an aggregate per-refresh bound. Do not continue
+                    // probing planned pages after the bound is exhausted; a zero budget would
+                    // otherwise still create a page probe with no candidates to process. The
+                    // check follows the memory upsert so the final allowed page is retained.
+                    if (remainingCandidateBudget <= 0) break
+                    if (iteration + 1 < plannedPages.size) {
+                        currentProgressRecords = try {
+                            progressStore.progressRecords(source.id, queryKey)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            currentProgressRecords
+                        }
+                    }
+                }
+            }
+            val additionalResults = additionalPageResults.toList() to lastAdditionalPage
+            // KMK <--
+            try {
+                memoryStore.pruneIfNeeded(source.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
+
+            // KMK v0.8.13: extracted -- identical remembered+fresh merge pipeline used by both
+            // this plan loop and the catalogue fallback (see mergeFreshAndRememberedCandidates).
+            // additionalResults.first is already known-filtered inside discoverAdditionalPage
+            // (same hide-known context as page one), so knownIds (page-1) is sufficient for the
+            // merge; no redundant DB round-trip is needed.
+            val allNew = recommendations + additionalResults.first
+            // Bounded additive
+            // Latest augmentation -- see tryAdditiveLatestAugmentation's KDoc for why this is the
+            // structural fix for "Latest does not run when personalized results already exist".
+            // Only ever reached from this success path (mutually exclusive with the
+            // hadRawResults == false rescue path further below), and shares the same per-refresh
+            // budget pool, so total Latest source-touches per refresh stay bounded either way.
+            val latestAdditive = tryAdditiveLatestAugmentation(
+                source, queryKey, fingerprint, topTags, profile, aliasMap, tasteByKey, visibility,
+                seenKeys, hideKnownManga, minChapterCount, enrichLimit, displayLimit, rawCap,
+                latestBudgetState = latestBudgetState,
+                excludeMangaIds = allNew.mapNotNull { it.manga.id.takeIf { id -> id != 0L } }.toSet(),
+            )
+            // Bounded soft
+            // reordering by local exposure history -- see ExposureRerankContext/
+            // RecommendationDisplayReranker. Batched once per source (not once per card); a
+            // failed lookup fails open to no reordering (ExposureRerankContext.NONE), never to
+            // hiding results. "Interacted" is derived live from favorite + existing taste data
+            // already loaded for this refresh -- not a stored copy -- so it is always current.
+            val candidatePool = allNew + latestAdditive
+            val exposureContext = buildExposureRerankContext(source.id, candidatePool, tasteByKey)
+            val mergedRecommendations = mergeFreshAndRememberedCandidates(
+                remembered, candidatePool, profile, aliasMap, tasteByKey, visibility, seenKeys,
+                knownIds, displayLimit, minChapterCount, exposureContext,
+            )
+
+            val status = RecommendationSourceRunStatus(
+                sourceId = source.id,
+                status = if (mergedRecommendations.isNotEmpty()) {
+                    RecommendationSourceStatus.Shown
+                } else if (hadRawResults) {
+                    RecommendationSourceStatus.FilteredOut
+                } else {
+                    RecommendationSourceStatus.NoMatches
+                },
+                visibleCount = mergedRecommendations.size,
+                evaluatedCount = progressStore.progressRecords(source.id, queryKey)
+                    .sumOf { it.rawCount }
+                    .coerceAtLeast(0),
+            )
+            return PersonalizedPlanAttemptResult(
+                outcome = SourceSearchOutcome(
+                    source = source,
+                    result = PersonalRecommendationResult.Success(mergedRecommendations),
+                    // KMK --> v0.7.44 Phase D.3: only persist this strategy as "successful" when it
+                    // actually produced a visible result. Previously this was set unconditionally
+                    // once the last plan in the chain was reached, so a source could get "locked"
+                    // onto a strategy that produced zero results just because it was tried last.
+                    successfulStrategy = plan.type.takeIf { mergedRecommendations.isNotEmpty() },
+                    // KMK <--
+                    status = status,
+                    isUseful = mergedRecommendations.isNotEmpty(),
+                ),
+                hadRawResults = hadRawResults,
+                lastError = lastError,
+                shouldContinue = false,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // KMK v0.8.10-fix7: both source calls above now use
+            // getOrThrowSourceRuntimeException(), so a recoverable extension-linkage failure
+            // (e.g. NoClassDefFoundError) reaches this primary catch as
+            // RecoverableSourceRuntimeException (an Exception), not as a raw Error. This is the
+            // main containment path now, not the defensive catch(Error) below.
+            lastError = e
+        } catch (e: Error) {
+            // KMK v0.8.10-fix7: defensive-only guard for any remaining path that has not been
+            // migrated to getOrThrowSourceRuntimeException() -- SourceRuntime.run() itself
+            // already rethrows CancellationException and any genuinely fatal Error directly
+            // from *inside* its run()/runBlockingSourceCall() blocks (they never reach this
+            // catch clause from there). KMK v0.8.12-fix1 correction: that guarantee does not
+            // cover this whole try block -- enrichment, scoring, and memory/DB lookups between
+            // the SourceRuntime calls run outside SourceRuntime's boundary but still inside this
+            // try, so an unconditional `catch (e: Error)` here previously swallowed every Error
+            // subtype unconditionally, including OutOfMemoryError/StackOverflowError/ThreadDeath.
+            // rethrowIfFatal() rethrows anything that is not a recoverable per-source failure
+            // (i.e. everything except LinkageError and its subtypes) before this branch ever
+            // records it as a per-source lastError.
+            rethrowIfFatal(e)
+            lastError = e
+        }
+
+        return PersonalizedPlanAttemptResult(
+            outcome = null,
+            hadRawResults = hadRawResults,
+            lastError = lastError,
+            shouldContinue = false,
+        )
+    }
     /**
      * Bounded Latest-catalogue exploration probe for one source.
      *
@@ -1115,6 +1839,7 @@ class BrowsePersonalRecommendationsScreenModel(
         remembered: List<RecommendationCandidateMemoryEntry>,
         hadRawResults: Boolean,
         lastError: Throwable?,
+        latestBudgetState: LatestExplorationBudgetState,
     ): CatalogueFallbackOutcome {
         // Only offer Latest when the personalized chain produced nothing usable and did not itself
         // fail -- identical gating to the Popular fallback, so a source that already has personalized
@@ -1125,17 +1850,17 @@ class BrowsePersonalRecommendationsScreenModel(
             return CatalogueFallbackOutcome(null, hadRawResults)
         }
 
-        val budget = latestExplorationBudget
+        val budget = latestBudgetState.limit
         val eligible = RecommendationCatalogueLanePolicy.shouldAttempt(
             supportsLatest = source.supportsLatest,
             sourceIsEligible = true,
-            latestAttemptsUsed = latestAttemptsUsed.get(),
+            latestAttemptsUsed = latestBudgetState.attemptsUsed.get(),
             latestBudget = budget,
         )
         if (!eligible) return CatalogueFallbackOutcome(null, hadRawResults)
         // Claim the budget slot before the call so concurrent per-source coroutines in the same batch
         // cannot collectively overshoot it.
-        if (latestAttemptsUsed.getAndIncrement() >= budget) return CatalogueFallbackOutcome(null, hadRawResults)
+        if (latestBudgetState.attemptsUsed.getAndIncrement() >= budget) return CatalogueFallbackOutcome(null, hadRawResults)
 
         var rawFound = hadRawResults
         try {
@@ -1147,10 +1872,10 @@ class BrowsePersonalRecommendationsScreenModel(
             // error for this refresh -- the Popular fallback below still gets its turn.
             val page = pageResult.getOrElse { return CatalogueFallbackOutcome(null, rawFound) }
 
-            val rawSMangas = page.mangas
-                .filter { RecommendationCatalogueLanePolicy.isUsableEntry(it.url, it.title) }
-                .take(rawCap)
-                .distinctBy { it.url }
+            val rawSMangas = RecommendationRawCandidatePolicy.distinctWithinLimit(
+                page.mangas.filter { RecommendationCatalogueLanePolicy.isUsableEntry(it.url, it.title) },
+                rawCap,
+            ) { it.url }
             if (rawSMangas.isEmpty()) return CatalogueFallbackOutcome(null, rawFound)
             rawFound = true
 
@@ -1233,14 +1958,13 @@ class BrowsePersonalRecommendationsScreenModel(
     }
     // KMK <--
 
-    // KMK -->
     /**
      * Bounded, additive Latest-catalogue augmentation for a source that **already** produced usable
      * personalized results in this refresh.
      *
      * ## Why this exists (structural fix, not a new feature)
      *
-     * [tryLatestCatalogueLane] (added in the earlier implementation) is gated by
+     * [tryLatestCatalogueLane] (added in the prior pass) is gated by
      * `RecommendationCatalogueFallbackPolicy.shouldAttempt(hadRawResults, ...)`, which requires
      * `hadRawResults == false` -- i.e. it only fires when the personalized chain found *nothing*.
      * Because the personalized plan loop in `searchSource()` returns directly on success, that gate
@@ -1257,11 +1981,11 @@ class BrowsePersonalRecommendationsScreenModel(
      *   maximum possible contribution to the row regardless of how any individual candidate scores,
      *   which is what keeps personalized results the majority (proven exhaustively in
      *   `RecommendationLatestBudgetPolicyTest`).
-     * - **Per-refresh source-touch count:** shares the same [latestAttemptsUsed]/[latestExplorationBudget]
-     *   pool [tryLatestCatalogueLane] uses. Only one of the two functions can ever run for a given
+     * - **Per-refresh source-touch count:** shares the same [LatestExplorationBudgetState] pool
+     *   [tryLatestCatalogueLane] uses. Only one of the two functions can ever run for a given
      *   source in a given refresh (they sit on mutually exclusive control-flow branches: this one only
-     *   when personalized succeeded, the other only when it did not), so the shared budget is never
-     *   double-spent per source and the refresh-wide ceiling still holds.
+     *   when personalized succeeded, the other only when it did not), so the refresh-owned budget is
+     *   never double-spent per source and the refresh-wide ceiling still holds.
      *
      * ## Filter/provenance parity
      *
@@ -1293,26 +2017,28 @@ class BrowsePersonalRecommendationsScreenModel(
         enrichLimit: Int,
         displayLimit: Int,
         rawCap: Int,
+        latestBudgetState: LatestExplorationBudgetState,
         excludeMangaIds: Set<Long>,
     ): List<PersonalRecommendation> {
         if (!currentCoroutineContext().isActive) return emptyList()
 
         val quota = RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource(
-            displayLimit,
-            sourcePreferences.recommendationLatestExplorationPercent().get(),
+            enabled = sourcePreferences.recommendationLatestExplorationEnabled().get(),
+            displayLimit = displayLimit,
+            configuredPercent = sourcePreferences.recommendationLatestExplorationPercent().get(),
         )
         if (quota <= 0) return emptyList()
 
-        val budget = latestExplorationBudget
+        val budget = latestBudgetState.limit
         val eligible = RecommendationCatalogueLanePolicy.shouldAttempt(
             supportsLatest = source.supportsLatest,
             sourceIsEligible = true,
-            latestAttemptsUsed = latestAttemptsUsed.get(),
+            latestAttemptsUsed = latestBudgetState.attemptsUsed.get(),
             latestBudget = budget,
         )
         if (!eligible) return emptyList()
         // Claim the shared budget slot before the call, same contract as tryLatestCatalogueLane.
-        if (latestAttemptsUsed.getAndIncrement() >= budget) return emptyList()
+        if (latestBudgetState.attemptsUsed.getAndIncrement() >= budget) return emptyList()
 
         return try {
             val pageResult = SourceRuntime.run(source, SourceRuntimeOperation.Latest, coroutineDispatcher) {
@@ -1320,10 +2046,10 @@ class BrowsePersonalRecommendationsScreenModel(
             }
             val page = pageResult.getOrElse { return emptyList() }
 
-            val rawSMangas = page.mangas
-                .filter { RecommendationCatalogueLanePolicy.isUsableEntry(it.url, it.title) }
-                .take(rawCap)
-                .distinctBy { it.url }
+            val rawSMangas = RecommendationRawCandidatePolicy.distinctWithinLimit(
+                page.mangas.filter { RecommendationCatalogueLanePolicy.isUsableEntry(it.url, it.title) },
+                rawCap,
+            ) { it.url }
             if (rawSMangas.isEmpty()) return emptyList()
 
             val processed = processRawCandidates(
@@ -1335,7 +2061,7 @@ class BrowsePersonalRecommendationsScreenModel(
             val additive = processed.recommendations
                 .filter { it.manga.id == 0L || it.manga.id !in excludeMangaIds }
                 .take(quota)
-                // KMK: tag the lane so the shared merge can
+                // Tag the lane so the shared merge can
                 // enforce the personalized-majority invariant on the realised final list.
                 .map { it.copy(lane = RecommendationDiscoveryLane.LATEST_CATALOGUE) }
             if (additive.isEmpty()) return emptyList()
@@ -1479,7 +2205,7 @@ class BrowsePersonalRecommendationsScreenModel(
         knownIds: Set<Long>,
         displayLimit: Int,
         minChapterCount: Int,
-        // KMK: optional exposure-aware
+        // Optional exposure-aware
         // reordering, forwarded to RecommendationCandidateMemoryRanker.merge. Defaults to a no-op.
         exposureContext: ExposureRerankContext = ExposureRerankContext.NONE,
     ): List<PersonalRecommendation> {
@@ -1502,17 +2228,20 @@ class BrowsePersonalRecommendationsScreenModel(
             resolvedMemory, newResults, profile, aliasMap,
             tasteByKey, visibility, seenKeys, knownIds, displayLimit,
             minChapterCount, chapterCountsForMerge,
-            exposureContext.exposureByKey, exposureContext.interactions, exposureContext.now, exposureContext.windowDays,
+            if (exposureContext.enabled) exposureContext.exposureByKey else emptyMap(),
+            exposureContext.interactions,
+            exposureContext.now,
+            exposureContext.windowDays,
         )
     }
 
-    // KMK -->
     /** Bundles the optional exposure-reranking inputs for [mergeFreshAndRememberedCandidates]. */
     private data class ExposureRerankContext(
         val exposureByKey: Map<RecommendationDisplayReranker.ExposureKey, RecommendationDisplayReranker.ExposureSummary>,
         val interactions: RecommendationDisplayReranker.InteractionSignals,
         val now: Long,
         val windowDays: Int,
+        val enabled: Boolean,
     ) {
         companion object {
             val NONE = ExposureRerankContext(
@@ -1520,6 +2249,7 @@ class BrowsePersonalRecommendationsScreenModel(
                 RecommendationDisplayReranker.InteractionSignals.NONE,
                 0L,
                 RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS,
+                false,
             )
         }
     }
@@ -1539,7 +2269,7 @@ class BrowsePersonalRecommendationsScreenModel(
      *
      * ## Fail-open behavior
      *
-     * KMK: the tracker check used to be omitted entirely
+     * the tracker check used to be omitted entirely
      * (hardcoded `isTracked = false`), which silently risked penalising a title the user actively
      * tracks. It is now a real lookup. [GetTracks.await] already swallows its own failures and
      * returns an empty map, and this call is additionally wrapped: on **any** failure the tracked set
@@ -1581,18 +2311,20 @@ class BrowsePersonalRecommendationsScreenModel(
         val windowDays = RecommendationExposurePolicy.validateWindowDays(
             sourcePreferences.recommendationExposureWindowDays().get(),
         )
+        val enabled = sourcePreferences.recommendationExposureWindowEnabled().get()
         return ExposureRerankContext(
             exposureByKey,
             RecommendationDisplayReranker.InteractionSignals(libraryKeys, ratedKeys, trackedState),
             currentRefreshTimestamp,
             windowDays,
+            enabled,
         )
     }
 
     /**
      * One batched tracker lookup for this source's candidates, returning a **tri-state**.
      *
-     * KMK: this previously returned a bare `Set`, collapsing
+     * this previously returned a bare `Set`, collapsing
      * "the lookup failed" into "nothing is tracked". The reranker read that empty set as a positive
      * fact and could therefore demote a title the user actively tracks. It now returns
      * [RecommendationDisplayReranker.TrackedState.Unknown] on any failure, which the reranker treats
@@ -1690,7 +2422,7 @@ class BrowsePersonalRecommendationsScreenModel(
             val page = SourceRuntime.run(source, SourceRuntimeOperation.Popular, coroutineDispatcher) {
                 getPopularManga(1)
             }.getOrThrowSourceRuntimeException()
-            val rawSMangas = page.mangas.take(rawCap).distinctBy { it.url }
+            val rawSMangas = RecommendationRawCandidatePolicy.distinctWithinLimit(page.mangas, rawCap) { it.url }
             if (rawSMangas.isEmpty()) return CatalogueFallbackOutcome(null, rawFound)
             rawFound = true
 
@@ -1839,7 +2571,7 @@ class BrowsePersonalRecommendationsScreenModel(
         val cacheKey = cacheKey(sourceId, queryKey)
         val entry = getRecommendationCache.await(cacheKey) ?: return null
 
-        val now = System.currentTimeMillis()
+        val now = clock()
         if (entry.expiresAt < now) return null
         if (entry.profileFingerprint != fingerprint) return null
 
@@ -1907,7 +2639,7 @@ class BrowsePersonalRecommendationsScreenModel(
         scores: List<Double>,
         reason: String?,
     ) {
-        val now = System.currentTimeMillis()
+        val now = clock()
         val entry = RecommendationCacheEntry(
             cacheKey = cacheKey(sourceId, queryKey),
             sourceId = sourceId,
@@ -1986,7 +2718,7 @@ class BrowsePersonalRecommendationsScreenModel(
     // KMK --> v0.7.43: Not Interested mild-negative signal
     /**
      * Returns [profile] with a small negative adjustment applied to [TasteProfile.learnedTagWeights]
-     * for genre groups seen on manga the user marked Not Interested (internal storage: "seen").
+     * for genre groups seen on manga the user marked Not Interested (`MangaRating.NOT_INTERESTED`).
      *
      * This is intentionally much weaker than a Dislike rating (-2.0 per genre occurrence, uncapped
      * per-source contribution): Not Interested contributes [NOT_INTERESTED_WEIGHT] per genre
@@ -2091,14 +2823,15 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.7.41 follow-up: hide-known context so extra-page candidates use the same
         // shared visibility policy as live page-one, cache, memory, and group recommendations
         hideKnownManga: Boolean,
+        candidateBudget: Int,
         // KMK <--
-    ): Pair<List<PersonalRecommendation>, Int> {
+    ): Triple<List<PersonalRecommendation>, Int, Int> {
         // KMK --> v0.7.40: planner now classifies retryable vs permanent failures
-        val nowMs = System.currentTimeMillis()
+        val nowMs = clock()
         val nextPage = RecommendationDiscoveryPlanner.nextPageToProbe(progressRecords, nowMs)
-            ?: return emptyList<PersonalRecommendation>() to 0
+            ?: return Triple(emptyList(), 0, 0)
         // KMK <--
-        if (!currentCoroutineContext().isActive) return emptyList<PersonalRecommendation>() to nextPage
+        if (!currentCoroutineContext().isActive) return Triple(emptyList(), nextPage, 0)
 
         // KMK --> v0.7.40: carry forward attempt_count for the page being probed (for retry tracking)
         val existingRecord = progressRecords.find { it.page == nextPage }
@@ -2140,17 +2873,18 @@ class BrowsePersonalRecommendationsScreenModel(
                     progressStatus = RecommendationDiscoveryProgress.STATUS_ERROR
                     failureKind = RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE
                     errorMessage = "Additional-page search timed out after ${ADDITIONAL_PAGE_TIMEOUT_MS}ms"
-                    return@innerRun emptyList<PersonalRecommendation>() to nextPage
+                    return@innerRun Triple(emptyList(), nextPage, 0)
                 }
                 // KMK <--
-                val rawSMangas = pageResult.mangas
-                    .take(RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE)
-                    .distinctBy { it.url }
+                val rawSMangas = RecommendationRawCandidatePolicy.distinctWithinLimit(
+                    pageResult.mangas,
+                    candidateBudget.coerceAtMost(RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE),
+                ) { it.url }
 
                 rawCount = rawSMangas.size
                 if (rawSMangas.isEmpty()) {
                     progressStatus = RecommendationDiscoveryProgress.STATUS_EMPTY
-                    return@innerRun emptyList<PersonalRecommendation>() to nextPage
+                    return@innerRun Triple(emptyList(), nextPage, 0)
                 }
 
                 val raw = rawSMangas.map { it.toDomainManga(source.id) }
@@ -2201,7 +2935,7 @@ class BrowsePersonalRecommendationsScreenModel(
                     localized,
                     profile,
                     aliasMap,
-                    RecommendationDiscoveryPlanner.MAX_NEW_CANDIDATES_PER_DISCOVERY_PAGE,
+                    rawSMangas.size,
                 )
                 scoredCount = scored.size
 
@@ -2212,7 +2946,7 @@ class BrowsePersonalRecommendationsScreenModel(
                     rawCount > 0 -> RecommendationDiscoveryProgress.STATUS_FILTERED
                     else -> RecommendationDiscoveryProgress.STATUS_EMPTY
                 }
-                results to nextPage
+                Triple(results, nextPage, rawSMangas.size)
             }
         } catch (e: CancellationException) {
             // Cancellation is never recorded as a failed retry — rethrow before any progress write.
@@ -2223,7 +2957,7 @@ class BrowsePersonalRecommendationsScreenModel(
             errorMessage = RecommendationErrorClassifier.classifyToStorageKey(e)
             failureKind = RecommendationRetryClassifier.classify(e)
             // KMK <--
-            emptyList<PersonalRecommendation>() to nextPage
+            Triple(emptyList(), nextPage, 0)
         }
 
         // KMK --> v0.7.41: compute the terminal retry state after the probe resolves.
@@ -2299,19 +3033,35 @@ class BrowsePersonalRecommendationsScreenModel(
     suspend fun rateSelected(manga: List<Manga>, rating: tachiyomi.domain.taste.model.MangaRating): BulkTasteOutcome {
         if (manga.isEmpty()) return BulkTasteOutcome(0, 0, 0)
         return try {
-            // KMK v0.8.19: builds pre-write journal entries for Evaluation Mode's Undo Journal (no-op
-            // when disabled). Built before the write so it captures the *previous* state, but only
+            // KMK v0.8.19: builds pre-write entries for the local Action History. Built before the
+            // write so it captures the *previous* state, but only
             // committed to the journal after the write succeeds -- otherwise a failed write would leave
             // a stale entry that never actually happened.
             val journalActionType = when (rating) {
                 tachiyomi.domain.taste.model.MangaRating.LOVE -> exh.util.EvaluationJournalActionType.RATE_LOVE
                 tachiyomi.domain.taste.model.MangaRating.LIKE -> exh.util.EvaluationJournalActionType.RATE_LIKE
                 tachiyomi.domain.taste.model.MangaRating.DISLIKE -> exh.util.EvaluationJournalActionType.RATE_DISLIKE
+                // Bulk-rate selection never offers Not Interested as a rating choice (it has its own
+                // bulk action elsewhere) -- kept exhaustive since MangaRating is the shared enum.
+                tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED -> exh.util.EvaluationJournalActionType.NOT_INTERESTED
             }
-            val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(sourcePreferences, getMangaTaste, manga, rating.value, journalActionType)
-            setMangaTasteBatch.await(manga, rating)
-            exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
-            BulkTasteOutcome.success(manga.size)
+            val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(getMangaTaste, manga, rating.value, journalActionType)
+            // KMK v0.8.21-fix4: R1 correction -- this used to also remove/restore keys in the
+            // legacy seenRecommendationMangaKeys preference around the setMangaTasteBatch write,
+            // coordinating a rollback across two stores for a preference nothing reads live
+            // anymore (Not Interested exclusion is MangaTaste-derived everywhere now, see
+            // RecommendsScreenModel and this class's own `seenKeys` above). MangaTaste is the sole
+            // rating-family authority; the legacy preference is migration/old-backup-restore-only.
+            try {
+                setMangaTasteBatch.await(manga, rating)
+                exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+                propagateConfirmedLocalTracking(manga)
+                BulkTasteOutcome.success(manga.size)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                BulkTasteOutcome.failed(manga.size)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -2320,20 +3070,25 @@ class BrowsePersonalRecommendationsScreenModel(
     }
 
     /**
-     * Mild negative signal -- same "not interested" store used by manga detail/Rated Manga screens.
-     * KMK v0.8.17-fix1: suspends and reports outcome, same reasoning as [rateSelected].
+     * Marks the selection Not Interested -- writes `MangaTaste.rating = NOT_INTERESTED` through
+     * the same [setMangaTasteBatch] every other bulk rating uses, per [rateSelected].
+     *
+     * KMK v0.8.21-fix3: R1 correction -- this previously wrote ONLY the legacy
+     * seenRecommendationMangaKeys preference and never touched MangaTaste, a dangling writer the
+     * corrected architecture cannot allow.
      */
     suspend fun markSelectedNotInterested(manga: List<Manga>): BulkTasteOutcome {
         if (manga.isEmpty()) return BulkTasteOutcome(0, 0, 0)
         return try {
-            // KMK v0.8.19: build pre-write journal entries for Evaluation Mode's Undo Journal (no-op if
-            // disabled), commit only after the write below succeeds.
-            val journalEntries = exh.util.EvaluationModeJournalRecorder.buildNotInterested(sourcePreferences, getMangaTaste, manga)
-            val raw = sourcePreferences.seenRecommendationMangaKeys().get()
-            var seen = SeenRecommendationMangaStore.parse(raw)
-            manga.forEach { m -> seen = SeenRecommendationMangaStore.add(seen, SeenMangaKey(m.source, m.url)) }
-            sourcePreferences.seenRecommendationMangaKeys().set(SeenRecommendationMangaStore.serialize(seen))
+            val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
+                getMangaTaste,
+                manga,
+                tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED.value,
+                exh.util.EvaluationJournalActionType.NOT_INTERESTED,
+            )
+            setMangaTasteBatch.await(manga, tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED)
             exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+            propagateConfirmedLocalTracking(manga)
             BulkTasteOutcome.success(manga.size)
         } catch (e: CancellationException) {
             throw e
@@ -2350,11 +3105,10 @@ class BrowsePersonalRecommendationsScreenModel(
     // CancellationException).
     suspend fun clearSelectedRatings(manga: List<Manga>): BulkTasteOutcome {
         if (manga.isEmpty()) return BulkTasteOutcome(0, 0, 0)
-        // KMK v0.8.19: build pre-write journal entries for Evaluation Mode's Undo Journal (no-op if
-        // disabled). Each entry is committed individually below, only for the manga whose clear write
-        // actually succeeded -- a per-item failure must not leave a stale journal entry.
+        // KMK v0.8.19: build pre-write entries for the local Action History journal. Each entry is
+        // committed individually below, only for the manga whose clear write actually succeeded --
+        // a per-item failure must not leave a stale journal entry.
         val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             manga,
             null,
@@ -2375,14 +3129,39 @@ class BrowsePersonalRecommendationsScreenModel(
         }
         return BulkTasteOutcome(requestedCount = manga.size, successCount = successCount, failureCount = failureCount)
     }
+
+    private suspend fun propagateConfirmedLocalTracking(manga: List<Manga>) {
+        if (!sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled().get()) return
+        manga.distinctBy { it.source to it.url }.forEach { origin ->
+            confirmedGroupLocalTrackingPropagator.propagateIfAnyTracked(
+                confirmedMangaGroupTargets.await(origin),
+            )
+        }
+    }
     // KMK <--
 
     private fun updateItem(
+        refreshGeneration: Long,
         source: Source,
         result: PersonalRecommendationResult,
         status: RecommendationSourceRunStatus? = null,
     ) {
+        if (!RecommendationRefreshGenerationPolicy.shouldAccept(
+                candidateGeneration = refreshGeneration,
+                activeGeneration = activeRefreshGeneration.get(),
+            )
+        ) {
+            return
+        }
+
         val (rowResult, detailResult) = synchronized(accumulatorLock) {
+            if (!RecommendationRefreshGenerationPolicy.shouldAccept(
+                    candidateGeneration = refreshGeneration,
+                    activeGeneration = activeRefreshGeneration.get(),
+                )
+            ) {
+                return
+            }
             if (result is PersonalRecommendationResult.Success && result.result.isNotEmpty()) {
                 combinedAccumulator.add(result.result, source.id)
             }
@@ -2394,6 +3173,13 @@ class BrowsePersonalRecommendationsScreenModel(
             )
         }
         mutableState.update { state ->
+            if (!RecommendationRefreshGenerationPolicy.shouldAccept(
+                    candidateGeneration = refreshGeneration,
+                    activeGeneration = activeRefreshGeneration.get(),
+                )
+            ) {
+                return@update state
+            }
             state.copy(
                 items = state.items.mutate { it[source] = result },
                 combinedResult = rowResult,
@@ -2452,7 +3238,7 @@ class BrowsePersonalRecommendationsScreenModel(
 
         sourcePreferences.recommendationForYouPreviewSnapshot().set(
             RecommendationForYouPreviewSnapshotStore.serialize(
-                RecommendationForYouPreviewSnapshot(capturedAt = System.currentTimeMillis(), rows = rows),
+                RecommendationForYouPreviewSnapshot(capturedAt = clock(), rows = rows),
             ),
         )
     }
@@ -2485,12 +3271,20 @@ class BrowsePersonalRecommendationsScreenModel(
         // KMK --> v0.7.25: true when device has no internet at load time
         val isOffline: Boolean = false,
         // KMK <--
-        // KMK: bumped exactly once per
+        // bumped exactly once per
         // load()/refresh() call, at the same point `items` is reset to empty. The Tab keys its
         // exposure-recording LaunchedEffect on this value (plus "every source finished") so a stale
         // in-flight recording coroutine from a superseded refresh is cancelled, and recomposition
         // alone (no generation change) never re-records.
         val resultGeneration: Long = 0,
+        // Shared focus-criteria alias map (see
+        // buildFocusAliasMap) and the known-group universe (see buildFocusKnownGroups), both
+        // computed once per refresh() from GetTagAliases -- not limited to whatever genres happen
+        // to be in the currently-loaded result set. Threaded into every production
+        // RecommendationFocusPresentationPolicy.apply call so alias-aware focus filtering is
+        // actually exercised in Top Picks and every source lane, not just in isolated policy tests.
+        val focusAliasMap: Map<String, String> = emptyMap(),
+        val focusKnownGroups: Set<String> = emptySet(),
     ) {
         val progress: Int = items.count { it.value !is PersonalRecommendationResult.Loading }
         val total: Int = items.size

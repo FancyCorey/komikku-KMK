@@ -1,6 +1,7 @@
 package exh.recs.settings
 
 import cafe.adriel.voyager.core.screen.Screen
+import java.util.Locale
 
 // KMK v0.8.9 -->
 /**
@@ -22,8 +23,8 @@ import cafe.adriel.voyager.core.screen.Screen
  * nothing real to return without rewriting every one of those screens onto the official Preference
  * DSL, which would mean re-deriving custom controls (drag-and-drop reordering, suggestion bulk-select,
  * tag chips with a leading-icon-per-preference-state) that the DSL has no equivalent for today. That
- * rewrite was judged out of proportion to a search feature. Unavailable destinations remain visible
- * with an explanation instead of disappearing.
+ * rewrite was judged out of proportion to a search feature and too large to verify safely without a
+ * device in this session — see the v0.8.9 implementation report.
  *
  * What IS reused, faithfully, is everything about the *behavior*: case-insensitive substring
  * matching (same semantics as `SettingsSearchScreen`'s `.contains(searchKey, true)`), a bounded
@@ -43,7 +44,7 @@ object RecommendationSettingsSearchIndex {
         val category: String,
         val synonyms: List<String> = emptyList(),
         val destination: Screen,
-        /** True when this setting is currently reachable. A false entry is still shown (per the behavior contract section "truthful unavailable state"), never silently hidden. */
+        /** True when this setting is currently reachable. A false entry is still shown (per plan section "truthful unavailable state"), never silently hidden. */
         val available: Boolean = true,
         // KMK v0.8.10: stable in-screen scroll target -- one of the destination screen's own
         // LazyColumn item(key = ...) identifiers, never a fragile positional index. Null means this
@@ -97,7 +98,7 @@ object RecommendationSettingsSearchIndex {
 
     /** Lowercase, replace punctuation with spaces, and collapse whitespace so "Source-Priority", "source priority", and "SOURCE  PRIORITY" all match identically. */
     fun normalize(s: String): String = s
-        .lowercase()
+        .lowercase(Locale.ROOT)
         .replace(Regex("[^a-z0-9 ]"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()

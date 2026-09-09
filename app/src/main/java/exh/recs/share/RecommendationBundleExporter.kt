@@ -13,6 +13,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
 
 // KMK -->
 
@@ -44,7 +45,7 @@ class RecommendationBundleExporter(
         }
         return makeBundle(
             RecommendationBundleType.SOURCE_ROW,
-            "$sourceName (${sourceLang.uppercase()}) Recommendations",
+            "$sourceName (${sourceLang.uppercase(Locale.ROOT)}) Recommendations",
             items,
             kmkVersion,
         )

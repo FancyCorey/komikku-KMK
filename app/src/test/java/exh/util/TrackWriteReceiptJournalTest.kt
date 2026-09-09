@@ -6,12 +6,13 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK -->
+// KMK Universal Action History Recovery Plan 2026-08-01 -->
 class TrackWriteReceiptJournalTest {
 
     @AfterEach
     fun tearDown() {
         TrackWriteReceiptJournal.clear()
+        NonUndoableEventJournal.clear()
     }
 
     private fun receipt(id: String, timestamp: Long = 1L) = TrackWriteReceipt(
@@ -62,6 +63,21 @@ class TrackWriteReceiptJournalTest {
         TrackWriteReceiptJournal.record(receipt("a"))
         TrackWriteReceiptJournal.clear()
         assertTrue(TrackWriteReceiptJournal.isEmpty())
+    }
+
+    @Test
+    fun `disabled Evaluation Mode still records a verified generic event and private receipt`() {
+        recordSuccessfulTrackWrite(
+            evaluationModeEnabled = false,
+            mangaId = 10L,
+            trackerId = 20L,
+            field = TrackWriteField.STATUS,
+            previousStatus = 1L,
+        )
+
+        assertEquals(1, TrackWriteReceiptJournal.snapshot().size)
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(NonUndoableEventType.TRACKER_WRITE_COMPLETED, NonUndoableEventJournal.snapshot().single().eventType)
     }
 
     @Test

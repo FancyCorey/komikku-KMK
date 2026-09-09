@@ -31,11 +31,12 @@ import eu.kanade.presentation.util.Screen as KomikkuScreen
  * inventing a new settings framework.
  *
  * v0.8.8 gap-closing pass: every category now routes to its own dedicated screen (the former single
- * `RecommendationsSettingsScreen` has been retired entirely. Each detail screen was extracted from that
+ * `RecommendationsSettingsScreen` has been retired entirely — see git history / the v0.8.8
+ * implementation report for the removed file). Each detail screen was extracted verbatim from that
  * former screen's corresponding section: same controls, same `RecommendationsSettingsScreenModel`
  * methods, same preference reads/writes, zero behavior change — only the screen boundary is new.
  * Scroll-to-section is no longer relevant now that each category is its own screen (it was declined
- * in the earlier implementation specifically because it wasn't safe within one shared, variable-length screen;
+ * in the prior pass specifically because it wasn't safe within one shared, variable-length screen;
  * that constraint no longer applies once each category has its own bounded `LazyColumn`).
  *
  * KMK v0.8.11: the former "Background, network, and installer behavior" index row was removed. It

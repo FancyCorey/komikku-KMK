@@ -58,14 +58,14 @@ data class ExtensionDetailsScreen(
         // KMK v0.8.18: manual extension APK export -- confirmation dialog, then SAF document picker,
         // then a background copy of the raw installed APK/archive bytes. Never repackages/re-signs.
         var showExportConfirm by remember { mutableStateOf(false) }
-        // KMK: the
+        // The
         // coordinator now lives on ExtensionDetailsScreenModel (screenModelScope-owned), not
         // `remember`ed in this Composable, so navigation/recomposition of this screen alone cannot
         // destroy a retained cleanup offer. `extensionSnapshot` still captures `state.extension` at
         // confirm-dialog click time (before the picker launches), never read live from `state` again
         // inside the launcher callback.
         var extensionSnapshot by remember { mutableStateOf<Extension.Installed?>(null) }
-        // KMK: the operation is reserved
+        // The operation is reserved
         // at the confirm-click, before the picker launches -- see the confirm dialog's onClick below.
         var pendingOperationId by remember { mutableStateOf<String?>(null) }
         val exportCleanupOffer by screenModel.exportCoordinator.cleanupOffer.collectAsState()
@@ -168,7 +168,7 @@ data class ExtensionDetailsScreen(
             )
         }
 
-        // KMK: cleanup is
+        // Cleanup is
         // now offered via the shared SafArtifactCleanupDialog, driven by the coordinator's retained
         // offer, for ANY outcome that leaves a real document behind -- never automatic.
         exportCleanupOffer?.let { offer ->

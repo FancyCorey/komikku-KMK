@@ -1,5 +1,7 @@
 package exh.recs.discovery
 
+import java.util.Locale
+
 // KMK v0.8.10 -->
 /**
  * Sort modes for Sources To Try. Each is backed by data [NonInstalledSourceSuggestion] already
@@ -7,7 +9,7 @@ package exh.recs.discovery
  * score/confidence/reasons/displayLang/displayName fields [NonInstalledSourceSuggestionScorer]
  * already computes. "Freshness" (evidence recency) is not offered as a sort mode because no
  * suggestion currently carries an evaluation timestamp -- see the phase report; adding one would
- * mean plumbing SourceEvaluation.updatedAt through the suggestion pipeline, out of the implementation's
+ * mean plumbing SourceEvaluation.updatedAt through the suggestion pipeline, out of this pass's
  * scope for a UI-only sort addition.
  */
 enum class SourcesToTrySortMode { BEST_FIT, NAME_AZ, LANGUAGE }
@@ -38,11 +40,17 @@ object SourcesToTrySearchAndSort {
         when (mode) {
             SourcesToTrySortMode.BEST_FIT -> suggestions.sortedWith(
                 compareByDescending<NonInstalledSourceSuggestion> { bestFitRank(it) }
-                    .thenByDescending { it.score },
+                    .thenByDescending { it.score }
+                    .thenBy { stableKey(it) },
             )
-            SourcesToTrySortMode.NAME_AZ -> suggestions.sortedBy { it.displayName.lowercase() }
+            SourcesToTrySortMode.NAME_AZ -> suggestions.sortedWith(
+                compareBy<NonInstalledSourceSuggestion> { it.displayName.lowercase(Locale.ROOT) }
+                    .thenBy { stableKey(it) },
+            )
             SourcesToTrySortMode.LANGUAGE -> suggestions.sortedWith(
-                compareBy<NonInstalledSourceSuggestion> { it.displayLang }.thenBy { it.displayName.lowercase() },
+                compareBy<NonInstalledSourceSuggestion> { it.displayLang.lowercase(Locale.ROOT) }
+                    .thenBy { it.displayName.lowercase(Locale.ROOT) }
+                    .thenBy { stableKey(it) },
             )
         }
 
@@ -59,9 +67,13 @@ object SourcesToTrySearchAndSort {
             else -> 0
         }
         val confidenceRank = if (suggestion.confidence == SuggestionConfidence.MEDIUM) 1 else 0
-        return reasonRank * 10 + confidenceRank
+        val evidenceRank = (SourcesToTryRankingPolicy.usefulnessScore(suggestion.rankingEvidence) * 100).toInt()
+        return evidenceRank * 100 + reasonRank * 10 + confidenceRank
     }
 
-    private fun normalize(s: String): String = s.trim().lowercase()
+    private fun stableKey(suggestion: NonInstalledSourceSuggestion): String =
+        "${suggestion.dismissalKey}|${suggestion.displayName.lowercase(Locale.ROOT)}"
+
+    private fun normalize(s: String): String = s.trim().lowercase(Locale.ROOT)
 }
 // KMK <--

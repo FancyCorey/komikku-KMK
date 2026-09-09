@@ -6,7 +6,7 @@ import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 // KMK --> v0.8.1-fix1
 /**
  * Raw evidence counters for the Source Evaluation row's expandable "Details" section — the v0.7.47
- * enrichment/split-evidence fields, computed but barely surfaced until the implementation. No Android/DB
+ * enrichment/split-evidence fields, computed but barely surfaced until this pass. No Android/DB
  * dependencies; formatting into KMR strings happens in the composable layer.
  */
 internal data class SourceEvaluationEvidenceCounts(
@@ -14,6 +14,8 @@ internal data class SourceEvaluationEvidenceCounts(
     val detailEnrichmentSuccessCount: Int,
     val metadataCandidateCount: Int,
     val sampleCount: Int,
+    val popularCount: Int,
+    val latestCount: Int,
     val positiveCandidateCount: Int,
     val negativeCandidateCount: Int,
     val blockedCandidateCount: Int,
@@ -54,6 +56,8 @@ internal object SourceEvaluationEvidenceSummaryPolicy {
             detailEnrichmentSuccessCount = evaluation.detailEnrichmentSuccessCount,
             metadataCandidateCount = evaluation.metadataCandidateCount,
             sampleCount = evaluation.sampleCount,
+            popularCount = evaluation.popularCount.coerceAtLeast(0),
+            latestCount = evaluation.latestCount.coerceAtLeast(0),
             positiveCandidateCount = evaluation.positiveCandidateCount,
             negativeCandidateCount = evaluation.negativeCandidateCount,
             blockedCandidateCount = evaluation.blockedCandidateCount,

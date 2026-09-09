@@ -22,7 +22,7 @@ import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipInputStream
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
 /**
  * Direct tests for [ExtensionApkExporter.exportSingle]/[exportMultiple]'s actual byte-copy and
  * failure-handling behavior -- the previous test coverage in this file only exercised the pure
@@ -102,7 +102,7 @@ class ExtensionApkExporterTest {
         assertEquals("komikku-extensions-export.zip", ExtensionApkExporter.suggestedZipFileName())
     }
 
-    // KMK -->
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
     @Test
     fun `exportSingle copies the exact source bytes unchanged to the destination`() = runTest {
         val bytes = "not-a-real-apk-but-exact-bytes-matter".toByteArray()
@@ -217,7 +217,6 @@ class ExtensionApkExporterTest {
         assertEquals(listOf(missing.pkgName), summary.skippedPkgNames)
     }
 
-    // KMK
     @Test
     fun `exportMultiple fails without opening the destination when no extension is exportable`() = runTest {
         // Every selected extension is unresolvable -- this must be reported as a failure, and the
@@ -324,7 +323,6 @@ class ExtensionApkExporterTest {
     }
     // KMK <--
 
-    // Cancellation and exact-artifact cleanup coverage -->
     @Test
     fun `exportSingle rethrows CancellationException instead of reporting WriteFailed`() = runTest {
         val extension = installedExtensionWithFile("eu.kanade.tachiyomi.extension.en.cancelled")

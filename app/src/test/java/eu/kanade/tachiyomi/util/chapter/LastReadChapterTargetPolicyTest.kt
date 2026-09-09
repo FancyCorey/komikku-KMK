@@ -7,13 +7,12 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 
-// KMK -->
 /**
  * Target-resolution contract for "Jump to last read".
  *
  * These are **pure policy tests**: they prove the resolution rule and the index arithmetic, not the
- * Compose scroll itself. Rendered scroll behavior is not covered because this repository does not
- * currently provide Compose UI test infrastructure.
+ * Compose scroll itself. Rendered scroll behavior is not covered anywhere -- this repository has no
+ * Compose UI test infrastructure (recorded as `BLOCKED_EXTERNAL`).
  *
  * Run with:
  * `./gradlew :app:testDebugUnitTest --tests "*.LastReadChapterTargetPolicyTest"`
@@ -254,6 +253,64 @@ class LastReadChapterTargetPolicyTest {
     fun `toLazyListIndex refuses an out-of-range chapter index`() {
         assertNull(LastReadChapterTargetPolicy.toLazyListIndex(15, 10, 10))
         assertNull(LastReadChapterTargetPolicy.toLazyListIndex(15, 10, -1))
+    }
+
+    // ---- Centering boundaries ----
+
+    @Test
+    fun `center only applies to a middle chapter in a sufficiently long list`() {
+        assertEquals(true, LastReadChapterTargetPolicy.shouldCenter(1, 3))
+        assertEquals(true, LastReadChapterTargetPolicy.shouldCenter(5, 10))
+    }
+
+    @Test
+    fun `first and last chapters remain clamped instead of centered`() {
+        assertEquals(false, LastReadChapterTargetPolicy.shouldCenter(0, 10))
+        assertEquals(false, LastReadChapterTargetPolicy.shouldCenter(9, 10))
+    }
+
+    @Test
+    fun `short and malformed list positions never request centering`() {
+        assertEquals(false, LastReadChapterTargetPolicy.shouldCenter(0, 1))
+        assertEquals(false, LastReadChapterTargetPolicy.shouldCenter(1, 2))
+        assertEquals(false, LastReadChapterTargetPolicy.shouldCenter(-1, 5))
+        assertEquals(false, LastReadChapterTargetPolicy.shouldCenter(5, 5))
+    }
+
+    @Test
+    fun `centering delta moves a target above center backward`() {
+        assertEquals(-450f, LastReadChapterTargetPolicy.centeringScrollDelta(0f, 1_000f, 0f, 100f))
+    }
+
+    @Test
+    fun `centering delta moves a target below center forward`() {
+        assertEquals(250f, LastReadChapterTargetPolicy.centeringScrollDelta(0f, 1_000f, 700f, 100f))
+    }
+
+    @Test
+    fun `centering delta is zero for an already centered target`() {
+        assertEquals(0f, LastReadChapterTargetPolicy.centeringScrollDelta(100f, 900f, 450f, 100f))
+    }
+
+    @Test
+    fun `centering delta respects a shifted viewport`() {
+        assertEquals(-50f, LastReadChapterTargetPolicy.centeringScrollDelta(-100f, 700f, 200f, 100f))
+    }
+
+    @Test
+    fun `centering delta rejects malformed measurements`() {
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(100f, 100f, 0f, 10f))
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(200f, 100f, 0f, 10f))
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(0f, 100f, 0f, 0f))
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(0f, 100f, 0f, -1f))
+    }
+
+    @Test
+    fun `centering delta rejects nonfinite measurements`() {
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(Float.NaN, 100f, 0f, 10f))
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(0f, Float.POSITIVE_INFINITY, 0f, 10f))
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(0f, 100f, Float.NEGATIVE_INFINITY, 10f))
+        assertNull(LastReadChapterTargetPolicy.centeringScrollDelta(0f, 100f, 0f, Float.NaN))
     }
 
     // ---- Determinism / repeated resolution ----

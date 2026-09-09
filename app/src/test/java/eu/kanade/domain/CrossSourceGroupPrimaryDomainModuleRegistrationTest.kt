@@ -82,6 +82,17 @@ class CrossSourceGroupPrimaryDomainModuleRegistrationTest {
         override suspend fun upsertCrossSourceGroupPrimary(primary: CrossSourceGroupPrimary) {}
         override suspend fun deleteCrossSourceGroupPrimary(groupId: String) {}
         override suspend fun deleteAllCrossSourceGroupPrimaries() {}
+        override suspend fun getCrossSourceIdentityDecision(pair: tachiyomi.domain.taste.model.CrossSourceIdentityPair): tachiyomi.domain.taste.model.CrossSourceIdentityDecision? = null
+        override suspend fun getAllCrossSourceIdentityDecisions(): List<tachiyomi.domain.taste.model.CrossSourceIdentityDecision> = emptyList()
+        override suspend fun upsertCrossSourceIdentityDecisions(decisions: List<tachiyomi.domain.taste.model.CrossSourceIdentityDecision>) {}
+        override suspend fun replaceCrossSourceIdentityDecision(
+            expected: tachiyomi.domain.taste.model.CrossSourceIdentityDecision?,
+            replacement: tachiyomi.domain.taste.model.CrossSourceIdentityDecision?,
+        ): Boolean = false
+        override suspend fun replaceCrossSourceIdentityDecisions(
+            replacements: List<tachiyomi.domain.taste.model.CrossSourceIdentityReplacement>,
+        ): Boolean = false
+        override suspend fun tombstoneAllCrossSourceIdentityDecisions(updatedAt: Long) {}
         override suspend fun getAllDisabledSourceIds(): List<Long> = emptyList()
         override fun getAllDisabledSourceIdsAsFlow(): Flow<List<Long>> = emptyFlow()
         override suspend fun disableSource(sourceId: Long) {}

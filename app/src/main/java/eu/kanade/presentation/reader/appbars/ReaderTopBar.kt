@@ -10,6 +10,7 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
@@ -22,6 +23,9 @@ fun ReaderTopBar(
     onOpenInWebView: (() -> Unit)?,
     onOpenInBrowser: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    onReturnToPrimarySource: (() -> Unit)?,
+    onCorrectAlternateSourceMapping: (() -> Unit)?,
+    onSkipAlternateSourceChapter: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     AppBar(
@@ -71,6 +75,30 @@ fun ReaderTopBar(
                             add(
                                 AppBar.OverflowAction(
                                     title = stringResource(MR.strings.action_share),
+                                    onClick = it,
+                                ),
+                            )
+                        }
+                        onReturnToPrimarySource?.let {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(KMR.strings.alternate_source_reader_return),
+                                    onClick = it,
+                                ),
+                            )
+                        }
+                        onCorrectAlternateSourceMapping?.let {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(KMR.strings.alternate_source_reader_correct),
+                                    onClick = it,
+                                ),
+                            )
+                        }
+                        onSkipAlternateSourceChapter?.let {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(KMR.strings.alternate_source_reader_skip),
                                     onClick = it,
                                 ),
                             )

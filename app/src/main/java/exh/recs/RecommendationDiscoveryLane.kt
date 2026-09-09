@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK
 /**
  * Typed provenance for a For You candidate: which discovery lane produced it.
  *

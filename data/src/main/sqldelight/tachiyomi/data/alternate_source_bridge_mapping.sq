@@ -1,0 +1,78 @@
+CREATE TABLE alternate_source_bridge_mapping (
+    primary_source INTEGER NOT NULL CHECK(primary_source > 0),
+    primary_url TEXT NOT NULL CHECK(length(primary_url) BETWEEN 1 AND 4096),
+    alternate_source INTEGER NOT NULL CHECK(alternate_source > 0),
+    alternate_url TEXT NOT NULL CHECK(length(alternate_url) BETWEEN 1 AND 4096),
+    target_id TEXT NOT NULL CHECK(length(target_id) = 36),
+    primary_chapter_url TEXT CHECK(primary_chapter_url IS NULL OR length(primary_chapter_url) BETWEEN 1 AND 4096),
+    alternate_chapter_url TEXT CHECK(alternate_chapter_url IS NULL OR length(alternate_chapter_url) BETWEEN 1 AND 4096),
+    preceding_primary_chapter_url TEXT CHECK(preceding_primary_chapter_url IS NULL OR length(preceding_primary_chapter_url) BETWEEN 1 AND 4096),
+    following_primary_chapter_url TEXT CHECK(following_primary_chapter_url IS NULL OR length(following_primary_chapter_url) BETWEEN 1 AND 4096),
+    relation TEXT NOT NULL CHECK(relation IN ('EXACT', 'OFFSET', 'DUPLICATE', 'PRIMARY_MISSING', 'ALTERNATE_SKIPPED')),
+    state TEXT NOT NULL CHECK(state IN ('PROVISIONAL', 'CONFIRMED', 'CONFLICT')),
+    offset_milli INTEGER CHECK(offset_milli BETWEEN -1000000 AND 1000000),
+    version INTEGER NOT NULL CHECK(version IN (1, 2)),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    deleted_at INTEGER CHECK(deleted_at IS NULL OR (deleted_at >= created_at AND deleted_at <= updated_at)),
+    PRIMARY KEY (primary_source, primary_url, alternate_source, alternate_url, target_id),
+    CHECK(primary_source != alternate_source OR primary_url != alternate_url),
+    CHECK(version != 1 OR (preceding_primary_chapter_url IS NULL AND following_primary_chapter_url IS NULL)),
+    CHECK(
+        (relation IN ('EXACT', 'DUPLICATE') AND primary_chapter_url IS NOT NULL AND alternate_chapter_url IS NOT NULL AND preceding_primary_chapter_url IS NULL AND following_primary_chapter_url IS NULL AND offset_milli IS NULL)
+        OR (relation = 'OFFSET' AND primary_chapter_url IS NOT NULL AND alternate_chapter_url IS NOT NULL AND preceding_primary_chapter_url IS NULL AND following_primary_chapter_url IS NULL AND offset_milli IS NOT NULL)
+        OR (relation = 'PRIMARY_MISSING' AND primary_chapter_url IS NULL AND alternate_chapter_url IS NOT NULL AND (version = 1 OR preceding_primary_chapter_url IS NOT NULL OR following_primary_chapter_url IS NOT NULL) AND offset_milli IS NULL)
+        OR (relation = 'ALTERNATE_SKIPPED' AND alternate_chapter_url IS NOT NULL AND preceding_primary_chapter_url IS NULL AND following_primary_chapter_url IS NULL AND offset_milli IS NULL)
+    )
+);
+
+CREATE INDEX alternate_source_bridge_mapping_updated_index ON alternate_source_bridge_mapping(updated_at);
+
+getByBridge:
+SELECT * FROM alternate_source_bridge_mapping
+WHERE primary_source = :primarySource AND primary_url = :primaryUrl
+AND alternate_source = :alternateSource AND alternate_url = :alternateUrl;
+
+getByKey:
+SELECT * FROM alternate_source_bridge_mapping
+WHERE primary_source = :primarySource AND primary_url = :primaryUrl
+AND alternate_source = :alternateSource AND alternate_url = :alternateUrl
+AND target_id = :targetId;
+
+getAll:
+SELECT * FROM alternate_source_bridge_mapping;
+
+upsert:
+INSERT INTO alternate_source_bridge_mapping(
+    primary_source, primary_url, alternate_source, alternate_url, target_id, primary_chapter_url,
+    alternate_chapter_url, preceding_primary_chapter_url, following_primary_chapter_url,
+    relation, state, offset_milli, version, created_at, updated_at, deleted_at
+)
+VALUES (
+    :primarySource, :primaryUrl, :alternateSource, :alternateUrl, :targetId, :primaryChapterUrl,
+    :alternateChapterUrl, :precedingPrimaryChapterUrl, :followingPrimaryChapterUrl,
+    :relation, :state, :offsetMilli, :version, :createdAt, :updatedAt, :deletedAt
+)
+ON CONFLICT(primary_source, primary_url, alternate_source, alternate_url, target_id) DO UPDATE SET
+    primary_chapter_url = :primaryChapterUrl,
+    alternate_chapter_url = :alternateChapterUrl,
+    preceding_primary_chapter_url = :precedingPrimaryChapterUrl,
+    following_primary_chapter_url = :followingPrimaryChapterUrl,
+    relation = :relation,
+    state = :state,
+    offset_milli = :offsetMilli,
+    version = :version,
+    created_at = :createdAt,
+    updated_at = :updatedAt,
+    deleted_at = :deletedAt;
+
+deleteByKey:
+DELETE FROM alternate_source_bridge_mapping
+WHERE primary_source = :primarySource AND primary_url = :primaryUrl
+AND alternate_source = :alternateSource AND alternate_url = :alternateUrl
+AND target_id = :targetId;
+
+tombstoneAll:
+UPDATE alternate_source_bridge_mapping
+SET updated_at = :updatedAt, deleted_at = :updatedAt
+WHERE deleted_at IS NULL AND updated_at <= :updatedAt;

@@ -16,8 +16,9 @@ package eu.kanade.tachiyomi.ui.reader.timer
  * .firedWarningMinutes]) rather than as a separate exclusive phase: a phase-based "Warning" state
  * risks being missed by a slow StateFlow collector between two rapid ticks, where a set-membership
  * check on the emitted state can never be missed. The UI layer diffs `firedWarningMinutes` against
- * its previous value to fire a one-shot warning exactly once per threshold without that fragility.
- * The growing set is the canonical warning state even though the UI presents warnings as phases.
+ * its previous value to fire a one-shot warning exactly once per threshold, which satisfies the
+ * plan's "fires once per session" requirement without that fragility. Documented as a deviation
+ * from the plan's literal phase list in the implementation report.
  */
 object ReaderTimerReducer {
 
@@ -102,6 +103,22 @@ object ReaderTimerReducer {
             )
         } else {
             state.copy(lastResumeMonotonicMs = null)
+        }
+
+        is ReaderTimerEvent.Restore -> {
+            // Persisted sessions intentionally do not retain a monotonic resume timestamp. Treat
+            // an actively-counting session restored without one as background-paused so the
+            // owning ReaderActivity can explicitly resume it after foregrounding. Returning a
+            // RUNNING session with a null timestamp leaves the ticker unable to advance forever.
+            if (event.session.isActivelyCounting && event.session.lastResumeMonotonicMs == null) {
+                event.session.copy(
+                    phase = ReaderTimerPhase.PAUSED,
+                    pausedFromPhase = event.session.phase,
+                    pauseReason = ReaderTimerPauseReason.BACKGROUND,
+                )
+            } else {
+                event.session
+            }
         }
 
         ReaderTimerEvent.InvalidPersistedState -> ReaderTimerSession()

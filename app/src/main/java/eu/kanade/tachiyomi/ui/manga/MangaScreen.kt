@@ -329,13 +329,10 @@ class MangaScreen(
                     // KMK <--
                 }
             }.takeIf { isHttpSource },
-            onTrackingClicked = {
-                if (!successState.hasLoggedInTrackers) {
-                    navigator.push(SettingsScreen(SettingsScreen.Destination.Tracking))
-                } else {
-                    screenModel.showTrackDialog()
-                }
-            },
+            // KMK v0.8.21-fix2: Local is now a peer entry inside the Tracking dialog itself
+            // (TrackInfoDialogHome), not a separate manga-detail action -- always open the dialog,
+            // never redirect to Settings, since Local never requires a logged-in external tracker.
+            onTrackingClicked = screenModel::showTrackDialog,
             onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,
@@ -401,6 +398,8 @@ class MangaScreen(
             onMultiBookmarkClicked = screenModel::bookmarkChapters,
             onMultiMarkAsReadClicked = screenModel::markChaptersRead,
             onMarkPreviousAsReadClicked = screenModel::markPreviousChapterRead,
+            onSetChapterLinePreferenceClicked = screenModel::setChapterLinePreference,
+            onResetChapterLinePreferenceClicked = screenModel::resetChapterLinePreference,
             onMultiDeleteClicked = screenModel::showDeleteChapterDialog,
             onChapterSwipe = screenModel::chapterSwipe,
             onChapterSelected = screenModel::toggleSelection,
@@ -426,7 +425,7 @@ class MangaScreen(
                         context,
                         navigator,
                         successState.mergedData,
-                        action = { _, _, manga, source -> screenModel.openMangaFolder(source, manga) },
+                        action = { _, nav, manga, source -> screenModel.openMangaFolder(source, manga) },
                         titleRes = KMR.strings.action_open_folder,
                     )
                 }
@@ -482,7 +481,6 @@ class MangaScreen(
                     ),
                 )
             },
-            // KMK -->
             lastReadChapterTarget = screenModel.resolveLastReadChapterTarget(),
             currentIndexOfChapter = screenModel::currentIndexOfChapter,
             // KMK <--
@@ -496,16 +494,15 @@ class MangaScreen(
                 )
             },
             // KMK <--
-            // KMK --> v0.6.20: not-interested manga callbacks
-            isNotInterested = successState.isNotInterested,
-            onNotInterestedClicked = {
-                if (successState.isNotInterested) screenModel.clearSeen() else screenModel.markSeen()
-            },
+            // KMK v0.8.21-fix3: R1 correction -- marking *this* manga Not Interested now dispatches
+            // through onTasteClicked(NOT_INTERESTED) above like every other rating; only the
+            // cross-version navigation callback remains separate.
+            isTasteActionInProgress = successState.isTasteActionInProgress,
             onSeenOtherVersionsClicked = {
                 navigator.push(
                     CrossExtensionMatchScreen.fromMode(
                         originMangaId = successState.manga.id,
-                        mode = CrossExtensionMatchMode.MarkSeen,
+                        mode = CrossExtensionMatchMode.Rating(tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED),
                     ),
                 )
             },
@@ -695,6 +692,9 @@ class MangaScreen(
                     onConfirm = screenModel::clearManga,
                 )
             }
+            // KMK v0.8.21-fix2: Dialog.LocalTrackSheet is removed -- the local status dialog now
+            // lives entirely inside TrackInfoDialogHomeScreen (see TrackInfoDialog.kt), reached as a
+            // peer row in the same Tracking sheet as every external tracker.
             // KMK <--
         }
 

@@ -1,0 +1,38 @@
+-- KMK B05.2: local tracker foundation. Separate from mangas, release groups, taste, and remote tracks.
+CREATE TABLE local_tracked_work (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 128),
+    title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 4096),
+    normalized_title TEXT NOT NULL CHECK(length(normalized_title) BETWEEN 1 AND 4096),
+    status TEXT NOT NULL CHECK(status IN ('READING', 'ON_HOLD', 'COMPLETED', 'DROPPED', 'PLANNED')),
+    last_chapter_source INTEGER,
+    last_chapter_url TEXT CHECK(last_chapter_url IS NULL OR length(last_chapter_url) BETWEEN 1 AND 4096),
+    last_chapter_label TEXT CHECK(last_chapter_label IS NULL OR length(last_chapter_label) BETWEEN 1 AND 4096),
+    last_progress_at INTEGER,
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at)
+);
+
+CREATE TABLE local_tracked_work_source (
+    work_id TEXT NOT NULL,
+    source INTEGER NOT NULL CHECK(source > 0),
+    url TEXT NOT NULL CHECK(length(url) BETWEEN 1 AND 4096),
+    title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 4096),
+    confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
+    confirmation TEXT NOT NULL CHECK(confirmation IN ('USER_CONFIRMED', 'SUGGESTED')),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    PRIMARY KEY(work_id, source, url),
+    FOREIGN KEY(work_id) REFERENCES local_tracked_work(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX local_tracked_work_source_identity_index
+ON local_tracked_work_source(source, url);
+
+CREATE TABLE local_tracked_work_list (
+    work_id TEXT NOT NULL,
+    list_name TEXT NOT NULL CHECK(length(list_name) BETWEEN 1 AND 256),
+    normalized_name TEXT NOT NULL CHECK(length(normalized_name) BETWEEN 1 AND 256),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    PRIMARY KEY(work_id, normalized_name),
+    FOREIGN KEY(work_id) REFERENCES local_tracked_work(id) ON DELETE CASCADE
+);

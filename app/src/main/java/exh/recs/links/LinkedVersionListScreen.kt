@@ -47,6 +47,7 @@ import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import java.util.Locale
 
 /**
  * Focused version-list view for one confirmed cross-source link group. Loads directly from
@@ -63,7 +64,7 @@ class LinkedVersionListScreen(private val groupId: String) : Screen() {
         val state by screenModel.state.collectAsState()
         var showUngroupConfirm by rememberSaveable { mutableStateOf(false) }
         // KMK --> v0.8.1-fix1: confirm before removing a version from the group. RatedMangaKey isn't
-        // a Saveable type, so store its primitive fields instead.
+        // a Saveable type, so store its primitive fields instead (per plan §Part A).
         var pendingRemoveSource by rememberSaveable { mutableStateOf<Long?>(null) }
         var pendingRemoveUrl by rememberSaveable { mutableStateOf<String?>(null) }
         val pendingRemoveTitle = (state as? LinkedVersionListScreenModel.State.Success)
@@ -130,7 +131,7 @@ class LinkedVersionListScreen(private val groupId: String) : Screen() {
                     LazyColumn(contentPadding = contentPadding) {
                         // KMK --> v0.8.1-fix1: make it explicit that the star sets the primary
                         // version, since "Set Primary Version" is not a separate rated-item-menu
-                        // action; it is only reachable here.
+                        // action — it is only reachable here (see plan §Part D / §Finding 4).
                         item {
                             Text(
                                 text = stringResource(KMR.strings.linked_version_list_primary_hint),
@@ -258,7 +259,7 @@ private fun LinkedVersionRowCard(
                 Text(
                     text = buildString {
                         append(row.sourceName ?: stringResource(KMR.strings.source_evaluation_unknown_source))
-                        if (row.lang.isNotBlank()) append(" (${row.lang.uppercase()})")
+                        if (row.lang.isNotBlank()) append(" (${row.lang.uppercase(Locale.ROOT)})")
                         append(" · ")
                         append(
                             if (row.isInstalled) {
@@ -310,6 +311,7 @@ private fun ratingLabel(rating: MangaRating?): String = when (rating) {
     MangaRating.LOVE -> stringResource(KMR.strings.rated_manga_rating_love)
     MangaRating.LIKE -> stringResource(KMR.strings.rated_manga_rating_like)
     MangaRating.DISLIKE -> stringResource(KMR.strings.rated_manga_rating_dislike)
+    MangaRating.NOT_INTERESTED -> stringResource(KMR.strings.rec_mark_seen)
     null -> stringResource(KMR.strings.rated_manga_rating_none)
 }
 // KMK <--

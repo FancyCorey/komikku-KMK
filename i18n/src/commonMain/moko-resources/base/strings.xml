@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Komikku KMK</string>
+    <string name="app_name" translatable="false">Komikku FC</string>
 
     <!-- Generic strings -->
     <string name="on">On</string>
@@ -364,19 +364,20 @@
     <string name="ext_revoke_trust">Revoke trusted unknown extensions</string>
 
     <!-- Extension repos -->
+    <string name="label_extension_repos">Extension repos</string>
+    <string name="information_empty_repos">You have no repos set.</string>
+    <string name="action_add_repo">Add repo</string>
+    <string name="label_add_repo_input">Repo URL</string>
+    <string name="action_add_repo_message">Add additional repos to %s. This should be a URL that ends with \"index.min.json\".</string>
+    <string name="error_repo_exists">This repo already exists!</string>
+    <string name="action_delete_repo">Delete repo</string>
+    <string name="invalid_repo_name">Invalid repo URL</string>
+    <string name="delete_repo_confirmation">Do you wish to delete the repo \"%s\"?</string>
+    <string name="add_repo_confirmation">Do you wish to add the repo \"%s\"?</string>
     <string name="action_open_repo">Open source repo</string>
-
-    <!-- Extension store -->
-    <string name="extensionStores">Extension stores</string>
-    <string name="action.addExtensionStore">Add extension store</string>
-    <string name="extensionStoresScreen.emptyLabel">You haven\'t added an extension store yet</string>
-    <string name="extensionStoresScreen.addStore.title">Add extension store</string>
-    <string name="extensionStoresScreen.addStore.alreadyExists">This extension store already exists</string>
-    <string name="extensionStoresScreen.addStore.processing">Processing…</string>
-    <string name="extensionStoresScreen.addStoreInput.inputLabel">Store index URL</string>
-    <string name="extensionStoresScreen.addStoreDeeplink.bodyText">Do you wish to add the extension store below?</string>
-    <string name="extensionStoresScreen.deleteStore.title">Remove extension store</string>
-    <string name="extensionStoresScreen.deleteStore.body">Do you wish to remove the extension store \"%1$s\" (%2$s)?</string>
+    <string name="action_replace_repo">Replace</string>
+    <string name="action_replace_repo_title">Signing Key Fingerprint Already Exists</string>
+    <string name="action_replace_repo_message">Repository %1$s has the same Signing Key Fingerprint as %2$s.\nIf this is expected, %2$s will be replaced, otherwise contact your repo maintainer.</string>
 
       <!-- Reader section -->
     <string name="pref_fullscreen">Fullscreen</string>
@@ -788,6 +789,10 @@
     <!-- Tracking Screen -->
     <string name="manga_tracking_tab">Tracking</string>
     <string name="add_tracking">Add tracking</string>
+    <string name="track_find_different_match">Find a different match</string>
+    <string name="track_search_hint">Search %1$s…</string>
+    <string name="action_clear_search">Clear search</string>
+    <string name="action_copy_tracking_title">Copy tracking title</string>
     <string name="action_track">Track</string>
     <string name="unread">Unread</string>
     <string name="reading">Reading</string>
@@ -899,6 +904,12 @@
     <string name="crash_screen_title">Whoops!</string>
     <string name="crash_screen_description">%s ran into an unexpected error. We suggest you share the crash logs in our support channel on Discord.</string>
     <string name="crash_screen_restart_application">Restart the application</string>
+    <string name="crash_screen_show_details">Show technical details</string>
+    <string name="crash_screen_hide_details">Hide technical details</string>
+    <string name="crash_screen_details_unavailable">No technical details were recovered.</string>
+    <string name="crash_screen_share_warning_title">Share diagnostic information?</string>
+    <string name="crash_screen_share_warning_message">Crash logs can contain device, extension, source, and activity details. Review the receiving app before sharing.</string>
+    <string name="crash_screen_share_warning_confirm">Continue to share</string>
 
     <!-- Stats screen -->
     <string name="label_overview_section">Overview</string>

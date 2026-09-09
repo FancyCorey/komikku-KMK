@@ -107,7 +107,6 @@ data class SourceEvaluation(
     val catalogueMetadataConfidence: SourceEvaluationMetadataConfidence = SourceEvaluationMetadataConfidence.UNKNOWN,
     // KMK <--
     // KMK --> v0.7.47: bounded getMangaDetails() enrichment + split evidence counters (migration 61).
-    // See docs/recommendations/KMK.md.
     /** How many catalogue candidates were sent to `getMangaDetails()` for enrichment. */
     val detailEnrichmentAttemptCount: Int = 0,
     /** How many of [detailEnrichmentAttemptCount] detail calls returned successfully. */
@@ -138,7 +137,6 @@ object SourceEvaluationKeys {
     // getMangaDetails() enrichment for Popular/Latest samples, revised fit-score formula, revised
     // verdict gates including NEEDS_MANUAL_REVIEW for metadata-sparse evidence). Every existing row
     // (v1 or v2) was computed under different rules and must be treated as stale under v3.
-    // See docs/recommendations/KMK.md.
     const val CURRENT_VERSION = 3
     // KMK <--
 

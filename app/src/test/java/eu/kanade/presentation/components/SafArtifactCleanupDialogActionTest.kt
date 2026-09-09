@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 // KMK -->
-// KMK: SafArtifactCleanupDialog is a
+// SafArtifactCleanupDialog is a
 // @Composable, and this module's unit tests have no Compose test runtime -- so its outcome -> action
 // decision and its Remove-button deletion boundary are both extracted into plain functions
 // (SafCleanupDialogAction / safCleanupDialogActionFor / performSafRemoveAction) that this file can

@@ -137,7 +137,7 @@ object SettingsEhScreen : SearchableSettings {
 
         Reconfigure(exhPreferences, openWarnConfigureDialogController)
 
-        ConfigureExhDialog(run = runConfigureDialog, onRunning = { runConfigureDialog = false })
+        RequestExhConfiguration(run = runConfigureDialog, onRunning = { runConfigureDialog = false })
 
         return listOf(
             // KMK -->

@@ -6,34 +6,32 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * KMK: direct tests for [BackupRestoreOutcome] and the pure
+ * KMK Code-Only Completion Plan 2026-07-31: direct tests for [BackupRestoreOutcome] and the pure
  * [shouldRecordBackupRestoreEvent] decision extracted from [BackupRestoreJob.doWork] -- the actual
  * gate deciding whether a manual, fully successful restore gets a non-undoable Action History event.
  * `BackupRestorer` itself needs a real `Context`/`BackupNotifier`/several restorer sub-objects, so
- * full-pipeline testing is out of scope here (per the behavior contract's "avoid an unreasonable Android test
+ * full-pipeline testing is out of scope here (per the plan's "avoid an unreasonable Android test
  * harness" guidance); this covers the truthful-outcome type and the recording decision it feeds,
  * which is where the actual Action History correctness lives.
  */
 class BackupRestoreOutcomeTest {
 
     @Test
-    fun `a manual restore with zero errors records an event when Evaluation Mode is on`() {
+    fun `a manual restore with zero errors records an event regardless of Evaluation Mode`() {
         assertTrue(
             shouldRecordBackupRestoreEvent(
                 isSync = false,
                 outcome = BackupRestoreOutcome.Success(restoredCount = 10),
-                evaluationModeEnabled = true,
             ),
         )
     }
 
     @Test
-    fun `a manual restore with zero errors records nothing when Evaluation Mode is off`() {
-        assertFalse(
+    fun `a manual restore with zero errors records an event when Evaluation Mode is off`() {
+        assertTrue(
             shouldRecordBackupRestoreEvent(
                 isSync = false,
                 outcome = BackupRestoreOutcome.Success(restoredCount = 10),
-                evaluationModeEnabled = false,
             ),
         )
     }
@@ -44,7 +42,6 @@ class BackupRestoreOutcomeTest {
             shouldRecordBackupRestoreEvent(
                 isSync = true,
                 outcome = BackupRestoreOutcome.Success(restoredCount = 10),
-                evaluationModeEnabled = true,
             ),
         )
     }
@@ -55,7 +52,6 @@ class BackupRestoreOutcomeTest {
             shouldRecordBackupRestoreEvent(
                 isSync = false,
                 outcome = BackupRestoreOutcome.PartialSuccess(restoredCount = 8, errorCount = 2),
-                evaluationModeEnabled = true,
             ),
         )
     }
@@ -66,7 +62,6 @@ class BackupRestoreOutcomeTest {
             shouldRecordBackupRestoreEvent(
                 isSync = true,
                 outcome = BackupRestoreOutcome.PartialSuccess(restoredCount = 8, errorCount = 2),
-                evaluationModeEnabled = true,
             ),
         )
     }

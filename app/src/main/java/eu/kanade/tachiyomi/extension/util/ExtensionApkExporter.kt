@@ -96,7 +96,6 @@ object ExtensionApkExporter {
         data object WriteFailed : ExportResult
     }
 
-    // Exact-artifact cleanup -->
     /**
      * Removes exactly the document a caller just exported, through the same SAF `Uri` the user
      * granted write access to via the system document picker (`ACTION_CREATE_DOCUMENT` /
@@ -166,7 +165,7 @@ object ExtensionApkExporter {
                     ext to file
                 }
             }
-            // KMK (C1): reject before any destination write when nothing is
+            // Corrective pass 2026-08-03 (C1): reject before any destination write when nothing is
             // exportable -- `exportable` is computed above without touching `destUri`, so this
             // return happens strictly before `context.contentResolver.openOutputStream(destUri)`.
             // No manifest-only zip is ever written to the user-chosen SAF document, and no

@@ -11,6 +11,7 @@ import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
 
 /**
  * A link group is a set of [CrossSourceMangaLink] rows sharing the same [CrossSourceMangaLink.groupId].
@@ -47,7 +48,7 @@ class LinkGroupManagementScreenModel(
             val groups = links
                 .groupBy { it.groupId }
                 .map { (groupId, members) -> LinkGroup(groupId, members) }
-                .sortedBy { it.primaryTitle.lowercase() }
+                .sortedBy { it.primaryTitle.lowercase(Locale.ROOT) }
             mutableState.value = if (groups.isEmpty()) State.Empty else State.Success(groups)
         } catch (e: CancellationException) {
             throw e

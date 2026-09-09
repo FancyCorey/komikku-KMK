@@ -1,6 +1,7 @@
 package exh.recs.memory
 
 // KMK --> v0.7.40: bounded retry policy for For You discovery page failures
+import eu.kanade.tachiyomi.network.HttpException
 import tachiyomi.domain.taste.model.RecommendationDiscoveryProgress
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -13,7 +14,8 @@ import java.net.UnknownHostException
  * - Maximum [MAX_ATTEMPTS] retries per page.
  * - Initial backoff of [INITIAL_DELAY_MS]; doubles per attempt up to [MAX_DELAY_MS].
  * - Only connectivity/I/O/timeout failures with evidence of transience are retryable.
- * - HTTP 4xx equivalents, UnsupportedOperation, and unknown/runtime exceptions are permanent.
+ * - HTTP 429 and 5xx responses are retryable; other HTTP 4xx responses,
+ *   UnsupportedOperation, and unknown/runtime exceptions are permanent.
  *   Treating unknown extension/runtime failures as permanent avoids repeatedly re-invoking
  *   broken extension code with no evidence the failure is transient (v0.7.41 correction D).
  * - [CancellationException] is never passed here; callers must rethrow it before reaching this,
@@ -28,11 +30,14 @@ object RecommendationRetryClassifier {
     /**
      * Returns [RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE] or [FAILURE_KIND_PERMANENT].
      *
-     * The HTTP 4xx message check runs before [IOException] because many extensions wrap client
-     * errors (404, 403, etc.) in an [IOException]; those are permanent, not transient.
+     * Typed HTTP status codes are handled before the [IOException] fallback. The HTTP 4xx message
+     * check remains for extensions that wrap client errors (404, 403, etc.) in an [IOException].
      */
     fun classify(e: Throwable): String = when {
         e is UnsupportedOperationException -> RecommendationDiscoveryProgress.FAILURE_KIND_PERMANENT
+        e is HttpException && (e.code == 429 || e.code in 500..599) ->
+            RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE
+        e is HttpException && e.code in 400..499 -> RecommendationDiscoveryProgress.FAILURE_KIND_PERMANENT
         e.message?.contains("HTTP 4") == true -> RecommendationDiscoveryProgress.FAILURE_KIND_PERMANENT
         e is UnknownHostException -> RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE
         e is SocketTimeoutException -> RecommendationDiscoveryProgress.FAILURE_KIND_RETRYABLE

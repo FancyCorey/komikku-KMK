@@ -17,15 +17,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  * cannot cancel collection before the event is captured. A local guard makes one flow produce at
  * most one event even if its installer state re-emits [InstallStep.Installed].
  *
- * KMK: [eventType] defaults
+ * KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: [eventType] defaults
  * to [NonUndoableEventType.EXTENSION_INSTALLED] for a fresh install, but
- * `ExtensionsScreenModel.updateExtension()` passes [NonUndoableEventType.EXTENSION_UPDATED] --
- * previously every update was misrecorded as an install because this function only ever wrote
- * `EXTENSION_INSTALLED`.
+ * `ExtensionsScreenModel.updateExtension()` passes [NonUndoableEventType.EXTENSION_UPDATED].
+ * Evaluation Mode does not suppress the generic history event; privacy-sensitive package and
+ * artifact fields remain private receipt data and are never rendered as the row summary.
  */
 fun Flow<InstallStep>.recordUserInitiatedInstall(
     eventType: NonUndoableEventType = NonUndoableEventType.EXTENSION_INSTALLED,
-    // KMK: shared with
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: shared with
     // recordPackageOperationReceipt() by callers that chain both operators on the same flow, so the
     // resulting NonUndoableEvent and PackageOperationReceipt carry the *same* id -- that shared id is
     // how EvaluationModeActionHistoryScreen correlates a rendered event row back to its private
@@ -38,21 +38,19 @@ fun Flow<InstallStep>.recordUserInitiatedInstall(
     this@recordUserInitiatedInstall.collect { step ->
         if (step == InstallStep.Installed && !recorded) {
             recorded = true
-            if (isEvaluationModeEnabled()) {
-                NonUndoableEventJournal.record(
-                    NonUndoableEvent(
-                        id = id,
-                        timestamp = System.currentTimeMillis(),
-                        eventType = eventType,
-                    ),
-                )
-            }
+            NonUndoableEventJournal.record(
+                NonUndoableEvent(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    eventType = eventType,
+                ),
+            )
         }
         emit(step)
     }
 }
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
 /**
  * Records a [PackageOperationReceipt] the moment an install/update flow reaches
  * [InstallStep.Installed] -- the same success-only, dedup-guarded boundary
@@ -67,7 +65,7 @@ fun Flow<InstallStep>.recordPackageOperationReceipt(
     signatureHash: String?,
     versionCode: Long?,
     artifactUri: String?,
-    // KMK: see the matching
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: see the matching
     // doc on recordUserInitiatedInstall()'s [id] parameter -- pass the same id to both operators so
     // the resulting event and receipt correlate.
     id: String = PackageOperationReceipt.newId(),
@@ -77,26 +75,24 @@ fun Flow<InstallStep>.recordPackageOperationReceipt(
     this@recordPackageOperationReceipt.collect { step ->
         if (step == InstallStep.Installed && !recorded) {
             recorded = true
-            if (isEvaluationModeEnabled()) {
-                PackageOperationJournal.record(
-                    PackageOperationReceipt(
-                        id = id,
-                        timestamp = System.currentTimeMillis(),
-                        kind = kind,
-                        packageName = packageName,
-                        signatureHash = signatureHash,
-                        versionCode = versionCode,
-                        artifactUri = artifactUri,
-                    ),
-                )
-            }
+            PackageOperationJournal.record(
+                PackageOperationReceipt(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    kind = kind,
+                    packageName = packageName,
+                    signatureHash = signatureHash,
+                    versionCode = versionCode,
+                    artifactUri = artifactUri,
+                ),
+            )
         }
         emit(step)
     }
 }
 // KMK <--
 
-// KMK -->
+// KMK Code-Only Completion Plan 2026-07-31 -->
 /**
  * The single, shared "install a source and record it" contract every user-initiated fresh-install
  * call site in the app must use -- extracted after
@@ -131,7 +127,7 @@ suspend fun ExtensionManager.installAndRecordUserInitiated(
 }
 // KMK <--
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Phase 5 2026-07-29 -->
 /**
  * Verifies a requested uninstall actually completed before recording a non-undoable Action History
  * event. `ExtensionManager.uninstallExtension()` itself is fire-and-forget (calls
@@ -149,7 +145,7 @@ suspend fun verifyAndRecordUninstall(
     pkgName: String,
     isEvaluationModeEnabled: () -> Boolean,
     timeoutMillis: Long = 10_000L,
-    // KMK: optional so every
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: optional so every
     // existing caller (SourceEvaluationScreenModel's runtime-health uninstall) remains source-compatible
     // unchanged. Callers that want a PackageOperationReceipt (needed for a future reinstall follow-up)
     // pass the uninstalled package's own signature/version/last-known-artifact fields.
@@ -160,8 +156,8 @@ suspend fun verifyAndRecordUninstall(
     val removed = withTimeoutOrNull(timeoutMillis) {
         installedPackageNames.first { pkgName !in it }
     } != null
-    if (removed && isEvaluationModeEnabled()) {
-        // KMK: one shared id
+    if (removed) {
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: one shared id
         // for both records -- see recordUserInitiatedInstall()'s [id] parameter doc for why.
         val sharedId = NonUndoableEvent.newId()
         NonUndoableEventJournal.record(

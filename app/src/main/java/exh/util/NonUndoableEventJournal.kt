@@ -6,7 +6,7 @@ import java.util.UUID
 /**
  * Bounded, in-memory, Evaluation-Mode-only record of operations that genuinely cannot be undone --
  * currently a completed Best Version migration, a source install confirmed via `InstallStep`, and
- *  a source uninstall confirmed by observing
+ * (since KMK Confirmed Blocker Remediation Phase 5) a source uninstall confirmed by observing
  * `ExtensionManager.installedExtensionsFlow`.
  * This is deliberately NOT the same architecture as [EvaluationModeUndoJournal] and its typed
  * siblings ([GroupUndoJournal], [LibraryUndoJournal], [PreferenceUndoJournal], [ChapterUndoJournal]):
@@ -26,24 +26,24 @@ import java.util.UUID
 enum class NonUndoableEventType {
     MIGRATION_COMPLETED,
     EXTENSION_INSTALLED,
-    // KMK: a fresh install and
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: a fresh install and
     // an update of an already-installed extension are not the same operation -- updateExtension()
     // previously reused recordUserInitiatedInstall() unmodified, so every update was misrecorded as
     // EXTENSION_INSTALLED. See ExtensionsScreenModel.updateExtension().
     EXTENSION_UPDATED,
-    // KMK: only recorded after
+    // KMK Confirmed Blocker Remediation Phase 5 2026-07-29: only recorded after
     // ExtensionManager.installedExtensionsFlow is verified to no longer contain the uninstalled
     // package (bounded wait, see SourceEvaluationScreenModel.uninstallRuntimeHealthExtension) --
     // extensionManager.uninstallExtension() itself is fire-and-forget with no completion signal, so
     // this event is never recorded on the mere fact that uninstall was requested.
     EXTENSION_UNINSTALLED,
-    // KMK: only recorded for a manual (non-sync), fully
+    // KMK Code-Only Completion Plan 2026-07-31: only recorded for a manual (non-sync), fully
     // successful restore -- BackupRestoreJob.doWork() only records this after
     // BackupRestorer.restore() returns BackupRestoreOutcome.Success (zero item-level errors) and
     // isSync is false. A cancelled, partially-successful, or failed restore records nothing -- see
     // BackupRestoreOutcome's own doc for why partial success is deliberately not represented here.
     BACKUP_RESTORED,
-    // Only recorded for
+    // KMK Universal Action History Recovery Plan 2026-08-01: only recorded for
     // DownloadManager.deleteChapters() -- the chapter-list delete, which always knows exactly which
     // chapter ids it deleted (filteredChapters). DownloadManager.deleteManga() (whole-manga/source
     // directory cleanup, including its own internal empty-directory-cleanup call from
@@ -51,19 +51,19 @@ enum class NonUndoableEventType {
     // truthful "Re-download these chapters" follow-up possible, and recording a manga-level event
     // with no verifiable chapter list would misrepresent what can safely be re-queued.
     DOWNLOAD_DELETED,
-    // A tracker field write completed through
+    // KMK Universal Action History Recovery Plan 2026-08-01: a tracker field write completed through
     // the shared Tracker API. The private TrackWriteReceipt twin contains only the prior typed value
     // needed for a guarded compensating sync; this public event never contains tracker or manga names.
     TRACKER_WRITE_COMPLETED,
-    // A tracker binding completed through
+    // KMK Universal Action History Recovery Plan 2026-08-01: a tracker binding completed through
     // Tracker.register(). Its private receipt contains only opaque ids needed to offer a guarded
     // unlink follow-up when the tracker implements DeletableTracker.
     TRACKER_BOUND,
-    // A guarded tracker unlink follow-up
+    // KMK Universal Action History Recovery Plan 2026-08-01: a guarded tracker unlink follow-up
     // completed. This event has no receipt and is intentionally not itself reversible.
     TRACKER_UNBOUND,
-    // Manual Source Evaluation management actions delete diagnostic/quarantine records with no safe
-    // generic inverse; retain visibility only.
+    // Manual Source Evaluation management actions delete diagnostic or quarantine records with no
+    // safe generic inverse; retain truthful history visibility without claiming reversibility.
     SOURCE_EVALUATION_DATA_CLEARED,
 }
 
@@ -91,10 +91,23 @@ object NonUndoableEventJournal {
                 entries.removeFirst()
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = event.id,
+            family = "event",
+            operation = event.eventType.name,
+            readCount = 0,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = event.timestamp,
+        )
     }
 
     /** Most recent first. */
     fun snapshot(): List<NonUndoableEvent> = synchronized(lock) { entries.toList().asReversed() }
+
+    fun removeById(id: String) {
+        synchronized(lock) { entries.removeAll { it.id == id } }
+    }
 
     fun clear() {
         synchronized(lock) { entries.clear() }

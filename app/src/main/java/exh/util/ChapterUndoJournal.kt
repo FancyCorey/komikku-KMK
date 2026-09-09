@@ -2,7 +2,7 @@ package exh.util
 
 import java.util.UUID
 
-// KMK -->
+// KMK Undo Expansion Phase 2 -->
 /**
  * Evaluation Mode Undo Journal for discrete local chapter read/bookmark state changes -- a sibling to
  * [LibraryUndoJournal], same in-memory-only, bounded, typed-inverse design. Never journals
@@ -55,6 +55,15 @@ object ChapterUndoJournal {
                 }
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "chapter",
+            operation = entry.actionType.name,
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     fun snapshot(): List<ChapterJournalEntry> = synchronized(lock) { entries.toList().asReversed() }
@@ -75,8 +84,8 @@ object ChapterUndoJournal {
 
 /**
  * Shared bound for "mark every chapter of this manga" style operations. Above this, the requested
- * read/unread operation still completes normally, but no Undo entry is created. The conservative
- * limit is 500 chapters.
+ * read/unread operation still completes normally, but no Undo entry is created (the audit's and
+ * plan's documented conservative default of 500).
  */
 object ChapterUndoBoundPolicy {
     const val MAX_JOURNALED_CHAPTERS = 500

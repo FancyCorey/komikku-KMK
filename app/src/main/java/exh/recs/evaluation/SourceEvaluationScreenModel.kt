@@ -4,6 +4,7 @@ import android.content.Context
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
 import eu.kanade.tachiyomi.source.SourceRuntimeHealthIssue
@@ -94,6 +95,7 @@ class SourceEvaluationScreenModel(
     // KMK <--
     // KMK --> v0.6.20: reassessment baseline + management
     private val getMangaTaste: tachiyomi.domain.taste.interactor.GetMangaTaste = Injekt.get(),
+    private val clearMangaTaste: tachiyomi.domain.taste.interactor.ClearMangaTaste = Injekt.get(),
     private val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
     // KMK --> v0.7.6: rec-quality probe results
     private val getSourceRecommendationFit: tachiyomi.domain.taste.interactor.GetSourceRecommendationFit = Injekt.get(),
@@ -101,6 +103,11 @@ class SourceEvaluationScreenModel(
     // KMK v0.8.10-fix5: user-confirmed "disable extension loading" writes here, same infrastructure
     // package-level crash-quarantine already uses.
     private val upsertUnsafeExtensionPackage: UpsertUnsafeExtensionPackage = Injekt.get(),
+    private val evaluationJobGateway: SourceEvaluationJobGateway = WorkManagerSourceEvaluationJobGateway(context),
+    private val isOnline: () -> Boolean = { context.isOnline() },
+    private val isRecommendationQualityRunning: () -> Boolean = { SourceRecommendationQualityJob.isRunning(context) },
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val readShizukuState: () -> ShizukuSetupHelper.State = { ShizukuSetupHelper.readState(context) },
     // KMK <--
     // KMK <--
 ) : StateScreenModel<SourceEvaluationScreenModel.State>(State()) {
@@ -287,6 +294,10 @@ class SourceEvaluationScreenModel(
                 clearProbeMarker = clearSourceEvaluationProbeMarker,
                 markUnsafe = markSourceEvaluationUnsafe,
                 getUnsafeSources = getSourceEvaluationUnsafeSources,
+                getUnsafePackages = getUnsafeExtensionPackages,
+                upsertUnsafePackage = upsertUnsafeExtensionPackage,
+                extensionManager = extensionManager,
+                sourcePreferences = sourcePreferences,
             ).run()
             if (result.markerRecovered && result.recoveredExtensionName != null) {
                 // KMK --> v0.7.18: typed ScreenErrorKey.CrashRecovery
@@ -372,7 +383,7 @@ class SourceEvaluationScreenModel(
         // KMK <--
 
         // KMK --> v0.6.19: reconnect to any active background evaluation job
-        SourceEvaluationJobState.activeQueueState
+        evaluationJobGateway.queueState
             .onEach { jobQueueState ->
                 mutableState.update { it.copy(queueState = jobQueueState ?: SourceEvaluationQueueState()) }
                 // KMK --> v0.6.20: update reassessment baseline when evaluation completes
@@ -519,14 +530,16 @@ class SourceEvaluationScreenModel(
         getSourceEvaluationCandidates.subscribe()
             .catch { e ->
                 logcat(LogPriority.ERROR) { "Failed to load source evaluation candidates" }
-                mutableState.update {
-                    it.copy(
-                        candidates = emptyList(),
-                        isLoadingCandidates = false,
-                        // KMK --> v0.7.18
-                        screenError = ScreenErrorKey.CandidateLoadFailed(SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e)),
-                        // KMK <--
-                    )
+                if (debugFixtureMode() == SourceEvaluationDebugFixtureMode.OFF) {
+                    mutableState.update {
+                        it.copy(
+                            candidates = emptyList(),
+                            isLoadingCandidates = false,
+                            // KMK --> v0.7.18
+                            screenError = ScreenErrorKey.CandidateLoadFailed(SourceEvaluationProbeErrorClassifier.classifyToStorageKey(e)),
+                            // KMK <--
+                        )
+                    }
                 }
                 emit(
                     SourceEvaluationCandidateFilter.CandidatePoolResult(
@@ -539,7 +552,11 @@ class SourceEvaluationScreenModel(
                 )
             }
             .onEach { pool ->
-                lastCandidatePool.value = pool
+                val fixtureMode = debugFixtureMode()
+                lastCandidatePool.value = SourceEvaluationDebugFixture.candidatePool(fixtureMode, pool)
+                if (fixtureMode != SourceEvaluationDebugFixtureMode.OFF) {
+                    mutableState.update { it.copy(screenError = null) }
+                }
                 applyOptionsAndUpdateState()
             }
             .launchIn(screenModelScope)
@@ -606,7 +623,7 @@ class SourceEvaluationScreenModel(
 
     // KMK --> v0.7.4: start evaluation restricted to extensions updated since last evaluation
     fun startReassessUpdated() {
-        if (!context.isOnline()) {
+        if (SourceEvaluationDebugFixture.requiresNetwork(debugFixtureMode()) && !isOnline()) {
             mutableState.update {
                 it.copy(screenError = ScreenErrorKey.Offline) // KMK v0.7.18
             }
@@ -650,7 +667,7 @@ class SourceEvaluationScreenModel(
         // KMK <--
 
         // KMK --> v0.6.19 follow-up: guard against starting without internet connectivity
-        if (!context.isOnline()) {
+        if (SourceEvaluationDebugFixture.requiresNetwork(debugFixtureMode()) && !isOnline()) {
             // KMK --> v0.7.11
             mutableState.update {
                 it.copy(screenError = ScreenErrorKey.Offline) // KMK v0.7.18
@@ -676,7 +693,7 @@ class SourceEvaluationScreenModel(
     /** User confirmed continuing with prompt-heavy mode. */
     fun confirmAndStartWithPrompts() {
         // KMK --> v0.6.19 follow-up: re-check connectivity at dialog confirmation time
-        if (!context.isOnline()) {
+        if (SourceEvaluationDebugFixture.requiresNetwork(debugFixtureMode()) && !isOnline()) {
             // KMK --> v0.8.0
             mutableState.update {
                 it.copy(
@@ -771,7 +788,7 @@ class SourceEvaluationScreenModel(
         val evaluationConflict = SourceRecommendationQualityJobConflictPolicy.conflictFor(
             starting = ScreenErrorKey.ActiveJobKind.SOURCE_EVALUATION,
             sourceEvaluationRunning = false,
-            recommendationQualityRunning = SourceRecommendationQualityJob.isRunning(context),
+            recommendationQualityRunning = isRecommendationQualityRunning(),
         )
         if (evaluationConflict != null) {
             mutableState.update { it.copy(screenError = ScreenErrorKey.JobConflict(evaluationConflict)) }
@@ -819,33 +836,35 @@ class SourceEvaluationScreenModel(
         )
         // KMK <--
         // KMK --> v0.7.31: C3 — persist rated count so we can detect profile changes after this run
-        sourcePreferences.sourceEvaluationLastRunRatingCount().set(s.currentRatedCount)
-        mutableState.update { it.copy(profileChangedSinceLastEval = false) }
+        if (SourceEvaluationDebugFixture.shouldPersistRunBaseline(debugFixtureMode())) {
+            sourcePreferences.sourceEvaluationLastRunRatingCount().set(s.currentRatedCount)
+            mutableState.update { it.copy(profileChangedSinceLastEval = false) }
+        }
         // KMK <--
         // KMK --> v0.6.19: launch as WorkManager foreground job so evaluation continues after leaving screen
-        SourceEvaluationJobState.pendingCandidates = slice
-        SourceEvaluationJobState.pendingOptions = opts
-        // KMK --> v0.7.6: store fingerprint and full candidate list so completion can advance cursor
-        SourceEvaluationJobState.pendingCursorFingerprint = fingerprint
-        SourceEvaluationJobState.pendingAllCandidates = allCandidates
-        // KMK <--
-        // KMK --> v0.8.1-fix3
-        SourceEvaluationJobState.pendingIsStaleRun = staleRun
-        // KMK <--
-        SourceEvaluationJobState.activeQueueState.value = SourceEvaluationQueueState(
-            status = SourceEvaluationQueueState.Status.Running,
-            totalCount = slice.size,
-            installerMode = opts.installerMode,
-            batchSize = opts.batchSize,
+        evaluationJobGateway.start(
+            candidates = slice,
+            options = opts,
+            continuationMetadata = SourceEvaluationContinuationMetadata(
+                fingerprint = fingerprint,
+                allCandidates = allCandidates,
+                isStaleRun = staleRun,
+            ),
         )
-        SourceEvaluationJob.start(context)
         // KMK <--
     }
+
+    private fun debugFixtureMode(): SourceEvaluationDebugFixtureMode =
+        SourceEvaluationDebugFixture.resolveMode(
+            isDebugBuild = BuildConfig.DEBUG,
+            preferenceValue = sourcePreferences.evaluationFixtureFailureMode().get(),
+        )
     // KMK <--
 
     // KMK --> v0.8.1-fix3: start or continue the stale/outdated reassessment queue. Explicit and
     // separate from startEvaluation()/continueEvaluation() (which only ever operate on the
-    // unassessed queue), keeping restart/reassessment explicit and separate from continue.
+    // unassessed queue) — see plan requirement "restart/reassess-from-beginning explicit and
+    // separate from continue".
     fun startOrContinueStaleReassessment() {
         val s = state.value
         if (s.staleCandidates.isEmpty()) return
@@ -853,7 +872,7 @@ class SourceEvaluationScreenModel(
             mutableState.update { it.copy(showConsentDialog = true, pendingConsentAction = PendingConsentAction.STALE_REASSESSMENT) }
             return
         }
-        if (!context.isOnline()) {
+        if (SourceEvaluationDebugFixture.requiresNetwork(debugFixtureMode()) && !isOnline()) {
             mutableState.update { it.copy(screenError = ScreenErrorKey.Offline) }
             return
         }
@@ -875,11 +894,7 @@ class SourceEvaluationScreenModel(
 
     fun cancelEvaluation() {
         // KMK --> v0.6.19: cancel WorkManager job; onStopped() cancels the runner
-        SourceEvaluationJob.cancel(context)
-        SourceEvaluationJobState.activeQueueState.value =
-            SourceEvaluationJobState.activeQueueState.value
-                ?.copy(status = SourceEvaluationQueueState.Status.Cancelled)
-                ?: SourceEvaluationQueueState(status = SourceEvaluationQueueState.Status.Cancelled)
+        evaluationJobGateway.cancel()
         // KMK <--
     }
 
@@ -914,16 +929,16 @@ class SourceEvaluationScreenModel(
 
     fun resetEvaluation() {
         // KMK --> v0.6.19: clear job state singleton on reset
-        SourceEvaluationJobState.reset()
+        evaluationJobGateway.reset()
         // KMK <--
         mutableState.update { it.copy(queueState = SourceEvaluationQueueState()) }
     }
 
     // KMK v0.8.10-fix5 -->
     /**
-     * Source-runtime health diagnostics and recovery actions. Only offers
-     * actions that are actually possible for a given issue -- never silently uninstalls, reinstalls,
-     * or permanently blocks an extension.
+     * Source-runtime health diagnostics and recovery actions. Offers only actions that are possible
+     * for the current issue and never silently uninstalls, reinstalls, or permanently blocks an
+     * extension.
      */
     fun showRuntimeHealthDialog() {
         mutableState.update { it.copy(showRuntimeHealthDialog = true) }
@@ -975,7 +990,7 @@ class SourceEvaluationScreenModel(
                 // Action History event -- see exh.util.NonUndoableEventJournal's doc for why this
                 // operation can never have an Undo action. Same terminal-step check already used by
                 // SourceEvaluationRunner.installAndCheck/SourceRecommendationQualityRunner.
-                // KMK: routed through the shared
+                // KMK Code-Only Completion Plan 2026-07-31: routed through the shared
                 // installAndRecordUserInitiated() helper -- see its doc for why this was extracted.
                 extensionManager.installAndRecordUserInitiated(availableExt) { sourcePreferences.evaluationMode().get() }
             } catch (e: CancellationException) {
@@ -989,7 +1004,7 @@ class SourceEvaluationScreenModel(
     }
     // KMK <--
 
-    // KMK: this is a real user-initiated install action (the
+    // KMK Code-Only Completion Plan 2026-07-31: this is a real user-initiated install action (the
     // runtime-health recovery card's "Reinstall" button, wired from SourceEvaluationScreen.kt) --
     // previously it called extensionManager.installExtension(...) directly, bypassing the shared
     // recordUserInitiatedInstall()/recordPackageOperationReceipt() chain every other user-initiated
@@ -1014,7 +1029,7 @@ class SourceEvaluationScreenModel(
         }
     }
 
-    // KMK: previously fire-and-forget with no completion
+    // KMK Confirmed Blocker Remediation Phase 5: previously fire-and-forget with no completion
     // signal at all, so uninstall was entirely unrepresented in Action History (a real, unsafe-by-
     // omission gap -- not a fake Undo, but a silent one). Now verifies removal via
     // extensionManager.installedExtensionsFlow before recording a non-undoable event -- see
@@ -1029,7 +1044,7 @@ class SourceEvaluationScreenModel(
                 installedPackageNames = extensionManager.installedExtensionsFlow.map { installed -> installed.map { it.pkgName } },
                 pkgName = pkgName,
                 isEvaluationModeEnabled = { sourcePreferences.evaluationMode().get() },
-                // KMK: typed
+                // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
                 // receipt identity for a future reinstall follow-up -- see ExtensionsScreenModel's
                 // uninstallExtension() for the same pattern.
                 signatureHash = installedExt.signatureHash,
@@ -1042,7 +1057,7 @@ class SourceEvaluationScreenModel(
     fun disableRuntimeHealthExtension(pkgName: String) {
         val installedExt = extensionManager.installedExtensionsFlow.value.find { it.pkgName == pkgName }
         screenModelScope.launch {
-            val now = System.currentTimeMillis()
+            val now = clock()
             upsertUnsafeExtensionPackage.await(
                 UnsafeExtensionPackage(
                     pkgName = pkgName,
@@ -1068,7 +1083,7 @@ class SourceEvaluationScreenModel(
      * before, exactly as v0.6.19 intended.
      */
     fun clearCompletionOnLeave() {
-        val status = SourceEvaluationJobState.activeQueueState.value?.status ?: return
+        val status = evaluationJobGateway.queueState.value?.status ?: return
         if (SourceEvaluationCompletionLifecyclePolicy.shouldClearOnLeave(status)) {
             resetEvaluation()
         }
@@ -1116,7 +1131,7 @@ class SourceEvaluationScreenModel(
             return
         }
         // KMK <--
-        if (!context.isOnline()) {
+        if (SourceEvaluationDebugFixture.requiresNetwork(debugFixtureMode()) && !isOnline()) {
             mutableState.update {
                 it.copy(screenError = ScreenErrorKey.Offline) // KMK v0.7.18
             }
@@ -1188,11 +1203,11 @@ class SourceEvaluationScreenModel(
         next: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
         identityKey: String,
     ) {
-        if (!sourcePreferences.evaluationMode().get() || previous == next) return
+        if (previous == next) return
         exh.util.PreferenceUndoJournal.record(
             exh.util.PreferenceUndoEntry(
                 id = exh.util.PreferenceUndoEntry.newId(),
-                timestamp = System.currentTimeMillis(),
+                timestamp = clock(),
                 actionType = exh.util.PreferenceJournalActionType.SOURCE_QUALITY_MARK,
                 identityKey = identityKey,
                 previousValue = previous,
@@ -1281,7 +1296,7 @@ class SourceEvaluationScreenModel(
 
     // KMK --> v0.7.7: evaluate recommendation quality for promising sources from this screen
     // KMK --> v0.7.42-fix2: reCheckAll now targets missing + outdated + checked (all eligible rows),
-    // matching the behavior contract's "Recheck all is the only action targeting all eligible rows" requirement —
+    // matching the plan's "Recheck all is the only action targeting all eligible rows" requirement —
     // previously it targeted missing + checked only, silently skipping outdated rows because the
     // pre-fix2 queue conflated missing and outdated into one bucket.
     fun evaluateRecommendationQualityForPromising(reCheckAll: Boolean = false) {
@@ -1314,7 +1329,7 @@ class SourceEvaluationScreenModel(
         if (targets.isEmpty()) return
         val qualityConflict = SourceRecommendationQualityJobConflictPolicy.conflictFor(
             starting = ScreenErrorKey.ActiveJobKind.RECOMMENDATION_QUALITY,
-            sourceEvaluationRunning = SourceEvaluationJob.isRunning(context),
+            sourceEvaluationRunning = evaluationJobGateway.isRunning(),
             recommendationQualityRunning = false,
         )
         if (qualityConflict != null) {
@@ -1345,14 +1360,14 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 val s = state.value
-                val completedKeys = SourceEvaluationJobState.lastCompletedCandidateKeys
+                val completedKeys = evaluationJobGateway.lastCompletedCandidateKeys
                 if (completedKeys.isEmpty()) return@launch
-                val fingerprint = SourceEvaluationJobState.pendingCursorFingerprint ?: return@launch
+                val continuationMetadata = evaluationJobGateway.continuationMetadata ?: return@launch
+                val fingerprint = continuationMetadata.fingerprint
                 // KMK --> v0.8.1-fix3: route to the stale-queue cursor slot when this run was a
                 // stale/outdated reassessment batch, so it never overwrites the unassessed cursor.
-                val staleRun = SourceEvaluationJobState.pendingIsStaleRun
-                val allCandidates = SourceEvaluationJobState.pendingAllCandidates
-                    ?: if (staleRun) s.staleCandidates else s.candidates
+                val staleRun = continuationMetadata.isStaleRun
+                val allCandidates = continuationMetadata.allCandidates
                 val priorCursor = if (staleRun) s.continuationCursorStale else s.continuationCursor
                 val newCursor = SourceEvaluationContinuationPolicy.advanceCursor(
                     current = priorCursor,
@@ -1424,7 +1439,7 @@ class SourceEvaluationScreenModel(
         screenModelScope.launch {
             try {
                 val allTastes = getMangaTaste.awaitAll()
-                val now = System.currentTimeMillis()
+                val now = clock()
                 sourcePreferences.sourceEvaluationLastReassessmentRatingCount().set(allTastes.size)
                 sourcePreferences.sourceEvaluationLastReassessmentAt().set(now)
                 mutableState.update {
@@ -1476,8 +1491,25 @@ class SourceEvaluationScreenModel(
                     sourcePreferences.sourceEvaluationLastReassessmentAt().set(0L)
                     mutableState.update { it.copy(reassessmentBaselineCount = 0) }
                 }
+                // KMK v0.8.21-fix6: R1 correction -- Not Interested manga are bulk-cleared through
+                // the same ClearMangaTaste every other rating-clear uses. MangaTaste is the sole
+                // rating-family authority; this no longer touches the legacy
+                // seenRecommendationMangaKeys preference at all (a prior "one-way hygiene" write
+                // here was itself a live cleanup write of the legacy store, which the frozen R1
+                // contract prohibits outside the one-time migration and old-backup-restore
+                // boundaries -- removed, not merely justified).
                 ManagementAction.CLEAR_SEEN_MANGA -> {
-                    sourcePreferences.seenRecommendationMangaKeys().set("")
+                    val notInterestedTastes = getMangaTaste.awaitAll()
+                        .filter { it.rating == tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED.value }
+                    val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChangeFromTaste(
+                        notInterestedTastes,
+                        null,
+                        exh.util.EvaluationJournalActionType.CLEAR_RATING,
+                    )
+                    notInterestedTastes.forEach { taste ->
+                        runCatching { clearMangaTaste.await(taste.source, taste.url) }
+                    }
+                    exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
                 }
                 // KMK --> v0.7.18
                 ManagementAction.CLEAR_DISMISSED_SUGGESTIONS -> {
@@ -1591,13 +1623,12 @@ class SourceEvaluationScreenModel(
     private fun recordDataClearedEventIfEligible() {
         if (SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(
                 operationSucceeded = true,
-                evaluationModeEnabled = sourcePreferences.evaluationMode().get(),
             )
         ) {
             NonUndoableEventJournal.record(
                 NonUndoableEvent(
                     id = NonUndoableEvent.newId(),
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = clock(),
                     eventType = NonUndoableEventType.SOURCE_EVALUATION_DATA_CLEARED,
                 ),
             )
@@ -1695,7 +1726,7 @@ class SourceEvaluationScreenModel(
     private fun applyOptionsAndUpdateState() {
         val pool = lastCandidatePool.value ?: return
         val opts = state.value.options
-        val now = System.currentTimeMillis()
+        val now = clock()
         val result = SourceEvaluationCandidateFilter.applyOptions(
             pool = pool,
             includeExplicit = opts.includeExplicitCandidates,
@@ -1824,7 +1855,7 @@ class SourceEvaluationScreenModel(
             basePreferences.extensionInstaller().entries
 
         // KMK --> v0.6.11: read real Shizuku state instead of hardcoded false values
-        val shizukuState = ShizukuSetupHelper.readState(context)
+        val shizukuState = readShizukuState()
         // KMK <--
 
         val policy = SourceEvaluationInstallerPolicy.validate(

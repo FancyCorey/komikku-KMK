@@ -16,7 +16,7 @@ object LibraryExporter {
     )
 
     // KMK -->
-    // KMK: `exportToCsv` previously called its
+    // `exportToCsv` previously called its
     // `onExportComplete` success callback unconditionally, even when `openOutputStream(uri)` returned
     // null (a real, truthful destination-open failure) -- reporting "library exported" for a write
     // that never happened. Now returns a typed result the caller must inspect instead of an

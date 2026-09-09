@@ -35,6 +35,38 @@ class LatestChapterCompletionPolicyTest {
     }
 
     @Test
+    fun `same-number source copy does not prevent latest chapter completion`() {
+        assertEquals(
+            true,
+            LatestChapterCompletionPolicy.isGenuineLatestChapterCompletion(
+                pageIndex = 9,
+                lastPageIndex = 9,
+                hasExtraPage = false,
+                hasNextChapter = true,
+                isErrorPage = false,
+                currentChapterNumber = 65f,
+                nextChapterNumber = 65f,
+            ),
+        )
+    }
+
+    @Test
+    fun `higher-number next chapter still prevents completion`() {
+        assertEquals(
+            false,
+            LatestChapterCompletionPolicy.isGenuineLatestChapterCompletion(
+                pageIndex = 9,
+                lastPageIndex = 9,
+                hasExtraPage = false,
+                hasNextChapter = true,
+                isErrorPage = false,
+                currentChapterNumber = 65f,
+                nextChapterNumber = 66f,
+            ),
+        )
+    }
+
+    @Test
     fun `an intermediate page is never a completion regardless of chapter position`() {
         assertEquals(
             false,

@@ -33,7 +33,7 @@ import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingletonFactory
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
 /**
  * Direct tests for [ExtensionsScreenModel.uninstallSelectedExtensions] -- previously untestable since
  * every background operation in this class used the top-level `launchIO {}` extension, hardcoded to
@@ -44,7 +44,7 @@ import uy.kohesive.injekt.api.addSingletonFactory
  * `uninstallSelectedExtensions()` itself and the `uninstallExtension()` call it delegates to per item.
  *
  * `init {}` still calls `Injekt.get<Application>()` directly (not a constructor parameter, left
- * unchanged -- outside this component's scope), so a mocked `Application` is registered into Injekt once per
+ * unchanged -- out of this pass's scope), so a mocked `Application` is registered into Injekt once per
  * JVM process via a companion-held instance, mirroring [exh.util.ActionHistoryRegistryPackageFollowUpTest]'s
  * documented workaround for Injekt's process-wide singleton caching (a fresh mock per JUnit5 test
  * instance would silently be ignored after the first test resolves it).
@@ -306,7 +306,7 @@ class ExtensionsScreenModelUninstallSelectedTest {
     }
 
     @Test
-    fun `Evaluation Mode off records no receipt even for a verified removal`() = runTest {
+    fun `normal Action History records a receipt for a verified removal`() = runTest {
         val extA = installedExtension("eu.kanade.tachiyomi.extension.en.a")
         val preferences = SourcePreferences(FakePreferenceStore())
         preferences.evaluationMode().set(false)
@@ -324,13 +324,15 @@ class ExtensionsScreenModelUninstallSelectedTest {
         model.uninstallSelectedExtensions()
         advanceUntilIdle()
 
-        assertTrue(NonUndoableEventJournal.isEmpty())
-        assertTrue(PackageOperationJournal.isEmpty())
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(NonUndoableEventType.EXTENSION_UNINSTALLED, NonUndoableEventJournal.snapshot().first().eventType)
+        assertEquals(1, PackageOperationJournal.snapshot().size)
+        assertEquals(extA.pkgName, PackageOperationJournal.snapshot().first().packageName)
     }
 
     @Test
     fun `an uninstall that never verifies removed times out and records no receipt`() = runTest {
-        // KMK: an earlier
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: an earlier
         // version of this test called model.onDispose() expecting it to cancel the in-flight
         // verification coroutine -- that assumption is wrong for this codebase (screenModelScope's
         // cancellation is tied to Voyager's ScreenModelStore removing the model via a real navigation
@@ -364,7 +366,7 @@ class ExtensionsScreenModelUninstallSelectedTest {
 
     @Test
     fun `bulk uninstall of 3 verified-removed extensions records exactly one receipt each, never duplicated`() = runTest {
-        // KMK:
+        // KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 Phase D item 2:
         // uninstallSelectedExtensions() runs one outer screenModelScope.launch(ioDispatcher) that loops
         // over every selected item and, per item, calls uninstallExtension() -- which itself launches a
         // *second*, independent screenModelScope.launch(ioDispatcher) to run verifyAndRecordUninstall().

@@ -65,6 +65,27 @@ class ReaderTimerCoordinatorTest {
     }
 
     @Test
+    fun `user pause remains paused when the reader returns to the foreground`() = runTest {
+        var now = 0L
+        val coordinator = ReaderTimerCoordinator(scope = this, clock = ReaderTimerClock { now })
+        coordinator.start(60_000L, ReaderTimerWarningPolicy.NONE, ReaderTimerGracePolicy())
+        now = 2_000L
+        advanceTimeBy(1_100L)
+        runCurrent()
+        coordinator.pause()
+        val paused = coordinator.state.value
+
+        now = 500_000L
+        coordinator.onReaderForeground()
+        advanceTimeBy(2_000L)
+        runCurrent()
+
+        assertEquals(ReaderTimerPhase.PAUSED, coordinator.state.value.phase)
+        assertEquals(paused.elapsedActiveMs, coordinator.state.value.elapsedActiveMs)
+        coordinator.stop()
+    }
+
+    @Test
     fun `persistence callback fires on every state change with the latest session`() = runTest {
         val persisted = mutableListOf<ReaderTimerSession>()
         val coordinator = ReaderTimerCoordinator(scope = this, clock = ReaderTimerClock { 0L }, onPersist = { persisted += it })
@@ -72,6 +93,47 @@ class ReaderTimerCoordinatorTest {
         coordinator.pause()
         assertTrue(persisted.size >= 2)
         assertEquals(ReaderTimerPhase.PAUSED, persisted.last().phase)
+    }
+
+    @Test
+    fun `a restored session is available after the owning activity is recreated`() = runTest {
+        val first = ReaderTimerCoordinator(scope = this, clock = ReaderTimerClock { 0L })
+        first.start(60_000L, ReaderTimerWarningPolicy.NONE, ReaderTimerGracePolicy())
+        first.onReaderBackground()
+        val retained = first.state.value
+
+        val second = ReaderTimerCoordinator(scope = this, clock = ReaderTimerClock { 0L })
+        second.restore(retained)
+
+        assertEquals(ReaderTimerPhase.PAUSED, second.state.value.phase)
+        assertEquals(retained.elapsedActiveMs, second.state.value.elapsedActiveMs)
+    }
+
+    @Test
+    fun `restoring a persisted running session pauses until foreground then resumes ticking`() = runTest {
+        var now = 10_000L
+        val coordinator = ReaderTimerCoordinator(scope = this, clock = ReaderTimerClock { now })
+        coordinator.restore(
+            ReaderTimerSession(
+                phase = ReaderTimerPhase.RUNNING,
+                totalDurationMs = 5_000L,
+                elapsedActiveMs = 1_000L,
+                lastResumeMonotonicMs = null,
+            ),
+        )
+
+        assertEquals(ReaderTimerPhase.PAUSED, coordinator.state.value.phase)
+        assertEquals(ReaderTimerPauseReason.BACKGROUND, coordinator.state.value.pauseReason)
+
+        coordinator.onReaderForeground()
+        assertEquals(ReaderTimerPhase.RUNNING, coordinator.state.value.phase)
+        now = 14_000L
+        coordinator.state.value.let { }
+        advanceTimeBy(1_100L)
+        runCurrent()
+
+        assertEquals(5_000L, coordinator.state.value.elapsedActiveMs)
+        coordinator.stop()
     }
 
     @Test

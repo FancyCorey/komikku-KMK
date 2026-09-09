@@ -3,13 +3,18 @@ package exh.recs.bestversion
 import cafe.adriel.voyager.core.model.StateScreenModel
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.Source
+import exh.recs.matching.CrossSourceIdentityDecisionController
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.matching.SameMangaCandidateResult
+import exh.util.CrossSourceIdentityUndoJournal
+import exh.util.DispatcherHandle
 import exh.util.FakePreferenceStore
+import exh.util.FakeTasteRepository
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -28,6 +33,8 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.taste.interactor.GetCrossSourceIdentityDecisions
+import tachiyomi.domain.taste.interactor.ReplaceCrossSourceIdentityDecisions
 import tachiyomi.domain.taste.interactor.UpsertMangaSourceQualitySignal
 
 /**
@@ -91,6 +98,7 @@ class BestVersionIsolatedFixtureRollbackTest {
     @AfterEach
     fun tearDown() {
         Dispatchers.resetMain()
+        CrossSourceIdentityUndoJournal.clear()
     }
 
     private fun manga(source: Long, url: String, id: Long) =
@@ -125,6 +133,7 @@ class BestVersionIsolatedFixtureRollbackTest {
 
         val getManga = mockk<GetManga>()
         coEvery { getManga.await(origin.id) } returns null
+        val identityRepository = FakeTasteRepository()
         val model = BestVersionCompareScreenModel(
             originMangaId = origin.id,
             sourcePreferences = SourcePreferences(FakePreferenceStore()),
@@ -134,7 +143,13 @@ class BestVersionIsolatedFixtureRollbackTest {
             networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
             migrateMangaUseCase = migrateMangaUseCase,
             upsertQualitySignal = mockk<UpsertMangaSourceQualitySignal>(relaxed = true),
-            dispatcherHandle = DispatcherHandle(UnconfinedTestDispatcher()),
+            isLowRamDevice = false,
+            dispatcherHandle = DispatcherHandle(StandardTestDispatcher()),
+            candidateSearchGateway = mockk(relaxed = true),
+            identityController = CrossSourceIdentityDecisionController(
+                GetCrossSourceIdentityDecisions(identityRepository),
+                ReplaceCrossSourceIdentityDecisions(identityRepository),
+            ),
         )
         val key = MangaIdentityKey(target.source, target.url)
         model.forceOriginManga(origin)

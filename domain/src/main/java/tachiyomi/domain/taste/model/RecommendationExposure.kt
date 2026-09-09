@@ -1,6 +1,5 @@
 package tachiyomi.domain.taste.model
 
-// KMK -->
 /**
  * Local-only record that a For You candidate was actually present in a loaded, visible result state.
  *

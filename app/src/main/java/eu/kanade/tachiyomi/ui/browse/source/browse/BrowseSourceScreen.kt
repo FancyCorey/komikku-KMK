@@ -52,13 +52,17 @@ import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.more.settings.screen.SettingsEhScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.BuildConfig
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.DebugBrowseFixtureSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.BulkFavoriteScreenModel
 import eu.kanade.tachiyomi.ui.browse.extension.details.SourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreen
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreenModel.Listing
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
+import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.toast
@@ -97,6 +101,7 @@ data class BrowseSourceScreen(
      * which was previously opened from `SmartSearchScreen` */
     private val smartSearchConfig: SourcesScreen.SmartSearchConfig? = null,
     // SY <--
+    private val returnSelection: Boolean = false,
 ) : Screen(), AssistContentScreen {
 
     private var assistUrl: String? = null
@@ -272,7 +277,7 @@ data class BrowseSourceScreen(
                                 Text(text = stringResource(MR.strings.popular))
                             },
                         )
-                        if (screenModel.source.supportsLatest) {
+                        if ((screenModel.source as CatalogueSource).supportsLatest) {
                             FilterChip(
                                 selected = state.listing == Listing.Latest,
                                 onClick = {
@@ -347,6 +352,13 @@ data class BrowseSourceScreen(
         ) { paddingValues ->
             BrowseSourceContent(
                 source = screenModel.source,
+                // Use the rebound source identity for presentation policy. The route argument can
+                // outlive an asynchronous source-manager rebind, while the rendered source is the
+                // authoritative owner of the visible error/empty state.
+                sourceId = screenModel.source.id,
+                isDeterministicFixtureSource = BuildConfig.DEBUG &&
+                    screenModel.source.id == DebugBrowseFixtureSource.ID &&
+                    screenModel.browseFixtureFailureMode == BrowseDebugFixtureMode.SOURCE_UNAVAILABLE.prefValue,
                 mangaList = mangaList,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 // SY -->
@@ -362,6 +374,8 @@ data class BrowseSourceScreen(
                     // KMK -->
                     if (bulkFavoriteState.selectionMode) {
                         bulkFavoriteScreenModel.toggleSelection(manga)
+                    } else if (returnSelection) {
+                        finishWithSelection(context, manga.id)
                     } else {
                         // KMK <--
                         navigator.push(
@@ -525,6 +539,15 @@ data class BrowseSourceScreen(
                     }
                 }
         }
+    }
+
+    private fun finishWithSelection(context: android.content.Context, mangaId: Long) {
+        val activity = context as? android.app.Activity ?: return
+        activity.setResult(
+            android.app.Activity.RESULT_OK,
+            android.content.Intent().putExtra(MainActivity.EXTRA_ALTERNATE_SOURCE_MANGA_ID, mangaId),
+        )
+        activity.finish()
     }
 
     suspend fun search(query: String) = queryEvent.send(SearchType.Text(query))

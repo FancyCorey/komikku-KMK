@@ -9,13 +9,16 @@ import org.junit.jupiter.api.Test
 // Pure-logic coverage for the Evaluation Mode Undo Journal's restore contract: conflict detection
 // (evaluationUndoHasConflict) and outcome classification (EvaluationUndoOutcome). The conflict check
 // and outcome classification below are exactly the two decisions that determine whether a restore is
-// safe to perform at all. The DB/preference-touching half of EvaluationModeUndoService.restoreOne()
-// (the actual SetMangaTaste/ClearMangaTaste/SeenRecommendationMangaStore calls, against real
-// interactors) is covered separately in EvaluationModeUndoServiceRestoreTest, using FakePreferenceStore
-// and FakeTasteRepository instead of a database.
+// safe to perform at all. The DB-touching half of EvaluationModeUndoService.restoreOne() (the actual
+// SetMangaTaste/ClearMangaTaste calls, against real interactors) is covered separately in
+// EvaluationModeUndoServiceRestoreTest, using FakeTasteRepository instead of a database.
+//
+// KMK v0.8.21-fix3: R1 correction -- evaluationUndoHasConflict is now a 2-arg function (entry,
+// currentRating). Not Interested is MangaRating.NOT_INTERESTED, a value newRating/previousRating
+// can already hold; there is no second currentNotInterested axis to conflict-check separately.
 class EvaluationModeUndoServiceTest {
 
-    private fun ratingEntry(newRating: Int?, newNotInterested: Boolean = false, previousRating: Int? = null) =
+    private fun ratingEntry(newRating: Int?, previousRating: Int? = null) =
         EvaluationJournalEntry(
             id = "e1",
             timestamp = 0L,
@@ -25,8 +28,6 @@ class EvaluationModeUndoServiceTest {
             url = "/manga/1",
             previousRating = previousRating,
             newRating = newRating,
-            previousNotInterested = false,
-            newNotInterested = newNotInterested,
             isBulk = false,
             bulkOperationId = null,
             changedFields = setOf(EvaluationJournalEntry.FIELD_RATING),
@@ -35,25 +36,27 @@ class EvaluationModeUndoServiceTest {
     @Test
     fun `no conflict when current state still matches the journaled post-action state`() {
         val entry = ratingEntry(newRating = 2)
-        assertFalse(evaluationUndoHasConflict(entry, currentRating = 2, currentNotInterested = false))
+        assertFalse(evaluationUndoHasConflict(entry, currentRating = 2))
     }
 
     @Test
     fun `conflict when rating changed after the journaled action`() {
         val entry = ratingEntry(newRating = 2)
-        assertTrue(evaluationUndoHasConflict(entry, currentRating = 1, currentNotInterested = false))
+        assertTrue(evaluationUndoHasConflict(entry, currentRating = 1))
     }
 
     @Test
-    fun `conflict when not-interested state changed after the journaled action`() {
-        val entry = ratingEntry(newRating = 2, newNotInterested = false)
-        assertTrue(evaluationUndoHasConflict(entry, currentRating = 2, currentNotInterested = true))
+    fun `conflict when the current rating is NOT_INTERESTED but the journal expected a different value`() {
+        // R1 coverage: NOT_INTERESTED (-2) is just another Int rating value from this function's
+        // point of view -- no special-casing exists or should exist.
+        val entry = ratingEntry(newRating = 2)
+        assertTrue(evaluationUndoHasConflict(entry, currentRating = -2))
     }
 
     @Test
     fun `no conflict when the journaled new state was null (cleared) and it is still null`() {
         val entry = ratingEntry(newRating = null, previousRating = 2)
-        assertFalse(evaluationUndoHasConflict(entry, currentRating = null, currentNotInterested = false))
+        assertFalse(evaluationUndoHasConflict(entry, currentRating = null))
     }
 
     @Test

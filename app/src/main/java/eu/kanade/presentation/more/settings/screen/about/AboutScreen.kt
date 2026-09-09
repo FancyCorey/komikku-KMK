@@ -58,6 +58,7 @@ import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.icons.CustomIcons
+import tachiyomi.presentation.core.icons.Discord
 import tachiyomi.presentation.core.icons.Github
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -191,7 +192,7 @@ class AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(KMR.strings.kmk_recs_whats_new),
-                        subtitle = KmkRecsReleaseNotes.VERSION_NAME,
+                        subtitle = KmkRecsReleaseNotes.DISPLAY_VERSION_NAME,
                         onPreferenceClick = { navigator.push(KmkRecsWhatsNewScreen()) },
                     )
                 }
@@ -240,6 +241,17 @@ class AboutScreen : Screen() {
 
                 item {
                     TextPreferenceWidget(
+                        title = stringResource(MR.strings.help_translate),
+                        onPreferenceClick = {
+                            uriHandler.openUri(
+                                "https://hosted.weblate.org/engage/komikku-app/",
+                            )
+                        },
+                    )
+                }
+
+                item {
+                    TextPreferenceWidget(
                         title = stringResource(MR.strings.licenses),
                         onPreferenceClick = { navigator.push(OpenSourceLicensesScreen()) },
                     )
@@ -248,11 +260,7 @@ class AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.privacy_policy),
-                        onPreferenceClick = {
-                            uriHandler.openUri(
-                                "https://github.com/FancyCorey/komikku-KMK/blob/master/docs/kmk/privacy-and-data.md",
-                            )
-                        },
+                        onPreferenceClick = { uriHandler.openUri("https://komikku-app.github.io/privacy/") },
                     )
                 }
 
@@ -266,7 +274,12 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = stringResource(MR.strings.website),
                             icon = Icons.Outlined.Public,
-                            url = "https://github.com/FancyCorey/komikku-KMK",
+                            url = "https://komikku-app.github.io",
+                        )
+                        LinkIcon(
+                            label = "Discord",
+                            icon = CustomIcons.Discord,
+                            url = "https://discord.gg/85jB7V5AJR",
                         )
                         // LinkIcon(
                         //     label = "X",
@@ -286,7 +299,7 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            url = "https://github.com/FancyCorey/komikku-KMK",
+                            url = "https://github.com/komikku-app",
                         )
                     }
                 }

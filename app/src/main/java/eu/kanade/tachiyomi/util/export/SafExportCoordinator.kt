@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.StateFlow
 import java.util.UUID
 
 // KMK -->
-// KMK: shared SAF created-document lifecycle.
+// Shared SAF created-document lifecycle.
 //
-// `ActivityResultContracts.CreateDocument`'s system
+// Finding this codifies (already independently discovered and fixed for extension export in
+// ExtensionsTab.kt/ExtensionDetailsScreen.kt): `ActivityResultContracts.CreateDocument`'s system
 // document picker creates the destination document -- possibly zero bytes -- the moment the user
 // confirms a filename/location, *before* any app code runs. A non-null `Uri` returned to a launcher
 // callback therefore always means a real, possibly-orphaned document exists, regardless of what the
@@ -21,7 +22,7 @@ import java.util.UUID
 // fails mid-stream, or is never even attempted because the input that triggered the export became
 // stale/empty by the time the picker returned.
 //
-// KMK: this coordinator was redesigned after an
+// this coordinator was redesigned after an
 // independent review found three structural defects in the prior (2026-08-04) version:
 //
 //  1. `registerUri` set the offer straight to `PARTIAL_OR_EMPTY`, which is a *terminal* outcome as
@@ -82,7 +83,7 @@ enum class SafArtifactOutcome {
     CANCELLED,
 
     /**
-     * KMK: the real result could not be
+     * the real result could not be
      * determined -- e.g. a durable backup-recovery record survives a process death but WorkManager
      * has since pruned (or never had) any record of the job that may have been writing to it. This is
      * deliberately distinct from [PARTIAL_OR_EMPTY]/[FAILED]/[CANCELLED]: those mean the outcome *is*
@@ -152,7 +153,7 @@ fun deleteSafDocument(context: Context, uri: Uri): Boolean = try {
     false
 }
 
-// KMK: [handleUnregisterableUri] used to
+// [handleUnregisterableUri] used to
 // call [deleteSafDocument] and then unconditionally show [deletedMessage], regardless of whether the
 // deletion actually succeeded -- a failed defensive-fallback deletion was reported to the user as a
 // success, and the document (which the picker really did create) was left permanently untracked with
@@ -264,12 +265,12 @@ fun handleUnregisterableBackupUri(
  * platform behavior change): it never corrupts the retained offer and never reports a losing
  * reservation as a winning one.
  *
- * Process-lifetime boundary -- deliberately not durable: this coordinator's cleanup offer lives
- * only in a `MutableStateFlow` field, exactly as long
+ * Deliberately bounded, not
+ * durable: this coordinator's cleanup offer lives only in a `MutableStateFlow` field, exactly as long
  * as the owning `ScreenModel` (or Composable `remember`) does. **A process death while a write is in
  * flight silently loses that offer** -- there is no on-disk record to reconcile on the next launch,
- * unlike [BackupCleanupRecoveryStore]. This is intentional: every route that uses this coordinator
- * (single/bulk extension export, recommendation
+ * unlike [BackupCleanupRecoveryStore]. This is an intentional, audited scope decision, not an
+ * oversight: every route that uses this coordinator (single/bulk extension export, recommendation
  * bundle export, CSV export) runs its write as a `screenModelScope` coroutine that starts and
  * finishes entirely within one foregrounded screen's visible lifetime -- there is no `WorkManager` job
  * or any other mechanism that keeps the write running independently of the app process, unlike backup

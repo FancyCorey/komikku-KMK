@@ -74,7 +74,7 @@
             </intent-filter>
 
             <!-- Legacy deeplink to add extension store -->
-            <intent-filter android:label="@string/action_addExtensionStore">
+            <intent-filter android:label="@string/action_add_repo">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
@@ -85,7 +85,7 @@
             </intent-filter>
 
             <!-- Deeplink to add extension store -->
-            <intent-filter android:label="@string/action_addExtensionStore">
+            <intent-filter android:label="@string/action_add_repo">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />

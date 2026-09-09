@@ -21,10 +21,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -51,13 +51,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +65,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,8 +81,12 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.KmkEmptyStateArtwork
 import eu.kanade.presentation.components.KmkEmptyStateIllustration
 import eu.kanade.presentation.util.Screen
+import exh.recs.settings.RecommendationSettingsDetailActions
 import exh.recs.settings.RecommendationSettingsQuickAccessDestination
 import exh.recs.settings.RecommendationSettingsQuickAccessRow
+import exh.recs.settings.RecommendationSettingsSearchScreen
+import exh.recs.settings.SectionHeader
+import exh.recs.settings.TasteSuggestionVisibilityPolicy
 import exh.recs.settings.toScreen
 import exh.util.EvaluationModeFormatter
 import exh.util.rememberEvaluationModeEnabled
@@ -94,9 +101,11 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
 import kotlin.math.roundToInt
 
 // KMK -->
@@ -159,6 +168,7 @@ class SourceEvaluationScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        val openForYou = exh.recs.settings.rememberOpenForYouFromRecommendationSettings(navigator)
         val context = LocalContext.current
         val screenModel = rememberScreenModel { SourceEvaluationScreenModel(context) }
         val state by screenModel.state.collectAsState()
@@ -168,8 +178,6 @@ class SourceEvaluationScreen(
         val hideForYouTab = remember {
             Injekt.get<eu.kanade.domain.ui.UiPreferences>().hideForYouTab().get()
         }
-        // KMK: Source Evaluation is root-pushed, so tab changes go through HomeScreen.openTab.
-        val scope = rememberCoroutineScope()
 
         // KMK --> v0.6.12: refresh Shizuku state on screen resume (e.g. returning from Shizuku app)
         val lifecycleOwner = LocalLifecycleOwner.current
@@ -202,6 +210,18 @@ class SourceEvaluationScreen(
         val sortedEvaluations = remember(state.filteredEvaluations, state.recommendationFitsByEvalKey, state.resultSortMode, now) {
             SourceEvaluationResultList.sort(state.filteredEvaluations, state.recommendationFitsByEvalKey, state.resultSortMode, now)
         }
+        var pastEvaluationsVisibleCount by rememberSaveable(
+            state.resultSortMode,
+            state.filteredEvaluations.size,
+            state.showInstalled,
+            state.showSourceQualityDisliked,
+        ) {
+            mutableStateOf(TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE)
+        }
+        val visiblePastEvaluations = TasteSuggestionVisibilityPolicy.visible(
+            sortedEvaluations,
+            pastEvaluationsVisibleCount,
+        )
         // KMK <--
         // KMK <--
         // KMK --> v0.7.7: rec-quality queue computed outside LazyColumn (remember is @Composable)
@@ -331,6 +351,7 @@ class SourceEvaluationScreen(
                         state.blockedPackages.forEach { pkg ->
                             BlockedPackageRow(
                                 pkg = pkg,
+                                evaluationModeEnabled = rememberEvaluationModeEnabled(),
                                 onAllow = { screenModel.allowBlockedPackage(pkg.pkgName) },
                                 // KMK --> v0.7.18
                                 hasNewerAvailable = pkg.pkgName in state.blockedPackagesWithNewerAvailable,
@@ -369,6 +390,7 @@ class SourceEvaluationScreen(
                         state.unsafeSources.forEach { unsafe ->
                             UnsafeSourceRow(
                                 unsafe = unsafe,
+                                evaluationModeEnabled = rememberEvaluationModeEnabled(),
                                 onRemove = { screenModel.deleteUnsafeSource(unsafe.unsafeKey) },
                             )
                         }
@@ -552,24 +574,10 @@ class SourceEvaluationScreen(
                     title = stringResource(KMR.strings.source_evaluation_title),
                     navigateUp = navigator::pop,
                     actions = {
-                        if (!hideForYouTab) {
-                            eu.kanade.presentation.components.AppBarActions(
-                                kotlinx.collections.immutable.persistentListOf(
-                                    eu.kanade.presentation.components.AppBar.Action(
-                                        title = stringResource(KMR.strings.source_evaluation_go_to_for_you),
-                                        icon = Icons.Filled.Home,
-                                        onClick = {
-                                            navigator.popUntilRoot()
-                                            scope.launch {
-                                                eu.kanade.tachiyomi.ui.home.HomeScreen.openTab(
-                                                    eu.kanade.tachiyomi.ui.home.HomeScreen.Tab.Browse(toForYou = true),
-                                                )
-                                            }
-                                        },
-                                    ),
-                                ),
-                            )
-                        }
+                        RecommendationSettingsDetailActions(
+                            onSearch = { navigator.push(RecommendationSettingsSearchScreen()) },
+                            onHome = if (hideForYouTab) null else openForYou,
+                        )
                     },
                     scrollBehavior = scrollBehavior,
                 )
@@ -609,18 +617,13 @@ class SourceEvaluationScreen(
                     // KMK --> SEC-01 v0.7.16: leftover extension warning (process-death survivor)
                     state.leftoverPkgName?.let { pkgName ->
                         item(key = "leftover_ext_warning") {
-                            Column(modifier = Modifier.padding(MaterialTheme.padding.medium)) {
-                                InfoCard(
-                                    message = stringResource(KMR.strings.source_evaluation_leftover_warning, pkgName),
-                                    isError = true,
-                                )
-                                TextButton(
-                                    onClick = screenModel::dismissLeftoverExtension,
-                                    modifier = Modifier.align(Alignment.End),
-                                ) {
-                                    Text(stringResource(KMR.strings.source_evaluation_leftover_uninstall))
-                                }
-                            }
+                            InfoCard(
+                                message = stringResource(KMR.strings.source_evaluation_leftover_warning, pkgName),
+                                isError = true,
+                                actionLabel = stringResource(KMR.strings.source_evaluation_leftover_uninstall),
+                                onAction = screenModel::dismissLeftoverExtension,
+                                modifier = Modifier.padding(MaterialTheme.padding.medium),
+                            )
                         }
                     }
                     // KMK <--
@@ -770,10 +773,7 @@ class SourceEvaluationScreen(
                                 ) {
                                     Icon(Icons.Outlined.PlayArrow, contentDescription = null)
                                     Text(
-                                        stringResource(
-                                            KMR.strings.source_evaluation_start,
-                                            state.candidates.size.coerceAtMost(state.options.batchSize),
-                                        ),
+                                        pluralStringResource(KMR.plurals.source_evaluation_start, count = state.candidates.size.coerceAtMost(state.options.batchSize), state.candidates.size.coerceAtMost(state.options.batchSize)),
                                         modifier = Modifier.padding(start = MaterialTheme.padding.extraSmall),
                                     )
                                 }
@@ -797,10 +797,7 @@ class SourceEvaluationScreen(
                                         modifier = Modifier.weight(1f),
                                     ) {
                                         Text(
-                                            stringResource(
-                                                KMR.strings.source_evaluation_continue_next_batch,
-                                                state.remainingCandidateCount,
-                                            ),
+                                            pluralStringResource(KMR.plurals.source_evaluation_continue_next_batch, count = state.remainingCandidateCount, state.remainingCandidateCount),
                                         )
                                     }
                                 }
@@ -912,10 +909,7 @@ class SourceEvaluationScreen(
                         if (ratingsSinceBaseline >= REASSESSMENT_THRESHOLD) {
                             item(key = "reassessment_prompt") {
                                 InfoCard(
-                                    message = stringResource(
-                                        KMR.strings.source_evaluation_reassessment_recommended,
-                                        ratingsSinceBaseline,
-                                    ),
+                                    message = pluralStringResource(KMR.plurals.source_evaluation_reassessment_recommended, count = ratingsSinceBaseline, ratingsSinceBaseline),
                                     isError = false,
                                     modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
                                 )
@@ -954,10 +948,7 @@ class SourceEvaluationScreen(
                         if (state.updatedEvaluatedExtensionCount > 0) {
                             item(key = "updated_evaluated_notice") {
                                 InfoCard(
-                                    message = stringResource(
-                                        KMR.strings.source_evaluation_updated_extensions_notice,
-                                        state.updatedEvaluatedExtensionCount,
-                                    ),
+                                    message = pluralStringResource(KMR.plurals.source_evaluation_updated_extensions_notice, count = state.updatedEvaluatedExtensionCount, state.updatedEvaluatedExtensionCount),
                                     isError = false,
                                     modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
                                 )
@@ -994,10 +985,7 @@ class SourceEvaluationScreen(
                                     // to an "N of M outdated can't be reassessed" note previously read as
                                     // if the excluded rows had also been processed.
                                     message = if (staleCompletionState == SourceEvaluationStaleCompletionDisplayPolicy.DisplayState.CompletedWithUnreachableRemaining) {
-                                        stringResource(
-                                            KMR.strings.source_evaluation_stale_reassess_complete_partial,
-                                            state.outdatedReconciliation.unreachableOutdatedCount,
-                                        )
+                                        pluralStringResource(KMR.plurals.source_evaluation_stale_reassess_complete_partial, count = state.outdatedReconciliation.unreachableOutdatedCount, state.outdatedReconciliation.unreachableOutdatedCount)
                                     } else {
                                         stringResource(KMR.strings.source_evaluation_stale_reassess_complete)
                                     },
@@ -1013,7 +1001,7 @@ class SourceEvaluationScreen(
                         // start/continue buttons above. Only shown when there is something actionable.
                         // KMK v0.8.14-fix1: the count here (state.staleCandidates.size) was already
                         // actionable-only -- "Reassess outdated (N)" has never included excluded/
-                        // unreachable sources in its count. the code moves the primary action ahead of
+                        // unreachable sources in its count. This pass moves the primary action ahead of
                         // the excluded-sources note below (previously the note appeared first and read as
                         // if it were blocking the action) and demotes that note to a collapsed disclosure.
                         if (state.staleCandidates.isNotEmpty() && !state.queueState.isRunning) {
@@ -1033,15 +1021,9 @@ class SourceEvaluationScreen(
                                     ) {
                                         Text(
                                             if (state.canContinueStale) {
-                                                stringResource(
-                                                    KMR.strings.source_evaluation_stale_reassess_continue,
-                                                    state.remainingStaleCandidateCount,
-                                                )
+                                                pluralStringResource(KMR.plurals.source_evaluation_stale_reassess_continue, count = state.remainingStaleCandidateCount, state.remainingStaleCandidateCount)
                                             } else {
-                                                stringResource(
-                                                    KMR.strings.source_evaluation_stale_reassess_start,
-                                                    state.staleCandidates.size,
-                                                )
+                                                pluralStringResource(KMR.plurals.source_evaluation_stale_reassess_start, count = state.staleCandidates.size, state.staleCandidates.size)
                                             },
                                         )
                                     }
@@ -1104,10 +1086,7 @@ class SourceEvaluationScreen(
                                 // per-source errors.
                                 if (state.recQualityNonInstalledSkippedCount > 0) {
                                     Text(
-                                        text = stringResource(
-                                            KMR.strings.source_evaluation_rec_quality_private_required_message,
-                                            state.recQualityNonInstalledSkippedCount,
-                                        ),
+                                        text = pluralStringResource(KMR.plurals.source_evaluation_rec_quality_private_required_message, count = state.recQualityNonInstalledSkippedCount, state.recQualityNonInstalledSkippedCount),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.error,
                                     )
@@ -1139,20 +1118,14 @@ class SourceEvaluationScreen(
                                     // KMK --> v0.7.42-fix2: show missing and outdated counts separately
                                     if (recQualityQueue.missingCount > 0) {
                                         Text(
-                                            text = stringResource(
-                                                KMR.strings.source_evaluation_rec_quality_missing,
-                                                recQualityQueue.missingCount,
-                                            ),
+                                            text = pluralStringResource(KMR.plurals.source_evaluation_rec_quality_missing, count = recQualityQueue.missingCount, recQualityQueue.missingCount),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
                                     if (recQualityQueue.outdatedCount > 0) {
                                         Text(
-                                            text = stringResource(
-                                                KMR.strings.source_evaluation_rec_quality_outdated_count,
-                                                recQualityQueue.outdatedCount,
-                                            ),
+                                            text = pluralStringResource(KMR.plurals.source_evaluation_rec_quality_outdated_count, count = recQualityQueue.outdatedCount, recQualityQueue.outdatedCount),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -1269,11 +1242,14 @@ class SourceEvaluationScreen(
 
                         // KMK --> v0.6.16: copy diagnostics button
                         item(key = "copy_diagnostics") {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = MaterialTheme.padding.medium),
-                                horizontalArrangement = Arrangement.End,
+                                    .padding(
+                                        horizontal = MaterialTheme.padding.medium,
+                                        vertical = MaterialTheme.padding.extraSmall,
+                                    ),
+                                horizontalAlignment = Alignment.End,
                             ) {
                                 // KMK --> v0.7.11: re-surface consent warning without starting evaluation
                                 TextButton(onClick = screenModel::showConsentWarning) {
@@ -1282,13 +1258,13 @@ class SourceEvaluationScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
-                                // KMK <--
                                 TextButton(onClick = screenModel::copyDiagnosticsToClipboard) {
                                     Text(
                                         stringResource(KMR.strings.source_evaluation_diagnostics_copy),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
+                                // KMK <--
                             }
                         }
                         // KMK <--
@@ -1296,25 +1272,32 @@ class SourceEvaluationScreen(
 
                     // KMK --> v0.6.20: management section
                     item(key = "management_header") {
+                        val managementExpandedState = stringResource(
+                            if (state.showManagementSection) KMR.strings.accessibility_state_expanded else KMR.strings.accessibility_state_collapsed,
+                        )
+                        val managementToggleAction = stringResource(
+                            if (state.showManagementSection) KMR.strings.accessibility_collapse_section else KMR.strings.accessibility_expand_section,
+                        )
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { screenModel.toggleManagementSection() }
-                                .padding(
-                                    horizontal = MaterialTheme.padding.medium,
-                                    vertical = MaterialTheme.padding.small,
-                                ),
+                                .clickable(
+                                    onClickLabel = managementToggleAction,
+                                    role = Role.Button,
+                                    onClick = screenModel::toggleManagementSection,
+                                )
+                                .semantics { stateDescription = managementExpandedState }
+                                .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(
-                                text = stringResource(KMR.strings.source_evaluation_management_title),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                            )
+                            Box(modifier = Modifier.weight(1f)) {
+                                SectionHeader(stringResource(KMR.strings.source_evaluation_management_title))
+                            }
                             Icon(
                                 if (state.showManagementSection) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                                 contentDescription = null,
+                                modifier = Modifier.padding(end = MaterialTheme.padding.medium),
                             )
                         }
                     }
@@ -1350,7 +1333,7 @@ class SourceEvaluationScreen(
                                     onClick = { screenModel.requestManagementAction(SourceEvaluationScreenModel.ManagementAction.CLEAR_DISMISSED_SUGGESTIONS) },
                                     modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
                                 ) {
-                                    Text(stringResource(KMR.strings.source_evaluation_clear_dismissed_suggestions, state.dismissedSuggestionCount))
+                                    Text(pluralStringResource(KMR.plurals.source_evaluation_clear_dismissed_suggestions, count = state.dismissedSuggestionCount, state.dismissedSuggestionCount))
                                 }
                             }
                         }
@@ -1360,7 +1343,7 @@ class SourceEvaluationScreen(
                                     onClick = { screenModel.requestManagementAction(SourceEvaluationScreenModel.ManagementAction.CLEAR_DISLIKED_SUGGESTIONS) },
                                     modifier = Modifier.padding(horizontal = MaterialTheme.padding.medium),
                                 ) {
-                                    Text(stringResource(KMR.strings.source_evaluation_clear_disliked_suggestion_sources, state.dislikedSuggestionCount))
+                                    Text(pluralStringResource(KMR.plurals.source_evaluation_clear_disliked_suggestion_sources, count = state.dislikedSuggestionCount, state.dislikedSuggestionCount))
                                 }
                             }
                         }
@@ -1398,21 +1381,18 @@ class SourceEvaluationScreen(
                         item(key = "eval_header") {
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        horizontal = MaterialTheme.padding.medium,
-                                        vertical = MaterialTheme.padding.small,
-                                    ),
+                                    .fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
-                                Text(
-                                    text = stringResource(KMR.strings.source_evaluation_past_results),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                )
+                                Box(modifier = Modifier.weight(1f)) {
+                                    SectionHeader(stringResource(KMR.strings.source_evaluation_past_results))
+                                }
                                 // KMK --> v0.6.15: request confirmation before clearing
-                                TextButton(onClick = screenModel::requestClearAllEvaluations) {
+                                TextButton(
+                                    onClick = screenModel::requestClearAllEvaluations,
+                                    modifier = Modifier.padding(end = MaterialTheme.padding.medium),
+                                ) {
                                     Text(stringResource(KMR.strings.source_evaluation_clear_all))
                                 }
                                 // KMK <--
@@ -1481,7 +1461,11 @@ class SourceEvaluationScreen(
                                     )
                                     if (state.hiddenSourceQualityCount > 0 && !state.showSourceQualityDisliked) {
                                         Text(
-                                            text = stringResource(KMR.strings.source_quality_hidden_mark_count, state.hiddenSourceQualityCount),
+                                            text = pluralStringResource(
+                                                KMR.plurals.source_quality_hidden_mark_count,
+                                                count = state.hiddenSourceQualityCount,
+                                                state.hiddenSourceQualityCount,
+                                            ),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -1556,7 +1540,7 @@ class SourceEvaluationScreen(
 
                         // KMK --> v0.6.15: itemsIndexed with stable keys; no animateItem() (reorder stability)
                         itemsIndexed(
-                            items = sortedEvaluations,
+                            items = visiblePastEvaluations,
                             key = { index, evaluation -> SourceEvaluationResultList.stableUiKey(evaluation, index) },
                         ) { _, evaluation ->
                             // KMK --> v0.7.6: pass rec-quality fit for display
@@ -1594,6 +1578,53 @@ class SourceEvaluationScreen(
                             // KMK <--
                         }
                         // KMK <--
+
+                        if (TasteSuggestionVisibilityPolicy.canShowMore(sortedEvaluations.size, pastEvaluationsVisibleCount) ||
+                            TasteSuggestionVisibilityPolicy.canShowFewer(pastEvaluationsVisibleCount)
+                        ) {
+                            item(key = "eval_reveal") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = MaterialTheme.padding.medium),
+                                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                                ) {
+                                    if (TasteSuggestionVisibilityPolicy.canShowMore(sortedEvaluations.size, pastEvaluationsVisibleCount)) {
+                                        TextButton(
+                                            onClick = {
+                                                pastEvaluationsVisibleCount = TasteSuggestionVisibilityPolicy.nextVisibleCount(
+                                                    sortedEvaluations.size,
+                                                    pastEvaluationsVisibleCount,
+                                                )
+                                            },
+                                        ) {
+                                            Text(
+                                                pluralStringResource(
+                                                    KMR.plurals.taste_settings_tag_group_show_n_more,
+                                                    count = TasteSuggestionVisibilityPolicy.nextVisibleCount(
+                                                        sortedEvaluations.size,
+                                                        pastEvaluationsVisibleCount,
+                                                    ) - pastEvaluationsVisibleCount,
+                                                    TasteSuggestionVisibilityPolicy.nextVisibleCount(
+                                                        sortedEvaluations.size,
+                                                        pastEvaluationsVisibleCount,
+                                                    ) - pastEvaluationsVisibleCount,
+                                                ),
+                                            )
+                                        }
+                                    }
+                                    if (TasteSuggestionVisibilityPolicy.canShowFewer(pastEvaluationsVisibleCount)) {
+                                        TextButton(
+                                            onClick = {
+                                                pastEvaluationsVisibleCount = TasteSuggestionVisibilityPolicy.DEFAULT_VISIBLE
+                                            },
+                                        ) {
+                                            Text(stringResource(KMR.strings.taste_settings_tag_group_show_fewer))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     item(key = "bottom_spacer") { Spacer(Modifier.height(MaterialTheme.padding.medium)) }
@@ -1604,26 +1635,13 @@ class SourceEvaluationScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(
-            horizontal = MaterialTheme.padding.medium,
-            vertical = MaterialTheme.padding.small,
-        ),
-    )
-}
-
-@Composable
 private fun EvaluationProgressCard(
     queueState: SourceEvaluationQueueState,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val progressLabels = SourceEvaluationProgressLabelPolicy.labels(queueState, evaluationModeEnabled)
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1639,24 +1657,22 @@ private fun EvaluationProgressCard(
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(end = MaterialTheme.padding.extraSmall))
                 Text(
-                    text = queueState.currentExtensionName?.let {
-                        if (evaluationModeEnabled) EvaluationModeFormatter.sourceLabel("ext:$it") else it
-                    } ?: stringResource(KMR.strings.source_evaluation_starting),
+                    text = progressLabels.extension ?: stringResource(KMR.strings.source_evaluation_starting),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                 )
             }
 
-            queueState.currentSourceName?.let { sourceName ->
+            progressLabels.source?.let { sourceName ->
                 Text(
-                    text = if (evaluationModeEnabled) EvaluationModeFormatter.sourceLabel(sourceName) else sourceName,
+                    text = sourceName,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             Text(
-                text = "${queueState.currentPhase.name.replace(Regex("([A-Z])")) { " ${it.value}" }.trim()}",
+                text = sourceEvaluationPhaseLabel(queueState.currentPhase),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1754,20 +1770,36 @@ private fun EvaluationSummaryCard(
             }
 
             if (queueState.strongFitCount > 0) {
-                Text(stringResource(KMR.strings.source_evaluation_strong_fit_count, queueState.strongFitCount))
+                Text(
+                    text = pluralStringResource(KMR.plurals.source_evaluation_strong_fit_count, count = queueState.strongFitCount, queueState.strongFitCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (queueState.worthTryingCount > 0) {
-                Text(stringResource(KMR.strings.source_evaluation_worth_trying_count, queueState.worthTryingCount))
+                Text(
+                    text = pluralStringResource(KMR.plurals.source_evaluation_worth_trying_count, count = queueState.worthTryingCount, queueState.worthTryingCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (queueState.explicitHeavyCount > 0) {
-                Text(stringResource(KMR.strings.source_evaluation_explicit_count, queueState.explicitHeavyCount))
+                Text(
+                    text = pluralStringResource(KMR.plurals.source_evaluation_explicit_count, count = queueState.explicitHeavyCount, queueState.explicitHeavyCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (queueState.ecchiHeavyCount > 0) {
-                Text(stringResource(KMR.strings.source_evaluation_ecchi_count, queueState.ecchiHeavyCount))
+                Text(
+                    text = pluralStringResource(KMR.plurals.source_evaluation_ecchi_count, count = queueState.ecchiHeavyCount, queueState.ecchiHeavyCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (queueState.errorCount > 0) {
                 Text(
-                    text = stringResource(KMR.strings.source_evaluation_error_count, queueState.errorCount),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_error_count, count = queueState.errorCount, queueState.errorCount),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1776,30 +1808,21 @@ private fun EvaluationSummaryCard(
             // KMK --> v0.7.11: cleanup outcome warnings
             if (queueState.promptRequiredCleanupCount > 0) {
                 Text(
-                    text = stringResource(
-                        KMR.strings.source_evaluation_cleanup_prompt_required_warning,
-                        queueState.promptRequiredCleanupCount,
-                    ),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_cleanup_prompt_required_warning, count = queueState.promptRequiredCleanupCount, queueState.promptRequiredCleanupCount),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
                 // KMK --> SEC-02 v0.7.16: one-tap button to trigger system uninstall prompts
                 TextButton(onClick = onCompleteCleanup) {
                     Text(
-                        stringResource(
-                            KMR.strings.source_evaluation_complete_cleanup,
-                            queueState.promptRequiredCleanupCount,
-                        ),
+                        pluralStringResource(KMR.plurals.source_evaluation_complete_cleanup, count = queueState.promptRequiredCleanupCount, queueState.promptRequiredCleanupCount),
                     )
                 }
                 // KMK <--
             }
             if (queueState.cleanupFailedCount > 0) {
                 Text(
-                    text = stringResource(
-                        KMR.strings.source_evaluation_cleanup_failed_warning,
-                        queueState.cleanupFailedCount,
-                    ),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_cleanup_failed_warning, count = queueState.cleanupFailedCount, queueState.cleanupFailedCount),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1809,10 +1832,7 @@ private fun EvaluationSummaryCard(
             // itself failed for one or more sources -- see recordExtensionError().
             if (queueState.reconciliationFailedCount > 0) {
                 Text(
-                    text = stringResource(
-                        KMR.strings.source_evaluation_reconciliation_failed_warning,
-                        queueState.reconciliationFailedCount,
-                    ),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_reconciliation_failed_warning, count = queueState.reconciliationFailedCount, queueState.reconciliationFailedCount),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1853,8 +1873,9 @@ private fun BatchSizeSelector(
             text = stringResource(KMR.strings.source_evaluation_batch_size),
             style = MaterialTheme.typography.bodyMedium,
         )
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
             modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
         ) {
             listOf(10, 25, 50, 100).forEach { size ->
@@ -1914,9 +1935,12 @@ private fun InstallerModeSelector(
             text = stringResource(KMR.strings.source_evaluation_installer_mode),
             style = MaterialTheme.typography.bodyMedium,
         )
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-            modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = MaterialTheme.padding.extraSmall),
         ) {
             SourceEvaluationInstallerPolicy.InstallerMode.entries.forEach { mode ->
                 FilterChip(
@@ -1925,10 +1949,13 @@ private fun InstallerModeSelector(
                     // KMK --> v0.6.13: label Private as recommended
                     label = {
                         Text(
-                            if (mode == SourceEvaluationInstallerPolicy.InstallerMode.PRIVATE) {
-                                stringResource(KMR.strings.source_evaluation_installer_private_label)
-                            } else {
-                                mode.name.lowercase().replaceFirstChar { it.uppercase() }
+                            when (mode) {
+                                SourceEvaluationInstallerPolicy.InstallerMode.CURRENT ->
+                                    stringResource(KMR.strings.source_evaluation_installer_current_label)
+                                SourceEvaluationInstallerPolicy.InstallerMode.PRIVATE ->
+                                    stringResource(KMR.strings.source_evaluation_installer_private_label)
+                                SourceEvaluationInstallerPolicy.InstallerMode.SHIZUKU ->
+                                    stringResource(KMR.strings.source_evaluation_installer_shizuku_label)
                             },
                         )
                     },
@@ -1963,6 +1990,7 @@ private fun OptionToggleRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = { onToggle() })
             .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.extraSmall),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1972,7 +2000,7 @@ private fun OptionToggleRow(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
-        Switch(checked = checked, onCheckedChange = { onToggle() })
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -1985,10 +2013,17 @@ private fun DisclosureToggleRow(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val expandedState = stringResource(
+        if (expanded) KMR.strings.accessibility_state_expanded else KMR.strings.accessibility_state_collapsed,
+    )
+    val toggleAction = stringResource(
+        if (expanded) KMR.strings.accessibility_collapse_section else KMR.strings.accessibility_expand_section,
+    )
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(onClickLabel = toggleAction, role = Role.Button, onClick = onToggle)
+            .semantics { stateDescription = expandedState }
             .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -2002,35 +2037,60 @@ private fun DisclosureToggleRow(
 }
 
 @Composable
+private fun sourceEvaluationPhaseLabel(phase: SourceEvaluationQueueState.Phase): String = when (phase) {
+    SourceEvaluationQueueState.Phase.Idle -> stringResource(KMR.strings.source_evaluation_phase_idle)
+    SourceEvaluationQueueState.Phase.Downloading -> stringResource(KMR.strings.source_evaluation_phase_downloading)
+    SourceEvaluationQueueState.Phase.Installing -> stringResource(KMR.strings.source_evaluation_phase_installing)
+    SourceEvaluationQueueState.Phase.LoadingSources -> stringResource(KMR.strings.source_evaluation_phase_loading_sources)
+    SourceEvaluationQueueState.Phase.ProbingPopular -> stringResource(KMR.strings.source_evaluation_phase_probing_popular)
+    SourceEvaluationQueueState.Phase.ProbingLatest -> stringResource(KMR.strings.source_evaluation_phase_probing_latest)
+    SourceEvaluationQueueState.Phase.ProbingSearch -> stringResource(KMR.strings.source_evaluation_phase_probing_search)
+    SourceEvaluationQueueState.Phase.EnrichingDetails -> stringResource(KMR.strings.source_evaluation_phase_enriching_details)
+    SourceEvaluationQueueState.Phase.Scoring -> stringResource(KMR.strings.source_evaluation_phase_scoring)
+    SourceEvaluationQueueState.Phase.Cleanup -> stringResource(KMR.strings.source_evaluation_phase_cleanup)
+}
+
+@Composable
 private fun InfoCard(
     message: String,
     isError: Boolean = false,
     onDismiss: (() -> Unit)? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(MaterialTheme.padding.medium),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Icon(
-                imageVector = if (isError) Icons.Outlined.Error else Icons.Outlined.Info,
-                contentDescription = null,
-                tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            if (onDismiss != null) {
-                TextButton(onClick = onDismiss) {
-                    Text(
-                        stringResource(KMR.strings.source_evaluation_screen_error_dismiss),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+        Column(modifier = Modifier.padding(MaterialTheme.padding.medium)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    imageVector = if (isError) Icons.Outlined.Error else Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (onDismiss != null) {
+                    TextButton(onClick = onDismiss) {
+                        Text(
+                            stringResource(KMR.strings.source_evaluation_screen_error_dismiss),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            }
+            if (onAction != null && actionLabel != null) {
+                TextButton(
+                    onClick = onAction,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(actionLabel, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -2068,7 +2128,7 @@ private fun UnsafeSourcesCard(
             }
             if (unsafeHiddenCount > 0) {
                 Text(
-                    text = stringResource(KMR.strings.source_evaluation_unsafe_sources_count, unsafeHiddenCount),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_unsafe_sources_count, count = unsafeHiddenCount, unsafeHiddenCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2088,6 +2148,7 @@ private fun UnsafeSourcesCard(
 @Composable
 private fun UnsafeSourceRow(
     unsafe: SourceEvaluationUnsafeSource,
+    evaluationModeEnabled: Boolean,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2098,9 +2159,12 @@ private fun UnsafeSourceRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+        ) {
             Text(
-                text = unsafe.extensionName,
+                text = SourceEvaluationPrivacyLabelPolicy.unsafeSourceLabel(unsafe, evaluationModeEnabled),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -2155,8 +2219,9 @@ private fun RuntimeHealthIssueRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = stringResource(
-                KMR.strings.source_evaluation_runtime_health_count,
+            text = pluralStringResource(
+                KMR.plurals.source_evaluation_runtime_health_count,
+                count = issue.count,
                 issue.count,
                 java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(
                     System.currentTimeMillis() - issue.lastFailureAt,
@@ -2165,8 +2230,9 @@ private fun RuntimeHealthIssueRow(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
         ) {
             TextButton(onClick = onRetry) {
                 Text(stringResource(KMR.strings.source_evaluation_runtime_health_retry), style = MaterialTheme.typography.labelSmall)
@@ -2235,7 +2301,13 @@ private fun SafetyDiagnosticsRow(
             ) {
                 Icon(
                     imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = null,
+                    contentDescription = stringResource(
+                        if (expanded) {
+                            KMR.strings.accessibility_collapse_safety_diagnostics
+                        } else {
+                            KMR.strings.accessibility_expand_safety_diagnostics
+                        },
+                    ),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -2302,7 +2374,7 @@ private fun BlockedPackagesCard(
                 )
             }
             Text(
-                text = stringResource(KMR.strings.source_evaluation_blocked_packages_count, blockedCount),
+                text = pluralStringResource(KMR.plurals.source_evaluation_blocked_packages_count, count = blockedCount, blockedCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2322,6 +2394,7 @@ private fun BlockedPackagesCard(
 private fun BlockedPackageRow(
     pkg: UnsafeExtensionPackage,
     onAllow: () -> Unit,
+    evaluationModeEnabled: Boolean,
     // KMK --> v0.7.18: version-aware quarantine label
     hasNewerAvailable: Boolean = false,
     // KMK <--
@@ -2334,21 +2407,26 @@ private fun BlockedPackageRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+        ) {
             Text(
-                text = pkg.extensionName ?: pkg.pkgName,
+                text = SourceEvaluationPrivacyLabelPolicy.blockedPackageLabel(pkg, evaluationModeEnabled),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = pkg.pkgName,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (!evaluationModeEnabled) {
+                Text(
+                    text = pkg.pkgName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             // KMK --> v0.7.18: newer-version hint
             if (hasNewerAvailable) {
                 Text(
@@ -2414,8 +2492,9 @@ private fun SourceEvaluationRowAction(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clickable(enabled = enabled, onClick = onClick)
-            .defaultMinSize(minHeight = 32.dp)
+            .clickable(enabled = enabled, onClickLabel = label, role = Role.Button, onClick = onClick)
+            .minimumInteractiveComponentSize()
+            .defaultMinSize(minHeight = 48.dp)
             .padding(horizontal = MaterialTheme.padding.extraSmall, vertical = MaterialTheme.padding.extraSmall),
     ) {
         Icon(
@@ -2477,7 +2556,7 @@ private fun EvaluationResultRow(
     val lastEvalStr = if (daysAgo <= 0) {
         stringResource(KMR.strings.source_evaluation_last_evaluated_today)
     } else {
-        stringResource(KMR.strings.source_evaluation_last_evaluated_days, daysAgo)
+        pluralStringResource(KMR.plurals.source_evaluation_last_evaluated_days, count = daysAgo, daysAgo)
     }
     // KMK --> v0.7.47: a row scored under an older SourceEvaluationKeys.CURRENT_VERSION (or expired)
     // must never read as a current verdict — it shows "Outdated - reassess needed" instead of its
@@ -2572,7 +2651,10 @@ private fun EvaluationResultRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+        ) {
             Text(
                 text = displaySource,
                 style = MaterialTheme.typography.bodyMedium,
@@ -2644,7 +2726,7 @@ private fun EvaluationResultRow(
             if (hasDetails || evidence != null || canInstall) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                 ) {
                     if (evidence != null) {
                         SourceEvaluationRowAction(
@@ -2692,39 +2774,41 @@ private fun EvaluationResultRow(
             }
             // KMK v0.8.1-fix1 -->
             if (hasDetails && expanded) {
-                if (classifiedCatalogueErrorMessage != null) {
-                    Text(
-                        text = classifiedCatalogueErrorMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (kindLabel != null) {
-                    Text(
-                        text = stringResource(KMR.strings.source_evaluation_rec_error_kind, kindLabel),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // KMK --> v0.7.12: show error/reason detail below the quality label
-                // KMK --> v0.7.13: also show subdued reason text for NO_MATCHES and WEAK verdicts
-                if (hasReasonHint) {
-                    val isError = compatState == CompatibilityDisplayState.ERROR
-                    Text(
-                        text = stringResource(KMR.strings.source_evaluation_rec_quality_error_hint, recFitErrorMessage.orEmpty()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isError) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall)) {
+                    if (classifiedCatalogueErrorMessage != null) {
+                        Text(
+                            text = classifiedCatalogueErrorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (kindLabel != null) {
+                        Text(
+                            text = stringResource(KMR.strings.source_evaluation_rec_error_kind, kindLabel),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    // KMK --> v0.7.12: show error/reason detail below the quality label
+                    // KMK --> v0.7.13: also show subdued reason text for NO_MATCHES and WEAK verdicts
+                    if (hasReasonHint) {
+                        val isError = compatState == CompatibilityDisplayState.ERROR
+                        Text(
+                            text = stringResource(KMR.strings.source_evaluation_rec_quality_error_hint, recFitErrorMessage.orEmpty()),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 // KMK <--
             }
@@ -2738,86 +2822,102 @@ private fun EvaluationResultRow(
             // or nonexistent, not current evidence).
             if (evidence != null) {
                 if (evidenceExpanded) {
-                    // KMK v0.8.15: catalogue fit percent, metadata confidence, evidence strength, and
-                    // language moved here from the main row subtitle -- see the compact-subtitle
-                    // comment above in this function.
-                    val fitPercent = (evaluation.recommendationFitScore.coerceIn(0.0, 1.0) * 100).roundToInt()
-                    val confidenceLabel = stringResource(
-                        when (evaluation.catalogueMetadataConfidence) {
-                            SourceEvaluationMetadataConfidence.HIGH -> KMR.strings.source_evaluation_metadata_confidence_high
-                            SourceEvaluationMetadataConfidence.MODERATE -> KMR.strings.source_evaluation_metadata_confidence_moderate
-                            SourceEvaluationMetadataConfidence.LOW -> KMR.strings.source_evaluation_metadata_confidence_low
-                            SourceEvaluationMetadataConfidence.UNKNOWN -> KMR.strings.source_evaluation_metadata_confidence_unknown
-                        },
-                    )
-                    val evidenceLabel = stringResource(
-                        when (evidenceStrength(evaluation)) {
-                            EvidenceStrength.STRONG -> KMR.strings.source_evaluation_evidence_strong
-                            EvidenceStrength.MODERATE -> KMR.strings.source_evaluation_evidence_moderate
-                            EvidenceStrength.WEAK -> KMR.strings.source_evaluation_evidence_weak
-                            EvidenceStrength.LOW_CONFIDENCE -> KMR.strings.source_evaluation_evidence_low_confidence
-                        },
-                    )
-                    Text(
-                        text = stringResource(
-                            KMR.strings.source_evaluation_catalogue_row_subtitle,
-                            displayExt,
-                            evaluation.lang.uppercase(),
-                            fitPercent,
-                            confidenceLabel,
-                            evidenceLabel,
-                            lastEvalStr,
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = stringResource(
-                            KMR.strings.source_evaluation_detail_enriched_count,
-                            evidence.detailEnrichmentSuccessCount,
-                            evidence.detailEnrichmentAttemptCount,
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (evidence.detailEnrichmentFailedCount > 0) {
+                    Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall)) {
+                        // KMK v0.8.15: catalogue fit percent, metadata confidence, evidence strength, and
+                        // language moved here from the main row subtitle -- see the compact-subtitle
+                        // comment above in this function.
+                        val fitPercent = (evaluation.recommendationFitScore.coerceIn(0.0, 1.0) * 100).roundToInt()
+                        val confidenceLabel = stringResource(
+                            when (evaluation.catalogueMetadataConfidence) {
+                                SourceEvaluationMetadataConfidence.HIGH -> KMR.strings.source_evaluation_metadata_confidence_high
+                                SourceEvaluationMetadataConfidence.MODERATE -> KMR.strings.source_evaluation_metadata_confidence_moderate
+                                SourceEvaluationMetadataConfidence.LOW -> KMR.strings.source_evaluation_metadata_confidence_low
+                                SourceEvaluationMetadataConfidence.UNKNOWN -> KMR.strings.source_evaluation_metadata_confidence_unknown
+                            },
+                        )
+                        val evidenceLabel = stringResource(
+                            when (evidenceStrength(evaluation)) {
+                                EvidenceStrength.STRONG -> KMR.strings.source_evaluation_evidence_strong
+                                EvidenceStrength.MODERATE -> KMR.strings.source_evaluation_evidence_moderate
+                                EvidenceStrength.WEAK -> KMR.strings.source_evaluation_evidence_weak
+                                EvidenceStrength.LOW_CONFIDENCE -> KMR.strings.source_evaluation_evidence_low_confidence
+                            },
+                        )
                         Text(
                             text = stringResource(
-                                KMR.strings.source_evaluation_detail_enrichment_failed_count,
-                                evidence.detailEnrichmentFailedCount,
+                                KMR.strings.source_evaluation_catalogue_row_subtitle,
+                                displayExt,
+                                evaluation.lang.uppercase(Locale.ROOT),
+                                fitPercent,
+                                confidenceLabel,
+                                evidenceLabel,
+                                lastEvalStr,
                             ),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                    Text(
-                        text = stringResource(
-                            KMR.strings.source_evaluation_metadata_sample_count,
-                            evidence.metadataCandidateCount,
-                            evidence.sampleCount,
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = stringResource(
-                            KMR.strings.source_evaluation_positive_negative_summary,
-                            evidence.positiveCandidateCount,
-                            evidence.negativeCandidateCount,
-                            evidence.blockedCandidateCount,
-                            evidence.adultSignalCandidateCount,
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (evidence.isManualReview) {
                         Text(
-                            text = stringResource(KMR.strings.source_evaluation_verdict_review_explanation),
-                            style = MaterialTheme.typography.labelSmall,
+                            text = pluralStringResource(KMR.plurals.source_evaluation_detail_enriched_count, count = evidence.detailEnrichmentAttemptCount, evidence.detailEnrichmentSuccessCount, evidence.detailEnrichmentAttemptCount),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
                         )
+                        if (evidence.detailEnrichmentFailedCount > 0) {
+                            Text(
+                                text = pluralStringResource(KMR.plurals.source_evaluation_detail_enrichment_failed_count, count = evidence.detailEnrichmentFailedCount, evidence.detailEnrichmentFailedCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            text = pluralStringResource(KMR.plurals.source_evaluation_metadata_sample_count, count = evidence.sampleCount, evidence.metadataCandidateCount, evidence.sampleCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = stringResource(
+                                KMR.strings.source_evaluation_catalogue_sample_sources,
+                                evidence.popularCount,
+                                evidence.latestCount,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = stringResource(
+                                KMR.strings.source_evaluation_positive_negative_summary,
+                                pluralStringResource(
+                                    KMR.plurals.source_evaluation_liked_source_fragment,
+                                    count = evidence.positiveCandidateCount,
+                                    evidence.positiveCandidateCount,
+                                ),
+                                pluralStringResource(
+                                    KMR.plurals.source_evaluation_disliked_source_fragment,
+                                    count = evidence.negativeCandidateCount,
+                                    evidence.negativeCandidateCount,
+                                ),
+                                pluralStringResource(
+                                    KMR.plurals.source_evaluation_blocked_source_fragment,
+                                    count = evidence.blockedCandidateCount,
+                                    evidence.blockedCandidateCount,
+                                ),
+                                pluralStringResource(
+                                    KMR.plurals.source_evaluation_adult_risk_source_fragment,
+                                    count = evidence.adultSignalCandidateCount,
+                                    evidence.adultSignalCandidateCount,
+                                ),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (evidence.isManualReview) {
+                            Text(
+                                text = stringResource(KMR.strings.source_evaluation_verdict_review_explanation),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
@@ -3055,9 +3155,9 @@ private fun CandidateDiagnosticsRow(
             // KMK --> v0.6.19 follow-up: when skipAlreadyEvaluated is on, the visible count is
             // the unassessed remaining count — use more precise wording in that case
             val availableText = if (skipAlreadyEvaluated) {
-                stringResource(KMR.strings.source_evaluation_candidates_unassessed_remaining, visibleCount)
+                pluralStringResource(KMR.plurals.source_evaluation_candidates_unassessed_remaining, count = visibleCount, visibleCount)
             } else {
-                stringResource(KMR.strings.source_evaluation_candidates_available, visibleCount)
+                pluralStringResource(KMR.plurals.source_evaluation_candidates_available, count = visibleCount, visibleCount)
             }
             Text(
                 text = availableText,
@@ -3067,20 +3167,14 @@ private fun CandidateDiagnosticsRow(
             // KMK <--
             if (diagnostics.evaluatedHiddenCount > 0) {
                 Text(
-                    text = stringResource(
-                        KMR.strings.source_evaluation_candidates_evaluated_hidden,
-                        diagnostics.evaluatedHiddenCount,
-                    ),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_candidates_evaluated_hidden, count = diagnostics.evaluatedHiddenCount, diagnostics.evaluatedHiddenCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (diagnostics.explicitHiddenCount > 0) {
                 Text(
-                    text = stringResource(
-                        KMR.strings.source_evaluation_candidates_explicit_hidden,
-                        diagnostics.explicitHiddenCount,
-                    ),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_candidates_explicit_hidden, count = diagnostics.explicitHiddenCount, diagnostics.explicitHiddenCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3088,10 +3182,7 @@ private fun CandidateDiagnosticsRow(
             // KMK --> v0.6.16: show quarantined hidden count
             if (diagnostics.unsafeHiddenCount > 0) {
                 Text(
-                    text = stringResource(
-                        KMR.strings.source_evaluation_candidates_unsafe_hidden,
-                        diagnostics.unsafeHiddenCount,
-                    ),
+                    text = pluralStringResource(KMR.plurals.source_evaluation_candidates_unsafe_hidden, count = diagnostics.unsafeHiddenCount, diagnostics.unsafeHiddenCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary,
                 )

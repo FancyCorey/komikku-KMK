@@ -8,22 +8,28 @@ import eu.kanade.tachiyomi.data.backup.BackupFileValidator
 import eu.kanade.tachiyomi.data.backup.create.creators.CategoriesBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.ExtensionStoresBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.FeedBackupCreator
+import eu.kanade.tachiyomi.data.backup.create.creators.LocalTrackerBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.MangaBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.PreferenceBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SavedSearchBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SourcesBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.TasteBackupCreator
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridge
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridgeMapping
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceIdentityDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
+import eu.kanade.tachiyomi.data.backup.models.BackupLocalTrackedWork
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
+import eu.kanade.tachiyomi.data.backup.models.BackupSavedFocusMode
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
@@ -51,6 +57,21 @@ import java.time.Instant
 import java.util.Date
 import java.util.Locale
 
+internal fun writeBackupFile(file: UniFile, byteArray: ByteArray) {
+    file.openOutputStream()
+        .also {
+            // Force overwrite old file
+            (it as? FileOutputStream)?.channel?.truncate(0)
+        }
+        .sink().gzip().buffer().use {
+            it.write(byteArray)
+        }
+}
+
+fun interface BackupFileWriter {
+    fun write(file: UniFile, byteArray: ByteArray)
+}
+
 class BackupCreator(
     private val context: Context,
     private val isAutoBackup: Boolean,
@@ -68,11 +89,13 @@ class BackupCreator(
     // KMK -->
     private val feedBackupCreator: FeedBackupCreator = FeedBackupCreator(),
     private val tasteBackupCreator: TasteBackupCreator = TasteBackupCreator(),
+    private val localTrackerBackupCreator: LocalTrackerBackupCreator = LocalTrackerBackupCreator(),
     // KMK <--
     // SY -->
     private val savedSearchBackupCreator: SavedSearchBackupCreator = SavedSearchBackupCreator(),
     private val getMergedManga: GetMergedManga = Injekt.get(),
     // SY <--
+    internal val fileWriter: BackupFileWriter = BackupFileWriter(::writeBackupFile),
 ) {
 
     suspend fun backup(uri: Uri, options: BackupOptions): String {
@@ -133,6 +156,11 @@ class BackupCreator(
                 // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
                 backupCrossSourceGroupPrimaries = backupCrossSourceGroupPrimaries(options),
                 // KMK <--
+                backupCrossSourceIdentityDecisions = backupCrossSourceIdentityDecisions(options),
+                backupAlternateSourceBridges = backupAlternateSourceBridges(options),
+                backupAlternateSourceBridgeMappings = backupAlternateSourceBridgeMappings(options),
+                backupLocalTrackedWorks = backupLocalTrackedWorks(options),
+                backupSavedFocusModes = backupSavedFocusModes(options),
                 // KMK <--
             )
 
@@ -141,14 +169,7 @@ class BackupCreator(
                 throw IllegalStateException(context.stringResource(MR.strings.empty_backup_error))
             }
 
-            file.openOutputStream()
-                .also {
-                    // Force overwrite old file
-                    (it as? FileOutputStream)?.channel?.truncate(0)
-                }
-                .sink().gzip().buffer().use {
-                    it.write(byteArray)
-                }
+            fileWriter.write(file, byteArray)
             val fileUri = file.uri
 
             // Make sure it's a valid backup file
@@ -182,7 +203,7 @@ class BackupCreator(
         return sourcesBackupCreator(mangas)
     }
 
-    internal fun backupAppPreferences(options: BackupOptions): List<BackupPreference> {
+    /* KMK --> */ suspend /* KMK <-- */ fun backupAppPreferences(options: BackupOptions): List<BackupPreference> {
         if (!options.appSettings) return emptyList()
 
         return preferenceBackupCreator.createApp(includePrivatePreferences = options.privateSettings)
@@ -259,10 +280,36 @@ class BackupCreator(
     }
     // KMK <--
 
+    suspend fun backupCrossSourceIdentityDecisions(options: BackupOptions): List<BackupCrossSourceIdentityDecision> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupCrossSourceIdentityDecisions()
+    }
+
+    suspend fun backupAlternateSourceBridges(options: BackupOptions): List<BackupAlternateSourceBridge> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupAlternateSourceBridges()
+    }
+
+    suspend fun backupAlternateSourceBridgeMappings(options: BackupOptions): List<BackupAlternateSourceBridgeMapping> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupAlternateSourceBridgeMappings()
+    }
+
+    suspend fun backupLocalTrackedWorks(options: BackupOptions): List<BackupLocalTrackedWork> {
+        if (!options.localTracker) return emptyList()
+        return localTrackerBackupCreator()
+    }
+
     // KMK --> v0.7.28: seen manga keys
-    fun backupSeenMangaKeys(options: BackupOptions): List<BackupSeenMangaKey> {
+    suspend fun backupSeenMangaKeys(options: BackupOptions): List<BackupSeenMangaKey> {
         if (!options.tasteProfile) return emptyList()
         return tasteBackupCreator.backupSeenMangaKeys()
+    }
+    // KMK <--
+    // KMK v0.8.21-fix2: AUG-14 slice 3 -- saved For You focus modes
+    fun backupSavedFocusModes(options: BackupOptions): List<BackupSavedFocusMode> {
+        if (!options.tasteProfile) return emptyList()
+        return tasteBackupCreator.backupSavedFocusModes()
     }
     // KMK <--
     // KMK <--

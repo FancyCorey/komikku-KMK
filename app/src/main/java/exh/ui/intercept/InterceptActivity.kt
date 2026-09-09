@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
@@ -27,7 +29,10 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import exh.GalleryAddEvent
+import exh.GalleryAddFailureKind
 import exh.GalleryAdder
+import exh.galleryAddFailureMessage
+import exh.util.EvaluationModeFormatter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -101,10 +106,15 @@ class InterceptActivity : BaseActivity() {
                         text = stringResource(SYMR.strings.launching_app),
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    is InterceptResult.Failure -> Text(
-                        text = stringResource(SYMR.strings.error_with_reason, status.reason),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    is InterceptResult.Failure -> {
+                        Text(
+                            text = galleryAddFailureMessage(status.reason),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        TextButton(onClick = ::finish) {
+                            Text(stringResource(MR.strings.action_close))
+                        }
+                    }
                 }
             }
         }
@@ -146,15 +156,7 @@ class InterceptActivity : BaseActivity() {
                             },
                         )
                     }
-                    is InterceptResult.Failure -> {
-                        MaterialAlertDialogBuilder(this)
-                            .setTitle(MR.strings.chapter_error.getString(this))
-                            .setMessage(stringResource(SYMR.strings.could_not_open_entry, it.reason))
-                            .setPositiveButton(MR.strings.action_ok.getString(this), null)
-                            .setOnCancelListener { finish() }
-                            .setOnDismissListener { finish() }
-                            .show()
-                    }
+                    is InterceptResult.Failure -> Unit
                     else -> Unit
                 }
             }
@@ -181,6 +183,7 @@ class InterceptActivity : BaseActivity() {
     }
 
     private val galleryAdder = GalleryAdder()
+    private val sourcePreferences: SourcePreferences by lazy { Injekt.get() }
 
     private suspend fun loadGallery(gallery: String) {
         // Do not load gallery if already loading
@@ -191,7 +194,16 @@ class InterceptActivity : BaseActivity() {
                 withUIContext {
                     MaterialAlertDialogBuilder(this@InterceptActivity)
                         .setTitle(MR.strings.label_sources.getString(this@InterceptActivity))
-                        .setSingleChoiceItems(sources.map { it.toString() }.toTypedArray(), 0) { dialog, index ->
+                        .setSingleChoiceItems(
+                            sources.map {
+                                if (sourcePreferences.evaluationMode().get()) {
+                                    EvaluationModeFormatter.sourceLabel(it.id)
+                                } else {
+                                    it.toString()
+                                }
+                            }.toTypedArray(),
+                            0,
+                        ) { dialog, index ->
                             dialog.dismiss()
                             lifecycleScope.launchIO {
                                 loadGalleryEnd(gallery, sources[index])
@@ -217,7 +229,7 @@ class InterceptActivity : BaseActivity() {
 
         status.value = when (result) {
             is GalleryAddEvent.Success -> InterceptResult.Success(result.manga.id, result.manga, result.chapter)
-            is GalleryAddEvent.Fail -> InterceptResult.Failure(result.logMessage)
+            is GalleryAddEvent.Fail -> InterceptResult.Failure(result.reason)
         }
     }
 
@@ -230,5 +242,5 @@ sealed class InterceptResult {
     data object Idle : InterceptResult()
     data object Loading : InterceptResult()
     data class Success(val mangaId: Long, val manga: Manga, val chapter: Chapter? = null) : InterceptResult()
-    data class Failure(val reason: String) : InterceptResult()
+    data class Failure(val reason: GalleryAddFailureKind) : InterceptResult()
 }

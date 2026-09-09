@@ -43,7 +43,7 @@ fun MangaToolbar(
     hasFilters: Boolean,
     navigateUp: () -> Unit,
     onClickFilter: () -> Unit,
-    // KMK: null when nothing has been read yet, in which case the
+    // Null when nothing has been read yet, in which case the
     // action is omitted entirely rather than shown disabled/inert.
     onClickJumpToLastRead: (() -> Unit)? = null,
     onClickShare: (() -> Unit)?,
@@ -150,7 +150,6 @@ fun MangaToolbar(
                             ),
                         )
                     }
-                    // KMK -->
                     // Only offered when a target actually exists; an unread manga has no last-read
                     // chapter, so the action is omitted rather than shown inert. `title` is used by
                     // AppBar.Action as both the tooltip and the accessibility content description.

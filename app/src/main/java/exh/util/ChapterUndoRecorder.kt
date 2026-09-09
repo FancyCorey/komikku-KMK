@@ -3,14 +3,14 @@ package exh.util
 import eu.kanade.domain.source.service.SourcePreferences
 import tachiyomi.domain.chapter.model.Chapter
 
-// KMK -->
+// KMK Undo Expansion Phase 2 -->
 /**
  * Builds not-yet-committed [ChapterJournalEntry] snapshots for bookmark/read-state changes. Same
  * build-before-write/commit-after-success contract as every other recorder in this package.
  *
- * No-ops (returns an empty list) when Evaluation Mode is disabled, or when the requested batch exceeds
- * [ChapterUndoBoundPolicy.MAX_JOURNALED_CHAPTERS] -- the caller's write still proceeds normally in that
- * case, it is simply not journaled (see the shared 500-chapter bound policy).
+ * No-ops (returns an empty list) when there are no changes or when the
+ * requested batch exceeds [ChapterUndoBoundPolicy.MAX_JOURNALED_CHAPTERS].
+ * The caller's write still proceeds normally when the bound is exceeded.
  */
 object ChapterUndoRecorder {
 
@@ -19,7 +19,7 @@ object ChapterUndoRecorder {
         previousChapters: List<Chapter>,
         newBookmark: Boolean,
     ): List<ChapterJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || previousChapters.isEmpty()) return emptyList()
+        if (previousChapters.isEmpty()) return emptyList()
         if (ChapterUndoBoundPolicy.exceedsBound(previousChapters.size)) return emptyList()
         val changed = previousChapters.filter { it.bookmark != newBookmark }
         if (changed.isEmpty()) return emptyList()
@@ -47,7 +47,7 @@ object ChapterUndoRecorder {
         previousChapters: List<Chapter>,
         newRead: Boolean,
     ): List<ChapterJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || previousChapters.isEmpty()) return emptyList()
+        if (previousChapters.isEmpty()) return emptyList()
         if (ChapterUndoBoundPolicy.exceedsBound(previousChapters.size)) return emptyList()
         val changed = previousChapters.filter {
             it.read != newRead || (!newRead && it.lastPageRead > 0)

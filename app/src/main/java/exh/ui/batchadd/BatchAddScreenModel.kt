@@ -5,8 +5,10 @@ import androidx.compose.runtime.getValue
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
+import eu.kanade.domain.source.service.SourcePreferences
 import exh.GalleryAddEvent
 import exh.GalleryAdder
+import exh.galleryAddEventMessage
 import exh.log.xLogE
 import exh.source.ExhPreferences
 import exh.util.trimOrNull
@@ -23,6 +25,7 @@ import uy.kohesive.injekt.api.get
 
 class BatchAddScreenModel(
     private val exhPreferences: ExhPreferences = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) : StateScreenModel<BatchAddState>(BatchAddState()) {
     private val galleryAdder by lazy { GalleryAdder() }
 
@@ -95,7 +98,10 @@ class BatchAddScreenModel(
                             when (result) {
                                 is GalleryAddEvent.Success -> context.stringResource(SYMR.strings.batch_add_ok)
                                 is GalleryAddEvent.Fail -> context.stringResource(SYMR.strings.batch_add_error)
-                            } + " " + result.logMessage,
+                            } + " " + context.galleryAddEventMessage(
+                                result,
+                                sourcePreferences.evaluationMode().get(),
+                            ),
                         ),
                     )
                 }

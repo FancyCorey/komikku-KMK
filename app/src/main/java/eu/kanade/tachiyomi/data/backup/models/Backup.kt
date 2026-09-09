@@ -35,5 +35,16 @@ data class Backup(
     // KMK --> v0.8.1-fix1: user-selected primary version per confirmed cross-source link group (proto 627)
     @ProtoNumber(627) var backupCrossSourceGroupPrimaries: List<BackupCrossSourceGroupPrimary> = emptyList(),
     // KMK <--
+    // KMK --> A11.4: exact record-pair identity decisions (proto 628)
+    @ProtoNumber(628) var backupCrossSourceIdentityDecisions: List<BackupCrossSourceIdentityDecision> = emptyList(),
+    // KMK --> A12 Batch 05: bridge routes and exact target mappings (proto 629-630)
+    @ProtoNumber(629) var backupAlternateSourceBridges: List<BackupAlternateSourceBridge> = emptyList(),
+    @ProtoNumber(630) var backupAlternateSourceBridgeMappings: List<BackupAlternateSourceBridgeMapping> = emptyList(),
+    @ProtoNumber(631) var backupLocalTrackedWorks: List<BackupLocalTrackedWork> = emptyList(),
+    // KMK <--
+    // KMK v0.8.21-fix2: AUG-14 slice 3 -- saved For You focus modes (proto 632)
+    @ProtoNumber(632) var backupSavedFocusModes: List<BackupSavedFocusMode> = emptyList(),
+    // KMK <--
+    // KMK <--
     // KMK <--
 )

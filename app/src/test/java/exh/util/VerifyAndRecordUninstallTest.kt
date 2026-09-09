@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Phase 5 2026-07-29 -->
 /**
  * Tests for [verifyAndRecordUninstall] -- the fix for the confirmed gap that
  * [exh.recs.evaluation.SourceEvaluationScreenModel.uninstallRuntimeHealthExtension] previously
@@ -62,7 +62,7 @@ class VerifyAndRecordUninstallTest {
     }
 
     @Test
-    fun `Evaluation Mode disabled records nothing even when removal is verified`() = runTest {
+    fun `Evaluation Mode disabled still records a verified removal`() = runTest {
         val installed = MutableStateFlow(emptyList<String>())
 
         val removed = verifyAndRecordUninstall(
@@ -72,7 +72,7 @@ class VerifyAndRecordUninstallTest {
         )
 
         assertTrue(removed, "the return value must still truthfully report removal regardless of Evaluation Mode")
-        assertTrue(NonUndoableEventJournal.isEmpty(), "Evaluation Mode disabled must record nothing")
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
     }
 
     @Test

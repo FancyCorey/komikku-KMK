@@ -9,7 +9,10 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.collections.immutable.toPersistentMap
@@ -22,7 +25,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
@@ -43,10 +45,16 @@ abstract class SearchScreenModel(
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
+    private val forceAllSources: Boolean = false,
 ) : StateScreenModel<SearchScreenModel.State>(initialState) {
 
     private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
     private var searchJob: Job? = null
+
+    // KMK -->
+    /** Override in subclasses to cap results per source. Null = uncapped (normal global search). */
+    protected open val perSourceResultLimit: Int? = null
+    // KMK <--
 
     private val enabledLanguages = sourcePreferences.enabledLanguages().get()
     private val disabledSources = sourcePreferences.disabledSources().get()
@@ -74,7 +82,9 @@ abstract class SearchScreenModel(
         // KMK -->
         screenModelScope.launch {
             preferences.globalSearchPinnedState().changes().collectLatest { state ->
-                mutableState.update { it.copy(sourceFilter = state) }
+                mutableState.update {
+                    it.copy(sourceFilter = if (forceAllSources) SourceFilter.All else state)
+                }
             }
         }
         // KMK <--
@@ -134,6 +144,10 @@ abstract class SearchScreenModel(
     }
 
     fun setSourceFilter(filter: SourceFilter) {
+        // Update the local state before searching. The preference flow is asynchronous, so
+        // searching immediately after only writing the preference can otherwise reuse the old
+        // filter and return without issuing the requested source search.
+        mutableState.update { it.copy(sourceFilter = if (forceAllSources) SourceFilter.All else filter) }
         preferences.globalSearchPinnedState().set(filter)
         search()
     }
@@ -181,31 +195,42 @@ abstract class SearchScreenModel(
                         return@async
                     }
 
-                    try {
-                        val page = withContext(coroutineDispatcher) {
-                            source.getSearchManga(1, query.sanitize(), source.getFilterList())
-                        }
-
-                        val titles = page.mangas
-                            .map { it.toDomainManga(source.id) }
-                            .distinctBy { it.url }
-                            .let { networkToLocalManga(it) }
-
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Success(titles))
-                        }
-                    } catch (e: Exception) {
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Error(e))
-                        }
+                    // KMK v0.8.10-fix4: routed through the shared SourceRuntime boundary instead of
+                    // a local catch(Error) band-aid (fix3's approach). SourceRuntime.run() already
+                    // catches both ordinary Exceptions and recoverable extension LinkageErrors
+                    // uniformly, always rethrows CancellationException, and always rethrows a
+                    // genuinely fatal Error -- replacing both catch clauses below with one call.
+                    val result = SourceRuntime.run(source, SourceRuntimeOperation.Search, coroutineDispatcher) {
+                        getSearchManga(1, query.sanitize(), getFilterList())
                     }
+
+                    result.fold(
+                        onSuccess = { page ->
+                            val titles = page.mangas
+                                .map { it.toDomainManga(source.id) }
+                                .distinctBy { it.url }
+                                .let { networkToLocalManga(it) }
+                                // KMK -->
+                                .let { list -> perSourceResultLimit?.let(list::take) ?: list }
+                            // KMK <--
+
+                            if (isActive) {
+                                updateItem(source, SearchItemResult.Success(titles))
+                            }
+                        },
+                        onFailure = { throwable ->
+                            if (isActive) {
+                                updateItem(source, SearchItemResult.Error(throwable))
+                            }
+                        },
+                    )
                 }
             }
                 .awaitAll()
         }
     }
 
-    private fun updateItems(items: Map<Source, SearchItemResult>) {
+    private fun updateItems(items: PersistentMap<Source, SearchItemResult>) {
         mutableState.update {
             it.copy(
                 items = items
@@ -216,7 +241,10 @@ abstract class SearchScreenModel(
     }
 
     private fun updateItem(source: Source, result: SearchItemResult) {
-        updateItems(state.value.items + (source to result))
+        val newItems = state.value.items.mutate {
+            it[source] = result
+        }
+        updateItems(newItems)
     }
 
     fun setMigrateDialog(currentId: Long, target: Manga) {

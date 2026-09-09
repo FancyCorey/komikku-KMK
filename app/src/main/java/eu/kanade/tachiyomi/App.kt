@@ -77,6 +77,7 @@ import exh.log.EnhancedFilePrinter
 import exh.log.XLogLogcatLogger
 import exh.log.xLogD
 import exh.recs.evaluation.SourceEvaluationStartupRecovery
+import exh.util.EvaluationModeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
@@ -115,6 +116,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     @SuppressLint("LaunchActivityFromNotification")
     override fun onCreate() {
         super<Application>.onCreate()
+        EvaluationModeFormatter.initialize(this)
         patchInjekt()
         TelemetryConfig.init(
             applicationContext,
@@ -168,7 +170,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
         val scope = ProcessLifecycleOwner.get().lifecycleScope
 
-        // KMK: startup recovery queries
+        // Startup recovery queries
         // WorkManager through context.workManager. Ensure the explicit fallback is complete before
         // launching that process-scoped reconciliation coroutine; otherwise a process without the
         // AndroidX provider's automatic initialization could lose its durable cleanup offer after
@@ -237,11 +239,11 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         SourceEvaluationStartupRecovery().runAsync(scope)
         // KMK <--
 
-        // KMK: reconcile any durable
+        // Reconcile any durable
         // backup-cleanup record left behind by a process death (e.g. the app was killed while a
         // BackupCreateJob WorkManager job was still running) so the recovery dialog can be restored.
         //
-        // KMK: reconcileOnStartup already
+        // reconcileOnStartup already
         // catches ordinary exceptions from its own WorkManager calls internally, but this outer
         // boundary is a second, defense-in-depth safety net -- e.g. a WorkManager/database
         // initialization failure surfacing before reconcileOnStartup's own try/catch is reached must

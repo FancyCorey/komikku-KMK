@@ -34,14 +34,14 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Phase 5 2026-07-29 -->
 /**
  * Tests for [RecommendationBundleLibraryAdder.addToLibrary]'s journal wiring -- the fix for the
  * confirmed gap that bundle-import favorite-flips had no typed local undo at all, unlike every other
  * favorite-flip call site in the app. Mirrors [exh.util.LibraryUndoServiceRestoreTest]'s fake-repository
  * pattern rather than mocking the whole class: real [UpdateManga]/[SetMangaCategories]/[GetCategories]
  * interactors over in-memory fakes, proving the entry is built from the pre-write manga, recorded only
- * after the favorite write actually succeeds, and skipped entirely when Evaluation Mode is disabled.
+ * after the favorite write actually succeeds, including for ordinary users outside Evaluation Mode.
  */
 private class FakeMangaRepository(private val categoryRepository: FakeCategoryRepository) : StubMangaRepository() {
     val byId = mutableMapOf<Long, Manga>()
@@ -148,7 +148,7 @@ class RecommendationBundleLibraryAdderJournalTest {
     }
 
     @Test
-    fun `Evaluation Mode disabled records nothing even though the add still succeeds`() = runTest {
+    fun `normal Action History records the add when Evaluation Mode is disabled`() = runTest {
         sourcePreferences.evaluationMode().set(false)
         mangaRepository.byId[2L] = newManga(2L)
         val adder = buildAdder()
@@ -156,7 +156,11 @@ class RecommendationBundleLibraryAdderJournalTest {
         val result = adder.addToLibrary(newManga(2L), skipDuplicates = true)
 
         assertTrue(result.outcome is RecommendationBundleLibraryAdder.Outcome.Added)
-        assertTrue(LibraryUndoJournal.isEmpty())
+        val entries = LibraryUndoJournal.snapshot()
+        assertEquals(1, entries.size)
+        assertEquals(2L, entries.first().mangaId)
+        assertFalse(entries.first().previousFavorite ?: true)
+        assertEquals(true, entries.first().expectedPostFavorite)
     }
 
     @Test

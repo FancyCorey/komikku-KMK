@@ -9,10 +9,12 @@ import eu.kanade.tachiyomi.source.online.all.MergedSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import mihon.core.archive.archiveReader
 import mihon.core.archive.epubReader
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MergedMangaReference
@@ -37,6 +39,10 @@ class ChapterLoader(
     private val mergedReferences: List<MergedMangaReference>,
     private val mergedManga: Map<Long, Manga>?,
     // SY <--
+    private val loadDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val pageLoaderFactory: ((ReaderChapter) -> PageLoader)? = null,
+    private val emptyPageExceptionFactory: (() -> Throwable)? = null,
+    private val onArchiveDegraded: (ArchiveReaderDegradation) -> Unit = {},
 ) {
 
     /**
@@ -49,17 +55,20 @@ class ChapterLoader(
         }
 
         chapter.state = ReaderChapter.State.Loading
-        withIOContext {
+        withContext(loadDispatcher) {
             logcat { "Loading pages for ${chapter.chapter.name}" }
+            var loader: PageLoader? = null
             try {
-                val loader = getPageLoader(chapter)
-                chapter.pageLoader = loader
+                val createdLoader = pageLoaderFactory?.invoke(chapter) ?: getPageLoader(chapter)
+                loader = createdLoader
+                chapter.pageLoader = createdLoader
 
-                val pages = loader.getPages()
+                val pages = createdLoader.getPages()
                     .onEach { it.chapter = chapter }
 
                 if (pages.isEmpty()) {
-                    throw Exception(context.stringResource(MR.strings.page_list_empty_error))
+                    throw emptyPageExceptionFactory?.invoke()
+                        ?: Exception(context.stringResource(MR.strings.page_list_empty_error))
                 }
 
                 // If the chapter is partially read, set the starting page to the last the user read
@@ -77,12 +86,29 @@ class ChapterLoader(
             } catch (e: CancellationException) {
                 // KMK: cancellation must not be recorded as a load error, even transiently --
                 // just propagate it.
+                if (recycleFailedPageLoader(chapter, loader)) {
+                    chapter.state = ReaderChapter.State.Wait
+                }
                 throw e
             } catch (e: Throwable) {
-                chapter.state = ReaderChapter.State.Error(e)
+                if (recycleFailedPageLoader(chapter, loader)) {
+                    chapter.state = ReaderChapter.State.Error(e)
+                }
                 throw e
             }
         }
+    }
+
+    private fun recycleFailedPageLoader(chapter: ReaderChapter, failedLoader: PageLoader?): Boolean {
+        if (failedLoader == null) {
+            return chapter.pageLoader == null && chapter.state is ReaderChapter.State.Loading
+        }
+        val ownsChapter = chapter.pageLoader === failedLoader
+        failedLoader.recycle()
+        if (ownsChapter) {
+            chapter.pageLoader = null
+        }
+        return ownsChapter
     }
 
     /**
@@ -131,12 +157,13 @@ class ChapterLoader(
                         source = source,
                         downloadManager = downloadManager,
                         downloadProvider = downloadProvider,
+                        onArchiveDegraded = onArchiveDegraded,
                     )
                     source is HttpSource -> HttpPageLoader(chapter, source)
                     source is LocalSource -> source.getFormat(chapter.chapter).let { format ->
                         when (format) {
                             is Format.Directory -> DirectoryPageLoader(format.file)
-                            is Format.Archive -> ArchivePageLoader(format.file.archiveReader(context))
+                            is Format.Archive -> ArchivePageLoader(format.file.archiveReader(context), onArchiveDegraded)
                             is Format.Epub -> EpubPageLoader(format.file.epubReader(context))
                         }
                     }
@@ -150,11 +177,12 @@ class ChapterLoader(
                 source,
                 downloadManager,
                 downloadProvider,
+                onArchiveDegraded,
             )
             source is LocalSource -> source.getFormat(chapter.chapter).let { format ->
                 when (format) {
                     is Format.Directory -> DirectoryPageLoader(format.file)
-                    is Format.Archive -> ArchivePageLoader(format.file.archiveReader(context))
+                    is Format.Archive -> ArchivePageLoader(format.file.archiveReader(context), onArchiveDegraded)
                     is Format.Epub -> EpubPageLoader(format.file.epubReader(context))
                 }
             }

@@ -4,16 +4,22 @@ import android.content.Context
 import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
+import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridge
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridgeMapping
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceIdentityDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
+import eu.kanade.tachiyomi.data.backup.models.BackupLocalTrackedWork
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
+import eu.kanade.tachiyomi.data.backup.models.BackupSavedFocusMode
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
@@ -22,6 +28,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.FeedRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.LocalTrackerBackupRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.SavedSearchRestorer
@@ -34,9 +41,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -57,11 +68,13 @@ class BackupRestorer(
     // KMK -->
     private val feedRestorer: FeedRestorer = FeedRestorer(),
     private val tasteRestorer: TasteRestorer = TasteRestorer(),
+    private val localTrackerBackupRestorer: LocalTrackerBackupRestorer = LocalTrackerBackupRestorer(Injekt.get()),
     // KMK <--
 ) {
 
     private var restoreAmount = 0
     private var restoreProgress = 0
+    private val bookkeepingMutex = Mutex()
     private val errors = mutableListOf<Pair<Date, String>>()
 
     /**
@@ -69,7 +82,7 @@ class BackupRestorer(
      */
     private var sourceMapping: Map<Long, String> = emptyMap()
 
-    // KMK: returns a typed BackupRestoreOutcome instead of Unit
+    // KMK Code-Only Completion Plan 2026-07-31: returns a typed BackupRestoreOutcome instead of Unit
     // so a caller can distinguish a fully clean restore from one where individual items failed --
     // see BackupRestoreOutcome's own doc. This does NOT change this function's existing exception
     // propagation: restoreFromFile() still throws normally (cancellation or an unisolated-section
@@ -100,7 +113,15 @@ class BackupRestorer(
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
         val backup = BackupDecoder(context).decode(uri)
+        restoreDecodedBackup(backup, options)
+    }
 
+    // KMK AG15-F4: the file-decoding boundary (BackupDecoder against a real content Uri) is not
+    // unit-testable without Robolectric, but everything past it is a plain function of an already
+    // decoded Backup -- split out so an orchestration test can drive it directly with a Backup built
+    // in Kotlin (or round-tripped through real protobuf, like TasteBackupEndToEndRoundTripTest does
+    // for the taste-only path), without needing a real Context/Uri/ContentResolver.
+    internal suspend fun restoreDecodedBackup(backup: Backup, options: RestoreOptions) {
         // Store source mapping for error messages
         val backupMaps = backup.backupSources
         sourceMapping = backupMaps.associate { it.sourceId to it.name }
@@ -128,6 +149,9 @@ class BackupRestorer(
             restoreAmount += backup.backupExtensionStores.size
         }
         if (options.sourceSettings) {
+            restoreAmount += 1
+        }
+        if (options.localTracker && backup.backupLocalTrackedWorks.isNotEmpty()) {
             restoreAmount += 1
         }
 
@@ -183,12 +207,36 @@ class BackupRestorer(
                     // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
                     backup.backupCrossSourceGroupPrimaries,
                     // KMK <--
+                    backup.backupCrossSourceIdentityDecisions,
+                    backup.backupAlternateSourceBridges,
+                    backup.backupAlternateSourceBridgeMappings,
+                    backup.backupSavedFocusModes,
                     mangaJob,
                 )
+            }
+            if (options.localTracker && backup.backupLocalTrackedWorks.isNotEmpty()) {
+                restoreLocalTracker(backup.backupLocalTrackedWorks)
             }
             // KMK <--
 
             // TODO: optionally trigger online library + tracker update
+        }
+    }
+
+    private suspend fun recordError(message: String) {
+        bookkeepingMutex.withLock {
+            errors.add(Date() to message)
+        }
+    }
+
+    private suspend fun recordProgress(label: String) {
+        val progress = bookkeepingMutex.withLock {
+            restoreProgress += 1
+            restoreProgress
+        }
+        with(notifier) {
+            showRestoreProgress(label, progress, restoreAmount, isSync)
+                .show(Notifications.ID_RESTORE_PROGRESS)
         }
     }
 
@@ -197,18 +245,7 @@ class BackupRestorer(
         scope.ensureActive()
         categoriesRestorer(backupCategories)
 
-        restoreProgress += 1
-        with(notifier) {
-            showRestoreProgress(
-                context.stringResource(MR.strings.categories),
-                restoreProgress,
-                restoreAmount,
-                isSync,
-            )
-                // KMK -->
-                .show(Notifications.ID_RESTORE_PROGRESS)
-            // KMK <--
-        }
+        recordProgress(context.stringResource(MR.strings.categories))
     }
 
     // SY -->
@@ -224,18 +261,7 @@ class BackupRestorer(
         feedRestorer.restoreFeeds(backupFeeds)
         // KMK <--
 
-        restoreProgress += 1
-        with(notifier) {
-            showRestoreProgress(
-                context.stringResource(KMR.strings.saved_searches_feeds),
-                restoreProgress,
-                restoreAmount,
-                isSync,
-            )
-                // KMK -->
-                .show(Notifications.ID_RESTORE_PROGRESS)
-            // KMK <--
-        }
+        recordProgress(context.stringResource(KMR.strings.saved_searches_feeds))
     }
     // SY <--
 
@@ -253,16 +279,10 @@ class BackupRestorer(
                     throw e
                 } catch (e: Exception) {
                     val sourceName = sourceMapping[it.source] ?: it.source.toString()
-                    errors.add(Date() to "${it.title} [$sourceName]: ${context.stringResource(MR.strings.unknown_error)}")
+                    recordError("${it.title} [$sourceName]: ${context.stringResource(MR.strings.unknown_error)}")
                 }
 
-                restoreProgress += 1
-                with(notifier) {
-                    showRestoreProgress(it.title, restoreProgress, restoreAmount, isSync)
-                        // KMK -->
-                        .show(Notifications.ID_RESTORE_PROGRESS)
-                    // KMK <--
-                }
+                recordProgress(it.title)
             }
     }
 
@@ -276,36 +296,14 @@ class BackupRestorer(
             categories,
         )
 
-        restoreProgress += 1
-        with(notifier) {
-            showRestoreProgress(
-                context.stringResource(MR.strings.app_settings),
-                restoreProgress,
-                restoreAmount,
-                isSync,
-            )
-                // KMK -->
-                .show(Notifications.ID_RESTORE_PROGRESS)
-            // KMK <--
-        }
+        recordProgress(context.stringResource(MR.strings.app_settings))
     }
 
     private fun CoroutineScope.restoreSourcePreferences(preferences: List<BackupSourcePreferences>) = launch {
         ensureActive()
         preferenceRestorer.restoreSource(preferences)
 
-        restoreProgress += 1
-        with(notifier) {
-            showRestoreProgress(
-                context.stringResource(MR.strings.source_settings),
-                restoreProgress,
-                restoreAmount,
-                isSync,
-            )
-                // KMK -->
-                .show(Notifications.ID_RESTORE_PROGRESS)
-            // KMK <--
-        }
+        recordProgress(context.stringResource(MR.strings.source_settings))
     }
 
     private fun CoroutineScope.restoreExtensionStores(
@@ -320,26 +318,10 @@ class BackupRestorer(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    errors.add(
-                        Date() to
-                            "Error Adding Repo: ${it.name} : ${context.stringResource(MR.strings.unknown_error)}",
-                    )
+                    recordError("Error Adding Repo: ${it.name} : ${context.stringResource(MR.strings.unknown_error)}")
                 }
 
-                restoreProgress += 1
-                // KMK -->
-                with(notifier) {
-                    // KMK <--
-                    showRestoreProgress(
-                        context.stringResource(MR.strings.extensionStores),
-                        restoreProgress,
-                        restoreAmount,
-                        isSync,
-                    )
-                        // KMK -->
-                        .show(Notifications.ID_RESTORE_PROGRESS)
-                    // KMK <--
-                }
+                recordProgress(context.stringResource(MR.strings.extensionStores))
             }
     }
 
@@ -361,43 +343,46 @@ class BackupRestorer(
         // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
         backupCrossSourceGroupPrimaries: List<BackupCrossSourceGroupPrimary>,
         // KMK <--
+        backupCrossSourceIdentityDecisions: List<BackupCrossSourceIdentityDecision>,
+        backupAlternateSourceBridges: List<BackupAlternateSourceBridge>,
+        backupAlternateSourceBridgeMappings: List<BackupAlternateSourceBridgeMapping>,
+        // KMK v0.8.21-fix2: AUG-14 slice 3 -- saved For You focus modes
+        backupSavedFocusModes: List<BackupSavedFocusMode>,
         mangaJob: Job?,
     ) = launch {
         // Manga tastes resolve by (url, source) — wait until library entries exist locally
         mangaJob?.join()
         ensureActive()
-        val tasteErrors = buildList {
-            addAll(tasteRestorer.restoreMangaTastes(backupMangaTastes))
-            addAll(tasteRestorer.restoreTagTastes(backupTagTastes))
-            addAll(tasteRestorer.restoreTagAliases(backupTagAliases))
-            addAll(tasteRestorer.restoreDisabledRecommendationSources(backupDisabledSources))
-            // KMK --> v0.7.0: Phase 4
-            addAll(tasteRestorer.restoreCrossSourceMangaLinks(backupCrossSourceMangaLinks))
-            // KMK <--
-            // KMK --> v0.8.1-fix1: restored after links so the group already exists
-            addAll(tasteRestorer.restoreCrossSourceGroupPrimaries(backupCrossSourceGroupPrimaries))
-            // KMK <--
-            // KMK --> v0.7.16: Best Version quality signals
-            addAll(tasteRestorer.restoreMangaSourceQualitySignals(backupMangaSourceQualitySignals))
-            // KMK <--
-            // KMK --> v0.7.28: seen manga keys
-            addAll(tasteRestorer.restoreSeenMangaKeys(backupSeenMangaKeys))
-            // KMK <--
-        }
-        tasteErrors.forEach { errors.add(Date() to it) }
+        // KMK F2-02: delegates to TasteRestorer.restoreTasteProfileBundle -- the exact same call
+        // sequence that used to be duplicated inline here, now a single owned/directly-testable
+        // function (see its own doc comment for why this extraction closed a real coverage gap).
+        val tasteErrors = tasteRestorer.restoreTasteProfileBundle(
+            backupMangaTastes = backupMangaTastes,
+            backupTagTastes = backupTagTastes,
+            backupTagAliases = backupTagAliases,
+            backupDisabledSources = backupDisabledSources,
+            backupCrossSourceMangaLinks = backupCrossSourceMangaLinks,
+            backupCrossSourceGroupPrimaries = backupCrossSourceGroupPrimaries,
+            backupCrossSourceIdentityDecisions = backupCrossSourceIdentityDecisions,
+            backupAlternateSourceBridges = backupAlternateSourceBridges,
+            backupAlternateSourceBridgeMappings = backupAlternateSourceBridgeMappings,
+            backupMangaSourceQualitySignals = backupMangaSourceQualitySignals,
+            backupSeenMangaKeys = backupSeenMangaKeys,
+            backupSavedFocusModes = backupSavedFocusModes,
+        )
+        tasteErrors.forEach { recordError(it) }
 
-        restoreProgress += 1
-        with(notifier) {
-            showRestoreProgress(
-                context.stringResource(KMR.strings.taste_backup_option),
-                restoreProgress,
-                restoreAmount,
-                isSync,
-            )
-                .show(Notifications.ID_RESTORE_PROGRESS)
-        }
+        recordProgress(context.stringResource(KMR.strings.taste_backup_option))
     }
     // KMK <--
+
+    private fun CoroutineScope.restoreLocalTracker(backupLocalTrackedWorks: List<BackupLocalTrackedWork>) = launch {
+        ensureActive()
+        localTrackerBackupRestorer.restore(backupLocalTrackedWorks).forEach { error ->
+            recordError(error)
+        }
+        recordProgress(context.stringResource(KMR.strings.local_tracker_backup_option))
+    }
 
     private fun writeErrorLog(): File {
         try {

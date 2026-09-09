@@ -8,7 +8,10 @@ import tachiyomi.domain.manga.model.Manga
 sealed interface SameMangaCandidateResult {
     data object Loading : SameMangaCandidateResult
     data class Error(val throwable: Throwable) : SameMangaCandidateResult
-    data class Success(val results: List<Manga>) : SameMangaCandidateResult
+    data class Success(
+        val results: List<Manga>,
+        val evidence: Map<MangaIdentityKey, SameMangaIdentityAssessment> = emptyMap(),
+    ) : SameMangaCandidateResult
 }
 
 /** Source + result pair returned from [SameMangaCandidateSearcher]. */

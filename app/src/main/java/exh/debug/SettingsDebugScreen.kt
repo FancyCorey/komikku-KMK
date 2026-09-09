@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -43,12 +43,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.preference.PreferenceMutableState
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TrailingWidgetBuffer
 import eu.kanade.presentation.util.Screen
+import exh.util.DeveloperOptionsGatePolicy
 import exh.util.capitalize
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -61,7 +66,10 @@ import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.topSmallPaddingValues
 import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.presentation.core.util.plus
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.util.Locale
 import kotlin.reflect.KFunction
 import kotlin.reflect.KVisibility
@@ -73,6 +81,22 @@ class SettingsDebugScreen : Screen() {
 
     @Composable
     override fun Content() {
+        val navigator = LocalNavigator.currentOrThrow
+        val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
+        val developerOptionsEnabled by remember { sourcePreferences.developerOptionsEnabled() }.collectAsState()
+        val evaluationModeEnabled = rememberEvaluationModeEnabled()
+        val diagnosticsAllowed = DeveloperOptionsGatePolicy.canExposeDiagnostics(
+            developerOptionsEnabled = developerOptionsEnabled,
+            evaluationModeEnabled = evaluationModeEnabled,
+        )
+        LaunchedEffect(diagnosticsAllowed) {
+            if (!diagnosticsAllowed) navigator.pop()
+        }
+        if (!diagnosticsAllowed) {
+            LoadingScreen()
+            return
+        }
+
         val scope = rememberCoroutineScope()
         // KMK -->
         // val navigator = LocalNavigator.currentOrThrow
@@ -233,7 +257,7 @@ class SettingsDebugScreen : Screen() {
                 },
                 confirmButton = {},
                 text = {
-                    SelectionContainer(Modifier.verticalScroll(rememberScrollState())) {
+                    Box(Modifier.verticalScroll(rememberScrollState())) {
                         Text(text = result.second)
                     }
                 },

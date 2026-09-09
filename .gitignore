@@ -3,6 +3,7 @@
 #.vscode
 .kotlin
 build
+/core/image-decoder/.cxx/
 
 # IDE files
 *.iml
@@ -21,3 +22,19 @@ local.properties
 /app/google-services.json
 *.jks
 app/standard/preview/*
+
+# KMK fork: exclude versioned debug APK handoffs from source control
+*.apk
+
+# KMK fork: exclude AI assistant memory directory from source control
+/memory/
+
+# KMK fork: exclude private diagnostic SQLite snapshots pulled from a real device (contain user data)
+tachiyomi_kmk_debug_diagnostic*.db*
+
+# KMK fork: exclude local device screenshots captured during manual/automated UI verification
+/artifacts/
+
+# Python tooling caches (tools/ UI-automation scripts)
+__pycache__/
+*.pyc

@@ -58,6 +58,13 @@ class ExtensionInstallerPreference(
         basePref.set(check(value))
     }
 
+    // KMK F2-05.0: delegates to the wrapped preference's own commit(), same value-checking as set().
+    // 2026-08-27 correction: forwards basePref.commit()'s real Boolean result instead of discarding
+    // it, so a caller here can also fail closed on a genuine persistence failure.
+    override fun commit(value: ExtensionInstaller): Boolean {
+        return basePref.commit(check(value))
+    }
+
     override fun isSet() = basePref.isSet()
 
     override fun delete() = basePref.delete()

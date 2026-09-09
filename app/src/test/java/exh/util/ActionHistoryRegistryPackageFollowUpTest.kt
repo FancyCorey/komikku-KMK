@@ -19,14 +19,14 @@ import org.junit.jupiter.api.Test
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
 /**
  * Direct tests for [ActionHistoryRegistry]'s `packageFollowUpFor` -- the shared-id correlation that
  * connects a rendered [NonUndoableEvent] Action History row back to its private
  * [PackageOperationReceipt] twin and, only when [PackageOperationFollowUpPolicy] currently judges it
  * safe, exposes a real "Uninstall"/"Reinstall" [ActionHistoryFollowUp].
  *
- * KMK: previously
+ * KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 Phase D item 3: previously
  * [ExtensionManager]/[SourcePreferences] were looked up via `Injekt.get()` inside production code, and
  * this file registered fakes into the process-global Injekt graph to reach them -- Injekt's process-wide
  * singleton caching (the first resolved instance for a type is cached for the whole JVM process) made a
@@ -174,7 +174,7 @@ class ActionHistoryRegistryPackageFollowUpTest {
         assertNull(row.followUp, "the package is no longer installed -- PackageOperationFollowUpPolicy must refuse this")
     }
 
-    // KMK: the
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 Phase D item 3: the
     // direct followUp.trigger() invocation tests V2 deleted after a full-suite-only ClassCastException
     // (see this file's class doc for the root cause and the seam that now fixes it). Restored below,
     // covering both directions (uninstall-offer, install-offer), a real ExtensionManager method
@@ -220,7 +220,7 @@ class ActionHistoryRegistryPackageFollowUpTest {
     }
 
     @Test
-    fun `uninstall follow-up trigger records nothing when Evaluation Mode is off, even though removal is truthfully observed`() = runTest {
+    fun `uninstall follow-up trigger records a verified removal when Evaluation Mode is off`() = runTest {
         bindFakes()
         sourcePreferences.evaluationMode().set(false)
         val target = installed()
@@ -233,8 +233,8 @@ class ActionHistoryRegistryPackageFollowUpTest {
 
         followUp.trigger()
 
-        assertTrue(NonUndoableEventJournal.snapshot().none { it.eventType == NonUndoableEventType.EXTENSION_UNINSTALLED })
-        assertTrue(PackageOperationJournal.snapshot().none { it.kind == PackageOperationKind.UNINSTALL })
+        assertEquals(1, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.EXTENSION_UNINSTALLED })
+        assertEquals(1, PackageOperationJournal.snapshot().count { it.kind == PackageOperationKind.UNINSTALL })
     }
 
     @Test
@@ -273,7 +273,7 @@ class ActionHistoryRegistryPackageFollowUpTest {
     }
 
     @Test
-    fun `reinstall follow-up trigger records nothing when Evaluation Mode is off, even on a successful install`() = runTest {
+    fun `reinstall follow-up trigger records a successful install when Evaluation Mode is off`() = runTest {
         bindFakes()
         sourcePreferences.evaluationMode().set(false)
         val artifact = available()
@@ -286,8 +286,8 @@ class ActionHistoryRegistryPackageFollowUpTest {
         val result = followUp.trigger()
 
         assertEquals(ActionHistoryFollowUpResult.Started, result, "the install itself must still truthfully report success")
-        assertTrue(NonUndoableEventJournal.snapshot().none { it.eventType == NonUndoableEventType.EXTENSION_INSTALLED })
-        assertTrue(PackageOperationJournal.snapshot().none { it.kind == PackageOperationKind.INSTALL })
+        assertEquals(1, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.EXTENSION_INSTALLED })
+        assertEquals(1, PackageOperationJournal.snapshot().count { it.kind == PackageOperationKind.INSTALL })
     }
 
     @Test

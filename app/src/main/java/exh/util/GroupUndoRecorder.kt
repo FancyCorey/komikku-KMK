@@ -12,8 +12,9 @@ import tachiyomi.domain.taste.model.CrossSourceMangaLink
  * must call [GroupUndoJournal.record] themselves, and only after their write actually succeeds, so a
  * failed mutation can never leave a stale journal entry describing a change that never happened.
  *
- * No-ops entirely (returns `null`, no journal entry, no extra state capture) when Evaluation Mode is
- * disabled -- normal users get no group-undo journal behavior and no extra reads.
+ * The journal is a normal-user recovery surface. Evaluation Mode does not
+ * suppress group undo capture; the snapshots remain bounded and contain only
+ * the local link state needed for a guarded inverse.
  */
 object GroupUndoRecorder {
 
@@ -29,7 +30,7 @@ object GroupUndoRecorder {
         plan: exh.recs.loved.RatedGroupMergePlanner.MergePlan,
         existingGroupMembers: Map<String, List<CrossSourceMangaLink>>,
     ): GroupJournalEntry? {
-        if (!sourcePreferences.evaluationMode().get() || plan.writes.isEmpty()) return null
+        if (plan.writes.isEmpty()) return null
         val previousByKey: Map<RatedLinkKey, CrossSourceMangaLink> = existingGroupMembers.values
             .flatten()
             .associateBy { RatedLinkKey(it.source, it.url) }
@@ -58,7 +59,7 @@ object GroupUndoRecorder {
         sourcePreferences: SourcePreferences,
         removals: List<Pair<RatedLinkKey, CrossSourceMangaLink>>,
     ): GroupJournalEntry? {
-        if (!sourcePreferences.evaluationMode().get() || removals.isEmpty()) return null
+        if (removals.isEmpty()) return null
         val touchedKeys = removals.map { it.first }.toSet()
         val previousLinks = removals.associate { (key, link) -> key to GroupLinkSnapshot.from(link) }
         val expectedPostLinks = touchedKeys.associateWith { null as GroupLinkSnapshot? }
@@ -82,7 +83,7 @@ object GroupUndoRecorder {
         previousLinks: List<CrossSourceMangaLink>,
         previousPrimary: CrossSourceGroupPrimary?,
     ): GroupJournalEntry? {
-        if (!sourcePreferences.evaluationMode().get() || previousLinks.isEmpty()) return null
+        if (previousLinks.isEmpty()) return null
         val touchedKeys = previousLinks.map { RatedLinkKey(it.source, it.url) }.toSet()
         val previousLinkSnapshots = previousLinks.associate { RatedLinkKey(it.source, it.url) to GroupLinkSnapshot.from(it) }
         val expectedPostLinks = touchedKeys.associateWith { null as GroupLinkSnapshot? }
@@ -106,7 +107,6 @@ object GroupUndoRecorder {
         previousPrimary: CrossSourceGroupPrimary?,
         newPrimary: RatedLinkKey,
     ): GroupJournalEntry? {
-        if (!sourcePreferences.evaluationMode().get()) return null
         val expectedPrimary = GroupPrimarySnapshot(
             groupId = groupId,
             source = newPrimary.source,

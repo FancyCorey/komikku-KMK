@@ -14,7 +14,7 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 
-// KMK -->
+// KMK Undo Expansion Phase 2 -->
 private class FakeChapterRepository : ChapterRepository {
     val byId = mutableMapOf<Long, Chapter>()
     var throwOnUpdate: RuntimeException? = null
@@ -159,10 +159,10 @@ class ChapterUndoServiceRestoreTest {
     }
 
     @Test
-    fun `recorder builds nothing when Evaluation Mode is disabled`() {
+    fun `recorder still builds an entry when Evaluation Mode is disabled`() {
         sourcePreferences.evaluationMode().set(false)
         val entries = ChapterUndoRecorder.buildBookmarkEntries(sourcePreferences, listOf(chapter(1L, false, false)), true)
-        assertTrue(entries.isEmpty())
+        assertEquals(1, entries.size)
     }
 }
 // KMK <--

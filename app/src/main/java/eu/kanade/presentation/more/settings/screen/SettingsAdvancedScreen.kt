@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.text.HtmlCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.base.BasePreferences
@@ -46,6 +48,7 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.library.MetadataUpdateJob
 import eu.kanade.tachiyomi.data.updater.AppUpdateJob
+import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.network.PREF_DOH_360
@@ -74,6 +77,12 @@ import eu.kanade.tachiyomi.util.system.toast
 import exh.debug.SettingsDebugScreen
 import exh.log.EHLogLevel
 import exh.pref.DelegateSourcePreferences
+import exh.recs.bestversion.fixture.BestVersionPairedFixtureCommandState
+import exh.recs.bestversion.fixture.BestVersionPairedFixtureMode
+import exh.recs.bestversion.fixture.BestVersionPairedFixtureRuntime
+import exh.recs.bridge.fixture.AlternateSourceReaderFixtureCommandState
+import exh.recs.bridge.fixture.AlternateSourceReaderFixtureRuntime
+import exh.recs.bridge.fixture.AlternateSourceReaderFixtureScenario
 import exh.source.ExhPreferences
 import exh.util.toAnnotatedString
 import kotlinx.collections.immutable.persistentListOf
@@ -772,31 +781,133 @@ object SettingsAdvancedScreen : SearchableSettings {
         val exhPreferences = remember { Injekt.get<ExhPreferences>() }
         val delegateSourcePreferences = remember { Injekt.get<DelegateSourcePreferences>() }
         val securityPreferences = remember { Injekt.get<SecurityPreferences>() }
-        // KMK v0.8.19: gates the Action Undo Journal nav row below.
+        val alternateSourceReaderFixtureRuntime = remember { Injekt.get<AlternateSourceReaderFixtureRuntime>() }
+        val bestVersionPairedFixtureRuntime = remember { Injekt.get<BestVersionPairedFixtureRuntime>() }
+        val extensionManager = remember { Injekt.get<ExtensionManager>() }
+        val installedExtensions by extensionManager.installedExtensionsFlow.collectAsStateWithLifecycle()
+        val alternateSourceReaderFixtureState by
+            alternateSourceReaderFixtureRuntime.commandController.state.collectAsStateWithLifecycle()
+        val alternateSourceReaderFixtureScenario by remember {
+            sourcePreferences.alternateSourceReaderFixtureScenario()
+        }.collectAsState()
+        val bestVersionPairedFixtureMode by remember {
+            sourcePreferences.bestVersionPairedFixtureMode()
+        }.collectAsState()
+        val scope = rememberCoroutineScope()
+        val developerOptionsPreference = remember { sourcePreferences.developerOptionsEnabled() }
+        val developerOptionsEnabled by developerOptionsPreference.collectAsState()
+        var showDeveloperOptionsWarning by rememberSaveable { mutableStateOf(false) }
+        // Keep this read for the delegated-source summary's display redaction. It no longer gates
+        // the normal Action History destination below.
         val evaluationModeEnabled = exh.util.rememberEvaluationModeEnabled()
+        val alternateSourceReaderFixtureAvailable = BuildConfig.DEBUG &&
+            developerOptionsEnabled &&
+            evaluationModeEnabled &&
+            alternateSourceReaderFixtureRuntime.controlsAvailable(installedExtensions)
+        val alternateSourceReaderFixtureRunning =
+            alternateSourceReaderFixtureState is AlternateSourceReaderFixtureCommandState.Running
+        val bestVersionFixtureAvailable = BuildConfig.DEBUG &&
+            developerOptionsEnabled &&
+            evaluationModeEnabled &&
+            bestVersionPairedFixtureRuntime.controlsAvailable(installedExtensions)
+        val bestVersionFixtureState by
+            bestVersionPairedFixtureRuntime.commandController.state.collectAsStateWithLifecycle()
+        val bestVersionFixtureRunning = bestVersionFixtureState is BestVersionPairedFixtureCommandState.Running
+        val anyFixtureRunning = bestVersionFixtureRunning || alternateSourceReaderFixtureRunning
+        val alternateSourceReaderFixtureStatus = stringResource(
+            when (alternateSourceReaderFixtureState) {
+                AlternateSourceReaderFixtureCommandState.Idle ->
+                    KMR.strings.alternate_source_reader_fixture_status_ready
+                is AlternateSourceReaderFixtureCommandState.Running ->
+                    KMR.strings.alternate_source_reader_fixture_status_running
+                is AlternateSourceReaderFixtureCommandState.Succeeded ->
+                    KMR.strings.alternate_source_reader_fixture_status_success
+                is AlternateSourceReaderFixtureCommandState.Partial ->
+                    KMR.strings.alternate_source_reader_fixture_status_partial
+                is AlternateSourceReaderFixtureCommandState.Failed ->
+                    KMR.strings.alternate_source_reader_fixture_status_failed
+            },
+        )
+        val bestVersionFixtureStatus = stringResource(
+            when (bestVersionFixtureState) {
+                BestVersionPairedFixtureCommandState.Idle ->
+                    KMR.strings.best_version_paired_fixture_status_ready
+                BestVersionPairedFixtureCommandState.Running ->
+                    KMR.strings.best_version_paired_fixture_status_running
+                BestVersionPairedFixtureCommandState.Opened ->
+                    KMR.strings.best_version_paired_fixture_status_opened
+                BestVersionPairedFixtureCommandState.NotAuthorized ->
+                    KMR.strings.best_version_paired_fixture_status_not_authorized
+                BestVersionPairedFixtureCommandState.Collision ->
+                    KMR.strings.best_version_paired_fixture_status_collision
+                BestVersionPairedFixtureCommandState.RecoveryRequired ->
+                    KMR.strings.best_version_paired_fixture_status_recovery_required
+                BestVersionPairedFixtureCommandState.Failed ->
+                    KMR.strings.best_version_paired_fixture_status_failed
+            },
+        )
+        if (showDeveloperOptionsWarning) {
+            AlertDialog(
+                onDismissRequest = { showDeveloperOptionsWarning = false },
+                title = { Text(text = stringResource(KMR.strings.developer_options_warning_title)) },
+                text = {
+                    Text(
+                        text = stringResource(KMR.strings.developer_options_warning_message),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeveloperOptionsWarning = false }) {
+                        Text(text = stringResource(MR.strings.action_cancel))
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            developerOptionsPreference.set(true)
+                            showDeveloperOptionsWarning = false
+                        },
+                    ) {
+                        Text(text = stringResource(KMR.strings.developer_options_warning_confirm))
+                    }
+                },
+            )
+        }
         return Preference.PreferenceGroup(
             title = stringResource(SYMR.strings.developer_tools),
             preferenceItems = listOfNotNull(
                 // KMK -->
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = developerOptionsPreference,
+                    title = stringResource(KMR.strings.developer_options_title),
+                    subtitle = stringResource(KMR.strings.developer_options_summary),
+                    onValueChanged = { requestedEnabled ->
+                        when (
+                            exh.util.DeveloperOptionsGatePolicy.request(
+                                currentEnabled = developerOptionsPreference.get(),
+                                requestedEnabled = requestedEnabled,
+                            )
+                        ) {
+                            exh.util.DeveloperOptionsGatePolicy.RequestResult.PERSIST -> true
+                            exh.util.DeveloperOptionsGatePolicy.RequestResult.REQUIRE_CONFIRMATION -> {
+                                showDeveloperOptionsWarning = true
+                                false
+                            }
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = sourcePreferences.evaluationMode(),
                     title = stringResource(KMR.strings.evaluation_mode_title),
                     subtitle = stringResource(KMR.strings.evaluation_mode_summary),
                 ),
-                // KMK v0.8.19: Evaluation Mode Action Undo Journal entry point -- only shown while
-                // Evaluation Mode is on; normal users (Evaluation Mode off) never see this row at all,
-                // matching the feature's explicit "no UI, no behavior change when disabled" requirement.
-                if (evaluationModeEnabled) {
-                    Preference.PreferenceItem.TextPreference(
-                        title = stringResource(KMR.strings.eval_undo_history_nav_title),
-                        subtitle = stringResource(KMR.strings.eval_undo_history_nav_summary),
-                        onClick = { navigator.push(exh.util.EvaluationModeActionHistoryScreen()) },
-                    )
-                } else {
-                    null
-                },
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(KMR.strings.eval_undo_history_nav_title),
+                    subtitle = stringResource(KMR.strings.eval_undo_history_nav_summary),
+                    onClick = { navigator.push(exh.util.ActionHistoryScreen()) },
+                ),
                 // KMK <--
-                // KMK: debug-build-only deterministic Source Evaluation fixture selector. BuildConfig.DEBUG
+                // debug-build-only deterministic Source Evaluation fixture selector. BuildConfig.DEBUG
                 // is a compile-time-per-variant constant that is `false` for every non-debug build
                 // type, so this row (and the preference-read branch that consumes it in
                 // SourceEvaluationJob.selectSourceEvaluationRunner) is unreachable outside a debug
@@ -820,7 +931,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                 } else {
                     null
                 },
-                // KMK: separate debug-build-only fixture selector for the
+                // KMK Corrective pass 2026-08-03: separate debug-build-only fixture selector for the
                 // Browse paging source. Deliberately its own preference/row (not a reuse of the
                 // Source Evaluation fixture above) -- see SourcePreferences.browseFixtureFailureMode
                 // and BrowseSourceScreenModel.createSourcePagingSource for why the two must stay
@@ -850,7 +961,147 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 stringResource(KMR.strings.sources_to_try_debug_fixture_mode_off),
                             exh.recs.discovery.SourcesToTryDebugFixtureMode.SUGGESTION_VISIBLE.prefValue to
                                 stringResource(KMR.strings.sources_to_try_debug_fixture_mode_suggestion_visible),
+                            exh.recs.discovery.SourcesToTryDebugFixtureMode.EMPTY.prefValue to
+                                stringResource(KMR.strings.sources_to_try_debug_fixture_mode_empty),
                         ),
+                    )
+                } else {
+                    null
+                },
+                if (BuildConfig.DEBUG) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = sourcePreferences.forYouFixtureMode(),
+                        title = stringResource(KMR.strings.for_you_debug_fixture_mode_title),
+                        subtitle = stringResource(KMR.strings.for_you_debug_fixture_mode_summary),
+                        entries = persistentMapOf(
+                            exh.recs.ForYouDebugFixtureMode.OFF.prefValue to
+                                stringResource(KMR.strings.for_you_debug_fixture_mode_off),
+                            exh.recs.ForYouDebugFixtureMode.TOP_PICKS.prefValue to
+                                stringResource(KMR.strings.for_you_debug_fixture_mode_top_picks),
+                            exh.recs.ForYouDebugFixtureMode.TOP_PICKS_PARTIAL_FAILURE.prefValue to
+                                stringResource(KMR.strings.for_you_debug_fixture_mode_top_picks_partial_failure),
+                        ),
+                    )
+                } else {
+                    null
+                },
+                if (alternateSourceReaderFixtureAvailable) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = sourcePreferences.alternateSourceReaderFixtureScenario(),
+                        title = stringResource(KMR.strings.alternate_source_reader_fixture_scenario_title),
+                        subtitle = stringResource(KMR.strings.alternate_source_reader_fixture_scenario_summary),
+                        entries = persistentMapOf(
+                            AlternateSourceReaderFixtureScenario.OFF.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_off),
+                            AlternateSourceReaderFixtureScenario.EXACT_GAP.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_exact),
+                            AlternateSourceReaderFixtureScenario.OFFSET_PROVISIONAL.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_offset),
+                            AlternateSourceReaderFixtureScenario.MISSING.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_missing),
+                            AlternateSourceReaderFixtureScenario.DUPLICATE_CONFLICT.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_duplicate),
+                            AlternateSourceReaderFixtureScenario.STALE.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_stale),
+                            AlternateSourceReaderFixtureScenario.PROCESS_RECREATED.prefValue to
+                                stringResource(KMR.strings.alternate_source_reader_fixture_scenario_recreated),
+                        ),
+                        onValueChanged = { !anyFixtureRunning },
+                    )
+                } else {
+                    null
+                },
+                if (bestVersionFixtureAvailable) {
+                    Preference.PreferenceItem.ListPreference(
+                        preference = sourcePreferences.bestVersionPairedFixtureMode(),
+                        title = stringResource(KMR.strings.best_version_paired_fixture_mode_title),
+                        subtitle = stringResource(KMR.strings.best_version_paired_fixture_mode_summary),
+                        entries = persistentMapOf(
+                            BestVersionPairedFixtureMode.OFF.prefValue to
+                                stringResource(KMR.strings.best_version_paired_fixture_mode_off),
+                            BestVersionPairedFixtureMode.PAIRED_RECORDS.prefValue to
+                                stringResource(KMR.strings.best_version_paired_fixture_mode_paired),
+                        ),
+                        onValueChanged = { !anyFixtureRunning },
+                    )
+                } else {
+                    null
+                },
+                if (
+                    bestVersionFixtureAvailable &&
+                    BestVersionPairedFixtureMode.fromPrefValue(bestVersionPairedFixtureMode) ==
+                    BestVersionPairedFixtureMode.PAIRED_RECORDS
+                ) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.best_version_paired_fixture_open),
+                        subtitle = bestVersionFixtureStatus,
+                        onClick = {
+                            if (!anyFixtureRunning) {
+                                scope.launch {
+                                    bestVersionPairedFixtureRuntime.commandController.prepareAndOpen {
+                                        navigator.push(it)
+                                    }
+                                }
+                            }
+                        },
+                    )
+                } else {
+                    null
+                },
+                if (bestVersionFixtureAvailable) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.best_version_paired_fixture_cleanup),
+                        subtitle = bestVersionFixtureStatus,
+                        onClick = {
+                            if (!anyFixtureRunning) {
+                                scope.launch {
+                                    bestVersionPairedFixtureRuntime.commandController.cleanup()
+                                }
+                            }
+                        },
+                    )
+                } else {
+                    null
+                },
+                if (alternateSourceReaderFixtureAvailable) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.alternate_source_reader_fixture_open_manga),
+                        subtitle = alternateSourceReaderFixtureStatus,
+                        enabled = AlternateSourceReaderFixtureScenario.fromPrefValue(alternateSourceReaderFixtureScenario) !=
+                            AlternateSourceReaderFixtureScenario.OFF,
+                        onClick = {
+                            if (!anyFixtureRunning) {
+                                alternateSourceReaderFixtureRuntime.commandController.prepareAndOpenManga()
+                            }
+                        },
+                    )
+                } else {
+                    null
+                },
+                if (alternateSourceReaderFixtureAvailable) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.alternate_source_reader_fixture_open_reader),
+                        subtitle = alternateSourceReaderFixtureStatus,
+                        enabled = AlternateSourceReaderFixtureScenario.fromPrefValue(alternateSourceReaderFixtureScenario) !=
+                            AlternateSourceReaderFixtureScenario.OFF,
+                        onClick = {
+                            if (!anyFixtureRunning) {
+                                alternateSourceReaderFixtureRuntime.commandController.prepareAndOpenReader()
+                            }
+                        },
+                    )
+                } else {
+                    null
+                },
+                if (alternateSourceReaderFixtureAvailable) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.alternate_source_reader_fixture_cleanup),
+                        subtitle = alternateSourceReaderFixtureStatus,
+                        onClick = {
+                            if (!anyFixtureRunning) {
+                                alternateSourceReaderFixtureRuntime.commandController.cleanup()
+                            }
+                        },
                     )
                 } else {
                     null
@@ -884,9 +1135,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     ),
                 ),
                 Preference.PreferenceItem.ListPreference(
-                    // KMK -->
                     preference = exhPreferences.logLevel(isDebugBuildType),
-                    // KMK <--
                     entries = EHLogLevel.entries.mapIndexed { index, ehLogLevel ->
                         index to "${context.stringResource(ehLogLevel.nameRes)} (${
                             context.stringResource(ehLogLevel.description)
@@ -944,16 +1193,25 @@ object SettingsAdvancedScreen : SearchableSettings {
                         },
                     )
                 },
-                Preference.PreferenceItem.TextPreference(
-                    title = stringResource(SYMR.strings.open_debug_menu),
-                    subtitle = remember {
-                        HtmlCompat.fromHtml(
-                            context.stringResource(SYMR.strings.open_debug_menu_summary),
-                            HtmlCompat.FROM_HTML_MODE_COMPACT,
-                        ).toAnnotatedString()
-                    },
-                    onClick = { navigator.push(SettingsDebugScreen()) },
-                ),
+                if (
+                    exh.util.DeveloperOptionsGatePolicy.canExposeDiagnostics(
+                        developerOptionsEnabled = developerOptionsEnabled,
+                        evaluationModeEnabled = evaluationModeEnabled,
+                    )
+                ) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(SYMR.strings.open_debug_menu),
+                        subtitle = remember {
+                            HtmlCompat.fromHtml(
+                                context.stringResource(SYMR.strings.open_debug_menu_summary),
+                                HtmlCompat.FROM_HTML_MODE_COMPACT,
+                            ).toAnnotatedString()
+                        },
+                        onClick = { navigator.push(SettingsDebugScreen()) },
+                    )
+                } else {
+                    null
+                },
             ).toImmutableList(),
         )
     }

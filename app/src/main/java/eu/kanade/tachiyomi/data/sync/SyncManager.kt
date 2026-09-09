@@ -107,8 +107,8 @@ class SyncManager(
             backupCategories = backupCreator.backupCategories(backupOptions),
             backupSources = backupCreator.backupSources(backupManga),
             backupPreferences = backupCreator.backupAppPreferences(backupOptions),
-            backupSourcePreferences = backupCreator.backupSourcePreferences(backupOptions),
             backupExtensionStores = backupCreator.backupExtensionStores(backupOptions),
+            backupSourcePreferences = backupCreator.backupSourcePreferences(backupOptions),
 
             // SY -->
             backupSavedSearches = backupCreator.backupSavedSearches(backupOptions),
@@ -116,6 +116,22 @@ class SyncManager(
 
             // KMK -->
             backupFeeds = backupCreator.backupFeeds(backupOptions),
+            backupMangaTastes = backupCreator.backupMangaTastes(backupOptions),
+            backupTagTastes = backupCreator.backupTagTastes(backupOptions),
+            backupTagAliases = backupCreator.backupTagAliases(backupOptions),
+            backupDisabledRecommendationSources = backupCreator.backupDisabledRecommendationSources(backupOptions),
+            // KMK --> v0.7.0: Phase 4 – was missing from sync payload (DB-02)
+            backupCrossSourceMangaLinks = backupCreator.backupCrossSourceMangaLinks(backupOptions),
+            // KMK <--
+            // KMK --> v0.7.16: Best Version quality signals
+            backupMangaSourceQualitySignals = backupCreator.backupMangaSourceQualitySignals(backupOptions),
+            // KMK <--
+            // KMK --> v0.8.1-fix1: user-selected primary version per confirmed link group
+            backupCrossSourceGroupPrimaries = backupCreator.backupCrossSourceGroupPrimaries(backupOptions),
+            // KMK <--
+            backupCrossSourceIdentityDecisions = backupCreator.backupCrossSourceIdentityDecisions(backupOptions),
+            backupAlternateSourceBridges = backupCreator.backupAlternateSourceBridges(backupOptions),
+            backupAlternateSourceBridgeMappings = backupCreator.backupAlternateSourceBridgeMappings(backupOptions),
             // KMK <--
         )
         logcat(LogPriority.DEBUG) { "End create backup" }
@@ -170,7 +186,11 @@ class SyncManager(
         }
 
         // Stop the sync early if the remote backup is null or empty
-        if (remoteBackup.backupManga.isEmpty()) {
+        if (
+            remoteBackup.backupManga.isEmpty() &&
+            remoteBackup.backupAlternateSourceBridges.isEmpty() &&
+            remoteBackup.backupAlternateSourceBridgeMappings.isEmpty()
+        ) {
             notifier.showSyncError("No data found on remote server.")
             return
         }
@@ -200,11 +220,16 @@ class SyncManager(
 
             // KMK -->
             backupFeeds = remoteBackup.backupFeeds,
+            backupAlternateSourceBridges = remoteBackup.backupAlternateSourceBridges,
+            backupAlternateSourceBridgeMappings = remoteBackup.backupAlternateSourceBridgeMappings,
             // KMK <--
         )
 
         // It's local sync no need to restore data. (just update remote data)
-        if (filteredFavorites.isEmpty()) {
+        val bridgeStateChanged =
+            remoteBackup.backupAlternateSourceBridges != backup.backupAlternateSourceBridges ||
+                remoteBackup.backupAlternateSourceBridgeMappings != backup.backupAlternateSourceBridgeMappings
+        if (filteredFavorites.isEmpty() && !bridgeStateChanged) {
             // update the sync timestamp
             syncPreferences.lastSyncTimestamp().set(Date().time)
             notifier.showSyncSuccess("Sync completed successfully")

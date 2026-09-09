@@ -58,6 +58,7 @@ import exh.util.rememberEvaluationModeEnabled
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import java.text.DecimalFormat
 
@@ -123,8 +124,9 @@ class OcrSearchScreen : Screen() {
                 val stats = state.indexStats
                 if (stats.processedPages > 0 || stats.oldEngineRows > 0) {
                     Text(
-                        text = stringResource(
-                            KMR.strings.ocr_index_status_v2,
+                        text = pluralStringResource(
+                            KMR.plurals.ocr_index_status_v2,
+                            count = stats.totalChapters.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
                             stats.recognizedPages,
                             stats.processedPages,
                             stats.totalManga,
@@ -140,7 +142,11 @@ class OcrSearchScreen : Screen() {
                             modifier = Modifier.padding(top = 0.dp),
                         ) {
                             Text(
-                                text = stringResource(KMR.strings.ocr_index_status_old_rows, stats.oldEngineRows),
+                                text = pluralStringResource(
+                                    KMR.plurals.ocr_index_status_old_rows,
+                                    count = stats.oldEngineRows.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
+                                    stats.oldEngineRows,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
@@ -161,8 +167,9 @@ class OcrSearchScreen : Screen() {
                     val progress = state.indexProgress
                     if (progress != null && progress.totalPages > 0) {
                         Text(
-                            text = stringResource(
-                                KMR.strings.ocr_indexing_progress_v2,
+                            text = pluralStringResource(
+                                KMR.plurals.ocr_indexing_progress_v2,
+                                count = progress.totalPages,
                                 progress.completedPages,
                                 progress.totalPages,
                                 progress.recognizedPages,
@@ -552,8 +559,9 @@ private fun OcrResultCard(
 private fun matchTypeLabel(result: OcrSearchResult): String = when (result.matchType) {
     OcrMatchType.EXACT -> stringResource(KMR.strings.ocr_match_exact)
     OcrMatchType.ALL_TOKENS -> stringResource(KMR.strings.ocr_match_all_tokens)
-    OcrMatchType.PARTIAL -> stringResource(
-        KMR.strings.ocr_match_partial,
+    OcrMatchType.PARTIAL -> pluralStringResource(
+        KMR.plurals.ocr_match_partial,
+        count = result.matchedWords.size + result.missingWords.size,
         result.matchedWords.size,
         result.matchedWords.size + result.missingWords.size,
     )

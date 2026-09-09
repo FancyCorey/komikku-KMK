@@ -11,6 +11,9 @@ class GoogleDriveSyncLoggingPrivacyTest {
         val source = File(
             "src/main/java/eu/kanade/tachiyomi/data/sync/service/GoogleDriveSyncService.kt",
         ).readText()
+        val activitySource = File(
+            "src/main/java/eu/kanade/tachiyomi/ui/setting/track/GoogleDriveLoginActivity.kt",
+        ).readText()
 
         val forbiddenFragments = listOf(
             "Local device ID:",
@@ -22,6 +25,7 @@ class GoogleDriveSyncLoggingPrivacyTest {
             "throwable = e",
             "Error syncing: ${'$'}{e.message}",
             "Failed to refresh access token ${'$'}{e.message}",
+            "onFailure(e.localizedMessage",
         )
         forbiddenFragments.forEach { fragment ->
             assertFalse(source.contains(fragment), "Sensitive Google Drive log fragment remains: $fragment")
@@ -36,5 +40,14 @@ class GoogleDriveSyncLoggingPrivacyTest {
         ).forEach { marker ->
             assertTrue(source.contains(marker), "Expected generic Google Drive marker is missing: $marker")
         }
+
+        assertFalse(
+            activitySource.contains("providerError ?: stringResource"),
+            "Provider callback error must not be shown directly to the user",
+        )
+        assertTrue(
+            activitySource.contains("SYMR.strings.google_drive_not_signed_in"),
+            "Callback failure must use the stable localized fallback",
+        )
     }
 }

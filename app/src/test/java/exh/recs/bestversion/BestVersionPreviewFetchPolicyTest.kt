@@ -1,14 +1,15 @@
 package exh.recs.bestversion
 
+import exh.recs.RecommendationErrorKind
 import exh.recs.matching.MangaIdentityKey
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 
-// KMK -->
+// KMK Confirmed Blocker Remediation Phase 3 2026-07-29 -->
 /**
- * Tests for [BestVersionPreviewFetchPolicy.partition] -- proves the behavior contract's required "no network
+ * Tests for [BestVersionPreviewFetchPolicy.partition] -- proves the plan's required "no network
  * call for unavailable chapter" behavior structurally: an unavailable candidate is never present in
  * [BestVersionPreviewFetchPolicy.Previewable.previewable], the only list
  * [BestVersionCompareScreenModel.startPreview] passes into its async page-fetch loop.
@@ -42,7 +43,14 @@ class BestVersionPreviewFetchPolicyTest {
     fun `a ChapterError candidate is treated as unavailable for preview purposes, not fetched`() {
         val m = manga(3L, "/c")
         val key = MangaIdentityKey(3L, "/c")
-        val result = BestVersionPreviewFetchPolicy.partition(listOf(m), mapOf(key to CandidateChapterState.ChapterError("boom")))
+        val result = BestVersionPreviewFetchPolicy.partition(
+            listOf(m),
+            mapOf(
+                key to CandidateChapterState.ChapterError(
+                    BestVersionErrorReason.Recommendation(RecommendationErrorKind.Internal),
+                ),
+            ),
+        )
         assertTrue(result.previewable.isEmpty())
         assertEquals(listOf(m), result.unavailable)
     }

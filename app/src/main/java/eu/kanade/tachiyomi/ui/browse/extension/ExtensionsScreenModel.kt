@@ -49,6 +49,7 @@ import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
+import tachiyomi.core.common.i18n.pluralStringResource as contextPluralStringResource
 import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 class ExtensionsScreenModel(
@@ -56,7 +57,7 @@ class ExtensionsScreenModel(
     basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getExtensions: GetExtensionsByType = Injekt.get(),
-    // KMK: every background
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: every background
     // operation in this class previously used the top-level launchIO {} extension, which is hardcoded
     // to the real Dispatchers.IO with no way for a test to redirect it (unlike Dispatchers.Main, which
     // kotlinx-coroutines-test can swap via Dispatchers.setMain()). Injecting the dispatcher here --
@@ -67,7 +68,6 @@ class ExtensionsScreenModel(
 
     private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
 
-    // KMK:
     // screenModelScope-owned, not Composable-`remember`-owned -- the bulk extension export route
     // (previously its own ad hoc `bulkExportCleanupUri`/`bulkExportCleanupKind` `remember` state in
     // ExtensionsTab.kt) now shares the same lifecycle-safe coordinator/dialog every other export route
@@ -109,12 +109,20 @@ class ExtensionsScreenModel(
                         result.fold(
                             onSuccess = { summary ->
                                 val message = if (summary.skippedPkgNames.isEmpty()) {
-                                    context.contextStringResource(KMR.strings.extension_export_multi_success, summary.exportedCount)
+                                    context.contextPluralStringResource(KMR.plurals.extension_export_multi_success, count = summary.exportedCount, summary.exportedCount)
                                 } else {
                                     context.contextStringResource(
                                         KMR.strings.extension_export_multi_partial,
-                                        summary.exportedCount,
-                                        summary.skippedPkgNames.size,
+                                        context.contextPluralStringResource(
+                                            KMR.plurals.extension_export_exported_extension_fragment,
+                                            count = summary.exportedCount,
+                                            summary.exportedCount,
+                                        ),
+                                        context.contextPluralStringResource(
+                                            KMR.plurals.extension_export_missing_file_fragment,
+                                            count = summary.skippedPkgNames.size,
+                                            summary.skippedPkgNames.size,
+                                        ),
                                     )
                                 }
                                 context.toast(message)
@@ -273,7 +281,7 @@ class ExtensionsScreenModel(
 
     fun installExtension(extension: Extension.Available) {
         screenModelScope.launch(ioDispatcher) {
-            // KMK: one shared id
+            // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: one shared id
             // for both the visibility-only NonUndoableEvent and the private PackageOperationReceipt --
             // EvaluationModeActionHistoryScreen correlates the two by this id to decide whether a
             // follow-up action can be offered for this row.
@@ -292,7 +300,7 @@ class ExtensionsScreenModel(
         }
     }
 
-    // KMK: previously reused
+    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: previously reused
     // recordUserInitiatedInstall()'s default EXTENSION_INSTALLED event type unmodified, so every
     // update from this screen was misrecorded in Action History as a fresh install rather than an
     // update. Now passes EXTENSION_UPDATED explicitly.
@@ -351,7 +359,7 @@ class ExtensionsScreenModel(
             .onCompletion { removeDownloadState(extension) }
             .collect()
 
-    // KMK: previously called
+    // KMK Confirmed Blocker Remediation Corrective Pass 2026-07-29: previously called
     // extensionManager.uninstallExtension() (fire-and-forget, no completion signal -- see
     // ExtensionManager.uninstallExtension()'s own doc) and recorded nothing at all. This is the
     // main Browse > Extensions uninstall path, distinct from SourceEvaluationScreenModel's
@@ -364,7 +372,7 @@ class ExtensionsScreenModel(
                 installedPackageNames = extensionManager.installedExtensionsFlow.map { installed -> installed.map { it.pkgName } },
                 pkgName = extension.pkgName,
                 isEvaluationModeEnabled = { preferences.evaluationMode().get() },
-                // KMK: signature/
+                // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: signature/
                 // version recorded so a later reinstall follow-up can confirm the currently-available
                 // catalogue entry (resolved live, not stored here) still matches what was uninstalled.
                 signatureHash = extension.signatureHash,

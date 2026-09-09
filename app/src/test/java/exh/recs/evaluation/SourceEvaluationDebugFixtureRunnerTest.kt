@@ -71,7 +71,7 @@ class SourceEvaluationDebugFixtureRunnerTest {
 
     @Test
     fun `per-source error mode uses the real runner's signatureHash-pkgName completion key format`() = runBlocking {
-        // KMK: completedCandidateKeys must be cursor-compatible with
+        // Corrective pass 2026-08-03: completedCandidateKeys must be cursor-compatible with
         // SourceEvaluationContinuationPolicy, which persists/advances a cursor keyed by
         // "${signatureHash}|${pkgName}" (SourceEvaluationContinuationPolicy.candidateKey), the same
         // format SourceEvaluationRunner uses. The fixture previously used an unrelated

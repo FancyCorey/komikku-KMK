@@ -45,6 +45,7 @@ include(":app")
 include(":core-metadata")
 include(":core:archive")
 include(":core:common")
+include(":core:image-decoder")
 include(":data")
 include(":domain")
 include(":i18n")
@@ -59,5 +60,9 @@ include(":macrobenchmark")
 include(":presentation-core")
 include(":presentation-widget")
 include(":source-api")
+// Optional host-only fixture APKs. Public source extractions omit this directory.
+if (file("fixture-sources-to-try-extension").isDirectory) {
+    include(":fixture-sources-to-try-extension")
+}
 include(":source-local")
 include(":telemetry")

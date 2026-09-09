@@ -97,7 +97,7 @@ data object HistoryTab : Tab {
             snackbarHostState = snackbarHostState,
             onSearchQueryChange = screenModel::updateSearchQuery,
             onClickCover = { navigator.push(MangaScreen(it)) },
-            onClickResume = screenModel::getNextChapterForManga,
+            onClickResume = { _, chapterId -> screenModel.openHistoryChapter(chapterId) },
             onDialogChange = screenModel::setDialog,
             onClickFavorite = screenModel::addFavorite,
             // KMK -->

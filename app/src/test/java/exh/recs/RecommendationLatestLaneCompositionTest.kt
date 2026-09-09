@@ -10,11 +10,10 @@ import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.TasteProfile
 
-// KMK -->
 /**
  * Domain A: proves the personalized-majority invariant on the **final merged display list**.
  *
- * The earlier implementation only proved `latestSlots / displayLimit`, which is not a proof: that ratio says
+ * The prior pass only proved `latestSlots / displayLimit`, which is not a proof: that ratio says
  * nothing about the realised output when the personalized lane returns fewer results than the row
  * could hold. Every assertion here counts the actual per-lane composition of what
  * [RecommendationCandidateMemoryRanker.merge] returns, i.e. exactly what the row renders.
@@ -88,6 +87,20 @@ class RecommendationLatestLaneCompositionTest {
         assertTrue(merged.latestCount() <= merged.nonLatestCount(), "Latest outnumbered personalized: $merged")
         assertEquals(1, merged.nonLatestCount())
         assertEquals(1, merged.latestCount())
+    }
+
+    @Test
+    fun `a sparse non-Latest set also bounds an oversized Latest input to a tie`() {
+        val input = listOf(
+            rec(1L, RecommendationDiscoveryLane.PERSONALIZED),
+        ) + (2L..6L).map { id ->
+            rec(id, RecommendationDiscoveryLane.LATEST_CATALOGUE, score = 9.0)
+        }
+
+        val balanced = RecommendationLatestBudgetPolicy.enforcePersonalizedMajority(input, limit = 5)
+
+        assertEquals(1, balanced.nonLatestCount())
+        assertEquals(1, balanced.latestCount())
     }
 
     @Test

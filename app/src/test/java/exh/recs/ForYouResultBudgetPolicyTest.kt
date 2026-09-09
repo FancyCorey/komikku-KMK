@@ -14,15 +14,15 @@ class ForYouResultBudgetPolicyTest {
     }
 
     @Test
-    fun `validate returns supported values unchanged`() {
-        listOf(5, 10, 15, 20, 30).forEach { value ->
+    fun `validate returns every value in the bounded range unchanged`() {
+        listOf(ForYouResultBudgetPolicy.MIN, 6, 10, 25, ForYouResultBudgetPolicy.MAX).forEach { value ->
             assertEquals(value, ForYouResultBudgetPolicy.validate(value))
         }
     }
 
     @Test
-    fun `validate falls back to default for corrupt or unsupported values`() {
-        listOf(0, -1, -100, 1, 6, 11, 25, 50, 100, Int.MAX_VALUE, Int.MIN_VALUE).forEach { value ->
+    fun `validate falls back to default for corrupt or out of range values`() {
+        listOf(0, -1, -100, 4, 31, 50, 100, Int.MAX_VALUE, Int.MIN_VALUE).forEach { value ->
             assertEquals(
                 ForYouResultBudgetPolicy.DEFAULT,
                 ForYouResultBudgetPolicy.validate(value),
@@ -35,7 +35,7 @@ class ForYouResultBudgetPolicyTest {
 
     @Test
     fun `resolve for a normal row uses the validated configured value`() {
-        listOf(5, 10, 15, 20, 30).forEach { value ->
+        listOf(ForYouResultBudgetPolicy.MIN, 6, 10, 25, ForYouResultBudgetPolicy.MAX).forEach { value ->
             assertEquals(value, ForYouResultBudgetPolicy.resolve(value, isBoosted = false))
         }
     }
@@ -75,8 +75,8 @@ class ForYouResultBudgetPolicyTest {
     // --- unrelated limits must never be touched by this policy ---
 
     @Test
-    fun `SUPPORTED_VALUES contains exactly the five documented options`() {
-        assertEquals(listOf(5, 10, 15, 20, 30), ForYouResultBudgetPolicy.SUPPORTED_VALUES)
+    fun `SUPPORTED_VALUES covers the full bounded entry range`() {
+        assertEquals((ForYouResultBudgetPolicy.MIN..ForYouResultBudgetPolicy.MAX).toList(), ForYouResultBudgetPolicy.SUPPORTED_VALUES)
     }
 
     @Test

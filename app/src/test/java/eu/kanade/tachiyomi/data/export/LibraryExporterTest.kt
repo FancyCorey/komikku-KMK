@@ -14,8 +14,8 @@ import tachiyomi.domain.manga.model.Manga
 import java.io.ByteArrayOutputStream
 
 // KMK -->
-// KMK: direct coverage for the real defect
-// the regression test covers -- `exportToCsv` previously called its `onExportComplete` success callback
+// Direct coverage for the real defect
+// this pass fixed -- `exportToCsv` previously called its `onExportComplete` success callback
 // unconditionally, including when `openOutputStream` returned null (a genuine destination-open
 // failure), reporting "library exported" for a write that never happened. Now returns a typed
 // ExportOutcome the caller must inspect instead.
@@ -46,7 +46,7 @@ class LibraryExporterTest {
 
     @Test
     fun `a destination-open failure reports WriteFailed, not Success`() = runTest {
-        // This is the exact bug the regression test covers: previously the caller's success callback fired
+        // This is the exact bug this pass fixed: previously the caller's success callback fired
         // unconditionally even when openOutputStream(uri) returned null.
         val context = mockk<Context>()
         val resolver = mockk<ContentResolver>()

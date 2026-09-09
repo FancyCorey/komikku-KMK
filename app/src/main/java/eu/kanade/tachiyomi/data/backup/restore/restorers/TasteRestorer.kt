@@ -2,17 +2,25 @@ package eu.kanade.tachiyomi.data.backup.restore.restorers
 
 // KMK -->
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridge
+import eu.kanade.tachiyomi.data.backup.models.BackupAlternateSourceBridgeMapping
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceIdentityDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaTaste
+import eu.kanade.tachiyomi.data.backup.models.BackupSavedFocusMode
 import eu.kanade.tachiyomi.data.backup.models.BackupSeenMangaKey
 import eu.kanade.tachiyomi.data.backup.models.BackupTagAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupTagTaste
+import exh.recs.SavedFocusMode
+import exh.recs.SavedFocusModeStore
 import exh.recs.SeenRecommendationMangaStore
 import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
@@ -33,12 +41,15 @@ import tachiyomi.domain.taste.model.TagAlias
 import tachiyomi.domain.taste.model.TagPreference
 import tachiyomi.domain.taste.model.TagTaste
 import tachiyomi.domain.taste.model.normalizeTag
+import tachiyomi.domain.taste.repository.AlternateSourceBridgeRepository
 import tachiyomi.domain.taste.repository.TasteRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class TasteRestorer(
     private val tasteRepository: TasteRepository = Injekt.get(),
+    private val alternateSourceBridgeRepository: AlternateSourceBridgeRepository = Injekt.get(),
+    private val mangaRepository: MangaRepository = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val getMangaTaste: GetMangaTaste = Injekt.get(),
     private val getTagTaste: GetTagTaste = Injekt.get(),
@@ -59,9 +70,9 @@ class TasteRestorer(
     private val getMangaSourceQualitySignals: GetMangaSourceQualitySignals = Injekt.get(),
     private val upsertMangaSourceQualitySignal: UpsertMangaSourceQualitySignal = Injekt.get(),
     // KMK <--
-    // KMK --> v0.7.28: seen manga keys
+    // KMK v0.8.21-fix2: AUG-14 slice 3 -- saved For You focus modes are a plain preference, not a
+    // TasteRepository-owned table, so restoring them needs direct preference access.
     private val sourcePreferences: SourcePreferences = Injekt.get(),
-    // KMK <--
 ) {
 
     suspend fun restoreMangaTastes(backupMangaTastes: List<BackupMangaTaste>): List<String> {
@@ -70,7 +81,9 @@ class TasteRestorer(
         val now = System.currentTimeMillis()
         backupMangaTastes.forEach { backup ->
             try {
-                restoreOneMangaTaste(backup, now)
+                if (!restoreOneMangaTaste(backup, now)) {
+                    errors.add("Taste rating for source ${backup.source}: missing or invalid manga identity")
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -80,14 +93,15 @@ class TasteRestorer(
         return errors
     }
 
-    private suspend fun restoreOneMangaTaste(backup: BackupMangaTaste, now: Long) {
-        val rating = MangaRating.fromValue(backup.rating) ?: return
+    private suspend fun restoreOneMangaTaste(backup: BackupMangaTaste, now: Long): Boolean {
+        val rating = MangaRating.fromValue(backup.rating) ?: return false
         // Manga row IDs are device-local — resolve by (url, source), which is stable across devices
-        val localMangaId = getManga.await(backup.url, backup.source)?.id
+        val localManga = getManga.await(backup.url, backup.source)
             ?: getManga.await(backup.mangaId)
                 ?.takeIf { it.url == backup.url && it.source == backup.source }
-                ?.id
-            ?: return
+            ?: restoreMinimalRatedMangaIdentity(backup)
+            ?: return false
+        val localMangaId = localManga.id
         val existing = getMangaTaste.await(localMangaId)
         if (existing == null || existing.updatedAt < backup.updatedAt) {
             tasteRepository.upsertMangaTaste(
@@ -102,6 +116,19 @@ class TasteRestorer(
                 ),
             )
         }
+        return true
+    }
+
+    private suspend fun restoreMinimalRatedMangaIdentity(backup: BackupMangaTaste): Manga? {
+        if (!RatedMangaRestoreIdentityPolicy.isValid(backup)) return null
+        val minimal = Manga.create().copy(
+            source = backup.source,
+            url = backup.url,
+            ogTitle = backup.title,
+            favorite = false,
+            initialized = false,
+        )
+        return mangaRepository.insertNetworkManga(listOf(minimal), updateInfo = false).singleOrNull()
     }
 
     suspend fun restoreTagTastes(backupTagTastes: List<BackupTagTaste>): List<String> {
@@ -239,20 +266,71 @@ class TasteRestorer(
     }
     // KMK <--
 
-    // KMK --> v0.7.28: seen manga keys — additive union restore (never clears existing dismissals)
-    fun restoreSeenMangaKeys(backupKeys: List<BackupSeenMangaKey>): List<String> {
+    // KMK v0.8.21-fix3: R1 correction -- Not Interested is a real MangaRating value now, and no
+    // live code path writes new entries into the legacy seenRecommendationMangaKeys preference
+    // anymore (MangaScreenModel.markSeen()/clearSeen() were deleted; every write goes through
+    // setMangaTaste/clearMangaTaste like any other rating). BackupSeenMangaKey therefore only
+    // round-trips through the backup format for OLD backups taken before this correction --
+    // read-compatibility only. This restorer backfills a MangaRating.NOT_INTERESTED MangaTaste row
+    // per key so every mangaTaste-reading consumer (isNotInterested display, Rated Manga grouping)
+    // sees the restored state, using the exact same conflict rule (an existing rating always wins)
+    // as the live migration -- see Plan A's "AUG-02 frozen contract", item 3. Runs after
+    // restoreMangaTastes() in BackupRestorer.kt's existing call order, so a rating restored from
+    // the same backup is already in place for this check.
+    suspend fun restoreSeenMangaKeys(backupKeys: List<BackupSeenMangaKey>): List<String> {
         if (backupKeys.isEmpty()) return emptyList()
-        val pref = sourcePreferences.seenRecommendationMangaKeys()
-        val current = SeenRecommendationMangaStore.parse(pref.get()).toMutableSet()
-        val beforeSize = current.size
-        backupKeys.forEach { backup ->
-            val parsed = SeenRecommendationMangaStore.parse(backup.key)
-            current.addAll(parsed)
+        val errors = mutableListOf<String>()
+        val keys = backupKeys.flatMap { SeenRecommendationMangaStore.parse(it.key) }.toSet()
+        keys.forEach { key ->
+            try {
+                val manga = getManga.await(key.url, key.sourceId) ?: return@forEach
+                if (getMangaTaste.await(manga.source, manga.url) != null) return@forEach
+                tasteRepository.upsertMangaTaste(
+                    MangaTaste(
+                        mangaId = manga.id,
+                        source = manga.source,
+                        url = manga.url,
+                        title = manga.title,
+                        rating = MangaRating.NOT_INTERESTED.value,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errors.add("Not Interested marker for source ${key.sourceId}: Unknown error")
+            }
         }
-        if (current.size != beforeSize) {
-            pref.set(SeenRecommendationMangaStore.serialize(current))
+        return errors
+    }
+    // KMK <--
+
+    // KMK v0.8.21-fix2: AUG-14 slice 3 -- saved For You focus modes. Conflict rule per the frozen
+    // contract (Plan D, "Saved custom modes — frozen contract resolved", item 8): same id on both
+    // sides keeps whichever has the newer updatedAt, exactly mirroring restoreOneMangaTaste's own
+    // idiom elsewhere in this file. Duplicate names are never a conflict -- only a colliding id is.
+    fun restoreSavedFocusModes(backupModes: List<BackupSavedFocusMode>) {
+        if (backupModes.isEmpty()) return
+        val existing = SavedFocusModeStore.parse(sourcePreferences.savedFocusModes().get())
+        val existingById = existing.associateBy { it.id }
+        val merged = existing.associateBy { it.id }.toMutableMap()
+        for (backup in backupModes) {
+            val current = existingById[backup.id]
+            if (current == null || backup.updatedAt > current.updatedAt) {
+                merged[backup.id] = SavedFocusMode(
+                    id = backup.id,
+                    name = backup.name,
+                    includeGroups = backup.groups.toSet(),
+                    excludeGroups = backup.excludeGroups.toSet(),
+                    matchAll = backup.matchAll,
+                    createdAt = backup.createdAt,
+                    updatedAt = backup.updatedAt,
+                    order = backup.order,
+                )
+            }
         }
-        return emptyList()
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(merged.values.sortedBy { it.order }))
     }
     // KMK <--
 
@@ -322,7 +400,7 @@ class TasteRestorer(
                         ),
                     )
                 }
-                // Otherwise, keep the newer existing primary.
+                // else: existing primary is newer — keep it, per plan §B3.
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -332,5 +410,66 @@ class TasteRestorer(
         return errors
     }
     // KMK <--
+
+    suspend fun restoreCrossSourceIdentityDecisions(
+        backupDecisions: List<BackupCrossSourceIdentityDecision>,
+    ): List<String> = CrossSourceIdentityDecisionRestorer(tasteRepository)
+        .restore(backupDecisions, System.currentTimeMillis())
+
+    suspend fun restoreAlternateSourceBridges(
+        bridges: List<BackupAlternateSourceBridge>,
+        mappings: List<BackupAlternateSourceBridgeMapping>,
+    ): List<String> = AlternateSourceBridgeRestorer(alternateSourceBridgeRepository)
+        .restore(bridges, mappings, System.currentTimeMillis())
+
+    // KMK F2-02 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): the exact taste-profile
+    // restore sequence BackupRestorer.restoreTasteProfile uses (same calls, same order --
+    // mangaTastes, tagTastes, tagAliases, disabledSources, crossSourceMangaLinks,
+    // crossSourceGroupPrimaries, crossSourceIdentityDecisions, alternateSourceBridges,
+    // mangaSourceQualitySignals, seenMangaKeys, savedFocusModes), extracted here so it is a single
+    // owned, directly testable function rather than logic duplicated inline inside an
+    // Android-Context/BackupNotifier-entangled orchestration method. BackupRestorer now delegates to
+    // this instead of re-listing the sequence itself -- this is the change that makes a genuine
+    // end-to-end create -> serialize -> decode -> restore-orchestration test possible without
+    // mocking Context/BackupNotifier, closing the reopened C0 gap that "the current integrated test
+    // ... does not prove the complete ... restore orchestration boundary."
+    suspend fun restoreTasteProfileBundle(
+        backupMangaTastes: List<BackupMangaTaste>,
+        backupTagTastes: List<BackupTagTaste>,
+        backupTagAliases: List<BackupTagAlias>,
+        backupDisabledSources: List<BackupDisabledRecommendationSource>,
+        backupCrossSourceMangaLinks: List<BackupCrossSourceMangaLink>,
+        backupCrossSourceGroupPrimaries: List<BackupCrossSourceGroupPrimary>,
+        backupCrossSourceIdentityDecisions: List<BackupCrossSourceIdentityDecision>,
+        backupAlternateSourceBridges: List<BackupAlternateSourceBridge>,
+        backupAlternateSourceBridgeMappings: List<BackupAlternateSourceBridgeMapping>,
+        backupMangaSourceQualitySignals: List<BackupMangaSourceQualitySignal>,
+        backupSeenMangaKeys: List<BackupSeenMangaKey>,
+        backupSavedFocusModes: List<BackupSavedFocusMode>,
+    ): List<String> = buildList {
+        addAll(restoreMangaTastes(backupMangaTastes))
+        addAll(restoreTagTastes(backupTagTastes))
+        addAll(restoreTagAliases(backupTagAliases))
+        addAll(restoreDisabledRecommendationSources(backupDisabledSources))
+        addAll(restoreCrossSourceMangaLinks(backupCrossSourceMangaLinks))
+        addAll(restoreCrossSourceGroupPrimaries(backupCrossSourceGroupPrimaries))
+        addAll(restoreCrossSourceIdentityDecisions(backupCrossSourceIdentityDecisions))
+        addAll(restoreAlternateSourceBridges(backupAlternateSourceBridges, backupAlternateSourceBridgeMappings))
+        addAll(restoreMangaSourceQualitySignals(backupMangaSourceQualitySignals))
+        addAll(restoreSeenMangaKeys(backupSeenMangaKeys))
+        restoreSavedFocusModes(backupSavedFocusModes)
+    }
+}
+
+internal object RatedMangaRestoreIdentityPolicy {
+    private const val MAX_URL_LENGTH = 8_192
+    private const val MAX_TITLE_LENGTH = 2_048
+
+    fun isValid(backup: BackupMangaTaste): Boolean =
+        backup.source != 0L &&
+            backup.url.isNotBlank() &&
+            backup.url.length <= MAX_URL_LENGTH &&
+            backup.title.isNotBlank() &&
+            backup.title.length <= MAX_TITLE_LENGTH
 }
 // KMK <--
