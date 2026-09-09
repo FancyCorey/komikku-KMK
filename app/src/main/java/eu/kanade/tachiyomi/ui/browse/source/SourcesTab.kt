@@ -20,6 +20,7 @@ import eu.kanade.presentation.browse.SourceOptionsDialog
 import eu.kanade.presentation.browse.SourcesScreen
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
+import eu.kanade.tachiyomi.source.DebugBrowseFixtureSource
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreen.SmartSearchConfig
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
@@ -88,7 +89,11 @@ fun Screen.sourcesTab(
                     val screen = when {
                         // Search selected source for entries to merge or for the recommending entry
                         smartSearchConfig != null -> SmartSearchScreen(source.id, smartSearchConfig)
-                        listing == Listing.Popular && screenModel.useNewSourceNavigation -> SourceFeedScreen(source.id)
+                        shouldUseSourceFeedNavigation(
+                            sourceId = source.id,
+                            listing = listing,
+                            useNewSourceNavigation = screenModel.useNewSourceNavigation,
+                        ) -> SourceFeedScreen(source.id)
                         else -> BrowseSourceScreen(source.id, listing.query)
                     }
                     navigator.push(screen)
@@ -162,3 +167,12 @@ fun Screen.sourcesTab(
         },
     )
 }
+
+internal fun shouldUseSourceFeedNavigation(
+    sourceId: Long,
+    listing: Listing,
+    useNewSourceNavigation: Boolean,
+): Boolean =
+    listing == Listing.Popular &&
+        useNewSourceNavigation &&
+        sourceId != DebugBrowseFixtureSource.ID

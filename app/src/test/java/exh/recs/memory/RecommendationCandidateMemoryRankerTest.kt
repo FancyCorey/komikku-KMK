@@ -296,7 +296,6 @@ class RecommendationCandidateMemoryRankerTest {
     }
     // KMK <--
 
-    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
     // Domain C: end-to-end proof that a *persisted* minimum-chapter preference value actually changes
     // pipeline output -- not just that RecommendationMinChapterCountPolicy.resolve() returns the
     // right number in isolation. This exercises resolve() feeding directly into the real
@@ -319,7 +318,7 @@ class RecommendationCandidateMemoryRankerTest {
         assertTrue(result.any { it.manga.id == 31L }, "a 25-chapter candidate must remain visible once the persisted 20 threshold resolves and reaches merge()")
     }
 
-    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: the remaining supported values (0/5/10/50)
+    // The remaining supported values (0/5/10/50)
     // exercised through the same real pipeline, so every option the settings row offers is proven,
     // not just the representative 20.
     @Test
@@ -403,9 +402,9 @@ class RecommendationCandidateMemoryRankerTest {
 
     @Test
     fun `a malformed persisted threshold resolves to Off and never filters through the real merge pipeline`() {
-        // 7 is not a supported value (0/5/10/20/50) -- proves the malformed-value fallback actually
+        // 51 is outside the bounded range (0..50) -- proves the malformed-value fallback actually
         // reaches the pipeline, not only RecommendationMinChapterCountPolicyTest's isolated assertion.
-        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(7)
+        val resolvedThreshold = exh.recs.RecommendationMinChapterCountPolicy.resolve(51)
         assertEquals(0, resolvedThreshold)
         val m = actionManga(id = 32L)
         val result = mergeWithMinChapters(listOf(rec(m)), minChapterCount = resolvedThreshold, chapterCounts = mapOf(32L to 1L))
@@ -427,7 +426,6 @@ class RecommendationCandidateMemoryRankerTest {
     }
     // KMK <--
 
-    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
     // Domain B: proves exposure-aware reranking is applied BEFORE the take(limit) cap inside the
     // real merge() the production ScreenModel calls -- not merely that the pure reranker permutes
     // correctly in isolation (RecommendationDisplayRerankerTest already covers that). This is what

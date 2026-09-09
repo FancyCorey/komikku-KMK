@@ -123,7 +123,7 @@
     <string name="pref_discord_show_buttons_summary">Visa knappar för att ladda ner appen eller gå med i Discord-servern</string>
     <string name="custom_theme_palette_springfield">Springfield</string>
     <string name="pref_connections_summary">Discord, mer att komma..</string>
-    <string name="connections_discord_info">Denna Discord-tjänst fungerar genom tokenloggning. Använd på egen risk. Din token lagras lokalt och Anikku delar den inte någon annanstans</string>
+    <string name="connections_discord_info">Denna Discord-tjänst fungerar genom tokenloggning. Använd på egen risk. Din token lagras lokalt och %s delar den inte någon annanstans</string>
     <string name="special_services">Särskilda tjänster</string>
     <string name="pref_discord_incognito_categories_details">Poster i inkluderade kategorier kommer inte att visas i Discord</string>
     <string name="pref_discord_custom_message">Anpassat meddelande</string>

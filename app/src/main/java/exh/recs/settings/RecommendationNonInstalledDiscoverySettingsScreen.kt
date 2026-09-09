@@ -2,6 +2,7 @@ package exh.recs.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -14,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,7 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
-import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.rememberNavigatorScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.SearchToolbar
@@ -40,6 +42,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK v0.8.8 -->
@@ -52,7 +55,10 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
+        val openForYou = rememberOpenForYouFromRecommendationSettings(navigator)
+        // KMK EC-04 2026-09-04: Navigator-scoped, shared with the other three Recommendation
+        // Settings destination screens -- see RecommendationSourcePrioritySettingsScreen.Content().
+        val screenModel = navigator.rememberNavigatorScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
         val lazyListState = rememberLazyListState()
 
@@ -74,6 +80,13 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
             isSearching || state.suggestionsExpanded -> filteredSuggestions
             else -> filteredSuggestions.take(5)
         }
+        // The summary describes the active result set while searching; when the list is merely
+        // collapsed it continues to describe the full suggestion pool.
+        val displayedSuggestionCount = if (isSearching) {
+            filteredSuggestions.size
+        } else {
+            state.nonInstalledSuggestions.size
+        }
 
         // KMK v0.8.10: mirrors the LazyColumn's item order below, including its conditional
         // sections and the dynamic suggestion-row count, so a static control key placed after the
@@ -87,13 +100,16 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
             state.nonInstalledSuggestions.size,
             state.dismissedSuggestionCount,
             state.qualityDislikedSourceKeys.size,
+            state.suggestionInstallFeedback,
         ) {
             buildList {
                 add("sources_to_try_header")
+                if (state.suggestionInstallFeedback != null) add("sources_to_try_install_result")
                 if (state.nonInstalledSuggestions.isEmpty()) {
                     add("sources_to_try_empty")
                 } else {
                     add("sources_to_try_sort")
+                    add("sources_to_try_filter")
                     if (isSearching && filteredSuggestions.isEmpty()) {
                         add("sources_to_try_search_empty")
                     } else {
@@ -120,8 +136,14 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                     titleContent = { Text(stringResource(KMR.strings.rec_settings_index_discovery)) },
                     searchQuery = searchQuery,
                     onChangeSearchQuery = { searchQuery = it },
-                    placeholderText = stringResource(KMR.strings.rec_sources_to_try_search_hint),
                     navigateUp = navigator::pop,
+                    searchEnabled = false,
+                    actions = {
+                        RecommendationSettingsDetailActions(
+                            onSearch = { navigator.push(RecommendationSettingsSearchScreen()) },
+                            onHome = openForYou,
+                        )
+                    },
                     scrollBehavior = scrollBehavior,
                 )
             },
@@ -141,8 +163,18 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                     item(key = "sources_to_try_header") {
                         SectionHeader(
                             stringResource(KMR.strings.rec_sources_to_try_header),
-                            summary = stringResource(KMR.strings.rec_settings_summary_sources_to_try, state.nonInstalledSuggestions.size),
+                            summary = pluralStringResource(KMR.plurals.rec_settings_summary_sources_to_try, count = displayedSuggestionCount, displayedSuggestionCount),
                         )
+                    }
+                    state.suggestionInstallFeedback?.let { feedback ->
+                        item(key = "sources_to_try_install_result") {
+                            SourcesToTryInstallFeedbackContent(
+                                feedback = feedback,
+                                retryAvailable = state.retryableSuggestionInstallFailureCount > 0,
+                                onRetry = screenModel::retrySuggestionInstallFailures,
+                                onClose = screenModel::dismissSuggestionInstallFeedback,
+                            )
+                        }
                     }
                     if (state.nonInstalledSuggestions.isEmpty()) {
                         item(key = "sources_to_try_empty") {
@@ -159,6 +191,17 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                     } else {
                         item(key = "sources_to_try_sort") {
                             SourcesToTrySortRow(current = sortMode, onSelect = { sortMode = it })
+                        }
+                        item(key = "sources_to_try_filter") {
+                            OutlinedTextField(
+                                value = searchQuery.orEmpty(),
+                                onValueChange = { searchQuery = it },
+                                label = { Text(stringResource(KMR.strings.rec_sources_to_try_search_hint)) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = MaterialTheme.padding.medium),
+                            )
                         }
                         // KMK v0.8.10: a search that matches nothing is distinct from "no suggestions
                         // exist at all" (the sources_to_try_empty branch above).
@@ -193,6 +236,7 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                             SourceSuggestionItem(
                                 suggestion = suggestion,
                                 onInstall = { screenModel.installSuggestion(suggestion) },
+                                onCancelInstall = { screenModel.cancelSuggestionInstall(suggestion) },
                                 onDismiss = { screenModel.dismissSuggestion(suggestion) },
                                 isLiked = isSuggestionLiked,
                                 isDisliked = isSuggestionDisliked,
@@ -230,19 +274,19 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                                         if (state.suggestionsExpanded) {
                                             stringResource(KMR.strings.rec_suggestions_show_fewer)
                                         } else {
-                                            stringResource(KMR.strings.rec_suggestions_show_more, state.nonInstalledSuggestions.size - 5)
+                                            pluralStringResource(KMR.plurals.rec_suggestions_show_more, count = state.nonInstalledSuggestions.size - 5, state.nonInstalledSuggestions.size - 5)
                                         },
                                     )
                                 }
                             }
                         }
                         item(key = "suggestions_bulk_install") {
-                            Row(
+                            FlowRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.extraSmall),
-                                verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                                verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
                             ) {
                                 if (state.isSuggestionSelectionMode) {
                                     val selectedCount = visibleSuggestions.count { it.dismissalKey in state.selectedSuggestionKeys }
@@ -255,22 +299,26 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
                                     OutlinedButton(onClick = screenModel::exitSuggestionSelectionMode) {
                                         Text(stringResource(KMR.strings.rec_suggestion_cancel_selection))
                                     }
+                                } else if (state.isBulkInstallingSuggestions) {
+                                    Button(
+                                        onClick = {},
+                                        enabled = false,
+                                    ) {
+                                        Text(stringResource(KMR.strings.rec_suggestion_installing_visible))
+                                    }
+                                    OutlinedButton(onClick = screenModel::cancelBulkSuggestionInstall) {
+                                        Text(stringResource(KMR.strings.rec_suggestion_cancel_install))
+                                    }
                                 } else {
                                     Button(
                                         onClick = { screenModel.installSuggestions(visibleSuggestions) },
-                                        enabled = visibleSuggestions.isNotEmpty() && !state.isBulkInstallingSuggestions,
+                                        enabled = visibleSuggestions.isNotEmpty(),
                                     ) {
-                                        Text(
-                                            if (state.isBulkInstallingSuggestions) {
-                                                stringResource(KMR.strings.rec_suggestion_installing_visible)
-                                            } else {
-                                                stringResource(KMR.strings.rec_suggestion_install_visible, visibleSuggestions.size)
-                                            },
-                                        )
+                                        Text(stringResource(KMR.strings.rec_suggestion_install_visible, visibleSuggestions.size))
                                     }
                                     TextButton(
                                         onClick = screenModel::enterSuggestionSelectionMode,
-                                        enabled = visibleSuggestions.isNotEmpty() && !state.isBulkInstallingSuggestions,
+                                        enabled = visibleSuggestions.isNotEmpty(),
                                     ) {
                                         Text(stringResource(KMR.strings.rec_suggestion_select))
                                     }
@@ -314,3 +362,68 @@ class RecommendationNonInstalledDiscoverySettingsScreen(
     }
 }
 // KMK <--
+
+@Composable
+private fun SourcesToTryInstallFeedbackContent(
+    feedback: SourcesToTryInstallFeedback,
+    retryAvailable: Boolean,
+    onRetry: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val text = when (feedback) {
+        is SourcesToTryInstallFeedback.Installed -> stringResource(KMR.strings.rec_suggestion_install_success)
+        is SourcesToTryInstallFeedback.Failed -> stringResource(KMR.strings.rec_suggestion_install_failed)
+        is SourcesToTryInstallFeedback.BulkInstalled -> pluralStringResource(
+            KMR.plurals.rec_suggestion_install_success_count,
+            feedback.installedCount,
+            feedback.installedCount,
+        )
+        is SourcesToTryInstallFeedback.BulkPartial -> stringResource(
+            KMR.strings.rec_suggestion_install_partial_summary,
+            pluralStringResource(
+                KMR.plurals.rec_suggestion_install_success_count,
+                feedback.installedCount,
+                feedback.installedCount,
+            ),
+            pluralStringResource(
+                KMR.plurals.rec_suggestion_install_failed_count,
+                feedback.failedCount,
+                feedback.failedCount,
+            ),
+        )
+        is SourcesToTryInstallFeedback.BulkFailed -> pluralStringResource(
+            KMR.plurals.rec_suggestion_install_failed_count,
+            feedback.failedCount,
+            feedback.failedCount,
+        )
+        is SourcesToTryInstallFeedback.Cancelled -> stringResource(KMR.strings.rec_suggestion_install_cancelled)
+    }
+    val retryable = retryAvailable && (
+        feedback is SourcesToTryInstallFeedback.Failed ||
+            feedback is SourcesToTryInstallFeedback.BulkPartial ||
+            feedback is SourcesToTryInstallFeedback.BulkFailed ||
+            feedback is SourcesToTryInstallFeedback.Cancelled
+        )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+    ) {
+        Text(text = text, style = MaterialTheme.typography.bodyMedium)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
+        ) {
+            if (retryable) {
+                Button(onClick = onRetry) {
+                    Text(stringResource(KMR.strings.rec_suggestion_retry_failed))
+                }
+            }
+            TextButton(onClick = onClose) {
+                Text(stringResource(KMR.strings.rec_suggestion_close_result))
+            }
+        }
+    }
+}

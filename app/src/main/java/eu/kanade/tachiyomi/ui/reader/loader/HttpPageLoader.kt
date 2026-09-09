@@ -4,11 +4,13 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.source.SourceRuntime
+import eu.kanade.tachiyomi.source.SourceRuntimeFailureRegistry
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
 import eu.kanade.tachiyomi.source.getOrThrowSourceRuntimeException
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.rethrowIfFatal
+import eu.kanade.tachiyomi.ui.reader.ReaderEffectiveResourcePolicy
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -19,20 +21,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.concurrent.PriorityBlockingQueue
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.incrementAndFetch
 import kotlin.math.min
 
 /**
@@ -50,37 +48,48 @@ internal class HttpPageLoader(
 ) : PageLoader() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val workerLock = Any()
+    private val workerJobs = mutableListOf<Job>()
+    private var backgrounded = false
 
-    /**
-     * A queue used to manage requests one by one while allowing priorities.
-     */
-    private val queue = PriorityBlockingQueue<PriorityPage>()
-
-    private val preloadSize = /* SY --> */ readerPreferences.preloadSize().get() // SY <--
+    private val resourceConfig = ReaderEffectiveResourcePolicy.resolve(
+        rawWorkerCount = readerPreferences.readerThreads().get(),
+        rawPreloadSize = readerPreferences.preloadSize().get(),
+        rawCacheSizeMb = readerPreferences.cacheSize().get(),
+        rawArchiveReaderMode = readerPreferences.archiveReaderMode().get(),
+    )
+    private val queue = BoundedReaderPageQueue(resourceConfig.queueCapacity)
 
     // SY -->
     private val dataSaver = DataSaver(source, sourcePreferences)
     // SY <--
 
     init {
-        // EXH -->
-        repeat(readerPreferences.readerThreads().get()) {
-            // EXH <--
-            scope.launchIO {
-                flow {
-                    while (true) {
-                        emit(runInterruptible { queue.take() }.page)
-                    }
-                }
-                    .filter { it.status == Page.State.Queue }
-                    .collect(::internalLoadPage)
-            }
-            // EXH -->
-        }
-        // EXH <--
+        startWorkers()
     }
 
     override var isLocal: Boolean = false
+
+    override fun onReaderBackground() {
+        if (isRecycled) return
+        queue.pause()
+        synchronized(workerLock) {
+            backgrounded = true
+            workerJobs.clear()
+        }
+        // Cancel workers and explicit retry enqueuers together. Active page work is requeued by
+        // runWorker's cancellation path, while the paused queue prevents new work from starting.
+        scope.coroutineContext.cancelChildren()
+    }
+
+    override fun onReaderForeground() {
+        if (isRecycled) return
+        synchronized(workerLock) {
+            backgrounded = false
+        }
+        queue.resume()
+        startWorkers()
+    }
 
     /**
      * Returns the page list for a chapter. It tries to return the page list from the local cache,
@@ -105,7 +114,16 @@ internal class HttpPageLoader(
             // for the existing catch(Throwable) path.
             SourceRuntime.run(source, SourceRuntimeOperation.PageList) {
                 getPageList(chapter.chapter)
-            }.getOrThrowSourceRuntimeException()
+            }.getOrThrowSourceRuntimeException().also { fetchedPages ->
+                if (isRecycled) return@also
+                try {
+                    chapterCache.putPageListToCache(chapter.chapter.toDomainChapter()!!, fetchedPages)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    rethrowIfFatal(e)
+                }
+            }
         }
         // SY -->
         val rp = pages.mapIndexed { index, page ->
@@ -115,7 +133,7 @@ internal class HttpPageLoader(
         if (readerPreferences.aggressivePageLoading().get()) {
             rp.forEach {
                 if (it.status == Page.State.Queue) {
-                    queue.offer(PriorityPage(it, 0))
+                    queue.offer(it, ReaderPageRequestPriority.PRELOAD)
                 }
             }
         }
@@ -139,17 +157,23 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
 
-        val queuedPages = mutableListOf<PriorityPage>()
+        val queuedRequests = mutableListOf<ReaderPageQueueRequest>()
         if (page.status == Page.State.Queue) {
-            queuedPages += PriorityPage(page, 1).also { queue.offer(it) }
+            when (val admission = runInterruptible { queue.put(page, ReaderPageRequestPriority.CURRENT) }) {
+                is ReaderPageQueueAdmission.Enqueued -> queuedRequests += admission.request
+                ReaderPageQueueAdmission.Closed -> return@withIOContext
+                ReaderPageQueueAdmission.AlreadyScheduled,
+                ReaderPageQueueAdmission.Full,
+                -> Unit
+            }
         }
-        queuedPages += preloadNextPages(page, preloadSize)
+        queuedRequests += preloadNextPages(page, resourceConfig.preloadSize)
 
         suspendCancellableCoroutine<Nothing> { continuation ->
             continuation.invokeOnCancellation {
-                queuedPages.forEach {
-                    if (it.page.status == Page.State.Queue) {
-                        queue.remove(it)
+                queuedRequests.forEach { request ->
+                    if (request.page.status == Page.State.Queue) {
+                        queue.remove(request)
                     }
                 }
             }
@@ -157,42 +181,72 @@ internal class HttpPageLoader(
     }
 
     /**
-     * Retries a page. This method is only called from user interaction on the viewer.
+     * Retries every failed page in the requested page's chapter. The individual page holders use
+     * this same entry point, so tapping any visible Retry action recovers the complete current
+     * failed set while preserving pages that already succeeded.
      */
     override fun retryPage(page: ReaderPage) {
-        if (page.status is Page.State.Error) {
-            page.status = Page.State.Queue
-        }
-        // EXH -->
-        // Grab a new image URL on EXH sources
-        if (source.isEhBasedSource()) {
-            page.imageUrl = null
-        }
+        if (isRecycled) return
+        val failedPages = page.chapter.pages.orEmpty().filter { it.status is Page.State.Error }
+        if (failedPages.isEmpty()) return
 
-        if (readerPreferences.readerInstantRetry().get()) { // EXH <--
-            boostPage(page)
-        } else {
-            // EXH <--
-            queue.offer(PriorityPage(page, 2))
+        // An explicit reader retry is the user's recovery decision. Clear only this source's
+        // process-lifetime suppression so SourceRuntime can actually reattempt the source call.
+        SourceRuntimeFailureRegistry.clear(source.id)
+
+        failedPages.forEach { failedPage ->
+            failedPage.status = Page.State.Queue
+            // EXH -->
+            // Grab a new image URL on EH sources for every retried page.
+            if (source.isEhBasedSource()) {
+                failedPage.imageUrl = null
+            }
+
+            if (failedPage === page && readerPreferences.readerInstantRetry().get()) { // EXH <--
+                boostPage(failedPage)
+            } else {
+                enqueueRetry(failedPage)
+            }
         }
     }
 
     override fun recycle() {
         super.recycle()
+        synchronized(workerLock) {
+            backgrounded = true
+            workerJobs.clear()
+        }
+        queue.close()
         scope.cancel()
-        queue.clear()
+    }
 
-        // Cache current page list progress for online chapters to allow a faster reopen
-        chapter.pages?.let { pages ->
-            launchIO {
-                try {
-                    // Convert to pages without reader information
-                    val pagesToSave = pages.map { Page(it.index, it.url, it.imageUrl) }
-                    chapterCache.putPageListToCache(chapter.chapter.toDomainChapter()!!, pagesToSave)
-                } catch (e: Throwable) {
-                    if (e is CancellationException) {
-                        throw e
-                    }
+    private fun startWorkers() {
+        synchronized(workerLock) {
+            if (isRecycled || backgrounded || workerJobs.any { it.isActive }) return
+            repeat(resourceConfig.workerCount) {
+                workerJobs += scope.launchIO { runWorker() }
+            }
+        }
+    }
+
+    private suspend fun runWorker() {
+        while (true) {
+            val request = runInterruptible { queue.take() } ?: return
+            var requeueAfterCancellation = false
+            try {
+                if (request.page.status == Page.State.Queue) {
+                    internalLoadPage(request.page)
+                }
+            } catch (e: CancellationException) {
+                if (!isRecycled && request.page.status != Page.State.Ready) {
+                    request.page.status = Page.State.Queue
+                    requeueAfterCancellation = true
+                }
+                throw e
+            } finally {
+                queue.complete(request)
+                if (requeueAfterCancellation && !isRecycled) {
+                    queue.offer(request.page, ReaderPageRequestPriority.CURRENT)
                 }
             }
         }
@@ -201,9 +255,9 @@ internal class HttpPageLoader(
     /**
      * Preloads the given [amount] of pages after the [currentPage] with a lower priority.
      *
-     * @return a list of [PriorityPage] that were added to the [queue]
+     * @return queue requests that were added and therefore belong to the current subscriber
      */
-    private fun preloadNextPages(currentPage: ReaderPage, amount: Int): List<PriorityPage> {
+    private fun preloadNextPages(currentPage: ReaderPage, amount: Int): List<ReaderPageQueueRequest> {
         val pageIndex = currentPage.index
         val pages = currentPage.chapter.pages ?: return emptyList()
         if (pageIndex == pages.lastIndex) return emptyList()
@@ -212,7 +266,10 @@ internal class HttpPageLoader(
             .subList(pageIndex + 1, min(pageIndex + 1 + amount, pages.size))
             .mapNotNull {
                 if (it.status == Page.State.Queue) {
-                    PriorityPage(it, 0).apply { queue.offer(this) }
+                    when (val admission = queue.offer(it, ReaderPageRequestPriority.PRELOAD)) {
+                        is ReaderPageQueueAdmission.Enqueued -> admission.request
+                        else -> null
+                    }
                 } else {
                     null
                 }
@@ -246,41 +303,27 @@ internal class HttpPageLoader(
             page.stream = { chapterCache.getImageFile(imageUrl).inputStream() }
             page.status = Page.State.Ready
         } catch (e: Throwable) {
-            page.status = Page.State.Error(e)
             if (e is CancellationException) {
                 throw e
             }
             rethrowIfFatal(e)
+            page.status = Page.State.Error(e)
         }
     }
 
     // EXH -->
     fun boostPage(page: ReaderPage) {
         if (page.status == Page.State.Queue) {
-            scope.launchIO {
-                loadPage(page)
+            enqueueRetry(page)
+        }
+    }
+
+    private fun enqueueRetry(page: ReaderPage) {
+        scope.launchIO {
+            runInterruptible {
+                queue.put(page, ReaderPageRequestPriority.RETRY)
             }
         }
     }
     // EXH <--
-}
-
-/**
- * Data class used to keep ordering of pages in order to maintain priority.
- */
-@OptIn(ExperimentalAtomicApi::class)
-private class PriorityPage(
-    val page: ReaderPage,
-    val priority: Int,
-) : Comparable<PriorityPage> {
-    companion object {
-        private val idGenerator = AtomicInt(0)
-    }
-
-    private val identifier = idGenerator.incrementAndFetch()
-
-    override fun compareTo(other: PriorityPage): Int {
-        val p = other.priority.compareTo(priority)
-        return if (p != 0) p else identifier.compareTo(other.identifier)
-    }
 }

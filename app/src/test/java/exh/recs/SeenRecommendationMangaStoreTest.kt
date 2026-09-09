@@ -87,6 +87,32 @@ class SeenRecommendationMangaStoreTest {
     }
 
     @Test
+    fun `active keys and bounded removal ignore unrelated entries`() {
+        val active = SeenMangaKey(1L, "/active")
+        val unrelated = SeenMangaKey(2L, "/unrelated")
+        val current = setOf(active, unrelated)
+
+        val removed = SeenRecommendationMangaStore.activeKeys(
+            current,
+            listOf(active, SeenMangaKey(9L, "/missing")),
+        )
+
+        assertEquals(setOf(active), removed)
+        assertEquals(setOf(unrelated), SeenRecommendationMangaStore.removeKeys(current, removed))
+    }
+
+    @Test
+    fun `bounded restore preserves unrelated concurrent additions`() {
+        val removed = SeenMangaKey(1L, "/removed")
+        val concurrent = SeenMangaKey(2L, "/concurrent")
+
+        assertEquals(
+            setOf(removed, concurrent),
+            SeenRecommendationMangaStore.restoreKeys(setOf(concurrent), setOf(removed)),
+        )
+    }
+
+    @Test
     fun `url containing pipe character parsed correctly`() {
         // The format is "sourceId|url", so url can contain pipes — only FIRST pipe is the separator
         val key = SeenMangaKey(5L, "/manga/foo|bar")

@@ -85,7 +85,7 @@ class InstallAndRecordUserInitiatedTest {
     }
 
     @Test
-    fun `Evaluation Mode off records nothing even on a successful install`() = runTest {
+    fun `Evaluation Mode off still records a successful install`() = runTest {
         val ext = availableExtension()
         val extensionManager = mockk<ExtensionManager>()
         every { extensionManager.installExtension(ext) } returns flowOf(InstallStep.Installed)
@@ -93,8 +93,8 @@ class InstallAndRecordUserInitiatedTest {
         val step = extensionManager.installAndRecordUserInitiated(ext) { false }
 
         assertEquals(InstallStep.Installed, step)
-        assertTrue(NonUndoableEventJournal.snapshot().isEmpty())
-        assertTrue(PackageOperationJournal.snapshot().isEmpty())
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(1, PackageOperationJournal.snapshot().size)
     }
 
     @Test

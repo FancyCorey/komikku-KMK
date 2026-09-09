@@ -8,6 +8,7 @@ import tachiyomi.domain.taste.interactor.GetRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.UpsertRecommendationCandidateMemory
 import tachiyomi.domain.taste.model.RecommendationCandidateMemory
+import java.util.Locale
 
 /**
  * Wraps the recommendation candidate memory repository with JSON parse safety and
@@ -135,7 +136,7 @@ class RecommendationCandidateMemoryStore(
     companion object {
         /** Normalize title for cross-source dedup keying. Matches logic in BrowsePersonalRecommendationsScreenModel. */
         fun normalizeTitle(title: String): String =
-            title.lowercase()
+            title.lowercase(Locale.ROOT)
                 .replace(Regex("""\([^)]*\)|\[[^\]]*\]"""), "")
                 .replace(Regex("[^a-z0-9]"), " ")
                 .trim()

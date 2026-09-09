@@ -82,6 +82,7 @@ class ExtensionInstallService : Service() {
     override fun onDestroy() {
         installer?.onDestroy()
         installer = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     override fun onBind(i: Intent?): IBinder? = null

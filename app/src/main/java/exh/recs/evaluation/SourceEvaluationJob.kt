@@ -64,6 +64,11 @@ internal suspend fun runSourceEvaluationWork(
         }
 
         val finalState = getState()
+        Unit.logcat(LogPriority.INFO) {
+            "KMK SourceEvaluationJob: domain terminal status=${finalState?.status ?: "missing"} " +
+                "completed=${finalState?.completedCount ?: 0}/${finalState?.totalCount ?: 0} " +
+                "error=${finalState?.errorMessage ?: "none"}"
+        }
         if (finalState?.status == SourceEvaluationQueueState.Status.Completed) {
             notifier.showComplete(finalState.strongFitCount)
         } else {
@@ -90,7 +95,7 @@ internal suspend fun runSourceEvaluationWork(
     }
 }
 
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: pure decision
+// Pure decision
 // extracted so the debug/release gating logic is directly unit-testable without WorkManager or a
 // real Context. The fixture path activates only when BOTH conditions hold -- BuildConfig.DEBUG is
 // a compile-time-per-variant constant that folds to `false` for every non-debug build type
@@ -117,10 +122,9 @@ class SourceEvaluationJob(
     private val notifier = SourceEvaluationNotifier(context)
 
     override suspend fun doWork(): Result {
-        val candidates = SourceEvaluationJobState.pendingCandidates
-        val options = SourceEvaluationJobState.pendingOptions
+        val pendingRun = SourceEvaluationJobState.pendingRun()
 
-        if (candidates == null || options == null || candidates.isEmpty()) {
+        if (pendingRun == null || pendingRun.candidates.isEmpty()) {
             logcat(LogPriority.WARN) {
                 "KMK SourceEvaluationJob: no pending candidates/options (process may have restarted)"
             }
@@ -132,6 +136,9 @@ class SourceEvaluationJob(
             // KMK <--
             return Result.failure()
         }
+
+        val candidates = pendingRun.candidates
+        val options = pendingRun.options
 
         setForegroundSafely()
 
@@ -152,16 +159,14 @@ class SourceEvaluationJob(
                     .first { it.isTerminal }
             },
             notifier = notifier,
-            getState = { SourceEvaluationJobState.activeQueueState.value },
-            setState = { SourceEvaluationJobState.activeQueueState.value = it },
+            getState = { SourceEvaluationJobState.stateFor(pendingRun.generation) },
+            setState = { SourceEvaluationJobState.publish(pendingRun.generation, it) },
             cancelRunner = { runner.cancel() },
             finallyCleanup = {
                 // KMK: snapshot only what SourceEvaluationScreenModel actually needs (see
                 // SourceEvaluationJobState.lastCompletedCandidateKeys) instead of publishing the
                 // whole runner object.
-                SourceEvaluationJobState.lastCompletedCandidateKeys = runner.completedCandidateKeys
-                SourceEvaluationJobState.pendingCandidates = null
-                SourceEvaluationJobState.pendingOptions = null
+                SourceEvaluationJobState.finish(pendingRun.generation, runner.completedCandidateKeys)
             },
             logUnexpectedError = { logcat(LogPriority.ERROR) { "KMK SourceEvaluationJob: unexpected error" } },
         )

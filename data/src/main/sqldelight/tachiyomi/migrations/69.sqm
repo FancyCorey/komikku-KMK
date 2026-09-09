@@ -1,0 +1,1 @@
+ALTER TABLE local_tracked_work ADD COLUMN last_chapter_number REAL;

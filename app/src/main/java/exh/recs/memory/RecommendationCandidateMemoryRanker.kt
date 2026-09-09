@@ -46,13 +46,13 @@ object RecommendationCandidateMemoryRanker {
         minChapterCount: Int = 0,
         chapterCounts: Map<Long, Long> = emptyMap(),
         // KMK <--
-        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: optional bounded soft
+        // optional bounded soft
         // reordering by local exposure history, applied AFTER scoring/filtering but BEFORE the
         // `take(limit)` cap below -- this is what lets a less-exposed candidate be promoted into a
         // visible slot; reranking after the cap could never do that, since a candidate cut by the cap
         // is already gone. Defaults to a no-op (empty map -> the pre-existing plain score sort),
         // so every caller that does not pass exposure data keeps its exact original behavior.
-        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: keyed by the full (sourceId, url) identity.
+        // keyed by the full (sourceId, url) identity.
         // A url-only map was unsafe here specifically because this function deliberately mixes
         // remembered candidates (which carry their own originating `entry.sourceId`) with freshly
         // searched ones, so two sources sharing a relative url could cross-penalise each other.
@@ -119,7 +119,7 @@ object RecommendationCandidateMemoryRanker {
         }
 
         val ordered = scored.sortedByDescending { it.score }
-        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: the reranker only permutes
+        // The reranker only permutes
         // -- it never mutates PersonalRecommendation.score and never drops a candidate -- so applying
         // it before the cap is safe even when exposureByKey is empty (identity permutation), and it
         // is the only placement that can promote a less-exposed candidate into a visible slot.
@@ -140,7 +140,7 @@ object RecommendationCandidateMemoryRanker {
                 },
             )
         }
-        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: the cap itself now enforces the
+        // The cap itself now enforces the
         // personalized-majority invariant on the realised per-lane counts, instead of relying on the
         // input quota arithmetic (which does not hold when the personalized lane is sparse).
         return exh.recs.RecommendationLatestBudgetPolicy.enforcePersonalizedMajority(reranked, limit)

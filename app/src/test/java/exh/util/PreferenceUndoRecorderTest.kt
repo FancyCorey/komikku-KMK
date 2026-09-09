@@ -2,6 +2,7 @@ package exh.util
 
 import eu.kanade.domain.source.service.SourcePreferences
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.taste.model.TagPreference
@@ -13,10 +14,10 @@ class PreferenceUndoRecorderTest {
     private val sourcePreferences = SourcePreferences(preferenceStore)
 
     @Test
-    fun `no entry is built when Evaluation Mode is disabled`() {
+    fun `entry is built when Evaluation Mode is disabled`() {
         sourcePreferences.evaluationMode().set(false)
         val pref = preferenceStore.getInt("test_key", 0)
-        assertNull(exh.util.PreferenceUndoRecorder.buildPreferenceEntry(sourcePreferences, PreferenceJournalActionType.MIN_CHAPTER_COUNT, "test", pref, 0, 5))
+        assertNotNull(exh.util.PreferenceUndoRecorder.buildPreferenceEntry(sourcePreferences, PreferenceJournalActionType.MIN_CHAPTER_COUNT, "test", pref, 0, 5))
     }
 
     @Test
@@ -38,7 +39,7 @@ class PreferenceUndoRecorderTest {
     }
 
     @Test
-    fun `tag preference entry no-ops when Evaluation Mode is disabled`() {
+    fun `tag preference entry is still captured when Evaluation Mode is disabled`() {
         sourcePreferences.evaluationMode().set(false)
         val repo = exh.util.FakeTasteRepository()
         val getTagTaste = tachiyomi.domain.taste.interactor.GetTagTaste(repo)
@@ -54,7 +55,7 @@ class PreferenceUndoRecorderTest {
             null,
             TagPreference.PREFER,
         )
-        assertNull(entry)
+        assertNotNull(entry)
     }
 }
 // KMK <--

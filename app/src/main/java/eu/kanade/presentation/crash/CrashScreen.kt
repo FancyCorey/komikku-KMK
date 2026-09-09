@@ -2,14 +2,20 @@ package eu.kanade.presentation.crash
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -29,33 +35,62 @@ fun CrashScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var detailsVisible by remember { mutableStateOf(false) }
+    var confirmShare by remember { mutableStateOf(false) }
+
+    if (confirmShare) {
+        AlertDialog(
+            onDismissRequest = { confirmShare = false },
+            title = { Text(stringResource(MR.strings.crash_screen_share_warning_title)) },
+            text = { Text(stringResource(MR.strings.crash_screen_share_warning_message)) },
+            dismissButton = {
+                TextButton(onClick = { confirmShare = false }) {
+                    Text(stringResource(MR.strings.action_cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmShare = false
+                        scope.launch { CrashLogUtil(context).dumpLogs(exception) }
+                    },
+                ) {
+                    Text(stringResource(MR.strings.crash_screen_share_warning_confirm))
+                }
+            },
+        )
+    }
 
     InfoScreen(
         icon = Icons.Outlined.BugReport,
         headingText = stringResource(MR.strings.crash_screen_title),
         subtitleText = stringResource(MR.strings.crash_screen_description, stringResource(MR.strings.app_name)),
         acceptText = stringResource(MR.strings.pref_dump_crash_logs),
-        onAcceptClick = {
-            scope.launch {
-                CrashLogUtil(context).dumpLogs(exception)
-            }
-        },
+        onAcceptClick = { confirmShare = true },
         rejectText = stringResource(MR.strings.crash_screen_restart_application),
         onRejectClick = onRestartClick,
     ) {
-        Box(
-            modifier = Modifier
-                .padding(vertical = MaterialTheme.padding.small)
-                .clip(MaterialTheme.shapes.small)
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
+        TextButton(onClick = { detailsVisible = !detailsVisible }) {
             Text(
-                text = exception.toString(),
-                modifier = Modifier
-                    .padding(all = MaterialTheme.padding.small),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stringResource(
+                    if (detailsVisible) MR.strings.crash_screen_hide_details else MR.strings.crash_screen_show_details,
+                ),
             )
+        }
+        if (detailsVisible) {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = MaterialTheme.padding.small)
+                    .clip(MaterialTheme.shapes.small)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Text(
+                    text = exception?.message ?: stringResource(MR.strings.crash_screen_details_unavailable),
+                    modifier = Modifier.padding(all = MaterialTheme.padding.small),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

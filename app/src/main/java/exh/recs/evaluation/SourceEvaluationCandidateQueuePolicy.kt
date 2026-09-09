@@ -9,9 +9,8 @@ package exh.recs.evaluation
  * "already evaluated, hidden" whenever `reEvaluateStale == false` (the default) — which is correct
  * for the *unassessed* queue, but means stale rows have nowhere to go: they are neither offered as
  * unassessed candidates nor exposed as a distinct, continuable reassessment queue. This policy
- * builds that second queue explicitly.
- *
- * See `docs/recommendations/KMK_RECS_V0_8_1_FIX3_SOURCE_EVALUATION_CONTINUATION_FIX_PLAN.md`.
+ * builds that second queue explicitly so a completed run can continue with actionable stale sources
+ * without repeating already-current evaluations.
  */
 object SourceEvaluationCandidateQueuePolicy {
 

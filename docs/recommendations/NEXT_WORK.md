@@ -1,12 +1,290 @@
-﻿## Correction-pass status — 2026-07-25
+## Jump to last-read chapter — 2026-08-09 (batch J1) — IN_PROGRESS
+
+Distinct feature batch, not part of the recommendation line. Full record:
+`private/docs/audits-and-reports/KMK_JUMP_TO_LAST_READ_CHAPTER_IMPLEMENTATION_LEDGER_2026-08-09.md`.
+
+- **Landed (DONE):** `LastReadChapterTargetPolicy` (new, 26 tests, 0 failures) defining the target rule
+  purely from `read` + `lastPageRead` + `manga.sortDescending()` — **no new column, no migration, no new
+  timestamp**. `lastModifiedAt` was deliberately rejected as a read timestamp (any write moves it).
+  `MangaScreenModel.resolveLastReadChapterTarget()` / `currentIndexOfChapter()`.
+  `MangaToolbar(onClickJumpToLastRead)` + `Icons.Outlined.History` + KMR strings.
+- **NOT landed (IN_PROGRESS):** the screen-level scroll wiring. The toolbar parameter defaults to `null`
+  and **no call site supplies it**, so the action is not visible in the app and the feature is **not
+  user-reachable**. Original Komikku behavior is byte-identical meanwhile.
+- **Next step, precisely scoped:** thread the lambda into `MangaScreenSmallImpl` (toolbar ~line 558) and
+  the tablet impl (~line 1064); own a single `jumpJob` (cancel-and-replace on repeated taps); re-resolve
+  by identity then `LastReadChapterTargetPolicy.toLazyListIndex(layoutInfo.totalItemsCount,
+  listItem.size, index)` and `animateScrollToItem`; snackbar `jump_to_last_read_unavailable` when the
+  target is filtered away.
+- **Verified by source inspection:** `sharedChapterItems` is the last LazyColumn emitter in both
+  layouts, so the header offset can be derived from live `layoutInfo` rather than hardcoded. The chapter
+  list is fully materialised (no chapter pager), so "target outside the first loaded page" does not
+  arise.
+- **BLOCKED_EXTERNAL:** rendered scroll/theme/layout/TalkBack validation — no Compose UI or screenshot
+  infrastructure in this repository.
+
+## Latest catalogue + exposure packet — 2026-08-09 (batch L6: real 63 → 64 path + evidence classes)
+
+Supersedes the batch L5 entry below only for the migration row (L5 claimed migration-64 coverage
+`DONE`; the test skipped schema 63, so that claim was overstated). Full record:
+`private/docs/audits-and-reports/KMK_LATEST_CATALOGUE_AND_EXPOSURE_IMPLEMENTATION_LEDGER_2026-08-08.md`
+("Batch L6").
+
+- **Real 63 → 64 migration path — DONE.** New
+  `app/src/test/java/eu/kanade/tachiyomi/data/database/KmkMigration63To64UpgradeTest.kt` (12 tests)
+  drives the generated `Database.Schema.migrate(...)` shipped in the app. SQLDelight's convention is
+  that migration file `N` runs when `oldVersion <= N && newVersion > N`, so real file 63 is
+  `migrate(driver, 63, 64)` and real file 64 is `migrate(driver, 64, 65)`; `Database.Schema.version`
+  is 65 and a test guards that constant. The pre-63 fixture reproduces `extension_repos` verbatim from
+  `32.sqm`. The existing `46..62` range test and `KmkMigration64ExposureTest` were left **unchanged** —
+  no migration-contract reason to widen them.
+- **Tracker tri-state — DONE, re-verified not rewritten.** All eight required properties confirmed
+  against current source (failed → `Unknown`; `Unknown` leaves candidates unchanged; successful empty →
+  known-empty; cancellation rethrown; composite `(sourceId, url)`; fixed-string log with no
+  identifiers; legacy `await()` and both its callers unchanged; library/rated exemptions intact).
+- **End-to-end recommendation behavior — DONE, re-verified.** Lane provenance survives merge; majority
+  uses realised counts not configured slots; enforcement is the cap; exposure identity is source-aware
+  at capture; clear-history has a real UI caller; min-chapter is applied at the candidate-visibility
+  stage.
+- **Direct ScreenModel validation — PARTIAL_VALIDATION.** New blocker detail beyond earlier passes:
+  `context.isOnline()` is a **top-level extension function** (`NetworkExtensions.kt:16`), so it compiles
+  to a static and cannot be stubbed by `mockk<Context>(relaxed = true)` — it would need `mockkStatic`.
+  Combined with no Robolectric, the `Application` requirement, and `init` starting a full load on
+  construction, a bounded direct harness is not constructible. **Smallest remediation (next batch):**
+  add an `autoLoad: Boolean = true` constructor parameter guarding the `init` launch, **or** replace the
+  `Context.isOnline()` call with a one-method injectable `NetworkStatus` interface. Either makes a
+  direct harness constructible with mockk alone.
+- **Domain D — BLOCKED_EXTERNAL, unchanged.** No Compose UI or screenshot infrastructure exists here.
+- **`private/control/MIGRATION_STATUS.md` — inspected, not affected.** It tracks publication-readiness
+  device batches, not SQLDelight schema versions.
+- **Overall feature status: DONE_WITH_VALIDATION_GAP.**
+
+## Latest catalogue + exposure packet — 2026-08-09 (batch L5: tracker fail-safety + migration 64)
+
+Supersedes the batch L3 entry below only for the tracker row (L3 marked Domain B `DONE`; the tracker
+sub-contract was in fact unsafe, so that specific claim was premature). Full record:
+`private/docs/audits-and-reports/KMK_LATEST_CATALOGUE_AND_EXPOSURE_IMPLEMENTATION_LEDGER_2026-08-08.md`
+("Batch L5").
+
+- **Tracker fail-safety — DONE.** `GetTracks.awaitOrNull()` (new, additive; `await()` unchanged and both
+  pre-existing callers verified untouched) lets `resolveTrackedExposureKeys()` return a real tri-state:
+  `TrackedState.Known(keys)` or `TrackedState.Unknown`. `RecommendationDisplayReranker.rerank()` returns
+  the candidate list unchanged when tracker state is `Unknown`, so a failed lookup can never penalise a
+  possibly-tracked title. `InteractionSignals.tracked` defaults to `Unknown` so a forgetful caller gets
+  the safe path. Proven through the production-facing contract — a real `GetTracks` over a failing
+  `TrackRepository`, and the real `RecommendationCandidateMemoryRanker.merge()` — not only the pure
+  policy. 11 new tests + `RecommendationDisplayRerankerTest` 20 → 24.
+- **Migration 64 coverage — DONE.** New `KmkMigration64ExposureTest` (14 tests). Adding coverage
+  surfaced a real defect: `64.sqm` used bare `CREATE TABLE`/`CREATE INDEX`, violating the `IF NOT EXISTS`
+  idempotency contract `KmkMigrationTest` enforces; fixed in place. 64 was deliberately kept out of
+  `KMK_MIGRATION_RANGE` because widening it would have to include 63 (the upstream 1.14.0 reconciliation,
+  which legitimately ALTERs upstream tables) and break that test's own invariants.
+- **Direct ScreenModel validation — PARTIAL_VALIDATION, not DONE.** A minimal harness is not
+  constructible with existing infrastructure. Exact blockers: no Robolectric anywhere in the project
+  (verified by grep over `libs.versions.toml` and `app/build.gradle.kts`); the constructor requires a
+  real Android `Application` for `context.isOnline()`/`context.toast(...)`; and
+  `init { screenModelScope.launch { load(...) } }` starts a full recommendation load on construction, so
+  there is no inert construction path. Closing this needs either Robolectric (a new framework, out of
+  scope) or an init/context refactor — its own batch.
+- **Domain D — BLOCKED_EXTERNAL, unchanged.** No Compose UI or screenshot infrastructure exists here.
+- **Validation:** 2574 tests / 0 failures / 0 errors / 1 skipped (baseline 2545, +29); compile, focused
+  suites, `spotlessCheck`, and `git diff --check` all exit 0. Security scans not re-run (unchanged).
+  **Working tree dirty: 378 paths** (baseline 376; delta is exactly the two new test files). Nothing
+  committed, pushed, or cleaned.
+
+## Latest catalogue + exposure packet — 2026-08-09 (batch L3: structural repair pass)
+
+Supersedes the batch L2 entry below where they disagree; L2 is left unchanged as historical record.
+Full record: `private/docs/audits-and-reports/KMK_LATEST_CATALOGUE_AND_EXPOSURE_IMPLEMENTATION_LEDGER_2026-08-08.md`
+("Batch L3"), including a per-requirement matrix mapping each requirement to its production caller,
+persistence, UI path, tests, evidence, and rollback.
+
+- **Domain A — DONE.** `RecommendationLatestBudgetPolicy.enforcePersonalizedMajority()` now decides the
+  final row composition from realised per-lane counts, called from
+  `RecommendationCandidateMemoryRanker.merge()`'s cap. `PersonalRecommendation.lane` carries provenance
+  through the merge. Proven by `RecommendationLatestLaneCompositionTest` (14 tests) including an
+  exhaustive sweep over 5 display limits × 5 percentages × every personalized count from 0 to the limit.
+- **Domain B — DONE.** Exposure identity is `(sourceId, url)` everywhere
+  (`RecommendationDisplayReranker.ExposureKey`); the three positive-interaction exemptions are separate,
+  independently tested sets (`InteractionSignals`); the tracker exemption is a real batched
+  `GetTracks.await(ids)` call that fails open; "Clear repeat history" is a settings row behind a
+  confirmation dialog with success/failure/cancellation/no-Action-History tests.
+- **Domain C — DONE.** All supported thresholds (0/5/10/20/50) proven through the real merge pipeline,
+  plus unknown-count fail-open at every threshold and Latest-lane parity. Fingerprint participation
+  (`profileFingerprint(..., minChapterCount, ...)`) is source-verified only, since that function is private.
+- **Domain D — BLOCKED_EXTERNAL, unchanged.** No Compose UI/screenshot test infrastructure exists in this
+  repository. Rendered validation of the quick-access panel has not been performed and is not claimed.
+  Closing it requires either a live-device pass or introducing that infrastructure as its own batch.
+- **Remaining known gaps (not claimed done):** `BrowsePersonalRecommendationsScreenModel` still has no
+  test harness anywhere in the repo, so `tryAdditiveLatestAugmentation`, `recordVisibleExposure`'s
+  coroutine body, `buildExposureRerankContext`, and `resolveTrackedExposureKeys` are verified by source
+  inspection plus the pure policies/merge-level tests they feed — not by direct tests. Latest-lane
+  cancellation and unsupported/failed-source outcomes are likewise source-verified via the shared
+  `SourceRuntime` boundary. Building that harness is the natural next batch.
+- **Validation:** 2545 tests / 0 failures / 0 errors / 1 skipped; `spotlessCheck` clean;
+  `:app:assembleDebug` successful; `git diff --check` clean. **Working tree dirty: 376 changed paths**
+  (baseline 375; the single delta is the new untracked
+  `app/src/test/java/exh/recs/RecommendationLatestLaneCompositionTest.kt`, confirmed by diffing the
+  baseline manifest against the final status). Nothing was committed, pushed, or cleaned.
+
+## Latest catalogue + exposure packet — 2026-08-08 (batch L2: structural completion pass)
+
+Full record: `private/docs/audits-and-reports/KMK_LATEST_CATALOGUE_AND_EXPOSURE_IMPLEMENTATION_LEDGER_2026-08-08.md`
+("Batch L2" sections). This supersedes the batch-L1 status entry immediately below for the items it
+closes; the L1 entry is left unchanged as historical record.
+
+- **Domain A -- CLOSED.** The Latest lane's `RecommendationCatalogueFallbackPolicy.shouldAttempt` gate
+  previously made Latest fallback-only (never ran once personalized results already existed). Fixed with
+  a new `tryAdditiveLatestAugmentation()` in `BrowsePersonalRecommendationsScreenModel.kt`, sharing the
+  existing rescue-lane budget pool, bounded per source by
+  `RecommendationLatestBudgetPolicy.resolveAdditiveSlotsPerSource()` (new `MAX_ADDITIVE_SLOTS_PER_SOURCE
+  = 2`, worst-case share 2/5 = 40% of a 5-row source, so personalized results remain the majority in
+  every supported (displayLimit, percent) combination -- exhaustively tested). Reuses the full filter
+  pipeline (`processRawCandidates`), excludes ids already present in the personalized set, tags itself
+  under the existing `LATEST_CATALOGUE` provenance key (distinct from Popular), and fails open (returns
+  empty) on any per-source exception while rethrowing `CancellationException`. 6 new tests in
+  `RecommendationLatestBudgetPolicyTest.kt`. **Known gap:** no ScreenModel-level integration test exercises
+  `tryAdditiveLatestAugmentation` end-to-end (only the pure budget policy is directly tested); the merge
+  path it feeds into is covered indirectly via `RecommendationCandidateMemoryRankerTest`.
+- **Domain B -- CLOSED.** `RecommendationExposurePolicy`/`RecommendationDisplayReranker` previously had
+  zero production callers. Now wired end-to-end: new `recommendation_exposure` table (SQLDelight
+  `.sq` + migration), `RecommendationExposureRepositoryImpl`, 4 interactors
+  (`GetRecommendationExposure`/`RecordRecommendationExposure`/`PruneRecommendationExposure`/
+  `ClearRecommendationExposure`), registered in `KMKDomainModule.kt`. Exposure is recorded exactly once
+  per stable result generation via `BrowsePersonalRecommendationsScreenModel.recordVisibleExposure()`,
+  gated by `RecommendationExposureCapturePolicy.shouldRecord()` (loaded, non-empty, fully-settled,
+  not-yet-recorded generation only) and fired from a `LaunchedEffect(state.resultGeneration, allDone)` in
+  `BrowsePersonalRecommendationsTab.kt` -- never on unrelated recomposition. Reranking runs inside
+  `RecommendationCandidateMemoryRanker.merge()` **before** the final `.take(limit)` cap (the structural
+  requirement -- reranking after a cap can never promote a less-exposed candidate into view), using a
+  bounded soft penalty that never hides/excludes a candidate, never touches library/rated/tracked/
+  interacted titles, and never overrides Not Interested/Dislike/blocked-tag/blocked-source hard
+  exclusions. A new "Repeat title cooldown" settings row (7/14/30 day options, default 14) controls the
+  window via `RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS`; pruning runs once per `load()`. Local
+  storage only -- confirmed absent from the backup allowlist (`grep -rn "recommendation_exposure"
+  app/src/main/java/eu/kanade/tachiyomi/data/backup/` returns nothing). 20 new tests (11
+  `RecommendationExposureRepositoryTest` real-database tests, 9 `RecommendationExposureCapturePolicyTest`
+  gating tests) plus 5 reranking-through-merge tests in `RecommendationCandidateMemoryRankerTest.kt`.
+  **Known gap:** `recordVisibleExposure()`'s coroutine-launch body and the Tab-level `LaunchedEffect`
+  itself have no automated test (no Compose UI test infra in this repo -- see Domain D); the exposure
+  capture policy's pure gating logic is fully tested, but the wiring around it is not. A
+  `clearExposureHistory()` interactor call exists in `RecommendationsSettingsScreenModel` but has no
+  settings UI button yet -- deferred, not part of this pass's required scope.
+- **Domain C -- CLOSED.** No defect was found in minimum-chapter-count filtering itself (preference read,
+  validation, persistence, and candidate filtering were already correct), but the prior coverage was
+  policy-unit-tests-only with no proof the persisted value changes real pipeline output. Added 4 new
+  tests to `RecommendationCandidateMemoryRankerTest.kt` that construct a real preference store, persist a
+  20-chapter threshold, and prove it hides/keeps candidates through the actual `merge()` production path
+  (including a malformed-value-resolves-to-Off case and a threshold-change-alters-output case).
+- **Domain D -- OPEN, explicit validation gap (not closed).** Confirmed via
+  `grep -rn "createComposeRule|ComposeTestRule|paparazzi|Paparazzi|roborazzi|Roborazzi"` across
+  `app/src/test`, `app/src/androidTest`, `build.gradle.kts`, and `libs.versions.toml` that this repository
+  has no Compose UI or screenshot testing infrastructure at all. The quick-access panel's rendered
+  layout (centering, dead space, wrapping, touch targets, scrim/back/navigation behavior) was **not**
+  independently re-verified this pass -- it was previously addressed in Step 6 (see the batch-L1 entry
+  below) but that was also not backed by rendered validation. This remains an open gap requiring either a
+  live-device pass or new Compose UI test infra to close, not something a policy-level test can close.
+- **Validation (batch L2):** `:data:compileDebugKotlin`/`:app:compileDebugKotlin`/
+  `:app:compileDebugUnitTestKotlin` confirmed to actually re-execute (not merely up-to-date) after fixing
+  a real `awaitList`/`Query<T>` compile bug in `RecommendationExposureRepositoryImpl.kt`. Full
+  `:app:testDebugUnitTest`: **2517 tests, 0 failures, 0 errors, 1 skipped.** `spotlessCheck`: clean.
+  `git diff --check`: clean (one CRLF-normalization warning only, not an error). **Working tree is
+  dirty** (~375 changed paths at last check) -- this pass did not commit, push, or clean anything, per
+  its explicit constraints.
+
+## Latest catalogue + exposure packet — 2026-08-08 (batch L1 partially done)
+
+Owning packet: `KMK_RECS_FUTURE_LATEST_CATALOGUE_QUALITY_IMPLEMENTATION_PACKET_2026-08-08.md`.
+Full record: `private/docs/audits-and-reports/KMK_LATEST_CATALOGUE_AND_EXPOSURE_IMPLEMENTATION_LEDGER_2026-08-08.md`.
+
+- **DONE (batch L1):** Step 5A minimum-chapter conformance repair; Step 1 pure policies; Step 3
+  bounded Latest discovery lane; the Latest half of Step 5 (the "Explore new releases" setting);
+  Step 6 quick-access panel layout repair. See `CURRENT_STATE.md`'s "Latest Catalogue Discovery Lane"
+  section. Validated: spotlessCheck clean, 2482 unit tests / 0 failures, `:app:assembleDebug`
+  successful, `git diff --check` clean.
+- **OPEN — Step 2: local exposure persistence.** Not started. Needs
+  `data/src/main/sqldelight/tachiyomi/data/recommendation_exposure.sq` + migration `64.sqm` (63 is
+  the highest existing; 64 was still free as of 2026-08-08 and must be re-verified at start), the
+  domain model/repository, `RecommendationExposureRepositoryImpl`, get/record/prune/clear
+  interactors, and `KMKDomainModule` registration. Local-only, excluded from backup/sync/export, no
+  Action History entry.
+- **OPEN — Step 4: exposure capture + soft reranking integration.** Not started, blocked by Step 2.
+  `RecommendationExposurePolicy` and `RecommendationDisplayReranker` are implemented and fully
+  unit-tested but are **called by no production code**. Needs: exposure recording from
+  `BrowsePersonalRecommendationsTab.kt` keyed on a stable result generation (never on recomposition),
+  a single per-refresh exposure-summary load, and the reranker call placed after hard visibility /
+  scoring / dedup but before the per-source row cap and Top Picks accumulation.
+- **OPEN — exposure-window setting.** `recommendationExposureWindowDays()` exists in
+  `SourcePreferences` (so the 14-day default has one owner) but has **no settings UI row on purpose**
+  — a visible control that cannot affect anything would be dishonest. It belongs to the batch that
+  lands Steps 2 and 4.
+- **Not claimed:** no device/emulator verification, no APK installation, no screenshot evidence, and
+  no control-plane state promotion were performed in batch L1 (the control plane remains terminal
+  `BLOCKED` for device/publication gates and the source worktree is dirty).
+
+## KMK Post-Screenshot UI and Not Interested plan — 2026-08-07 (Batch E/E2 done, B/C/F open)
+
+## Future recommendation-quality proposal - 2026-08-08
+
+- **Latest catalogue discovery and novelty quality -- OPEN, NOT IMPLEMENTED.** Record and assess
+  each source's Latest catalogue as a bounded discovery lane alongside personalized/search and
+  Popular inputs. The future pass must preserve minimum chapter count, blocked-tag, language,
+  known/seen/rated, source-fit, metadata-confidence, deduplication, cancellation, and privacy
+  safeguards. It must use deterministic local fixtures and must not assume every source exposes a
+  reliable Latest route. Full structural plan:
+  `docs/recommendations/KMK_RECS_FUTURE_LATEST_CATALOGUE_QUALITY_AND_NOVELTY_PLAN_2026-08-08.md`.
+  No implementation, ranking change, APK work, or device validation was performed for this item.
+  Clarified decisions: ignored cards are exposure only, not negative feedback; Latest must obey all
+  existing eligibility filters; personalized results remain dominant; exploration is bounded and
+  deterministic first; the default exposure window is 14 days; and repeated untouched cards are
+  softly shifted downward rather than removed. A visible loaded card counts as exposed, while a
+  fetched-but-never-visible page does not. The For You quick-access panel also has a separate OPEN
+  visual audit item for centering, balance, spacing, and hit-target quality.
+  Repository-specific implementation packet:
+  `docs/recommendations/KMK_RECS_FUTURE_LATEST_CATALOGUE_QUALITY_IMPLEMENTATION_PACKET_2026-08-08.md`.
+  The packet is `decision-gated`; no implementation is authorized yet. It now explicitly includes
+  settings-copy/format conformance and hardening the existing minimum-chapter setting: current
+  filter behavior is tested for normal values, but setter/read sanitization and malformed-value
+  coverage still need to be proven.
+
+Governing plan: `private/docs/plans/KMK_POST_SCREENSHOT_UI_AND_NOT_INTERESTED_IMPLEMENTATION_PLAN_2026-08-07.md`.
+Full detail: `private/docs/audits-and-reports/KMK_POST_SCREENSHOT_UI_AND_NOT_INTERESTED_LEDGER_2026-08-07.md`.
+
+- **Batch E (Not Interested first-class state) -- DONE.** See the "Not Interested (formerly 'Seen')
+  Manga Marker" section of `CURRENT_STATE.md` above for the behavior change. Detail-page journaling
+  gap closed, primary-button presentation now reflects Not Interested. 14 new tests, all passing.
+- **Batch E2 (Not Interested as a structural peer of Love/Like/Dislike) -- DONE, second pass.** New
+  shared `exh.recs.loved.MangaPreferenceAction` dispatch model; `NotInterestedPresentationPolicy`
+  renamed to `MangaPreferencePresentationPolicy` and given `dropdownActions()`/`labelFor()`/
+  `notInterestedToggleLabel()`; the detail-page dropdown now renders all four actions from one shared
+  data-driven list instead of a bolted-on standalone item; selecting a rating while Not Interested is
+  active now atomically clears it and writes the rating through one combined Action History entry with
+  full undo support. See the "Not Interested (formerly 'Seen') Manga Marker" section of
+  `CURRENT_STATE.md` for the full behavior change and the ledger's "Batch E2 result" entry for the
+  test/validation record (23 new/updated tests, full 2392-test suite clean).
+- **Batch D (reader schedule discoverability) -- `CLOSED_AS_ALREADY_IMPLEMENTED`.** Audited, already
+  fully correct, no source change.
+- **Batch A (architecture reconciliation audit) -- done** for the areas Batch D/E cover; the reader
+  completion prompt (Batch C) and settings sectioning (Batch B) were only partially audited.
+- **Batch C (reader completion prompt hierarchy) -- open.** Audit found the dialog is already mostly
+  compliant (48dp targets, explicit Cancel, correct OK/Cancel write behavior already tested). One
+  confirmed remaining gap: in `ReaderActivity.kt`'s `ChapterCompletionRatingGroupOffer` dialog, the OK
+  and Cancel buttons are visually identical (`TextButton`, same size/color) with no dialog-state
+  -transition test coverage yet.
+- **Batch B (recommendation settings sectioning) -- not yet audited.** `RecommendationSettingsIndexScreen.kt`
+  is 5 flat destination rows with no internal section headers; whether the 6 named areas' *detail*
+  screens need additional internal sectioning was not checked this pass.
+- **Batch F (cross-route consistency + release notes) -- not started.**
+
+## Correction-pass status — 2026-07-25
 
 The previously listed Phase 1/2 gaps for chapter history, manga-detail read actions, source exclusion, source-order reset, same-manga/best-version controls, composite source preferences, and direct Source Evaluation quality marks were closed in the correction pass. Their older entries below are historical audit notes and should not be treated as active blockers.
 
 Active follow-up remains limited to the explicitly bounded items: wiring additional read/bookmark surfaces where the product wants them, designing inline For You Undo feedback, and evaluating recovery UX for external effects such as downloads, extension packages, backup restore, tracker writes, and migrations. No automatic rollback is claimed for those external effects.
 
-The live observation on 2026-07-25 also confirmed a coverage distinction: manga-detail rating/clear-rating writes in MangaScreenModel.setMangaTaste() and clearMangaTaste() are not currently journaled, so they do not appear in Action History. Migration remains intentionally excluded because it can include remote tracker writes. See private/KMK_EVALUATION_MODE_UNDO_LIVE_OBSERVATION_2026-07-25.md for the exact code paths and future requirements.
+The live observation on 2026-07-25 also confirmed a coverage distinction: manga-detail rating/clear-rating writes in MangaScreenModel.setMangaTaste() and clearMangaTaste() are not currently journaled, so they do not appear in Action History. Migration remains intentionally excluded because it can include remote tracker writes. See private/docs/audits-and-reports/KMK_EVALUATION_MODE_UNDO_LIVE_OBSERVATION_2026-07-25.md for the exact code paths and future requirements.
 
-**Update, KMK-Recs v0.8.20-fix1:** the manga-detail journaling gap above is closed -- `setMangaTaste()`/`clearMangaTaste()` now use the same build-before-write/commit-after-success journal contract as every other rating surface. Migration is still not undoable (that remains correct -- it can include remote tracker writes with no safe automatic reversal), but a completed migration and a confirmed extension install are now at least visible in Action History as clearly-labeled, non-undoable events via the new `NonUndoableEventJournal`. Extension uninstall is not yet represented there (no verified-completion signal exists for it in the current code) -- see private `KMK_FIX_PASS_V0_8_20_FIX1_REPORT.md` for the exact disposition.
+**Update, KMK-Recs v0.8.20-fix1:** the manga-detail journaling gap above is closed -- `setMangaTaste()`/`clearMangaTaste()` now use the same build-before-write/commit-after-success journal contract as every other rating surface. Migration is still not undoable (that remains correct -- it can include remote tracker writes with no safe automatic reversal), but a completed migration and a confirmed extension install are now at least visible in Action History as clearly-labeled, non-undoable events via the new `NonUndoableEventJournal`. Extension uninstall is not yet represented there (no verified-completion signal exists for it in the current code) -- see private `private/docs/audits-and-reports/KMK_FIX_PASS_V0_8_20_FIX1_REPORT.md` for the exact disposition.
 # KMK-Recs v0.8.20-fix3 completion
 
 Completed: reader schedule deletion confirmation, Evaluation Mode redaction of the For You sources
@@ -22,14 +300,14 @@ Evaluation Mode install recorder now covers Browse > Extensions, Sources To Try,
 bundle import, and direct Source Evaluation installation. Temporary evaluation/probe installs are
 not recorded, and extension uninstall remains intentionally unsupported because the current API
 does not expose a verified completion signal. See the private
-`KMK_FIX_PASS_V0_8_20_FIX2_REPORT.md` for exact symbols, tests, and limitations.
+`private/docs/audits-and-reports/KMK_FIX_PASS_V0_8_20_FIX2_REPORT.md` for exact symbols, tests, and limitations.
 
 # KMK Personal Recommendations Next Work
 
 ## Evaluation Mode Undo Expansion, 2026-07-25 (Phases 1/3/4/5 complete, Phase 2 partial)
 
 See `CURRENT_STATE.md`'s latest entry and the private
-`KMK_EVALUATION_MODE_UNDO_COVERAGE_AUDIT_2026-07-25.md` / `KMK_EVALUATION_MODE_UNDO_MASTER_IMPLEMENTATION_PLAN_2026-07-25.md`
+`private/docs/audits-and-reports/KMK_EVALUATION_MODE_UNDO_COVERAGE_AUDIT_2026-07-25.md` / `private/docs/plans/KMK_EVALUATION_MODE_UNDO_MASTER_IMPLEMENTATION_PLAN_2026-07-25.md`
 for full detail. Remaining work, in priority order:
 
 - **Finish Phase 2 chapter-state wiring.** `ChapterUndoJournal`/`ChapterUndoService`/`ChapterUndoRecorder`
@@ -63,7 +341,7 @@ See `CURRENT_STATE.md`'s latest entry and `docs/community/KMK_EVALUATION_MODE_UN
 
 - **Live-device validation not performed (required before evidence routes can be unblocked).** No ADB
   actions, screenshot capture, or device installation-for-testing occurred as part of implementing this
-  feature, by explicit scope. Before `private/KMK_FEATURE_EVIDENCE_PROGRESS.md`'s blocked grouping
+  feature, by explicit scope. Before `private/docs/evidence-and-qa/KMK_FEATURE_EVIDENCE_PROGRESS.md`'s blocked grouping
   routes (merge, remove-from-group, ungroup) can be marked complete, a separate pass must: install the
   build, perform a real merge/remove/ungroup on-device with Evaluation Mode on, confirm the Snackbar
   Undo action actually restores the grouping, and confirm the conflict path (re-group something, then
@@ -781,34 +1059,38 @@ Context:
 - v0.8.15 implemented the main Source Evaluation reassessment root-cause fix, but the post-implementation review found three follow-up items that should be handled before treating the reassessment work as fully closed.
 - These are corrective/follow-up items, not a new source-evaluation redesign.
 
-Required fixes:
+Resolution note (2026-08-05): this historical follow-up is resolved in the current source and is
+retained here for traceability. `SourceEvaluationRunner.recordExtensionError()` now calls the
+injected `ReplaceSourceEvaluation` interactor; `ReplaceSourceEvaluation.await()` delegates to the
+repository `replaceByPackage()` contract, so the stale-row replacement is one atomic repository
+operation rather than a separate delete-then-upsert sequence. The current
+`domain/src/test/java/tachiyomi/domain/taste/interactor/ReplaceSourceEvaluationTest.kt` covers
+successful replacement, delete failure, upsert rollback, cancellation propagation, metadata
+preservation, duplicate prevention, and non-durable failure classification. The normal
+Source-Evaluation UI/job/runner flow remains the existing product path; only live-device execution
+and independent device evidence remain outside host validation.
 
-1. Reconcile stale `NEXT_WORK.md` wording.
-   - `NEXT_WORK.md` now has a top-level v0.8.15 complete section, but the older "Source Evaluation outdated reassessment correctness" section below still reads like active future work.
-   - That section should be moved under resolved/history or rewritten as implemented in v0.8.15 with live-device verification still pending.
-   - Reason: otherwise future Claude/Codex prompts may treat an already-implemented plan section as an unimplemented requirement.
+Historical required fixes (resolved in the current source; retained for traceability):
 
-2. Harden `SourceEvaluationRunner.recordExtensionError()` delete failure handling.
-   - Current file: `app/src/main/java/exh/recs/evaluation/SourceEvaluationRunner.kt`.
-   - Current method: `recordExtensionError()` around the package-level stale-row reconciliation.
-   - v0.8.15 correctly made the method suspend and awaits the extension-level error upsert.
-   - v0.8.15 also correctly calls `deleteSourceEvaluation.awaitByPackage(pkgName, signatureHash)` before upserting the extension-level error row.
-   - Edge gap: if `deleteSourceEvaluation.awaitByPackage(...)` fails, the method logs the failure and continues to upsert the extension-level row anyway.
-   - Risk: old source-specific stale rows for the same package/signature can remain, recreating the stale-count/no-drain problem in a rare database failure path.
-   - Expected next-fix behavior: deletion failure must not silently continue into a state that looks handled. Either:
-     - fail the candidate/run with a non-fatal explicit state and do not advance the stale cursor; or
-     - use another safe repository-level reconciliation strategy that guarantees stale rows are not left behind while reporting success.
-   - Do not add a schema migration unless code inspection proves it unavoidable.
+1. Documentation wording is resolved by this dated reconciliation note. The historical
+   Source-Evaluation reassessment section is not an active implementation queue; only live-device
+   execution and independent device evidence remain outside host validation.
+2. `SourceEvaluationRunner.recordExtensionError()` now uses the injected
+   `ReplaceSourceEvaluation.await()` interactor, which delegates to the repository
+   `replaceByPackage()` transaction. The operation is awaited, cancellation propagates, and an
+   ordinary persistence failure is classified as non-durable rather than silently counted as
+   handled. The old fire-and-forget and separate delete-then-upsert descriptions above are
+   historical context, not pending work.
+3. The direct persistence-facing regression coverage is present in
+   `domain/src/test/java/tachiyomi/domain/taste/interactor/ReplaceSourceEvaluationTest.kt` and
+   `domain/src/test/java/tachiyomi/data/taste/SourceEvaluationRepositoryTransactionTest.kt`,
+   covering success, delete failure, rollback, cancellation, metadata preservation, duplicate
+   prevention, and non-durable classification. No additional runner extraction is required by this
+   historical follow-up.
 
-3. Add a direct regression test for extension-level delete+upsert behavior.
-   - v0.8.15 added good pure tests for `NoActionableWork`, but not a test proving extension-level failures delete stale source-specific rows before upserting the current extension-level error row.
-   - The next fix should add the narrowest feasible test around this behavior.
-   - Preferred direction: extract a pure/persistence-facing helper if direct `SourceEvaluationRunner` testing is too heavy, then test:
-     - package/signature stale source-specific rows exist;
-     - extension-level failure path runs;
-     - old package rows are removed before/up to the current extension-level error row;
-     - if delete fails, the candidate is not reported as durably handled and the cursor does not advance.
-   - If full runner-level mocking remains too heavy, document exactly why and add a smaller testable policy/helper instead.
+The normal Source Evaluation UI/job/runner path remains the existing product flow. Do not reopen
+this implementation work unless current source inspection proves a regression; device execution,
+rollback evidence, and the separate manual publication gate remain external.
 
 ### KMK What's New collapsible historical sections
 
@@ -1016,7 +1298,8 @@ Implementation notes:
 ### Source Evaluation outdated reassessment correctness
 
 Date: 2026-07-19
-Status: implemented in v0.8.15; retained as pre-fix evidence. Live-device verification and the v0.8.15 follow-up items above remain pending.
+Status: implemented in v0.8.15; retained as pre-fix evidence. The host follow-up is resolved in
+the current source (2026-08-05); live-device verification remains pending.
 
 Implementation handoff: captured in `docs/community/KMK_RECS_V0_8_15_SOURCE_EVALUATION_REASSESSMENT_AND_UNIVERSAL_UI_PLAN.md`.
 
@@ -1066,7 +1349,7 @@ Required tests:
 
 Live ADB evidence captured 2026-07-19:
 
-- Device/package: `R5GL201CAQX` / `app.komikku.dev`.
+- Device/package: `<test-tablet>` / `app.komikku.dev`.
 - Pre-run UI showed:
   - `Reassess outdated (25)`;
   - `17 outdated source(s) outside this run`;
@@ -1085,13 +1368,23 @@ Live ADB evidence captured 2026-07-19:
   - version `3`: 377 rows.
 - Most stale rows are source-specific: 44 stale rows have non-null `source_id`; only 4 stale rows have `source_id = null`.
 
-Likely root-cause code findings from the same audit:
+Historical root-cause findings (pre-fix; resolved in the current source on 2026-08-05):
 
-- `SourceEvaluationRunner.start()` adds the candidate key to `_completedCandidateKeys` before it knows whether the candidate produced a durable source-evaluation update.
-- `SourceEvaluationRunner.recordExtensionError()` persists using `scope.launch { upsertSourceEvaluation.await(errRecord) }` instead of awaiting the write before the worker reaches a terminal state.
-- `recordExtensionError()` builds an error record with `sourceId = null` for extension-level failures such as "Already installed before evaluation"; this writes key `SourceEvaluationKeys.buildKey(signatureHash, pkgName, null)` and does not replace older source-specific stale rows whose keys include real `source_id` values.
-- `SourceEvaluationJob` can therefore report WorkManager `SUCCESS` and `SourceEvaluationQueueState.Status.Completed` even when no stale source-specific rows were actually updated.
-- The next fix should make stale reassessment completion depend on durable per-candidate/per-source outcomes, not merely "candidate was handed to the runner."
+- The pre-fix `SourceEvaluationRunner.start()` path could add a candidate key before durable
+  source-evaluation work was known to have succeeded. The current path advances the stale cursor
+  only after the candidate reports durable handling.
+- The pre-fix `recordExtensionError()` path used a fire-and-forget
+  `scope.launch { upsertSourceEvaluation.await(errRecord) }` write. The current path awaits the
+  injected `ReplaceSourceEvaluation` interactor and preserves cancellation/error classification.
+- The pre-fix extension-level error path used a `sourceId = null` row without replacing older
+  source-specific stale rows. The current `replaceByPackage()` repository transaction replaces the
+  package rows atomically before the new extension-level record is considered durable.
+- The pre-fix worker could therefore report success while stale rows remained. The current
+  continuation and reconciliation policies depend on durable per-candidate/per-source outcomes.
+
+Host follow-up evidence is recorded in the central ledger and in the focused
+`ReplaceSourceEvaluationTest` and `SourceEvaluationRepositoryTransactionTest` suites. No live-device
+execution or independent device evidence is implied by this documentation correction.
 
 ### Universal KMK structural UI readability/density cleanup
 
@@ -2199,3 +2492,616 @@ docs/recommendations/CURRENT_STATE.md
 docs/recommendations/NEXT_WORK.md                   <- this file
 docs/recommendations/KMK_RECS_POLISH_AND_REMAINING_WORK_PLAN.md
 ```
+
+## Batch L7 result and next work (2026-08-09)
+
+**Status: DONE_WITH_VALIDATION_GAP.** The real generated migration 63 -> 64 path was already DONE
+and was not changed. The bounded ScreenModel testability seam is DONE: `autoLoad = true` remains the
+production default, while direct tests use `autoLoad = false` to construct the real model safely.
+
+New direct tests cover tracker Known/Unknown/cancellation behavior and settled visible-exposure
+capture, including source-aware identity and loading/empty/partial suppression. Full host validation
+passed: 2,592 JUnit tests, 0 failures, 0 errors, 1 skipped; Kotlin compile, Spotless, and diff check
+passed under repository JDK 17.
+
+**Open next batch: PARTIAL_VALIDATION.** Build only the smallest additional direct harness needed to
+drive the full `BrowsePersonalRecommendationsScreenModel` source-search assembly, especially
+minimum-chapter filtering, realised personalized-majority output, refresh/lifecycle cancellation,
+and stale-generation behavior. Do not repeat migration, tracker, reranker, lane, or exposure-policy
+work without a changed fact. If the complete 25-collaborator load graph remains infeasible without
+Robolectric or unrelated infrastructure, retain the exact blocker and keep the feature status
+`DONE_WITH_VALIDATION_GAP`; do not promote it to COMPLETE or publication-ready.
+
+## Jump to last-read chapter follow-up (2026-08-09)
+
+The screen-level wiring is complete for both phone and tablet layouts and is validated by JDK 17
+compile, focused policy tests, full unit tests, Spotless, and diff check. The remaining evidence gap
+is rendered-device validation of the toolbar action, animated positioning, stale-target snackbar,
+dark/light theme, long-label layout, and accessibility traversal. Do not reopen source wiring unless
+a device result or a changed source fact identifies a defect.
+
+## 2026-08-11 settings automation next batch
+
+R0 recommendation contract audit is recorded in the private automation ledger.
+R1 is complete with a rendered-validation gap: the existing five-screen settings
+structure now has consistent search actions, and Source Evaluation retains its
+gated Home/For You action. The next batch is R2: add separate Latest and
+repeat-exposure enable/value preferences with defaults 20 and 14,
+preserving the last configured values when disabled. Accept 1-100 integer
+values when enabled, recover malformed and legacy values safely, and keep all
+other For You matching, filtering, source evaluation, and minimum-chapter
+behavior unchanged. Host validation must cover the control contract before any
+tablet evidence is attempted.
+
+R1 is now closed as `DONE_WITH_VALIDATION_GAP`. The remaining gap is rendered
+UI and accessibility evidence only; no additional R1 source work is planned
+unless a changed fact appears. Start R2 with the Latest/exposure preference
+contract: separate enable switches, preserved last values, 1-100 validation,
+defaults 20% and 14 days, and consumer isolation from personalized matching.
+
+## 2026-08-11 R2 result and next wake
+
+R2 is now `DONE_WITH_VALIDATION_GAP`. The separate Latest and repeat-title
+cooldown switches, retained 1-100 values, legacy handling, bounded slider/text
+entry, and isolated consumers are implemented and host-validated. Focused R2
+JUnit XML reports 15 + 21 + 14 tests with zero failures/errors; compilation,
+Spotless, and diff checks passed.
+
+The next batch is H1: make normal Action History visible in its agreed settings
+location, preserve typed undo/conflict behavior, add related-manga context
+navigation with Back returning to history, and audit a developer-options-gated
+sanitized session trace. Keep Evaluation Mode separate and never expose raw SQL,
+raw database values, URLs, credentials, or unbounded logs.
+
+## 2026-08-11 H1 result and H2A next batch
+
+H1 is `DONE_WITH_VALIDATION_GAP`. Action History is now visible from Advanced
+settings for ordinary users, while Evaluation Mode remains a separate display
+privacy control. The seven existing journal families still provide the same
+typed undo and verified follow-up behavior. Taste and library rows open their
+owned manga context; other rows do not infer one. Host validation passed with
+compile exit 0, 21 focused tests with zero failures/errors/skips, Spotless exit
+0, and diff-check exit 0. Rendered navigation and accessibility remain for V1.
+
+H2A is next: audit real journal/database/preference operation producers and
+implement the developer-options-gated, detailed-but-sanitized, bounded,
+session-only diagnostic trace. Do not derive it from row summaries or expose
+raw SQL, database values, URLs, accounts, clipboard data, or unbounded logs.
+
+## H2A0 gate repair is now first
+
+The source audit found that the Developer Options preference and warning
+assumed by the trace plan do not exist. Add and host-validate that explicit
+public-build opt-in first, while preserving the separate `BuildConfig.DEBUG`
+fixture boundary and Evaluation Mode privacy behavior. Only then proceed to
+H2A producer instrumentation.
+
+## H2A0 result and H2A next batch (2026-08-11)
+
+H2A0 is `DONE_WITH_VALIDATION_GAP`. The missing Developer Options gate is now
+implemented with a private default-off preference, explicit confirmation
+warning, public-build opt-in, Evaluation Mode separation, and preserved
+debug-fixture gating. Focused policy validation reports 8 tests with zero
+failures/errors/skips; Kotlin compile, Spotless, and diff checks passed.
+Rendered UI, accessibility, theme, and device evidence remain V1 work.
+
+H2A is next. Audit real journal/receipt/database/preference operation
+boundaries, define redaction and outcome phases, and implement only a bounded,
+session-only sanitized diagnostic trace. Do not derive it from Action History
+row summaries or raw logs, and do not expose it in Evaluation Mode.
+
+## H2A result and B1 next batch (2026-08-11)
+
+H2A is `DONE_WITH_VALIDATION_GAP`. The bounded, session-only diagnostic trace
+now receives committed events from the real journal boundaries and phase/outcome
+events from Action History undo and follow-up paths. Developer Options gates the
+detail action; Evaluation Mode suppresses it. Five trace tests passed with zero
+failures/errors/skips, and compile, Spotless, and diff checks passed. Rendered
+detail UI, restart/device/accessibility evidence, and complete direct caller
+coverage remain V1 gaps.
+
+B1 is next: inspect the real Best Version search and preview paths, then record
+the cap, chapter identity, cancellation, unavailable-source, preview-failure,
+retry, and global-search separation contracts before editing.
+
+## Next: C1 chapter-list validation
+
+B1 is complete with a host-validation gap. The next batch validates the existing
+Jump to last read chapter target at the top, middle, bottom, missing-progress,
+and latest-chapter boundaries. Keep the action named and scoped as Jump to last
+read; do not add a separate latest-available action. Rendered and device proof
+remains reserved for the later evidence batch.
+
+## 2026-08-12 C1 result and E1 next batch
+
+C1 is now `DONE_WITH_VALIDATION_GAP`. The host implementation keeps the single
+`Jump to last read` action, safely resolves filtered/sorted targets, centers a
+middle item only when it has surrounding content, and clamps first/last/latest
+and short-list cases without assuming a later chapter. Missing and stale
+targets use the unavailable state. The focused policy XML reports 29 tests
+with zero skips, failures, or errors; compile, Spotless, and diff checks pass.
+
+Rendered phone/tablet positioning, touch target, TalkBack traversal,
+theme/localized copy, stale-target snackbar, and device confirmation remain
+V1 evidence gaps. E1 is next: review stale state and integration boundaries
+across recommendations, Action History, Best Version, and reader navigation
+before the V1 evidence batch.
+
+## 2026-08-12 E1 result
+
+E1 is `DONE`. The cross-feature host review found no new contradiction across
+Latest discovery, exposure ordering, Source Evaluation, Action History, Best
+Version, reader schedule, or the chapter-list jump action. The selected run
+covered 22 suites and 296 tests with zero failures, errors, or skips; Kotlin
+compilation and Spotless returned exit 0.
+
+V1 is next for rendered phone/tablet validation, accessibility and theme checks,
+schedule back-stack and process-stop evidence, chapter-list positioning proof,
+and privacy-safe restoration records. Runtime conditions from the old crash
+log remain separately named and are not presented as E1 fixes.
+
+## 2026-08-12 V2 Action History and Not Interested audit
+
+The source audit reopened a user-visible gap: the taste journal is intentionally
+disabled when Evaluation Mode is off, although the destination is now labeled
+Action history. Normal-user Not Interested writes and removals therefore do not
+appear there. The separate seen-key storage remains valid for compatibility,
+but the user-facing history contract needs a deliberate repair.
+
+The full finding and implementation batches are recorded in
+`private/docs/audits-and-reports/kmk-action-history-not-interested-audit-2026-08-12.md`.
+No source implementation was started in this audit pass. Next batch is HN1:
+define the normal-user local-history lifetime and refactor the journal boundary
+without merging Not Interested storage into numeric ratings.
+
+## 2026-08-12 HN1 result
+
+HN1 completed the normal-user journal boundary. The six taste and Not
+Interested builders now produce bounded local-only Action History inverses
+when Evaluation Mode is off, while preserving commit-after-success ordering,
+conflict detection, separate Not Interested storage, and developer-only trace
+detail. Host validation covered 25 focused tests with zero failures, errors, or
+skips; compilation, unit-test compilation, Spotless, and `git diff --check`
+passed. The first bounded test attempt timed out and remains recorded as a
+tooling exception; a fresh retry passed.
+
+Next batch is HN2: inspect every supported Not Interested writer and remover,
+including group/list actions, and close success, ordinary failure,
+cancellation, malformed-state, bulk, conflict, and reversible-cleanup tests.
+Do not begin ADB validation until all coding batches are closed.
+
+## 2026-08-12 HN2 result
+
+HN2 is host-validated with a documented rendered/lifecycle gap. Cross-source
+Mark Seen and Source Evaluation Clear Seen now journal through the shared
+Not Interested boundary. Key-based removal ignores malformed, absent, and
+duplicate entries, while preserving existing numeric ratings for safe undo.
+
+The fresh focused suite reports 31 tests with zero failures, errors, or skips;
+compile, unit-test compilation, Spotless, and diff hygiene passed. The
+adversarial review found and repaired the initial null-rating snapshot.
+
+Next batch is HN3: verify safe manga-context navigation, honest missing-context
+rendering, and Back behavior. ADB remains deferred until the coding batches are
+complete.
+
+## 2026-08-12 HN3 result
+
+HN3 is host-validated with a documented rendered gap. The Action History
+summary/time target now opens a manga only from a positive journal-owned ID;
+missing or invalid context stays non-clickable. Undo and follow-up buttons no
+longer share the manga-navigation hit target, and the existing app-bar Back
+route remains the owner. Fresh XML is 18 tests, zero failures/errors/skips;
+compile, unit-test compilation, Spotless, and diff hygiene passed after one
+Compose import repair. The wrapper shutdown timeout is retained as a tooling
+exception. Next coding batch: HN4 single/bulk undo, exact counts, conflicts,
+failure, cancellation, and retry. Do not begin ADB validation yet.
+
+## 2026-08-12 HN5 final result
+
+HN5 repaired the last source-level Evaluation Mode suppression found in the
+Best Version migration writer. Successful migrations now create the generic
+Action History event and the matching typed local receipt for ordinary users,
+while failure, cancellation, missing-target, and not-started paths remain
+silent. The event and receipt share one correlation ID, so the existing
+compensating follow-up remains usable.
+
+The expanded focused selection passed with 247 tests, zero failures, errors,
+or skips across 23 suites. Compile, unit-test compile, Spotless, and diff
+hygiene passed. The exact source block has a static guard against reintroducing
+the Evaluation Mode gate. No ADB was used.
+
+HN5 is `DONE_WITH_VALIDATION_GAP / HOST_VALIDATED / V1_NEXT`. V1 remains for
+rendered layout, accessibility/theme, lifecycle/restart, and authorized-tablet
+evidence before documentation reconciliation.
+
+## Source gate correction - 2026-08-12
+
+The workflow now keeps the tablet phase behind the complete source coding
+graph. L1 closed the schedule saved-state repair at host validation: the
+primitive saver and malformed-row handling pass 65 focused tests, and compile,
+unit-test compile, Spotless, and diff checks pass. The next source batch is L2,
+which owns the reader Configure schedule route, reader Back restoration, and
+the dialog/settings presentation contract. R3 Source Evaluation and Latest
+visibility, R4 cross-feature adversarial/integration review, and R5 source
+documentation/coding-completion reconciliation remain before V1. No ADB or
+tablet evidence is part of these source batches.
+
+## 2026-08-12 HN4 result and HN5 next
+
+HN4 is `DONE_WITH_VALIDATION_GAP`. The full Action History gate audit removed
+the remaining ordinary-user suppression from source enablement, source
+preferences, and source-quality marks in addition to the previously repaired
+Not Interested, taste, chapter, schedule, library, group, cover, backup,
+tracker, install, migration, and Source Evaluation paths. Disabled-mode
+coverage and static gate guards now cover the expanded surface.
+
+Fresh XML: 133 tests, zero failures/errors/skips across 15 suites. Compile,
+unit-test compilation, Spotless, and diff hygiene passed. HN5 is next for the
+remaining host lifecycle/restart and rendered contract review before V1
+device/evidence closure. ADB remains explicitly deferred.
+
+## L2 result - 2026-08-12
+
+L2 is `DONE_WITH_VALIDATION_GAP / HOST_VALIDATED`. The reader timer route stays
+inside the reader activity and opens the shared schedule dialog, while the
+dialog presentation now handles long lists, clear sections, full-row mode
+controls, and stable window actions. The focused schedule suite reports 65
+green tests and host compile/format/diff gates pass. R3 now owns the remaining
+Source Evaluation and Latest catalogue visibility work. R4 adversarial and
+integration review and R5 source coding/documentation closure still precede
+the tablet phase. No ADB or device work is authorized yet.
+
+## R3 result - 2026-08-12
+
+R3 is `DONE_WITH_VALIDATION_GAP / HOST_VALIDATED`. The Source Evaluation
+details now show how many catalogue samples came from Popular and Latest,
+using counts already produced and stored by the runner. The For You Latest
+lane, filtering, ranking, and privacy boundaries are unchanged. Focused XML
+reports 106 tests with zero failures, errors, or skips; compilation, Spotless,
+and diff hygiene passed. R4 now owns the source-only cross-feature adversarial
+and integration review. ADB remains prohibited until R5 closes.
+## 2026-08-12 Source-First Repair Restart
+
+The next work is now the post-L2 source-repair graph, not tablet validation.
+Start with N0, which audits the newly reported Best Version preview and
+per-source-cap behavior, recommendation-settings layout and controls, Source
+Evaluation Latest/host/search behavior, preference and Action History parity,
+and the long-background error. N1-N6 then implement and host-validate one
+structural area per wake. V1 ADB/tablet evidence is deferred until N6 closes
+the source coding-completion gate. The governing plan is
+`private/docs/plans/kmk-post-l2-source-repair-batch-plan-2026-08-12.md`.
+
+N0 is complete. The next source batch is N1: verify the existing Best Version
+per-source cap is discoverable in the intended flow, then repair only confirmed
+preview progression, stale-result, timeout, cancellation, retry, or cleanup
+gaps. Do not add a duplicate cap or use external HTTP/parser failures as proof
+of an app defect. N2-N6 remain queued, and V1 ADB/tablet validation is still
+blocked until the source coding gate closes.
+
+## 2026-08-12 N1 result and N2 next
+
+N1 closed the confirmed Best Version discoverability gap. The Find Best
+Version AppBar now opens the existing Results per source preference at its
+anchored location. The cap remains source-aware and separate from normal
+global search; preview timeout, retry, unavailable-chapter handling,
+cancellation, and dispatcher cleanup were retained. Focused route coverage,
+Kotlin compile, unit-test compile, Spotless, and diff checks passed. The first
+test attempt timed out as a recorded tooling exception; the bounded retry
+passed. Dirty/untracked work remains preserved.
+
+N2 is next: audit and repair only confirmed recommendation-settings grouping,
+first-view access, concise copy, and native control gaps. Keep the five
+destinations separate, preserve stored values and matching behavior, and keep
+ADB/tablet validation deferred until N0-N6 and the source coding gate close.
+
+## 2026-08-12 N2 result and N3 next
+
+N2 closed the confirmed shared-structure gap. Section headers now use the
+established divider treatment, and the quick-access destination collection has
+a localized accessibility description. The four shared detail settings screens
+remain separate, while Source Evaluation retains its dedicated host/search
+actions. Native controls, values, filters, matching, and Back behavior were
+preserved. Focused N2 validation reported 130 passing tests; compile,
+unit-test compile, Spotless, and diff checks passed.
+
+One aggregate control audit remains stale because it still expects the old
+Evaluation Mode-only Action History route; N4 owns that reconciliation. N3 is
+next: Source Evaluation Latest plus host/search integration. ADB remains
+deferred until N0-N6 and the source coding gate close.
+
+## 2026-08-12 N3 result and N4 next
+
+N3 closed the confirmed host-navigation gap. All four recommendation detail
+screens now expose the shared For You app-bar action, and Source Evaluation
+uses the same root-and-tab helper while preserving its hidden-tab condition.
+Latest probing, filtering, scoring, persistence, Popular/Latest evidence, and
+the separate search-compatibility probe were preserved. Focused route coverage,
+the 484-test Source Evaluation package, control audits, compile, Spotless, and
+diff checks passed. N4 is next for Love/Like/Dislike/Not Interested parity,
+bulk clear, and normal Action History behavior. ADB remains deferred.
+
+## 2026-08-12 N4 result and N5 next
+
+N4 closed the Not Interested parity gap. Its collection now has the same
+selection AppBar, row-selection, select-all, and bulk-clear structure as the
+other preference collections, with exact-key journal-backed removal and
+single-row cleanup retained. The stale Action History control expectation was
+updated to the normal user route and developer-gated diagnostic contract.
+
+Focused tests, compile, unit-test compile, Spotless, control audits, and diff
+hygiene passed. No device work occurred. N5 is next for background recovery
+and cross-feature lifecycle repair, including correlation of the supplied
+Reader load failures and the external Google configuration blocker. ADB stays
+deferred until N6 closes the source coding gate.
+
+## N5 active: background recovery and lifecycle repair
+
+The supplied crash report is now the N5 input. The old Reader schedule parcel failure is already
+source-repaired. The missing Google client asset remains externally blocked for real sync, but the
+background worker will be hardened to classify that unavailable configuration without repeated
+exception noise. Reader startup will keep the requested chapter when present and use a deterministic
+fallback when a restored chapter id is no longer in the current list, with privacy-safe failure
+classification. Focused source tests and host gates must pass before N6; ADB remains deferred.
+
+## N5 result and N6 next
+
+N5 closed the confirmed source-owned Reader startup defect and the repeated background configuration
+noise. Exact launch chapters still win; stale restored ids use the first existing ordered chapter,
+and empty lists still fail truthfully. Reader diagnostics are category-only and privacy-safe.
+Missing `client_secrets.json` now skips Google background sync without changing configured OAuth, but
+real Google sync remains an external blocker. Focused tests, compile, Spotless, control checks, and
+diff hygiene passed. N6 is next for final adversarial integration and source coding completion;
+tablet work remains prohibited until that gate closes.
+
+## N6 active: adversarial integration and source coding completion
+
+Run the full relevant source suite and cross-feature control/privacy/lifecycle audits. Reopen an
+earlier batch only for a confirmed regression; otherwise reconcile the source gate and move to V1.
+Keep Google OAuth configuration as an external blocker and keep process-recreation, rendered UI,
+accessibility/theme, and authorized-tablet evidence deferred until the source gate is complete.
+
+N6 is complete at the source gate with host validation. The next batch is V1 authorized-tablet
+evidence, using only the declared tablet workflow and only after the per-command device identity
+check. Capture no route that lacks a valid fixture, privacy decision, or rollback result. Keep the
+Google client configuration as BLOCKED_EXTERNAL and keep human publication approval separate.
+
+The first complete source gate found six stale Evaluation Mode-off test expectations. Update only
+those tests to match normal Action History, preserve no-record failure/cancellation boundaries, then
+rerun the affected classes and the full source gate. Do not begin V1 device evidence until N6 is
+green.
+
+## 2026-08-12 V1 preflight blocker
+
+N6 is green. The next action remains V1 authorized-tablet evidence, but its preflight is
+`BLOCKED_EXTERNAL`: `adb devices -l` returned no attached rows, so R5GL201CAQX was not available.
+Wait for that exact serial, verify it before every device command, and continue only with routes that
+have a valid fixture, privacy decision, and rollback contract. Do not substitute the emulator or
+claim rendered evidence from source tests.
+
+V1 is paused after the two-pass no-progress cap. The next external action is to connect the
+authorized tablet and verify its identity before any route selection. Do not loop on an empty ADB
+list, use emulator evidence, or mark the rendered/device gaps complete.
+
+## 2026-08-12 V1 next checkpoint
+
+The authorized tablet is now available. The first V1 route, Browse > For You, has a private
+`DONE_WITH_VALIDATION_GAP` bundle. Continue with one separate route bundle at a time only after fresh
+identity, Evaluation Mode, loaded-state, privacy, hash, and restoration checks. Keep the raw bounded
+log private; use only the filtered log for any later public-boundary review. Do not claim V1 or human
+publication completion from this one route.
+
+## 2026-08-12 OAuth O1 next
+
+O0 source ownership is closed. Implement O1 only: create a safe, testable
+configuration boundary for development, public-test, and production variants;
+make missing, malformed, and variant-mismatched configuration explicit; and
+preserve existing signed-in behavior. Do not import the supplied client JSON,
+change the callback yet, use ADB, or contact a real Google account. Record the
+pre-edit packet before source changes, then run focused host tests and the
+standard compile, format, and control gates.
+
+## 2026-08-12 OAuth O4 next
+
+O3 is closed with a host-validation gap. Implement O4 only: add deterministic
+host fakes and contract tests for refresh success, missing credentials,
+revocation, transient I/O, malformed responses, cancellation, worker retry,
+process/lifecycle transitions, and stable privacy-safe errors. Reuse the
+existing Komikku Drive service, preferences, credential, worker, and sync
+contracts. Do not add a second OAuth stack, import client JSON, use ADB, or
+contact a real Google account. Record the O4 pre-edit packet before source
+changes, then run focused tests, debug compile, Spotless, privacy, and diff
+hygiene gates.
+
+## 2026-08-12 Batch 2 next
+
+Batch 1 host validation is closed with a named `TOOLING_LIMIT`: synthetic
+state and loopback source/preview fixtures pass six focused tests, while the
+Android/Compose rendering and saved-state harness remains unconfigured. Next
+is B2, shared native settings controls. Reuse the local fixtures, keep the
+rendered gap visible, and do not use ADB.
+
+## 2026-08-12 OAuth O5 final next step
+
+O4 is complete with an external validation gap. Reconcile foreground error
+copy, provider-payload exposure, variant compatibility, original Komikku sync
+behavior, and the account/network/process-death boundary. Reuse the current
+Drive service and worker contracts; do not add another OAuth stack, import
+client JSON, use ADB, or contact a real account. Record the O5 pre-edit packet
+before source changes and close it with adversarial, compile, Spotless, privacy,
+and diff gates.
+
+## 2026-08-13 OAuth O5 source completion
+
+O5 is complete with the source coding gate closed. Foreground authorization
+failures use stable localized copy, and provider exception/callback payload text
+is blocked at the UI boundary. Focused tests, debug/public-test/release compile,
+public-test/release assembly, Spotless, privacy, and diff checks passed.
+
+Next is V1 external/rendered evidence only after explicit user authorization.
+Real account/network, process-death, WorkManager runtime, release signing
+identity, and tablet/rendered behavior remain unverified. The current tablet
+pause is intentional; do not use ADB, install an APK, capture screenshots/XML,
+or inspect a database until the user explicitly resumes that phase.
+
+## 2026-08-13 deferred structural correction
+
+Before any future source repair, resume the documentation-first correction plan
+at Batch 0. Reconcile the actual production owners against original Komikku,
+then build the local route and lifecycle seams in Batch 1. The queued feature
+work covers canonical Configure schedule navigation and disabled-state
+handling, Best Version exact chapter preview and per-source caps,
+recommendation-settings dividers and shared controls, Source Evaluation
+integration, preference parity, normal Action History, and cross-feature
+exception recovery. Do not treat earlier source batches or this note as proof
+that those follow-ups are complete.
+
+## 2026-08-13 Batch 0 result and Batch 1 next
+
+Batch 0 completed the source-ownership and upstream comparison audit without
+editing production code. Reader schedule has two route owners; Best Version
+has a discoverable cap but a separate chapter/preview path; shared
+recommendation controls are only partially family-audited; and Action History
+requires a full writer-after-success and journal-family review. Batch 1 is next
+for local route, Compose/semantics, source/preview, lifecycle, prerequisite,
+and typed-journal validation seams. No ADB or device work is authorized.
+
+## 2026-08-12 OAuth O5 next
+
+O4 is closed with an external validation gap. Reconcile the release-facing
+Google Drive contract: review foreground authorization failure text, provider
+payload exposure, variant configuration, compatibility with original Komikku
+sync behavior, and the remaining account/network/process-death gap. Reuse the
+existing service, scopes, preferences, and worker. Do not add a second OAuth
+stack, import client JSON, use ADB, or contact a real Google account. Record the
+O5 pre-edit packet before any source change and close it with adversarial tests,
+compile, Spotless, privacy, and diff gates.
+
+## 2026-08-12 OAuth O4 next
+
+O3 is closed with a host-validation gap. Implement O4 only: add deterministic
+host fakes and contract tests for refresh success, missing credentials,
+revocation, transient I/O, malformed responses, cancellation, worker retry,
+process/lifecycle transitions, and stable privacy-safe errors. Reuse the
+existing Komikku Drive service, preferences, credential, worker, and sync
+contracts. Do not add a second OAuth stack, import client JSON, use ADB, or
+contact a real Google account. Record the O4 pre-edit packet before source
+changes, then run focused tests, debug compile, Spotless, privacy, and diff
+hygiene gates.
+
+## 2026-08-12 OAuth O3 next
+
+O2 is host-complete with an external validation gap. Preserve the existing
+Komikku authorization contract while implementing token expiry, refresh,
+background-sync failure containment, sign-out, process recreation, and repeated
+authorization handling. Keep client JSON and real-account/device validation
+out of source work. Record the O3 pre-edit packet before changing code.
+
+## 2026-08-12 OAuth O2 next
+
+Complete the supported Android authorization return path. Verify the current
+Google and Android contract, replace the legacy custom-scheme callback only
+after the replacement is source-compatible, and cover cancellation, denial,
+expired codes, repeated authorization, process recreation, and callback
+mismatch with fakes. Do not import the external client JSON, use ADB, or
+contact a real Google account during O2.
+
+## 2026-08-12 OAuth O1 next
+
+O0 source ownership is closed. Implement O1 only: create a safe, testable
+configuration boundary for development, public-test, and production variants;
+make missing, malformed, and variant-mismatched configuration explicit; and
+preserve existing signed-in behavior. Do not import the supplied client JSON,
+change the callback yet, use ADB, or contact a real Google account. Record the
+pre-edit packet before source changes, then run focused host tests and the
+standard compile, format, and control gates.
+
+## 2026-08-12 OAuth O4 current next step
+
+O3 is closed with a host-validation gap. Implement O4 only: add deterministic
+host fakes and contract tests for refresh success, missing credentials,
+revocation, transient I/O, malformed responses, cancellation, worker retry,
+process/lifecycle transitions, and stable privacy-safe errors. Reuse the
+existing Komikku Drive service, preferences, credential, worker, and sync
+contracts. Do not add a second OAuth stack, import client JSON, use ADB, or
+contact a real Google account. Record the O4 pre-edit packet before source
+changes, then run focused tests, debug compile, Spotless, privacy, and diff
+hygiene gates.
+
+## 2026-08-12 OAuth O5 final next step
+
+O4 is complete with an external validation gap. Reconcile foreground error
+copy, provider-payload exposure, variant compatibility, original Komikku sync
+behavior, and the account/network/process-death boundary. Reuse the current
+Drive service and worker contracts; do not add another OAuth stack, import
+client JSON, use ADB, or contact a real account. Record the O5 pre-edit packet
+before source changes and close it with adversarial, compile, Spotless, privacy,
+and diff gates.
+## 2026-08-13 B3 next: recommendation source behavior
+
+Audit and repair Best Version discovery through exact chapter matching and
+preview, including the configurable per-source cap and truthful failure,
+timeout, retry, cancellation, and stale-preview cleanup. Verify Latest is
+additive for supporting sources, preserves all filters, and stays within the
+configured exploration share. Keep global search separate from Best Version
+and source-evaluation limits. Reuse the existing search, `SourceRuntime`,
+chapter/preview, policy, and local loopback fixture owners. Record a new
+pre-edit packet before source changes; ADB and real network/account evidence
+remain disabled.
+
+## 2026-08-13 B4 next: preference parity and normal Action History
+
+B3 is closed for source and host gates with a documented tooling gap. Implement
+B4 only: audit and repair Love, Like, Dislike, and Not Interested as one shared
+preference family; preserve parallel collection/marker/clear/bulk behavior;
+add clear-one versus clear-all scope confirmation; keep normal Action History
+visible without Evaluation Mode; verify context navigation, Back restoration,
+typed undo, conflict handling, view-only diagnostic rows, clear operations,
+failed/cancelled persistence, and Developer Options trace gating. Reuse the
+existing preference stores, journal registry, undo services, navigation, and
+trace policies. Record the B4 pre-edit packet before source changes. ADB,
+device evidence, credentials, database inspection, publication, commits, and
+pushes remain disabled.
+
+## 2026-08-13 B5 next: reader schedule, chapter navigation, and lifecycle repair
+
+B4 is closed for source and host gates with the named local-rendering tooling
+gap preserved. Implement B5 only: verify the Reader Configure Schedule route
+opens the canonical schedule owner, handles the scheduler-disabled prerequisite,
+and returns to Reader on Back; complete Jump to last read wiring and its
+chapter-list boundaries; and audit long-background/recreation recovery across
+reader, schedule, Best Version, and recommendation flows. Reuse the existing
+schedule persistence, reader navigation, chapter target policy, lifecycle
+guards, and host fixtures. Record a new pre-edit packet before source changes.
+ADB, device evidence, credentials, database inspection, publication, commits,
+and pushes remain disabled.
+
+## 2026-08-13 B6 next: adversarial integration and source coding completion
+
+B5 is closed for source and host gates with the named rendered/lifecycle
+tooling gap preserved. Implement B6 only: rerun the cross-feature dependency
+matrix across settings controls, Best Version/source behavior, Latest/source
+evaluation, four-state preferences, ordinary Action History, reader schedule,
+Jump-to-last-read, and long-background recovery. Reconcile stale or
+contradictory source ownership, verify original-Komikku compatibility and KMK
+integration, and repair regressions in the same batch. Reuse the current
+policies, route owners, persistence/journal boundaries, host fixtures, and
+existing tests. Do not add another OAuth stack, use ADB, inspect databases,
+capture screenshots/XML/logs, contact accounts, publish, commit, or push.
+Record the B6 pre-edit packet before any source change. B7 remains optional
+tablet evidence and is currently disabled by the user.
+
+## 2026-08-13 B6 closed; B7 paused by explicit user decision
+
+B6 is closed for source and host work with the named validation gaps
+preserved. The focused matrix passed 676 tests and the full unit suite passed
+2,725 tests with zero failures/errors and one skipped test. Compile, Spotless,
+privacy, dirty-path preservation, and diff hygiene passed. No B6 source repair
+was necessary after the cross-feature owner and compatibility audit.
+
+There is no next coding batch in this plan. B7 is optional tablet/external
+evidence only and is disabled by the user. Do not use ADB, emulator,
+installation, screenshots, XML/log capture, database inspection, credentials,
+publication, commits, or pushes unless the user separately reauthorizes that
+scope and a fresh plan packet is recorded. Rendered Compose and Android
+recreation gaps remain `TOOLING_LIMIT`, not silently closed.

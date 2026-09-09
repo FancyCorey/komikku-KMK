@@ -14,7 +14,7 @@ import tachiyomi.domain.manga.model.Manga
 import java.io.ByteArrayOutputStream
 
 // KMK -->
-// KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 Phase 2C: direct coverage for the real defect
+// Direct coverage for the real defect
 // this pass fixed -- `exportToCsv` previously called its `onExportComplete` success callback
 // unconditionally, including when `openOutputStream` returned null (a genuine destination-open
 // failure), reporting "library exported" for a write that never happened. Now returns a typed

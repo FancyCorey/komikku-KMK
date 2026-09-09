@@ -461,6 +461,7 @@ class LovedMangaDuplicateGrouperTest {
             entries = entries,
             groupDuplicates = true,
             linkGroupByKey = linkGroupByKey,
+            confirmedLinkGroupByKey = linkGroupByKey,
         )
         val display = state.displayItems
         assertEquals(1, display.size)

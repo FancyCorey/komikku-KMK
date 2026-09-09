@@ -2,6 +2,7 @@ package exh.recs.evaluation
 
 import exh.util.EvaluationModeFormatter
 import tachiyomi.domain.taste.model.SourceEvaluationProbeMarker
+import java.util.Locale
 
 // KMK -->
 /**
@@ -71,7 +72,7 @@ object SourceEvaluationDiagnosticsPolicy {
      */
     private fun errorCategoryLabel(rawError: String): String {
         val kind = SourceRecommendationFitFailureClassifier.classify(rawError)
-        return kind.name.split("_").joinToString(" ") { it.lowercase().replaceFirstChar(Char::uppercase) }
+        return kind.name.split("_").joinToString(" ") { it.lowercase(Locale.ROOT).replaceFirstChar(Char::uppercase) }
     }
 }
 // KMK <--

@@ -22,7 +22,7 @@ import java.io.File
 import java.nio.file.Files
 
 // KMK -->
-// KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #2): ExtensionDetailsScreen.kt
+// ExtensionDetailsScreen.kt
 // was retrofitted onto SafExportCoordinator, replacing the old standalone SingleExportArtifactKind
 // enum/singleExportArtifactKindFor mapping this file used to test directly. Coverage now targets the
 // actual defect the user identified -- a non-null picker Uri must never be discarded when the

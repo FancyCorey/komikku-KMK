@@ -5,6 +5,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.addOrRemove
 import eu.kanade.presentation.libraryUpdateError.components.LibraryUpdateErrorUiModel
+import eu.kanade.tachiyomi.library.LibraryUpdateErrorMessageKey
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
@@ -181,7 +182,12 @@ data class LibraryUpdateErrorScreenState(
         val errorMap = items.groupBy { it.error.messageId }
         errorMap.forEach { (messageId, errors) ->
             val message = messages.find { it.id == messageId }
-            uiModels.add(LibraryUpdateErrorUiModel.Header(message!!.message, errors.size))
+            uiModels.add(
+                LibraryUpdateErrorUiModel.Header(
+                    errorKey = LibraryUpdateErrorMessageKey.fromStorageValue(message?.message),
+                    count = errors.size,
+                ),
+            )
             uiModels.addAll(errors.map { LibraryUpdateErrorUiModel.Item(it) })
         }
         return uiModels

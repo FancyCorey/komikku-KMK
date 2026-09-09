@@ -4,11 +4,14 @@ import eu.kanade.domain.source.service.SourcePreferences
 import exh.util.EvaluationJournalActionType
 import exh.util.EvaluationModeJournalRecorder
 import exh.util.EvaluationModeUndoJournal
+import exh.util.EvaluationModeUndoService
 import exh.util.FakePreferenceStore
 import exh.util.FakeTasteRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -34,6 +37,13 @@ import tachiyomi.domain.taste.model.MangaTaste
  * [exh.util.LibraryUndoServiceRestoreTest] already use for this exact contract. This proves the
  * shared recorder call sequence behaves correctly; [MangaScreenModel]'s own two methods call this
  * exact sequence verbatim (see their source).
+ *
+ * KMK v0.8.21-fix3: R1 correction -- [MangaRating.NOT_INTERESTED] is exercised here as just
+ * another rating value through the exact same [setMangaTasteWithJournal]/[clearMangaTasteWithJournal]
+ * sequence as Love/Like/Dislike. The two test files that previously mirrored a separate
+ * `markSeen()`/`clearSeen()` dual-write sequence (`MangaScreenModelNotInterestedJournalTest`,
+ * `MangaScreenModelNotInterestedToRatingTransitionTest`) are deleted -- that sequence no longer
+ * exists, and this single-store path is genuinely identical for all four rating values now.
  */
 class MangaScreenModelTasteJournalTest {
 
@@ -60,19 +70,20 @@ class MangaScreenModelTasteJournalTest {
         EvaluationModeUndoJournal.clear()
     }
 
+    private fun journalActionType(rating: MangaRating) = when (rating) {
+        MangaRating.LOVE -> EvaluationJournalActionType.RATE_LOVE
+        MangaRating.LIKE -> EvaluationJournalActionType.RATE_LIKE
+        MangaRating.DISLIKE -> EvaluationJournalActionType.RATE_DISLIKE
+        MangaRating.NOT_INTERESTED -> EvaluationJournalActionType.NOT_INTERESTED
+    }
+
     /** Mirrors [MangaScreenModel.setMangaTaste]'s exact build/write/commit sequence. */
     private suspend fun setMangaTasteWithJournal(rating: MangaRating) {
-        val journalActionType = when (rating) {
-            MangaRating.LOVE -> EvaluationJournalActionType.RATE_LOVE
-            MangaRating.LIKE -> EvaluationJournalActionType.RATE_LIKE
-            MangaRating.DISLIKE -> EvaluationJournalActionType.RATE_DISLIKE
-        }
         val journalEntries = EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             listOf(manga),
             rating.value,
-            journalActionType,
+            journalActionType(rating),
         )
         setMangaTaste.await(
             mangaId = manga.id,
@@ -87,7 +98,6 @@ class MangaScreenModelTasteJournalTest {
     /** Mirrors [MangaScreenModel.clearMangaTaste]'s exact build/write/commit sequence. */
     private suspend fun clearMangaTasteWithJournal() {
         val journalEntries = EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             listOf(manga),
             null,
@@ -98,7 +108,7 @@ class MangaScreenModelTasteJournalTest {
     }
 
     @Test
-    fun `detail-page rating creates a history entry after success when Evaluation Mode is enabled`() = runTest {
+    fun `detail-page rating creates a history entry after success`() = runTest {
         sourcePreferences.evaluationMode().set(true)
 
         setMangaTasteWithJournal(MangaRating.LOVE)
@@ -116,7 +126,7 @@ class MangaScreenModelTasteJournalTest {
     }
 
     @Test
-    fun `detail-page clear rating creates a history entry after success when Evaluation Mode is enabled`() = runTest {
+    fun `detail-page clear rating creates a history entry after success`() = runTest {
         sourcePreferences.evaluationMode().set(true)
         // Seed an existing rating so clear has something to clear and a previousRating to record.
         tasteRepository.upsertMangaTaste(
@@ -154,7 +164,6 @@ class MangaScreenModelTasteJournalTest {
         // Build (as MangaScreenModel does), attempt the write, and only commit on success -- here the
         // write throws, so commit must never run, exactly like MangaScreenModel's real method.
         val journalEntries = EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             listOf(manga),
             MangaRating.LOVE.value,
@@ -174,18 +183,21 @@ class MangaScreenModelTasteJournalTest {
         }
 
         assertTrue(EvaluationModeUndoJournal.isEmpty(), "a failed write must not leave a journal entry")
+        // KMK v0.8.21-fix3: R1 adversarial coverage -- a failed write leaves the store exactly as it
+        // was before the attempt (there is only one store now, so "contradictory stores" cannot
+        // arise even in principle; this asserts the failure case still leaves it genuinely untouched).
+        assertNull(tasteRepository.getMangaTaste(manga.id), "a failed write must not change stored state")
     }
 
     @Test
-    fun `Evaluation Mode disabled creates no history entry`() = runTest {
+    fun `ordinary-user rating creates history while Evaluation Mode is disabled`() = runTest {
         sourcePreferences.evaluationMode().set(false)
 
         setMangaTasteWithJournal(MangaRating.DISLIKE)
 
-        // The write still happened (rating still works normally for ordinary users)...
+        // The write still happened and the ordinary-user history boundary is active.
         assertEquals(MangaRating.DISLIKE.value, tasteRepository.getMangaTaste(manga.id)?.rating)
-        // ...but no journal entry was recorded.
-        assertTrue(EvaluationModeUndoJournal.isEmpty(), "Evaluation Mode disabled must record nothing")
+        assertEquals(EvaluationJournalActionType.RATE_DISLIKE, EvaluationModeUndoJournal.snapshot().single().actionType)
     }
 
     @Test
@@ -200,7 +212,6 @@ class MangaScreenModelTasteJournalTest {
         // The same shared-recorder call the For You/Loved/Liked/Disliked routes already use
         // (exh.recs.BrowsePersonalRecommendationsScreenModel.rateSelected), applied to the same manga.
         val forYouEntries = EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             listOf(manga),
             MangaRating.LIKE.value,
@@ -214,6 +225,72 @@ class MangaScreenModelTasteJournalTest {
         assertEquals(detailEntry.source, forYouEntry.source)
         assertEquals(detailEntry.url, forYouEntry.url)
         assertEquals(detailEntry.changedFields, forYouEntry.changedFields)
+    }
+
+    // KMK v0.8.21-fix3: R1 correction -- Not Interested is exercised as an ordinary rating value,
+    // through the identical sequence as Love/Like/Dislike above. No special-case dual-write path
+    // exists to test separately anymore.
+
+    @Test
+    fun `marking Not Interested creates a history entry and writes exactly one MangaTaste row`() = runTest {
+        sourcePreferences.evaluationMode().set(true)
+
+        setMangaTasteWithJournal(MangaRating.NOT_INTERESTED)
+
+        val snapshot = EvaluationModeUndoJournal.snapshot()
+        assertEquals(1, snapshot.size)
+        val entry = snapshot.first()
+        assertEquals(EvaluationJournalActionType.NOT_INTERESTED, entry.actionType)
+        assertEquals(MangaRating.NOT_INTERESTED.value, entry.newRating)
+        assertEquals(MangaRating.NOT_INTERESTED.value, tasteRepository.getMangaTaste(manga.id)?.rating)
+    }
+
+    @Test
+    fun `an existing rating and Not Interested cannot coexist -- setting one replaces the other in the same row`() = runTest {
+        sourcePreferences.evaluationMode().set(true)
+        setMangaTasteWithJournal(MangaRating.LOVE)
+        assertEquals(MangaRating.LOVE.value, tasteRepository.getMangaTaste(manga.id)?.rating)
+
+        setMangaTasteWithJournal(MangaRating.NOT_INTERESTED)
+
+        // Exactly one MangaTaste row exists for this manga, and it now holds NOT_INTERESTED -- not
+        // LOVE, and not both. There is structurally no way for two rating-family states to coexist:
+        // MangaTaste has exactly one `rating: Int` column, upserted by mangaId, never appended to.
+        val current = tasteRepository.getMangaTaste(manga.id)
+        assertEquals(MangaRating.NOT_INTERESTED.value, current?.rating)
+        assertFalse(current?.rating == MangaRating.LOVE.value, "the prior LOVE rating must not still be present")
+    }
+
+    @Test
+    fun `transitioning from Not Interested to an ordinary rating is the same single-store write, and undo restores it correctly`() = runTest {
+        sourcePreferences.evaluationMode().set(true)
+        val undoService = EvaluationModeUndoService(getMangaTaste, setMangaTaste, clearMangaTaste)
+
+        setMangaTasteWithJournal(MangaRating.NOT_INTERESTED)
+        EvaluationModeUndoJournal.clear()
+        setMangaTasteWithJournal(MangaRating.LOVE)
+        val entry = EvaluationModeUndoJournal.snapshot().first()
+
+        assertEquals(MangaRating.NOT_INTERESTED.value, entry.previousRating)
+        assertEquals(MangaRating.LOVE.value, entry.newRating)
+
+        val outcome = undoService.undo(entry.id)
+
+        assertEquals(1, outcome.restoredCount)
+        assertEquals(MangaRating.NOT_INTERESTED.value, tasteRepository.getMangaTaste(manga.id)?.rating, "undo must restore the prior Not Interested state")
+    }
+
+    @Test
+    fun `clearing Not Interested uses the same owner as clearing any other rating`() = runTest {
+        sourcePreferences.evaluationMode().set(true)
+        setMangaTasteWithJournal(MangaRating.NOT_INTERESTED)
+
+        clearMangaTasteWithJournal()
+
+        assertNull(tasteRepository.getMangaTaste(manga.id))
+        val entry = EvaluationModeUndoJournal.snapshot().first()
+        assertEquals(EvaluationJournalActionType.CLEAR_RATING, entry.actionType)
+        assertEquals(MangaRating.NOT_INTERESTED.value, entry.previousRating)
     }
 }
 // KMK <--

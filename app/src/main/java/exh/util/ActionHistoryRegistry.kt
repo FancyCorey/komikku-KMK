@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import mihon.domain.migration.usecases.MigrateMangaUseCase
+import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.manga.interactor.GetManga
@@ -29,14 +30,27 @@ data class ActionHistoryEntryDescriptor(
     val id: String,
     val timestamp: Long,
     val summary: (Context) -> String,
+    /** Evaluation Mode-safe summary. Missing declarations fall back to a generic recorded-action label. */
+    val evaluationModeSummary: ((Context) -> String)? = null,
     val undo: (suspend () -> ActionHistoryUndoResult)?,
     /** A safe, artifact-verified forward action (uninstall/reinstall) -- see [ActionHistoryFollowUp]. */
     val followUp: ActionHistoryFollowUp? = null,
+    /**
+     * A stable local manga identity owned by the journal entry itself. This is deliberately optional:
+     * a preference, chapter, group, or external-operation row must not guess a manga from display
+     * text or a private URL merely to make the row clickable.
+     */
+    val contextMangaId: Long? = null,
+    /** Internal lookup key for the developer-only trace; never rendered or exported. */
+    val diagnosticKey: String? = null,
 )
 
 /** Unifies every journal family's own undo-result shape into one small type for Snackbar text. */
 sealed interface ActionHistoryUndoResult {
-    data class Taste(val outcome: EvaluationUndoOutcome) : ActionHistoryUndoResult
+    data class Taste(
+        val outcome: EvaluationUndoOutcome,
+        val isBulk: Boolean,
+    ) : ActionHistoryUndoResult
     data class Simple(val result: GroupUndoResult) : ActionHistoryUndoResult
 }
 
@@ -129,6 +143,9 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "taste:${entry.id}",
                     timestamp = entry.timestamp,
                     summary = { ctx -> evaluationJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> evaluationJournalEntrySummary(ctx, entry) },
+                    contextMangaId = entry.mangaId,
+                    diagnosticKey = entry.id,
                     undo = {
                         val service = EvaluationModeUndoService()
                         val outcome = if (entry.bulkOperationId != null) {
@@ -136,7 +153,7 @@ private enum class JournalFamily : ActionHistorySource {
                         } else {
                             service.undo(entry.id)
                         }
-                        ActionHistoryUndoResult.Taste(outcome)
+                        ActionHistoryUndoResult.Taste(outcome, entry.bulkOperationId != null)
                     },
                 )
             }
@@ -153,11 +170,49 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "group:${entry.id}",
                     timestamp = entry.timestamp,
                     summary = { ctx -> groupJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> groupJournalEntrySummary(ctx, entry) },
+                    diagnosticKey = entry.id,
                     undo = { ActionHistoryUndoResult.Simple(GroupUndoService().undo(entry.id).result) },
                 )
             }
 
         override fun clear() = GroupUndoJournal.clear()
+    },
+
+    CROSS_SOURCE_IDENTITY {
+        override val familyId: String = "cross_source_identity"
+
+        override fun snapshot(): List<ActionHistoryEntryDescriptor> =
+            CrossSourceIdentityUndoJournal.snapshot().map { entry ->
+                ActionHistoryEntryDescriptor(
+                    id = "identity:${entry.id}",
+                    timestamp = entry.timestamp,
+                    summary = { ctx -> crossSourceIdentityJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> crossSourceIdentityJournalEntrySummary(ctx, entry) },
+                    diagnosticKey = entry.id,
+                    undo = { ActionHistoryUndoResult.Simple(CrossSourceIdentityUndoService().undo(entry.id)) },
+                )
+            }
+
+        override fun clear() = CrossSourceIdentityUndoJournal.clear()
+    },
+
+    ALTERNATE_SOURCE_BRIDGE {
+        override val familyId: String = "alternate_source_bridge"
+
+        override fun snapshot(): List<ActionHistoryEntryDescriptor> =
+            AlternateSourceBridgeUndoJournal.snapshot().map { entry ->
+                ActionHistoryEntryDescriptor(
+                    id = "bridge:${entry.id}",
+                    timestamp = entry.timestamp,
+                    summary = { ctx -> alternateSourceBridgeJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> alternateSourceBridgeJournalEntrySummary(ctx, entry) },
+                    diagnosticKey = entry.id,
+                    undo = { ActionHistoryUndoResult.Simple(AlternateSourceBridgeUndoService().undo(entry.id)) },
+                )
+            }
+
+        override fun clear() = AlternateSourceBridgeUndoJournal.clear()
     },
 
     LIBRARY {
@@ -169,6 +224,9 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "library:${entry.id}",
                     timestamp = entry.timestamp,
                     summary = { ctx -> libraryJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> libraryJournalEntrySummary(ctx, entry) },
+                    contextMangaId = entry.mangaId,
+                    diagnosticKey = entry.id,
                     undo = { ActionHistoryUndoResult.Simple(LibraryUndoService().undo(entry.id)) },
                 )
             }
@@ -185,6 +243,8 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "pref:${entry.id}",
                     timestamp = entry.timestamp,
                     summary = { ctx -> preferenceJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> preferenceJournalEntrySummary(ctx, entry) },
+                    diagnosticKey = entry.id,
                     undo = { ActionHistoryUndoResult.Simple(PreferenceUndoService().undo(entry.id)) },
                 )
             }
@@ -201,6 +261,8 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "chapter:${entry.id}",
                     timestamp = entry.timestamp,
                     summary = { ctx -> chapterJournalEntrySummary(ctx, entry) },
+                    evaluationModeSummary = { ctx -> chapterJournalEntrySummary(ctx, entry) },
+                    diagnosticKey = entry.id,
                     undo = { ActionHistoryUndoResult.Simple(ChapterUndoService().undo(entry.id)) },
                 )
             }
@@ -217,6 +279,8 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "cover:${entry.id}",
                     timestamp = entry.timestamp,
                     summary = { ctx -> ctx.stringResource(KMR.strings.eval_undo_summary_custom_cover) },
+                    evaluationModeSummary = { ctx -> ctx.stringResource(KMR.strings.eval_undo_summary_custom_cover) },
+                    diagnosticKey = entry.id,
                     undo = { ActionHistoryUndoResult.Simple(CustomCoverUndoService().undo(entry.id)) },
                 )
             }
@@ -238,7 +302,9 @@ private enum class JournalFamily : ActionHistorySource {
                     id = "event:${event.id}",
                     timestamp = event.timestamp,
                     summary = { ctx -> nonUndoableEventSummary(ctx, event) },
+                    evaluationModeSummary = { ctx -> nonUndoableEventSummary(ctx, event) },
                     undo = null,
+                    diagnosticKey = event.id,
                     followUp = packageFollowUpFor(event) ?: migrationFollowUpFor(event) ?: downloadFollowUpFor(event) ?: trackerFollowUpFor(event) ?: trackerBindingFollowUpFor(event),
                 )
             }
@@ -353,27 +419,25 @@ private enum class JournalFamily : ActionHistorySource {
                         )
                     ) {
                         is mihon.domain.migration.usecases.MigrationOutcome.Success -> {
-                            if (sourcePreferences.evaluationMode().get()) {
-                                val newId = NonUndoableEvent.newId()
-                                NonUndoableEventJournal.record(
-                                    NonUndoableEvent(
-                                        id = newId,
-                                        timestamp = System.currentTimeMillis(),
-                                        eventType = NonUndoableEventType.MIGRATION_COMPLETED,
-                                    ),
-                                )
-                                MigrationReceiptJournal.record(
-                                    MigrationReceipt(
-                                        id = newId,
-                                        timestamp = System.currentTimeMillis(),
-                                        originMangaId = targetManga.id,
-                                        originSourceId = targetManga.source,
-                                        targetMangaId = originManga.id,
-                                        targetSourceId = originManga.source,
-                                        replace = receipt.replace,
-                                    ),
-                                )
-                            }
+                            val newId = NonUndoableEvent.newId()
+                            NonUndoableEventJournal.record(
+                                NonUndoableEvent(
+                                    id = newId,
+                                    timestamp = System.currentTimeMillis(),
+                                    eventType = NonUndoableEventType.MIGRATION_COMPLETED,
+                                ),
+                            )
+                            MigrationReceiptJournal.record(
+                                MigrationReceipt(
+                                    id = newId,
+                                    timestamp = System.currentTimeMillis(),
+                                    originMangaId = targetManga.id,
+                                    originSourceId = targetManga.source,
+                                    targetMangaId = originManga.id,
+                                    targetSourceId = originManga.source,
+                                    replace = receipt.replace,
+                                ),
+                            )
                             ActionHistoryFollowUpResult.Started
                         }
                         is mihon.domain.migration.usecases.MigrationOutcome.PartialFailure,
@@ -620,7 +684,10 @@ object ActionHistoryRegistry {
 
     fun snapshot(): List<ActionHistoryEntryDescriptor> = mergeHistorySources(sources)
 
-    fun clearAll() = clearHistorySources(sources)
+    fun clearAll() {
+        clearHistorySources(sources)
+        ActionHistoryDiagnosticTrace.clear()
+    }
 }
 
 // KMK: moved out of EvaluationModeActionHistoryScreen.kt so ActionHistorySource adapters above can
@@ -629,19 +696,47 @@ private fun evaluationJournalEntrySummary(context: Context, entry: EvaluationJou
     val isBulk = entry.bulkOperationId != null
     val count = if (isBulk) EvaluationModeUndoJournal.entriesForBulk(entry.bulkOperationId!!).size.coerceAtLeast(1) else 1
     return when (entry.actionType) {
-        EvaluationJournalActionType.RATE_LOVE -> context.stringResource(KMR.strings.eval_undo_summary_rated, count, context.stringResource(KMR.strings.rated_manga_rating_love))
-        EvaluationJournalActionType.RATE_LIKE -> context.stringResource(KMR.strings.eval_undo_summary_rated, count, context.stringResource(KMR.strings.rated_manga_rating_like))
-        EvaluationJournalActionType.RATE_DISLIKE -> context.stringResource(KMR.strings.eval_undo_summary_rated, count, context.stringResource(KMR.strings.rated_manga_rating_dislike))
-        EvaluationJournalActionType.CLEAR_RATING -> context.stringResource(KMR.strings.eval_undo_summary_cleared, count)
-        EvaluationJournalActionType.NOT_INTERESTED -> context.stringResource(KMR.strings.eval_undo_summary_not_interested, count)
+        EvaluationJournalActionType.RATE_LOVE -> context.pluralStringResource(KMR.plurals.eval_undo_summary_rated, count = count, count, context.stringResource(KMR.strings.rated_manga_rating_love))
+        EvaluationJournalActionType.RATE_LIKE -> context.pluralStringResource(KMR.plurals.eval_undo_summary_rated, count = count, count, context.stringResource(KMR.strings.rated_manga_rating_like))
+        EvaluationJournalActionType.RATE_DISLIKE -> context.pluralStringResource(KMR.plurals.eval_undo_summary_rated, count = count, count, context.stringResource(KMR.strings.rated_manga_rating_dislike))
+        EvaluationJournalActionType.CLEAR_RATING -> context.pluralStringResource(KMR.plurals.eval_undo_summary_cleared, count = count, count)
+        EvaluationJournalActionType.NOT_INTERESTED -> context.pluralStringResource(KMR.plurals.eval_undo_summary_not_interested, count = count, count)
     }
 }
 
 private fun groupJournalEntrySummary(context: Context, entry: GroupJournalEntry): String = when (entry.actionType) {
-    GroupJournalActionType.MERGE -> context.stringResource(KMR.strings.eval_undo_summary_group_merge, entry.touchedKeys.size)
-    GroupJournalActionType.REMOVE_FROM_GROUP -> context.stringResource(KMR.strings.eval_undo_summary_group_remove, entry.touchedKeys.size)
-    GroupJournalActionType.UNGROUP -> context.stringResource(KMR.strings.eval_undo_summary_group_ungroup, entry.touchedKeys.size)
+    GroupJournalActionType.MERGE -> context.pluralStringResource(KMR.plurals.eval_undo_summary_group_merge, count = entry.touchedKeys.size, entry.touchedKeys.size)
+    GroupJournalActionType.REMOVE_FROM_GROUP -> context.pluralStringResource(KMR.plurals.eval_undo_summary_group_remove, count = entry.touchedKeys.size, entry.touchedKeys.size)
+    GroupJournalActionType.UNGROUP -> context.pluralStringResource(KMR.plurals.eval_undo_summary_group_ungroup, count = entry.touchedKeys.size, entry.touchedKeys.size)
     GroupJournalActionType.SET_PRIMARY -> context.stringResource(KMR.strings.eval_undo_summary_group_primary)
+}
+
+private fun crossSourceIdentityJournalEntrySummary(
+    context: Context,
+    entry: CrossSourceIdentityUndoEntry,
+): String = when (entry.mutation) {
+    exh.recs.matching.CrossSourceIdentityMutation.CONFIRM ->
+        context.stringResource(KMR.strings.eval_undo_summary_identity_confirmed)
+    exh.recs.matching.CrossSourceIdentityMutation.REJECT ->
+        context.stringResource(KMR.strings.eval_undo_summary_identity_rejected)
+    exh.recs.matching.CrossSourceIdentityMutation.CLEAR ->
+        context.stringResource(KMR.strings.eval_undo_summary_identity_cleared)
+}
+
+private fun alternateSourceBridgeJournalEntrySummary(
+    context: Context,
+    entry: AlternateSourceBridgeUndoEntry,
+): String = when (entry.mutation) {
+    exh.recs.bridge.AlternateSourceBridgeMutation.CREATE ->
+        context.stringResource(KMR.strings.eval_undo_summary_bridge_created)
+    exh.recs.bridge.AlternateSourceBridgeMutation.UPDATE ->
+        context.stringResource(KMR.strings.eval_undo_summary_bridge_updated)
+    exh.recs.bridge.AlternateSourceBridgeMutation.CORRECT_MAPPING ->
+        context.stringResource(KMR.strings.eval_undo_summary_bridge_corrected)
+    exh.recs.bridge.AlternateSourceBridgeMutation.SKIP_ALTERNATE ->
+        context.stringResource(KMR.strings.eval_undo_summary_bridge_skipped)
+    exh.recs.bridge.AlternateSourceBridgeMutation.CLEAR ->
+        context.stringResource(KMR.strings.eval_undo_summary_bridge_cleared)
 }
 
 private fun chapterJournalEntrySummary(context: Context, entry: ChapterJournalEntry): String = when (entry.actionType) {
@@ -654,9 +749,9 @@ private fun chapterJournalEntrySummary(context: Context, entry: ChapterJournalEn
 private fun libraryJournalEntrySummary(context: Context, entry: LibraryJournalEntry): String {
     val count = entry.bulkOperationId?.let { LibraryUndoJournal.entriesForBulk(it).size.coerceAtLeast(1) } ?: 1
     return when (entry.actionType) {
-        LibraryJournalActionType.FAVORITE -> context.stringResource(KMR.strings.eval_undo_summary_library_favorite, count)
-        LibraryJournalActionType.UNFAVORITE -> context.stringResource(KMR.strings.eval_undo_summary_library_unfavorite, count)
-        LibraryJournalActionType.SET_CATEGORIES -> context.stringResource(KMR.strings.eval_undo_summary_library_categories, count)
+        LibraryJournalActionType.FAVORITE -> context.pluralStringResource(KMR.plurals.eval_undo_summary_library_favorite, count = count, count)
+        LibraryJournalActionType.UNFAVORITE -> context.pluralStringResource(KMR.plurals.eval_undo_summary_library_unfavorite, count = count, count)
+        LibraryJournalActionType.SET_CATEGORIES -> context.pluralStringResource(KMR.plurals.eval_undo_summary_library_categories, count = count, count)
     }
 }
 
@@ -674,6 +769,8 @@ private fun preferenceJournalEntrySummary(context: Context, entry: PreferenceUnd
         PreferenceJournalActionType.SAME_MANGA_MATCHING,
         PreferenceJournalActionType.BEST_VERSION_PREVIEW,
         PreferenceJournalActionType.SOURCE_PREFERENCE,
+        PreferenceJournalActionType.DISCOVERY_EFFORT_LEVEL,
+        PreferenceJournalActionType.DISCOVERY_CANDIDATE_BUDGET,
         -> context.stringResource(KMR.strings.eval_undo_summary_preference_setting)
         PreferenceJournalActionType.TAG_PREFERENCE -> context.stringResource(KMR.strings.eval_undo_summary_preference_tag)
         PreferenceJournalActionType.SUGGESTION_DISMISSAL,

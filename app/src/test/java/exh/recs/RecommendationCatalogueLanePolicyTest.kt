@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.IOException
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Source/capability tests for the bounded Latest lane: success, unsupported (both at capability and
  * at runtime), empty, malformed, offline/recoverable failure, budget exhaustion, and provenance

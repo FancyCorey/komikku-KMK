@@ -5,6 +5,7 @@ import mihon.domain.extension.model.ExtensionStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 
 // KMK v0.8.10 -->
 class SourcesToTrySearchAndSortTest {
@@ -144,6 +145,53 @@ class SourcesToTrySearchAndSortTest {
         val snapshot = suggestions.toList()
         SourcesToTrySearchAndSort.search(suggestions, "one")
         assertEquals(snapshot, suggestions)
+    }
+
+    @Test
+    fun `best fit prefers useful catalogue evidence over metadata fit alone`() {
+        val tinyStrong = suggestion(
+            pkgName = "tiny",
+            name = "Tiny Strong",
+            score = 0.90,
+            reasons = listOf(NonInstalledSuggestionReason.EvaluatedStrongFit),
+        ).copy(
+            rankingEvidence = SourcesToTryRankingEvidence(
+                catalogueSampleCount = 1,
+                visibleCandidateCount = 0,
+                filteredOutCount = 5,
+                catalogueMetadataConfidence = SourceEvaluationMetadataConfidence.HIGH,
+            ),
+        )
+        val useful = suggestion(
+            pkgName = "useful",
+            name = "Useful Source",
+            score = 0.75,
+            reasons = listOf(NonInstalledSuggestionReason.EvaluatedWorthTrying),
+        ).copy(
+            rankingEvidence = SourcesToTryRankingEvidence(
+                catalogueSampleCount = 10,
+                visibleCandidateCount = 8,
+                filteredOutCount = 1,
+                matchedGroupCount = 3,
+                topPicksContribution = 2,
+                recommendationQualityScore = 0.85,
+                catalogueMetadataConfidence = SourceEvaluationMetadataConfidence.HIGH,
+            ),
+        )
+
+        assertEquals(
+            listOf("Useful Source", "Tiny Strong"),
+            SourcesToTrySearchAndSort.sort(listOf(tinyStrong, useful), SourcesToTrySortMode.BEST_FIT)
+                .map { it.displayName },
+        )
+    }
+
+    @Test
+    fun `language ordering is case insensitive and tie ordering is stable`() {
+        val upper = suggestion(pkgName = "z", name = "Same", lang = "EN")
+        val lower = suggestion(pkgName = "a", name = "Same", lang = "en")
+        val result = SourcesToTrySearchAndSort.sort(listOf(upper, lower), SourcesToTrySortMode.LANGUAGE)
+        assertEquals(listOf("a", "z"), result.map { it.extension.pkgName })
     }
 }
 // KMK <--

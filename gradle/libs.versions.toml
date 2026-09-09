@@ -12,6 +12,8 @@ ktlint-core = "1.8.0"
 firebase-bom = "34.9.0"
 markdown = "0.39.2"
 junit = "6.0.3"
+roborazzi = "1.73.0"
+robolectric = "4.16"
 materialKolor = "5.0.0-alpha06"
 
 [libraries]
@@ -34,7 +36,7 @@ conscrypt-android = "org.conscrypt:conscrypt-android:2.5.3"
 
 quickjs-android = { group = "com.github.zhanghai.quickjs-java", name = "quickjs-android", version = "547f5b1597" }
 
-jsoup = "org.jsoup:jsoup:1.22.1"
+jsoup = "org.jsoup:jsoup:1.23.1"
 
 disklrucache = "com.jakewharton:disklrucache:2.0.2"
 unifile = "com.github.komikku-app:UniFile:084a54140a"
@@ -42,7 +44,7 @@ libarchive = "me.zhanghai.android.libarchive:library:1.1.6"
 
 sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "sqlite" }
 sqlite-ktx = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqlite" }
-sqlite-android = "com.github.requery:sqlite-android:665608662e"
+sqlite-android = "com.github.requery:sqlite-android:3.49.0"
 
 preferencektx = "androidx.preference:preference-ktx:1.2.1"
 
@@ -55,7 +57,6 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp" }
 
 subsamplingscaleimageview = "com.github.tachiyomiorg:subsampling-scale-image-view:66e0db195d"
-image-decoder = "com.github.tachiyomiorg:image-decoder:41c059e540"
 
 natural-comparator = "com.github.gpanther:java-nat-sort:natural-comparator-1.1"
 
@@ -98,6 +99,8 @@ sqldelight-dialects-sql = { module = "app.cash.sqldelight:sqlite-3-38-dialect", 
 sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit4 = "junit:junit:4.13.2"
+junit-vintage = { module = "org.junit.vintage:junit-vintage-engine", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 kotest-assertions = "io.kotest:kotest-assertions-core:6.1.3"
 mockk = "io.mockk:mockk:1.14.9"
@@ -116,6 +119,8 @@ markdown-coil = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3",
 stringSimilarity = { module = "com.aallam.similarity:string-similarity-kotlin", version = "0.1.0" }
 
 materialKolor = { module = "com.materialkolor:material-kolor", version.ref = "materialKolor" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
 # KMK --> OCR
 mlkit-text-recognition = "com.google.mlkit:text-recognition:16.0.1"
@@ -127,6 +132,7 @@ aboutLibraries = { id = "com.mikepenz.aboutlibraries.plugin.android", version.re
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 moko = { id = "dev.icerock.mobile.multiplatform-resources", version.ref = "moko" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version = "3.0.6" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
 
 [bundles]
 okhttp = ["okhttp-core", "okhttp-logging", "okhttp-brotli", "okhttp-dnsoverhttps", "okhttp-zstd"]

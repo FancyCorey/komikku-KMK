@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -13,11 +14,17 @@ import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import tachiyomi.core.common.Constants
+import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.kmk.KMR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 // KMK -->
-class SourceEvaluationNotifier(private val context: Context) : SourceEvaluationWorkerNotifier {
+class SourceEvaluationNotifier(
+    private val context: Context,
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
+) : SourceEvaluationWorkerNotifier {
 
     // KMK --> v0.6.19 follow-up: deep link — tap notification opens Source Evaluation screen
     private val openSourceEvaluationIntent: PendingIntent by lazy {
@@ -49,7 +56,9 @@ class SourceEvaluationNotifier(private val context: Context) : SourceEvaluationW
     }
 
     fun buildProgressNotification(queueState: SourceEvaluationQueueState): NotificationCompat.Builder {
-        val currentName = queueState.currentExtensionName
+        val currentName = queueState.currentExtensionName?.let {
+            SourceEvaluationProgressLabelPolicy.extensionLabel(it, sourcePreferences.evaluationMode().get())
+        }
             ?: context.stringResource(KMR.strings.source_evaluation_starting)
         return progressBuilder.apply {
             setContentText(currentName)
@@ -84,7 +93,7 @@ class SourceEvaluationNotifier(private val context: Context) : SourceEvaluationW
             // KMK <--
             if (strongFitCount > 0) {
                 setContentText(
-                    context.stringResource(KMR.strings.source_evaluation_strong_fit_count, strongFitCount),
+                    context.pluralStringResource(KMR.plurals.source_evaluation_strong_fit_count, count = strongFitCount, strongFitCount),
                 )
             }
         }

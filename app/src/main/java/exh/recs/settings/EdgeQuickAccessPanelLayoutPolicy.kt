@@ -1,6 +1,5 @@
 package exh.recs.settings
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Pure layout policy for [EdgeQuickAccessPanel], extracted so the panel's sizing decisions are
  * testable without rendering Compose or reading a screenshot.

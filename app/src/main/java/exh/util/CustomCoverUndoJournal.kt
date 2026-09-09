@@ -23,6 +23,15 @@ object CustomCoverUndoJournal {
             entries.addLast(entry)
             while (entries.size > MAX_ENTRIES) entries.removeFirst()
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "custom cover",
+            operation = "CUSTOM_COVER",
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     fun snapshot(): List<CustomCoverUndoEntry> = synchronized(lock) { entries.toList().asReversed() }

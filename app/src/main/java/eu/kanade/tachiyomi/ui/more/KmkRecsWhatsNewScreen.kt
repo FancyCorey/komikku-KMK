@@ -69,8 +69,8 @@ class KmkRecsWhatsNewScreen : Screen() {
         InfoScreen(
             icon = Icons.Outlined.NewReleases,
             headingText = stringResource(MR.strings.whats_new),
-            subtitleText = stringResource(SYMR.strings.latest_, KmkRecsReleaseNotes.VERSION_NAME) +
-                " - " + stringResource(KMR.strings.current_, KmkRecsReleaseNotes.VERSION_NAME),
+            subtitleText = stringResource(SYMR.strings.latest_, KmkRecsReleaseNotes.DISPLAY_VERSION_NAME) +
+                " - " + stringResource(KMR.strings.current_, KmkRecsReleaseNotes.DISPLAY_VERSION_NAME),
             acceptText = stringResource(MR.strings.action_ok),
             onAcceptClick = { navigator.pop() },
         ) {
@@ -123,7 +123,7 @@ private fun KmkRecsWhatsNewFamilySection(group: KmkRecsReleaseNotesGroupingPolic
         if (expanded) {
             val combinedBody = group.sections.joinToString(separator = "\n\n-----\n") { it.body }
             MarkdownRender(
-                content = combinedBody.trimIndent(),
+                content = combinedBody.trimIndent().replace("KMK-Recs", "Komikku FC"),
                 flavour = GFMFlavourDescriptor(),
             )
         }

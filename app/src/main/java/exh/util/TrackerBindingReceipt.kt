@@ -3,7 +3,7 @@ package exh.util
 import java.util.UUID
 
 // KMK Universal Action History Recovery Plan 2026-08-01 -->
-/** Private, Evaluation-Mode-only receipt for a verified tracker binding. */
+/** Private, bounded receipt for a verified tracker binding. */
 data class TrackerBindingReceipt(
     val id: String,
     val timestamp: Long,
@@ -16,7 +16,7 @@ data class TrackerBindingReceipt(
     }
 }
 
-/** Bounded in-memory receipts for tracker bindings created during an evaluation session. */
+/** Bounded in-memory receipts; the Action History row exposes only a generic summary. */
 object TrackerBindingReceiptJournal {
     const val MAX_ENTRIES = 20
 
@@ -52,8 +52,6 @@ fun recordSuccessfulTrackerBinding(
     trackerId: Long,
     remoteId: Long,
 ) {
-    if (!evaluationModeEnabled) return
-
     val id = TrackerBindingReceipt.newId()
     val timestamp = System.currentTimeMillis()
     NonUndoableEventJournal.record(

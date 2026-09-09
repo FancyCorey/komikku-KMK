@@ -1,0 +1,9 @@
+-- Local tracking scores were previously stored on a 0-10 scale. Preserve
+-- existing ratings while moving the local canonical value to 1-100.
+UPDATE local_tracked_work
+SET score = CASE
+    WHEN score IS NULL THEN NULL
+    WHEN score = 0.0 THEN NULL
+    WHEN score <= 10.0 THEN score * 10.0
+    ELSE score
+END;

@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.manga.track
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,9 +47,13 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.RefreshTracks
+import eu.kanade.domain.track.model.LocalTrackingActionPolicy
 import eu.kanade.domain.track.model.toDbTrack
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.manga.components.LocalTrackDetailsDialog
+import eu.kanade.presentation.manga.components.LocalTrackStatusDialog
+import eu.kanade.presentation.track.LocalTrackingReconciliationDialog
 import eu.kanade.presentation.track.TrackChapterSelector
 import eu.kanade.presentation.track.TrackDateSelector
 import eu.kanade.presentation.track.TrackInfoDialogHome
@@ -63,12 +69,17 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MergedSource
+import eu.kanade.tachiyomi.source.rethrowIfFatal
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.util.lang.convertEpochMillisZone
 import eu.kanade.tachiyomi.util.lang.toLocalDate
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import exh.metadata.metadata.base.TrackerIdMetadata
+import exh.recs.matching.ConfirmedMangaGroupTargets
+import exh.recs.matching.CrossExtensionMatchMode
+import exh.recs.matching.CrossExtensionMatchScreen
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
 import exh.util.TrackWriteField
@@ -76,8 +87,10 @@ import exh.util.recordSuccessfulTrackWrite
 import exh.util.recordSuccessfulTrackerBinding
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -89,6 +102,9 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.chapter.interactor.GetChapter
+import tachiyomi.domain.chapter.interactor.GetChapterByUrlAndMangaId
+import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.manga.interactor.GetFlatMetadataById
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.GetMergedReferencesById
@@ -97,7 +113,13 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.tracker.model.LocalTrackedWork
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSource
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSourceConfirmation
+import tachiyomi.domain.tracker.model.LocalTrackedWorkStatus
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.material.AlertDialogContent
 import tachiyomi.presentation.core.components.material.padding
@@ -108,6 +130,35 @@ import uy.kohesive.injekt.injectLazy
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.UUID
+
+internal suspend fun <T> runTrackerSearch(block: suspend () -> T): Result<T> = try {
+    Result.success(block())
+} catch (e: Throwable) {
+    rethrowIfFatal(e)
+    Result.failure(e)
+}
+
+internal class TrackerSearchRequestGate {
+    class Request internal constructor(
+        val generation: Long,
+        val query: String,
+    )
+
+    private var generation = 0L
+    private var current: Request? = null
+
+    fun begin(query: String): Request? {
+        if (current?.query == query) return null
+        return Request(++generation, query).also { current = it }
+    }
+
+    fun isCurrent(request: Request): Boolean = current == request
+
+    fun finish(request: Request) {
+        if (isCurrent(request)) current = null
+    }
+}
 
 data class TrackInfoDialogHomeScreen(
     private val mangaId: Long,
@@ -145,7 +196,7 @@ data class TrackInfoDialogHomeScreen(
             // SY <--
             else {
                 TrackInfoDialogHome(
-                    trackItems = state.trackItems,
+                    entries = TrackerEntry.build(state.trackItems, state.localWork),
                     dateFormat = dateFormat,
                     onStatusClick = {
                         navigator.push(
@@ -210,8 +261,51 @@ data class TrackInfoDialogHomeScreen(
                     },
                     onCopyLink = { context.copyTrackerLink(it) },
                     onTogglePrivate = screenModel::togglePrivate,
+                    onLocalClick = screenModel::openLocalStatusDialog,
+                    onLocalDetailsClick = screenModel::openLocalDetailsDialog,
+                    onLocalChapterClick = screenModel::openLocalChapter,
+                    onLocalReconcileClick = screenModel::openLocalReconciliationDialog,
+                    onLocalOtherVersionsClick = {
+                        state.localWork?.status?.let { status ->
+                            navigator.push(
+                                CrossExtensionMatchScreen.fromMode(
+                                    mangaId,
+                                    CrossExtensionMatchMode.LocalTracking(status),
+                                ),
+                            )
+                        }
+                    },
+                    localDateFormat = dateFormat,
                 )
             }
+        }
+        // KMK v0.8.21-fix2: Local's own dialog lives inside this sheet, entirely independent of the
+        // external-tracker rows above -- opening/closing it never touches trackItems state.
+        if (state.showLocalStatusDialog) {
+            LocalTrackStatusDialog(
+                currentStatus = state.localWork?.status,
+                onStatusSelected = screenModel::setLocalTrackingStatus,
+                onRemove = screenModel::removeLocalTracking,
+                onDismissRequest = screenModel::dismissLocalStatusDialog,
+            )
+        }
+        if (state.showLocalDetailsDialog && state.localWork != null) {
+            LocalTrackDetailsDialog(
+                work = state.localWork!!,
+                dateFormat = dateFormat,
+                onSave = screenModel::saveLocalDetails,
+                onDismissRequest = screenModel::dismissLocalDetailsDialog,
+            )
+        }
+        if (state.showLocalReconciliationDialog && state.localWork != null) {
+            LocalTrackingReconciliationDialog(
+                work = state.localWork!!,
+                entries = state.trackItems,
+                dateFormat = dateFormat,
+                onImport = screenModel::importExternalMetadata,
+                onExport = screenModel::exportLocalMetadata,
+                onDismissRequest = screenModel::dismissLocalReconciliationDialog,
+            )
         }
     }
 
@@ -242,6 +336,16 @@ data class TrackInfoDialogHomeScreen(
         // SY <--
         // KMK -->
         private val sourceManager: SourceManager = Injekt.get(),
+        // KMK v0.8.21-fix2: Local now lives in this same screen model instead of MangaScreenModel --
+        // see TrackerEntry's doc for why it is a peer entry here rather than a separate manga-detail
+        // action.
+        private val localTrackerRepository: LocalTrackerRepository = Injekt.get(),
+        private val getHistory: GetHistory = Injekt.get(),
+        private val getChapter: GetChapter = Injekt.get(),
+        private val sourcePreferences: SourcePreferences = Injekt.get(),
+        private val confirmedMangaGroupTargets: ConfirmedMangaGroupTargets = Injekt.get(),
+        private val getChapterByUrlAndMangaId: GetChapterByUrlAndMangaId = Injekt.get(),
+        private val application: Application = Injekt.get(),
         // KMK <--
     ) : StateScreenModel<Model.State>(State()) {
         // KMK -->
@@ -262,7 +366,348 @@ data class TrackInfoDialogHomeScreen(
                     .map { it.mapToTrackItem() }
                     .collectLatest { trackItems -> mutableState.update { it.copy(trackItems = trackItems) } }
             }
+
+            // KMK v0.8.21-fix2 -->
+            screenModelScope.launch {
+                val manga = getMangaById.await(mangaId) ?: return@launch
+                combine(
+                    localTrackerRepository.observeWorkIdBySourceUrl(manga.source, manga.url),
+                    localTrackerRepository.getAllWorksAsFlow(),
+                ) { workId, works ->
+                    workId?.let { id -> works.firstOrNull { it.id == id } }
+                }
+                    .distinctUntilChanged()
+                    .collectLatest { work -> mutableState.update { it.copy(localWork = work) } }
+            }
+            // KMK <--
         }
+
+        // KMK v0.8.21-fix2 -->
+        private suspend fun refreshLocalTrackedWork() {
+            val manga = getMangaById.await(mangaId) ?: return
+            val work = localTrackerRepository.getWorkIdBySourceUrl(manga.source, manga.url)
+                ?.let { localTrackerRepository.getWork(it) }
+            mutableState.update { it.copy(localWork = work) }
+        }
+
+        fun openLocalStatusDialog() {
+            mutableState.update { it.copy(showLocalStatusDialog = true) }
+        }
+
+        fun dismissLocalStatusDialog() {
+            mutableState.update { it.copy(showLocalStatusDialog = false) }
+        }
+
+        fun openLocalDetailsDialog() {
+            if (state.value.localWork != null) mutableState.update { it.copy(showLocalDetailsDialog = true) }
+        }
+
+        fun openLocalChapter() {
+            screenModelScope.launch {
+                val manga = getMangaById.await(mangaId) ?: return@launch
+                val workId = localTrackerRepository.getWorkIdBySourceUrl(manga.source, manga.url)
+                val sourceProgress = workId?.let {
+                    localTrackerRepository.getSourceProgress(it, manga.source, manga.url)
+                }
+                val chapter = sourceProgress?.chapterUrl
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { getChapterByUrlAndMangaId.await(it, manga.id) }
+                    ?: LocalTrackingHistoryProgressPolicy.resolve(getHistory.await(mangaId))
+                        ?.let { getChapter.await(it.chapterId) }
+                    ?: return@launch
+                application.startActivity(
+                    ReaderActivity.newIntent(application, mangaId, chapter.id)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+
+        fun dismissLocalDetailsDialog() {
+            mutableState.update { it.copy(showLocalDetailsDialog = false) }
+        }
+
+        fun openLocalReconciliationDialog() {
+            if (state.value.localWork != null && state.value.trackItems.any { it.track != null }) {
+                mutableState.update { it.copy(showLocalReconciliationDialog = true) }
+            }
+        }
+
+        fun dismissLocalReconciliationDialog() {
+            mutableState.update { it.copy(showLocalReconciliationDialog = false) }
+        }
+
+        fun importExternalMetadata(item: TrackItem) {
+            val external = item.track ?: return
+            val work = state.value.localWork ?: return
+            dismissLocalReconciliationDialog()
+            runLocalTrackingAction {
+                localTrackerRepository.upsertWork(
+                    LocalTrackingReconciliationPolicy.mergeIntoLocal(
+                        work,
+                        LocalTrackingReconciliationPolicy.externalSnapshot(external, item.tracker),
+                    ),
+                )
+            }
+        }
+
+        fun exportLocalMetadata(item: TrackItem) {
+            val external = item.track ?: return
+            val work = state.value.localWork ?: return
+            runLocalTrackingAction {
+                val tracker = item.tracker
+                val remoteTrack = external.toDbTrack()
+                val applicableFields = buildSet {
+                    LocalTrackingReconciliationPolicy.externalStatus(tracker, work.status)?.let { add(TrackWriteField.STATUS) }
+                    work.lastChapterNumber?.let { add(TrackWriteField.CHAPTER_PROGRESS) }
+                    (
+                        work.score?.let { LocalTrackingReconciliationPolicy.scoreString(tracker, it) }
+                            ?: LocalTrackingReconciliationPolicy.clearScoreString(tracker)
+                        )
+                        ?.takeIf { work.score != null || external.score != 0.0 }
+                        ?.let { add(TrackWriteField.SCORE) }
+                    if (tracker.supportsReadingDates) {
+                        (work.startDate ?: 0L).takeIf { work.startDate != null || external.startDate > 0L }?.let { add(TrackWriteField.START_DATE) }
+                        (work.finishDate ?: 0L).takeIf { work.finishDate != null || external.finishDate > 0L }?.let { add(TrackWriteField.FINISH_DATE) }
+                    }
+                }
+                val pendingFields = state.value.pendingExternalWrites[tracker.id]
+                val fieldsToAttempt = LocalTrackingReconciliationPolicy.fieldsToAttempt(
+                    applicableFields = applicableFields,
+                    pendingFields = pendingFields,
+                )
+                var attemptedFields = 0
+                val failedFields = mutableSetOf<TrackWriteField>()
+                LocalTrackingReconciliationPolicy.externalStatus(tracker, work.status)
+                    ?.takeIf { TrackWriteField.STATUS in fieldsToAttempt }
+                    ?.let { status ->
+                        attemptedFields++
+                        if (!withTrackedWrite(
+                                tracker = tracker,
+                                track = external,
+                                field = TrackWriteField.STATUS,
+                                previousStatus = external.status,
+                            ) {
+                                tracker.setRemoteStatus(remoteTrack, status)
+                            }
+                        ) {
+                            failedFields += TrackWriteField.STATUS
+                        }
+                    }
+                work.lastChapterNumber?.takeIf { TrackWriteField.CHAPTER_PROGRESS in fieldsToAttempt }?.let { chapterNumber ->
+                    attemptedFields++
+                    if (!withTrackedWrite(
+                            tracker = tracker,
+                            track = external,
+                            field = TrackWriteField.CHAPTER_PROGRESS,
+                            previousChapterProgress = external.lastChapterRead.toInt(),
+                        ) {
+                            tracker.setRemoteLastChapterRead(remoteTrack, chapterNumber.toInt())
+                        }
+                    ) {
+                        failedFields += TrackWriteField.CHAPTER_PROGRESS
+                    }
+                }
+                (
+                    work.score?.let { LocalTrackingReconciliationPolicy.scoreString(tracker, it) }
+                        ?: LocalTrackingReconciliationPolicy.clearScoreString(tracker)
+                    )
+                    ?.takeIf { work.score != null || external.score != 0.0 }
+                    ?.takeIf { TrackWriteField.SCORE in fieldsToAttempt }
+                    ?.let { score ->
+                        attemptedFields++
+                        if (!withTrackedWrite(
+                                tracker = tracker,
+                                track = external,
+                                field = TrackWriteField.SCORE,
+                            ) {
+                                tracker.setRemoteScore(remoteTrack, score)
+                            }
+                        ) {
+                            failedFields += TrackWriteField.SCORE
+                        }
+                    }
+                if (tracker.supportsReadingDates) {
+                    (work.startDate ?: 0L).takeIf {
+                        (work.startDate != null || external.startDate > 0L) && TrackWriteField.START_DATE in fieldsToAttempt
+                    }?.let { startDate ->
+                        attemptedFields++
+                        if (!withTrackedWrite(
+                                tracker = tracker,
+                                track = external,
+                                field = TrackWriteField.START_DATE,
+                                previousStartDate = external.startDate,
+                            ) {
+                                tracker.setRemoteStartDate(remoteTrack, startDate)
+                            }
+                        ) {
+                            failedFields += TrackWriteField.START_DATE
+                        }
+                    }
+                    (work.finishDate ?: 0L).takeIf {
+                        (work.finishDate != null || external.finishDate > 0L) && TrackWriteField.FINISH_DATE in fieldsToAttempt
+                    }?.let { finishDate ->
+                        attemptedFields++
+                        if (!withTrackedWrite(
+                                tracker = tracker,
+                                track = external,
+                                field = TrackWriteField.FINISH_DATE,
+                                previousFinishDate = external.finishDate,
+                            ) {
+                                tracker.setRemoteFinishDate(remoteTrack, finishDate)
+                            }
+                        ) {
+                            failedFields += TrackWriteField.FINISH_DATE
+                        }
+                    }
+                }
+                if (failedFields.isNotEmpty()) {
+                    mutableState.update {
+                        it.copy(pendingExternalWrites = it.pendingExternalWrites + (tracker.id to failedFields))
+                    }
+                    withUIContext {
+                        application.toast(
+                            application.stringResource(
+                                KMR.strings.local_tracking_export_partial,
+                                LocalTrackingReconciliationPolicy.completedFieldCount(attemptedFields, failedFields),
+                                failedFields.size,
+                            ),
+                        )
+                    }
+                } else {
+                    mutableState.update {
+                        it.copy(pendingExternalWrites = it.pendingExternalWrites - tracker.id)
+                    }
+                    dismissLocalReconciliationDialog()
+                }
+            }
+        }
+
+        fun saveLocalDetails(score: Double?, startDate: Long?, finishDate: Long?) {
+            mutableState.update { it.copy(showLocalDetailsDialog = false) }
+            runLocalTrackingAction {
+                val work = state.value.localWork ?: return@runLocalTrackingAction
+                localTrackerRepository.upsertWork(
+                    work.copy(score = score, startDate = startDate, finishDate = finishDate, updatedAt = System.currentTimeMillis()),
+                )
+            }
+        }
+
+        /**
+         * Fences every local-tracking write against duplicate taps -- same shared in-flight-flag
+         * pattern already used by [MangaScreenModel][eu.kanade.tachiyomi.ui.manga.MangaScreenModel]'s
+         * own local-tracking actions before this move.
+         */
+        private fun runLocalTrackingAction(block: suspend () -> Unit) {
+            if (state.value.isLocalTrackingActionInProgress) return
+            mutableState.update { it.copy(isLocalTrackingActionInProgress = true) }
+            screenModelScope.launch {
+                try {
+                    block()
+                    refreshLocalTrackedWork()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR) { "Local tracking action failed" }
+                    withUIContext {
+                        application.toast(application.stringResource(MR.strings.unknown_error))
+                    }
+                } finally {
+                    mutableState.update { it.copy(isLocalTrackingActionInProgress = false) }
+                }
+            }
+        }
+
+        /** Applies a status from the local status dialog, creating the work on first use. */
+        fun setLocalTrackingStatus(status: LocalTrackedWorkStatus) {
+            mutableState.update { it.copy(showLocalStatusDialog = false) }
+            runLocalTrackingAction {
+                val manga = getMangaById.await(mangaId) ?: return@runLocalTrackingAction
+                val now = System.currentTimeMillis()
+                val targets = if (sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled().get()) {
+                    confirmedMangaGroupTargets.await(manga)
+                } else {
+                    listOf(manga)
+                }
+                // Seed a newly created shared work from the latest read across the confirmed
+                // versions. Reading one version must not lose progress when tracking another.
+                val sharedHistoryProgress = targets
+                    .mapNotNull { target ->
+                        LocalTrackingHistoryProgressPolicy.resolve(getHistory.await(target.id))
+                            ?.let { progress -> target to progress }
+                    }
+                    .maxByOrNull { it.second.progressAt }
+                val sharedLatestRead = sharedHistoryProgress?.let { (target, progress) ->
+                    getChapter.await(progress.chapterId)?.let { chapter -> Triple(target, progress, chapter) }
+                }
+                var sharedWorkId = localTrackerRepository.getWorkIdBySourceUrl(manga.source, manga.url)
+                var sharedWorkInitialized = false
+                for (target in targets) {
+                    val existingId = localTrackerRepository.getWorkIdBySourceUrl(target.source, target.url)
+                    val workId = existingId ?: sharedWorkId ?: UUID.randomUUID().toString().also { sharedWorkId = it }
+                    val existingWork = existingId?.let { localTrackerRepository.getWork(it) }
+                    if (existingWork != null) {
+                        sharedWorkInitialized = true
+                        if (sharedWorkId == null) sharedWorkId = existingId
+                        localTrackerRepository.upsertWork(
+                            existingWork.copy(
+                                status = status,
+                                startDate = existingWork.startDate
+                                    ?: now.takeIf { status != LocalTrackedWorkStatus.PLANNED },
+                                finishDate = LocalTrackingActionPolicy.finishDateForStatus(status, now),
+                                updatedAt = now,
+                            ),
+                        )
+                    } else if (!sharedWorkInitialized) {
+                        val historyProgress = sharedHistoryProgress?.second
+                        val latestRead = sharedLatestRead?.let { (_, progress, chapter) -> progress to chapter }
+                        localTrackerRepository.upsertWork(
+                            LocalTrackedWork(
+                                id = workId,
+                                title = target.title,
+                                normalizedTitle = target.title.trim().lowercase(),
+                                status = status,
+                                lastChapterSource = latestRead?.second?.let { target.source },
+                                lastChapterNumber = latestRead?.second
+                                    ?.takeIf { it.isRecognizedNumber }
+                                    ?.chapterNumber,
+                                lastChapterUrl = latestRead?.second?.url,
+                                lastChapterLabel = latestRead?.second?.name,
+                                lastProgressAt = latestRead?.first?.progressAt,
+                                startDate = historyProgress?.firstReadAt
+                                    ?: now.takeIf { status != LocalTrackedWorkStatus.PLANNED },
+                                finishDate = LocalTrackingActionPolicy.finishDateForStatus(status, now),
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                        )
+                        sharedWorkInitialized = true
+                    }
+                    localTrackerRepository.upsertSource(
+                        LocalTrackedWorkSource(
+                            workId = workId,
+                            source = target.source,
+                            url = target.url,
+                            title = target.title,
+                            confidence = 100,
+                            confirmation = LocalTrackedWorkSourceConfirmation.USER_CONFIRMED,
+                            createdAt = existingWork?.createdAt ?: now,
+                            updatedAt = now,
+                        ),
+                    )
+                }
+            }
+        }
+
+        fun removeLocalTracking() {
+            mutableState.update { it.copy(showLocalStatusDialog = false) }
+            runLocalTrackingAction {
+                val manga = getMangaById.await(mangaId) ?: return@runLocalTrackingAction
+                localTrackerRepository.getWorkIdBySourceUrl(manga.source, manga.url)?.let {
+                    localTrackerRepository.deleteWork(it)
+                }
+            }
+        }
+        // KMK <--
 
         // KMK -->
         private suspend fun getMangaForTracking(item: TrackItem): Manga? {
@@ -438,6 +883,14 @@ data class TrackInfoDialogHomeScreen(
             // SY -->
             val isLoading: Boolean = false,
             // SY <--
+            // KMK v0.8.21-fix2 -->
+            val localWork: LocalTrackedWork? = null,
+            val showLocalStatusDialog: Boolean = false,
+            val showLocalDetailsDialog: Boolean = false,
+            val showLocalReconciliationDialog: Boolean = false,
+            val isLocalTrackingActionInProgress: Boolean = false,
+            val pendingExternalWrites: Map<Long, Set<TrackWriteField>> = emptyMap(),
+            // KMK <--
         )
     }
 }
@@ -446,7 +899,7 @@ data class TrackInfoDialogHomeScreen(
 // ordinary remote failures after preserving its existing log/toast behavior. This helper keeps the
 // three user-initiated setter models consistent: a receipt is committed only after normal completion,
 // and ordinary failures remain visible through the existing toast without escaping the dialog scope.
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 6: `internal` (not
+// `internal` (not
 // `private`) so WithTrackedWriteTest can exercise this exact function directly with a local fake
 // tracker write -- no other production code change, no real tracker account. [sourcePreferences] is
 // now an explicit default-Injekt parameter (matching every other Injekt dependency's convention in
@@ -466,7 +919,7 @@ internal suspend fun withTrackedWrite(
     previousPrivate: Boolean? = null,
     sourcePreferences: SourcePreferences = Injekt.get(),
     write: suspend () -> Unit,
-) {
+): Boolean {
     try {
         write()
         recordSuccessfulTrackWrite(
@@ -481,10 +934,12 @@ internal suspend fun withTrackedWrite(
             previousFinishDate = previousFinishDate,
             previousPrivate = previousPrivate,
         )
+        return true
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
         // BaseTracker has already logged and surfaced the remote failure to the user.
+        return false
     }
 }
 
@@ -906,6 +1361,8 @@ data class TrackerSearchScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        val scope = rememberCoroutineScope()
+        val context = LocalContext.current
         val screenModel = rememberScreenModel {
             Model(
                 mangaId = mangaId,
@@ -920,6 +1377,7 @@ data class TrackerSearchScreen(
         val textFieldState = rememberTextFieldState(initialQuery)
         TrackerSearch(
             state = textFieldState,
+            trackerName = screenModel.trackerName,
             onDispatchQuery = { screenModel.trackingSearch(textFieldState.text.toString()) },
             queryResult = state.queryResult,
             selected = state.selected,
@@ -927,8 +1385,13 @@ data class TrackerSearchScreen(
             onConfirmSelection = f@{ private: Boolean ->
                 val selected = state.selected ?: return@f
                 selected.private = private
-                screenModel.registerTracking(selected)
-                navigator.pop()
+                scope.launch {
+                    if (screenModel.registerTracking(selected)) {
+                        navigator.pop()
+                    } else {
+                        context.toast(MR.strings.unknown_error)
+                    }
+                }
             },
             onDismissRequest = navigator::pop,
             supportsPrivateTracking = screenModel.supportsPrivateTracking,
@@ -943,6 +1406,10 @@ data class TrackerSearchScreen(
     ) : StateScreenModel<Model.State>(State()) {
 
         val supportsPrivateTracking = tracker.supportsPrivateTracking
+        val trackerName = tracker.name
+
+        private val searchRequestGate = TrackerSearchRequestGate()
+        private var searchJob: Job? = null
 
         init {
             // Run search on first launch
@@ -952,45 +1419,43 @@ data class TrackerSearchScreen(
         }
 
         fun trackingSearch(query: String) {
-            screenModelScope.launch {
+            val request = searchRequestGate.begin(query.sanitize()) ?: return
+            searchJob?.cancel()
+            searchJob = screenModelScope.launch {
                 // To show loading state
                 mutableState.update { it.copy(queryResult = null, selected = null) }
 
-                val result = withIOContext {
-                    try {
-                        val results = tracker.search(query.sanitize())
-                        Result.success(results)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        Result.failure(e)
+                try {
+                    val result = withIOContext {
+                        runTrackerSearch { tracker.search(request.query) }
                     }
-                }
-                mutableState.update { oldState ->
-                    oldState.copy(
-                        queryResult = result,
-                        selected = result.getOrNull()?.find { it.tracking_url == currentUrl },
-                    )
+                    if (!searchRequestGate.isCurrent(request)) return@launch
+                    mutableState.update { oldState ->
+                        oldState.copy(
+                            queryResult = result,
+                            selected = result.getOrNull()?.find { it.tracking_url == currentUrl },
+                        )
+                    }
+                } finally {
+                    searchRequestGate.finish(request)
                 }
             }
         }
 
-        fun registerTracking(item: TrackSearch) {
-            screenModelScope.launchNonCancellable {
-                try {
-                    tracker.register(item, mangaId)
-                    recordSuccessfulTrackerBinding(
-                        evaluationModeEnabled = Injekt.get<SourcePreferences>().evaluationMode().get(),
-                        mangaId = mangaId,
-                        trackerId = item.tracker_id,
-                        remoteId = item.remote_id,
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR) { "Tracker registration failed" }
-                }
-            }
+        suspend fun registerTracking(item: TrackSearch): Boolean = try {
+            tracker.register(item, mangaId)
+            recordSuccessfulTrackerBinding(
+                evaluationModeEnabled = Injekt.get<SourcePreferences>().evaluationMode().get(),
+                mangaId = mangaId,
+                trackerId = item.tracker_id,
+                remoteId = item.remote_id,
+            )
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "Tracker registration failed" }
+            false
         }
 
         fun updateSelection(selected: TrackSearch) {

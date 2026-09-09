@@ -2,8 +2,12 @@
 
 // KMK -->
 object KmkRecsReleaseNotes {
-    const val VERSION_CODE = 783
-    const val VERSION_NAME = "KMK-Recs v0.8.20-fix5"
+    const val VERSION_CODE = 785
+    const val VERSION_NAME = "KMK-Recs v0.8.21-fix2"
+    const val DISPLAY_VERSION_NAME = "Komikku FC v0.8.21-fix2"
+
+    /** Projects the retained historical notes into the current public product name. */
+    fun displayMarkdown(): String = MARKDOWN.replace("KMK-Recs", "Komikku FC")
 
     // KMK v0.8.10-fix9: every KMK-Recs entry, including every historical entry back to v0.4.2, now
     // follows the same official Komikku changelog structure -- version heading, one short summary
@@ -17,6 +21,42 @@ object KmkRecsReleaseNotes {
     // ...") that is now expressed by its category heading instead. See the v0.8.10-fix9
     // implementation report for the exact conversion approach and verification.
     val MARKDOWN = """
+        ## KMK-Recs v0.8.21-fix2
+
+        Local tracking gains a full status/list workflow, and rating actions across the reader completion prompt, manga detail, and Rated Manga are fenced against duplicate taps.
+
+        #### What's Changed
+
+        ##### New
+        - **Local tracking status/list workflow:** Track locally now opens a status list (Reading, Plan to read, On hold, Completed, Dropped) instead of only toggling on and off. Changing status is reversible; Remove local tracking is a separate, explicit action from the same dialog.
+
+        ##### Improve
+        - **Komikku FC naming:** the app's own display name and repository README now read Komikku FC, alongside the What's New screen's existing forward-facing naming.
+
+        ##### Fix
+        - **Duplicate-tap protection:** rating actions (Love/Like/Dislike/Not interested) on the reader completion prompt, the manga detail page, and Rated Manga's bulk-rating action now ignore a second tap while the first is still being saved, so a fast double-tap can no longer record two ratings or leave the screen in an inconsistent state.
+
+        ## KMK-Recs v0.8.21
+
+        Focused recommendation controls, forward-facing Komikku FC naming, native-library packaging compatibility for current Android devices, and a complete status record for the accepted Komikku FC change set.
+
+        #### What's Changed
+
+        ##### New
+        - **For You focus:** temporarily focus recommendations on one or more existing genre groups from the For You surface, then clear the focus or explicitly show all results again. Durable taste, Not Interested, source, language, quality, library, and exposure rules remain authoritative.
+
+        ##### Improve
+        - **Accepted current scope:** the release record covers the shared Love/Like/Dislike/Not interested preference family, recommendation eligibility and correction, contextual settings navigation, Best Version image reliability, delayed-action acknowledgement and duplicate fencing, search-action clarity, extension chapter recovery, cross-source identity and preference carryover, tag and metadata diagnostics, same-number chapter-line continuity, and the applicable reusable review surfaces. Each item remains subject to its registered host, runtime, privacy, accessibility, localization, or human gate; this list is scope traceability, not a claim that an unopened gate has shipped.
+        - **Documentation and comparison:** the accepted Komikku FC naming, plain-language documentation, upstream/intended/actual comparison, and diagram-readability work are recorded with their retained-scope and review status rather than being silently omitted from the release record.
+
+        ##### Planned
+        - **Local internal tracker:** the accepted AniList/MAL-style local tracker proposal remains a separately contracted feature. It requires explicit local statuses and lists, distinction from release-status groups and Library membership, opt-in grouping behavior, source relinking and confidence, backup/restore/migration/privacy rules, and explicit non-automatic external-tracker synchronization before it can be described as shipped.
+        - **Focused recommendation modes and expanded review modes:** temporary genre/theme/tag/mood focus, exclusions, explainable ranking, and reusable view modes remain contract- and applicability-gated where the current build does not yet provide the complete behavior.
+
+        ##### Fix
+        - **Android compatibility:** rebuilt the bundled native libraries with 16 KB ELF load-segment alignment and verified the universal APK with the deterministic alignment checker.
+        - **What's New:** the current feature release and historical rendered entries now use the forward-facing Komikku FC name while retaining technical compatibility identifiers internally.
+
         ## KMK-Recs v0.8.20-fix5
 
         A visual polish follow-up that adds theme-aware empty-state illustrations to the recommendation, source-evaluation, action-history, best-version, and reader-schedule flows.

@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.collections.immutable.toPersistentList
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -113,6 +114,49 @@ class RecommendationSourceOrderingTest {
     }
 
     @Test
+    fun `prioritizeHealthySources moves errors after healthy sources and preserves each order`() {
+        val ordered = listOf(s1, s2, s3, s4)
+        val statuses = mapOf(
+            1L to RecommendationSourceRunStatus(1L, RecommendationSourceStatus.Shown),
+            2L to RecommendationSourceRunStatus(2L, RecommendationSourceStatus.Error),
+            3L to RecommendationSourceRunStatus(3L, RecommendationSourceStatus.Shown),
+            4L to RecommendationSourceRunStatus(4L, RecommendationSourceStatus.Error),
+        )
+
+        assertEquals(
+            listOf(s1, s3, s2, s4),
+            RecommendationSourceOrdering.prioritizeHealthySources(ordered, statuses),
+        )
+    }
+
+    @Test
+    fun `prioritizeHealthySources treats missing status as healthy`() {
+        val ordered = listOf(s1, s2, s3)
+        val statuses = mapOf(2L to RecommendationSourceRunStatus(2L, RecommendationSourceStatus.Error))
+
+        assertEquals(
+            listOf(s1, s3, s2),
+            RecommendationSourceOrdering.prioritizeHealthySources(ordered, statuses),
+        )
+    }
+
+    @Test
+    fun `prioritizeHealthySources moves no-match and filtered-out lanes after usable sources`() {
+        val ordered = listOf(s1, s2, s3, s4)
+        val statuses = mapOf(
+            1L to RecommendationSourceRunStatus(1L, RecommendationSourceStatus.NoMatches),
+            2L to RecommendationSourceRunStatus(2L, RecommendationSourceStatus.Shown),
+            3L to RecommendationSourceRunStatus(3L, RecommendationSourceStatus.FilteredOut),
+            4L to RecommendationSourceRunStatus(4L, RecommendationSourceStatus.Error),
+        )
+
+        assertEquals(
+            listOf(s2, s1, s3, s4),
+            RecommendationSourceOrdering.prioritizeHealthySources(ordered, statuses),
+        )
+    }
+
+    @Test
     fun `applyAll includes disabled sources in order`() {
         val result = RecommendationSourceOrdering.applyAll(allSources, listOf(3L, 1L, 2L))
         assertEquals(listOf(s3, s1, s2, s4, s5), result)
@@ -180,6 +224,20 @@ class RecommendationSourceOrderingTest {
         val allVisible = setOf(1L, 2L, 4L)
         val result = RecommendationSourceOrdering.mergeVisibleOrder(existingStored, visibleOrdered, allVisible)
         assertEquals(listOf(4L, 1L, 2L, 5L, 3L), result)
+    }
+
+    @Test
+    fun `retry source replacement preserves order and does not duplicate source id`() {
+        val original = source(2, "Original")
+        val replacement = source(2, "Retry instance")
+
+        val result = reconcileSourceOrder(
+            current = listOf(s1, original).toPersistentList(),
+            incoming = listOf(replacement),
+        )
+
+        assertEquals(listOf(1L, 2L), result.map { it.id })
+        assertEquals("Retry instance", result[1].name)
     }
 }
 // KMK <--

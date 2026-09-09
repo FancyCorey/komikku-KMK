@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 import tachiyomi.domain.taste.repository.SourceEvaluationRepository
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 7: direct coverage for
+// Direct coverage for
 // ClearSourceEvaluations -- the interactor behind SourceEvaluationScreenModel's
 // requestClearAllEvaluations()/confirmClearAllEvaluations() dialog-guarded UI action (a real,
 // already-existing, supported in-app "Clear all evaluations" affordance in

@@ -3,6 +3,7 @@
 #.vscode
 .kotlin
 build
+/core/image-decoder/.cxx/
 
 # IDE files
 *.iml

@@ -49,6 +49,7 @@ import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
+import tachiyomi.core.common.i18n.pluralStringResource as contextPluralStringResource
 import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 class ExtensionsScreenModel(
@@ -67,7 +68,6 @@ class ExtensionsScreenModel(
 
     private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
 
-    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass (finding #2):
     // screenModelScope-owned, not Composable-`remember`-owned -- the bulk extension export route
     // (previously its own ad hoc `bulkExportCleanupUri`/`bulkExportCleanupKind` `remember` state in
     // ExtensionsTab.kt) now shares the same lifecycle-safe coordinator/dialog every other export route
@@ -109,12 +109,20 @@ class ExtensionsScreenModel(
                         result.fold(
                             onSuccess = { summary ->
                                 val message = if (summary.skippedPkgNames.isEmpty()) {
-                                    context.contextStringResource(KMR.strings.extension_export_multi_success, summary.exportedCount)
+                                    context.contextPluralStringResource(KMR.plurals.extension_export_multi_success, count = summary.exportedCount, summary.exportedCount)
                                 } else {
                                     context.contextStringResource(
                                         KMR.strings.extension_export_multi_partial,
-                                        summary.exportedCount,
-                                        summary.skippedPkgNames.size,
+                                        context.contextPluralStringResource(
+                                            KMR.plurals.extension_export_exported_extension_fragment,
+                                            count = summary.exportedCount,
+                                            summary.exportedCount,
+                                        ),
+                                        context.contextPluralStringResource(
+                                            KMR.plurals.extension_export_missing_file_fragment,
+                                            count = summary.skippedPkgNames.size,
+                                            summary.skippedPkgNames.size,
+                                        ),
                                     )
                                 }
                                 context.toast(message)

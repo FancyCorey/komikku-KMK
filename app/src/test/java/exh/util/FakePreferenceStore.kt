@@ -21,6 +21,25 @@ class FakePreferenceStore : PreferenceStore {
 
     private val flows = mutableMapOf<String, MutableStateFlow<Any?>>()
 
+    /**
+     * Fully resets this store, including **key presence**.
+     *
+     * `Preference.delete()` deliberately only restores the default *value*; the key stays in [flows], so
+     * `isSet()` remains `true` afterwards. That is faithful to how a real store behaves for a written-then
+     * -reset key, but it means `delete()` cannot restore the "never written" state that
+     * `isSet()`-guarded production code branches on.
+     *
+     * Injekt is a process-global singleton, so a test class that binds [PreferenceStore] shares one
+     * instance with every other test class in the JVM. Without this, such a class can only stay correct by
+     * *overwriting* the global binding, which breaks whichever other class resolved first. Calling this in
+     * `@BeforeEach` lets classes share the instance Injekt hands out and still start from a clean slate.
+     */
+    fun clearAll() {
+        flows.clear()
+        failWrites = false
+    }
+    // KMK <--
+
     @Suppress("UNCHECKED_CAST")
     private fun <T> flowFor(key: String, defaultValue: T): MutableStateFlow<T> =
         flows.getOrPut(key) { MutableStateFlow(defaultValue) } as MutableStateFlow<T>
@@ -31,6 +50,14 @@ class FakePreferenceStore : PreferenceStore {
         override fun set(value: T) {
             check(!failWrites) { "test-injected preference write failure" }
             flowFor(key, defaultValue).value = value
+        }
+        // KMK F2-05.0: this fake has no disk I/O to defer, so commit() writes identically to set().
+        // 2026-08-27 correction: commit() now returns Boolean. set() throws (rather than returning
+        // false) when failWrites injects a failure, so any return from this line means the write
+        // itself succeeded -- this unconditionally reports true on that path.
+        override fun commit(value: T): Boolean {
+            set(value)
+            return true
         }
         override fun isSet(): Boolean = flows.containsKey(key)
         override fun delete() {

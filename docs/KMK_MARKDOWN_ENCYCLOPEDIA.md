@@ -2,12 +2,29 @@
 
 Date: 2026-07-15
 Status: central documentation map for humans, Codex, Claude Code, and future AI agents. This is an index and orientation guide, not an implementation plan.
+Authority: authoritative repository encyclopedia for the KMK source tree.
 
 ## Purpose
 
 This file explains where to look before changing, auditing, testing, or understanding the Komikku KMK fork. It exists because the project now has many planning, implementation, audit, OCR, source evaluation, recommendation, security, database, and community-readiness documents.
 
 Use this file to find the right document quickly. Do not treat it as proof that a feature exists in code. For implementation truth, always check the current-state documents and the actual source code.
+
+## Private Working Documentation Taxonomy
+
+The workspace-level `private/docs/` directory is the canonical home for internal KMK planning and evidence material. It is outside the public repository and must remain private unless a document is deliberately sanitized and promoted through the public-documentation review.
+
+| Private folder | Contents | Use it for |
+| --- | --- | --- |
+| `private/docs/plans/` | Implementation plans and designs | Future work orders and structural proposals |
+| `private/docs/audits-and-reports/` | Audits, reports, state records, and matrices | Findings and completion status |
+| `private/docs/evidence-and-qa/` | Feature registers, route bundles, runbooks, and screenshot standards | Device evidence planning and validation |
+| `private/docs/security-and-privacy/` | Security and privacy audits, hardening plans, and tool runs | Security review and degraded-environment handling |
+| `private/docs/public-readiness/` | Public extraction, PR, upstream-fit, and release-readiness material | Sanitized publication preparation |
+| `private/docs/tooling-and-operations/` | Android/emulator procedures and workflow tooling | Running controlled local workflows |
+| `private/docs/handoffs-and-prompts/` | Agent handoffs, prompts, and skill registers | Structured implementation delegation |
+
+The complete private index is `private/docs/README.md` at the workspace root. Raw screenshots, APKs, generated reports, and image assets remain in their existing private asset folders; they are not public documentation.
 
 ## First Rule
 
@@ -360,7 +377,6 @@ Implementation reports should include:
 | `docs/community/KMK_RECS_V0_8_18_FIX1_DEVICE_QA.md` | Live-device QA results for v0.8.18-fix1: per-item verification of Copy link, extension export, the relocated quick-access panel, and Source Evaluation's Go-to-For-You action, plus the crash regression this pass found and fixed. Not for public posting. |
 | `docs/community/KMK_SOURCE_EVALUATION_SCREENSHOT_EVIDENCE_WORKFLOW.md` | Repeatable screenshot capture + manual sanitization workflow for the public source-fit evidence package (raw/sanitized folder split, captioning rules); pairs with `scripts/kmk_capture_source_fit_evidence.ps1`. Safe to reference publicly -- contains no private names itself. |
 | `docs/community/KMK_CLAUDE_ADB_AND_SCREENSHOT_WORKFLOW_POLICY.md` | Effective 2026-07-21: Claude no longer drives ADB to capture screenshots -- the user supplies them directly, or Claude writes a verification-request document (with a ready-to-paste Codex prompt) for another agent to run on-device. Building/installing the app remains a narrow, per-instance exception. Not for public posting. |
-| `docs/community/KMK_CLAUDE_SESSION_HANDOFF_FOR_CODEX.md` | Exact, self-contained record of one full Claude session: public source-fit evidence/PR-prep work, the separate full-feature screenshot documentation effort, and the real "Evaluation Mode" code feature (developer setting that obfuscates source/repo names, icons, and preferred/blocked tags for screenshots -- manga titles are never touched, including disliked ones) -- exact files touched, what's verified vs. not, and a prioritized what's-left list with a ready Codex regression-check prompt. Not for public posting. |
 
 ### Architecture / Style / Official Komikku Alignment
 

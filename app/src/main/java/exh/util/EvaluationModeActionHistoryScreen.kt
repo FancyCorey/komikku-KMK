@@ -1,6 +1,7 @@
 package exh.util
 
 // KMK -->
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -23,7 +25,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,14 +36,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.KmkEmptyStateArtwork
 import eu.kanade.presentation.components.KmkEmptyStateIllustration
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import java.util.Locale
+import tachiyomi.core.common.i18n.pluralStringResource as contextPluralStringResource
 import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 internal suspend fun runActionHistoryFollowUpSafely(
@@ -55,18 +63,15 @@ internal suspend fun runActionHistoryFollowUpSafely(
     ActionHistoryFollowUpResult.Failed
 }
 
+private fun tracePhaseLabel(phase: DiagnosticTracePhase): String = phase.name.lowercase(Locale.ROOT).replace('_', ' ')
+private fun traceOutcomeLabel(outcome: DiagnosticTraceOutcome): String = outcome.name.lowercase(Locale.ROOT).replace('_', ' ')
+
 /**
- * Evaluation Mode-only screen listing every safe in-memory undo journal (taste, group, library,
- * preference, chapter, and private custom-cover receipts) and letting the user undo a single action,
- * a whole bulk action, or clear all history.
- * Reachable only from Settings > Advanced > Developer tools while Evaluation Mode is enabled (see the
- * nav row added there). Evaluation Mode can be toggled off in Settings while this screen is still on
- * the back stack (e.g. via the system back button returning to Settings then toggling, or a second
- * window/instance), so this screen also re-checks [rememberEvaluationModeEnabled] live and pops itself
- * the moment it goes false, rather than trusting the gate at its single entry point to hold for the
- * screen's whole lifetime.
+ * Normal user-facing screen listing every safe in-memory journal (taste, group, library, preference,
+ * chapter, custom-cover, and non-undoable event records). Rows retain their truthful undo/follow-up
+ * state, and rows that own a stable manga identity open that manga without performing Undo.
  */
-class EvaluationModeActionHistoryScreen : Screen() {
+class ActionHistoryScreen : Screen() {
 
     @Composable
     override fun Content() {
@@ -74,36 +79,53 @@ class EvaluationModeActionHistoryScreen : Screen() {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
+        val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
+        val getManga = remember { Injekt.get<GetManga>() }
+        val commandController = remember { ActionHistoryCommandController() }
 
-        var rows by remember { mutableStateOf(ActionHistoryRegistry.snapshot()) }
+        var rows by remember { mutableStateOf(commandController.rows()) }
         var confirmClearAll by remember { mutableStateOf(false) }
-
-        val evaluationModeEnabled = rememberEvaluationModeEnabled()
-        LaunchedEffect(evaluationModeEnabled) {
-            if (!evaluationModeEnabled) {
-                navigator.pop()
-            }
-        }
-        if (!evaluationModeEnabled) return
-
-        fun refresh() {
-            rows = ActionHistoryRegistry.snapshot()
-        }
+        var diagnosticRow by remember { mutableStateOf<ActionHistoryEntryDescriptor?>(null) }
+        val evaluationModeEnabled = sourcePreferences.evaluationMode().get()
+        val diagnosticsVisible = ActionHistoryRowPresentationPolicy.canExposeDiagnostics(
+            developerOptionsEnabled = sourcePreferences.developerOptionsEnabled().get(),
+            evaluationModeEnabled = evaluationModeEnabled,
+        )
 
         fun showUndoOutcome(outcome: ActionHistoryUndoResult) {
             val message = when (outcome) {
                 is ActionHistoryUndoResult.Taste -> when {
                     outcome.outcome.requestedCount == 0 -> return
-                    outcome.outcome.allRestored -> context.contextStringResource(KMR.strings.eval_undo_restored, outcome.outcome.restoredCount)
-                    outcome.outcome.noneRestored -> context.contextStringResource(
-                        KMR.strings.eval_undo_conflict_all,
-                        outcome.outcome.conflictCount + outcome.outcome.missingCount + outcome.outcome.failedCount,
-                    )
-                    else -> context.contextStringResource(
-                        KMR.strings.eval_undo_restored_partial,
-                        outcome.outcome.restoredCount,
-                        outcome.outcome.conflictCount + outcome.outcome.missingCount + outcome.outcome.failedCount,
-                    )
+                    outcome.outcome.allRestored -> if (outcome.isBulk) {
+                        context.contextPluralStringResource(KMR.plurals.eval_undo_restored_group, count = outcome.outcome.restoredCount, outcome.outcome.restoredCount)
+                    } else {
+                        context.contextStringResource(KMR.strings.eval_undo_restored_single)
+                    }
+                    outcome.outcome.noneRestored -> if (outcome.isBulk) {
+                        context.contextPluralStringResource(KMR.plurals.eval_undo_conflict_group, count = outcome.outcome.conflictCount + outcome.outcome.missingCount + outcome.outcome.failedCount, outcome.outcome.conflictCount + outcome.outcome.missingCount + outcome.outcome.failedCount)
+                    } else {
+                        context.contextStringResource(KMR.strings.eval_undo_conflict_single)
+                    }
+                    else -> {
+                        val unresolved = outcome.outcome.conflictCount + outcome.outcome.missingCount + outcome.outcome.failedCount
+                        if (outcome.isBulk) {
+                            context.contextStringResource(
+                                KMR.strings.eval_undo_restored_partial_group,
+                                context.contextPluralStringResource(
+                                    KMR.plurals.eval_undo_restored_manga_fragment,
+                                    count = outcome.outcome.restoredCount,
+                                    outcome.outcome.restoredCount,
+                                ),
+                                context.contextPluralStringResource(
+                                    KMR.plurals.eval_undo_unresolved_item_fragment,
+                                    count = unresolved,
+                                    unresolved,
+                                ),
+                            )
+                        } else {
+                            context.contextPluralStringResource(KMR.plurals.eval_undo_restored_partial_single, count = unresolved, unresolved)
+                        }
+                    }
                 }
                 is ActionHistoryUndoResult.Simple -> when (outcome.result) {
                     GroupUndoResult.RESTORED -> context.contextStringResource(KMR.strings.rated_manga_group_undo_restored)
@@ -112,7 +134,6 @@ class EvaluationModeActionHistoryScreen : Screen() {
                 }
             }
             scope.launch { snackbarHostState.showSnackbar(message) }
-            refresh()
         }
 
         // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: distinct from
@@ -124,7 +145,6 @@ class EvaluationModeActionHistoryScreen : Screen() {
                 ActionHistoryFollowUpResult.Failed -> context.contextStringResource(KMR.strings.eval_undo_followup_failed)
             }
             scope.launch { snackbarHostState.showSnackbar(message) }
-            refresh()
         }
 
         Scaffold(
@@ -164,54 +184,134 @@ class EvaluationModeActionHistoryScreen : Screen() {
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
                     items(rows, key = { it.id }) { row ->
+                        val targetMangaId = ActionHistoryContextNavigationPolicy.targetMangaId(row.contextMangaId)
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column {
-                                Text(row.summary(context), style = MaterialTheme.typography.bodyMedium)
+                            // Keep navigation on the summary/time target only. The Undo or
+                            // follow-up button must never inherit the manga-navigation click.
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                        if (targetMangaId != null) {
+                                            Modifier.clickable {
+                                                scope.launch {
+                                                    when (
+                                                        val intent = ActionHistoryRowIntentPolicy.resolve(
+                                                            row = row,
+                                                            target = ActionHistoryRowTarget.SUMMARY,
+                                                            mangaExists = { mangaId -> getManga.await(mangaId) != null },
+                                                        )
+                                                    ) {
+                                                        is ActionHistoryRowIntent.OpenManga -> {
+                                                            navigator.push(MangaScreen(intent.mangaId, intent.fromSource))
+                                                        }
+                                                        ActionHistoryRowIntent.ContextUnavailable -> {
+                                                            snackbarHostState.showSnackbar(
+                                                                context.contextStringResource(KMR.strings.eval_undo_context_unavailable),
+                                                            )
+                                                        }
+                                                        else -> Unit
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    .padding(end = 8.dp),
+                            ) {
+                                Text(
+                                    ActionHistoryRowPresentationPolicy.summary(
+                                        evaluationModeEnabled = evaluationModeEnabled,
+                                        standardSummary = { row.summary(context) },
+                                        evaluationModeSummary = row.evaluationModeSummary?.let { safeSummary ->
+                                            { safeSummary(context) }
+                                        },
+                                        redactedFallback = {
+                                            context.contextStringResource(KMR.strings.eval_undo_summary_private_action)
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                                 Text(
                                     relativeJournalTime(context, row.timestamp),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            val undo = row.undo
-                            val followUp = row.followUp
-                            when {
-                                undo != null -> {
-                                    TextButton(
-                                        onClick = {
-                                            scope.launch {
-                                                showUndoOutcome(undo())
-                                            }
-                                        },
-                                    ) {
-                                        Text(stringResource(KMR.strings.eval_undo_action))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val undo = row.undo
+                                val followUp = row.followUp
+                                when {
+                                    undo != null -> {
+                                        TextButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    when (val result = commandController.executeUndo(row)) {
+                                                        is ActionHistoryCommandResult.UndoCompleted -> {
+                                                            rows = result.rows
+                                                            showUndoOutcome(result.outcome)
+                                                        }
+                                                        is ActionHistoryCommandResult.Failed -> {
+                                                            rows = result.rows
+                                                            snackbarHostState.showSnackbar(
+                                                                context.contextStringResource(KMR.strings.eval_undo_followup_failed),
+                                                            )
+                                                        }
+                                                        else -> {
+                                                            rows = result.rows
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                        ) {
+                                            Text(stringResource(KMR.strings.eval_undo_action))
+                                        }
+                                    }
+                                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2
+                                    // 2026-07-29: a follow-up is a fresh forward operation
+                                    // (uninstall/reinstall this exact package), never labeled "Undo" --
+                                    // see ActionHistoryFollowUp's doc.
+                                    followUp != null -> {
+                                        TextButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    when (val result = commandController.executeFollowUp(row)) {
+                                                        is ActionHistoryCommandResult.FollowUpCompleted -> {
+                                                            rows = result.rows
+                                                            showFollowUpResult(result.outcome)
+                                                        }
+                                                        else -> {
+                                                            rows = result.rows
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                        ) {
+                                            Text(followUp.label(context))
+                                        }
+                                    }
+                                    else -> {
+                                        Text(
+                                            stringResource(KMR.strings.eval_undo_view_only),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
                                 }
-                                // KMK Confirmed Blocker Remediation Corrective Completion Plan V2
-                                // 2026-07-29: a follow-up is a fresh forward operation
-                                // (uninstall/reinstall this exact package), never labeled "Undo" --
-                                // see ActionHistoryFollowUp's doc.
-                                followUp != null -> {
-                                    TextButton(
-                                        onClick = {
-                                            scope.launch {
-                                                showFollowUpResult(runActionHistoryFollowUpSafely(followUp.trigger))
-                                            }
-                                        },
-                                    ) {
-                                        Text(followUp.label(context))
+                                if (diagnosticsVisible && row.diagnosticKey != null) {
+                                    IconButton(onClick = { diagnosticRow = row }) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Info,
+                                            contentDescription = stringResource(KMR.strings.eval_undo_diagnostic_details),
+                                        )
                                     }
-                                }
-                                else -> {
-                                    Text(
-                                        stringResource(KMR.strings.eval_undo_not_undoable),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
                                 }
                             }
                         }
@@ -228,9 +328,9 @@ class EvaluationModeActionHistoryScreen : Screen() {
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            ActionHistoryRegistry.clearAll()
+                            val result = commandController.clear(confirmed = true)
+                            rows = result.rows
                             confirmClearAll = false
-                            refresh()
                         },
                     ) { Text(stringResource(KMR.strings.eval_undo_clear_all)) }
                 },
@@ -239,8 +339,60 @@ class EvaluationModeActionHistoryScreen : Screen() {
                 },
             )
         }
+
+        diagnosticRow?.let { row ->
+            val events = row.diagnosticKey?.let(ActionHistoryDiagnosticTrace::snapshotFor).orEmpty()
+            AlertDialog(
+                onDismissRequest = { diagnosticRow = null },
+                title = { Text(stringResource(KMR.strings.eval_undo_diagnostic_details)) },
+                text = {
+                    if (events.isEmpty()) {
+                        Text(stringResource(KMR.strings.eval_undo_diagnostic_empty))
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            events.forEach { event ->
+                                Text(
+                                    text = context.contextStringResource(
+                                        KMR.strings.eval_undo_diagnostic_event,
+                                        tracePhaseLabel(event.phase),
+                                        traceOutcomeLabel(event.outcome),
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    text = context.contextStringResource(
+                                        KMR.strings.eval_undo_diagnostic_counts,
+                                        event.readCount,
+                                        event.writeCount,
+                                        event.affectedCount,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = context.contextStringResource(
+                                        KMR.strings.eval_undo_diagnostic_write,
+                                        if (event.writeCommitted) "committed" else "not committed",
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { diagnosticRow = null }) {
+                        Text(stringResource(tachiyomi.i18n.MR.strings.action_ok))
+                    }
+                },
+            )
+        }
     }
 }
+
+/** Source-compatibility alias for older internal callers; new navigation uses [ActionHistoryScreen]. */
+typealias EvaluationModeActionHistoryScreen = ActionHistoryScreen
 
 private fun relativeJournalTime(context: android.content.Context, timestamp: Long): String {
     val seconds = (System.currentTimeMillis() - timestamp) / 1000

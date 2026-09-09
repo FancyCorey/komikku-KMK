@@ -177,12 +177,12 @@ class GroupUndoServiceRestoreTest {
     }
 
     @Test
-    fun `no journal entry is built when Evaluation Mode is disabled`() {
+    fun `group journal entries are still built when Evaluation Mode is disabled`() {
         sourcePreferences.evaluationMode().set(false)
         val plan = RatedGroupMergePlanner.MergePlan("g1", true, emptySet(), listOf(link(1L, "/a", "g1")))
-        assertNull(GroupUndoRecorder.buildMergeEntry(sourcePreferences, plan, emptyMap()))
-        assertNull(GroupUndoRecorder.buildRemoveFromGroupEntry(sourcePreferences, listOf(RatedLinkKey(1L, "/a") to link(1L, "/a", "g1"))))
-        assertNull(GroupUndoRecorder.buildUngroupEntry(sourcePreferences, "g1", listOf(link(1L, "/a", "g1")), null))
+        assertNotNull(GroupUndoRecorder.buildMergeEntry(sourcePreferences, plan, emptyMap()))
+        assertNotNull(GroupUndoRecorder.buildRemoveFromGroupEntry(sourcePreferences, listOf(RatedLinkKey(1L, "/a") to link(1L, "/a", "g1"))))
+        assertNotNull(GroupUndoRecorder.buildUngroupEntry(sourcePreferences, "g1", listOf(link(1L, "/a", "g1")), null))
     }
 }
 // KMK <--

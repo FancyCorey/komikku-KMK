@@ -259,14 +259,17 @@ fun MangaActionRow(
     status: Long,
     interval: Int,
     mangaTaste: tachiyomi.domain.taste.model.MangaTaste? = null,
+    // AUG-06: true while setMangaTaste/clearMangaTaste/markSeen/clearSeen is in flight -- disables
+    // the shared taste button so a second tap during an async write is visibly, not just silently,
+    // fenced. See MangaScreenModel.runTasteAction.
+    isTasteActionInProgress: Boolean = false,
     onTasteClicked: ((tachiyomi.domain.taste.model.MangaRating?) -> Unit)? = null,
     onTasteOtherVersionsClicked: ((tachiyomi.domain.taste.model.MangaRating) -> Unit)? = null,
     // KMK --> v0.7.0: Phase 3 – favorite other versions
     onFavoriteOtherVersionsClicked: (() -> Unit)? = null,
     // KMK <--
-    // KMK --> v0.6.20: seen manga marker
-    isNotInterested: Boolean = false,
-    onNotInterestedClicked: (() -> Unit)? = null,
+    // KMK --> v0.6.20: cross-version "not interested" navigation only -- marking *this* manga Not
+    // Interested is dispatched through onTasteClicked like every other rating (R1 correction).
     onSeenOtherVersionsClicked: (() -> Unit)? = null,
     // KMK <--
     // KMK --> v0.7.8: find best version action
@@ -352,16 +355,16 @@ fun MangaActionRow(
             color = if (trackingCount == 0) defaultActionButtonColor else MaterialTheme.colorScheme.primary,
             onClick = onTrackingClicked,
         )
+        // KMK v0.8.21-fix2: the standalone "Track locally" action row button is removed -- Local is
+        // now a peer entry inside the Tracking dialog itself (TrackInfoDialogHome), reached via
+        // onTrackingClicked like every other tracker, never an automatic write from this row.
         // KMK -->
         if (onTasteClicked != null) {
             var tasteMenuExpanded by remember { mutableStateOf(false) }
             val currentRating = tachiyomi.domain.taste.model.MangaRating.fromValue(mangaTaste?.rating ?: 0)
-            // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: the primary rate action must
-            // visibly reflect Not Interested when active -- previously this derived title/icon/color
-            // from currentRating only, so a manga marked Not Interested still showed a bare "Rate"
-            // button with no indication. MangaPreferencePresentationPolicy makes the precedence
-            // (Not Interested first, then the ordinary rating) explicit and directly testable.
-            val tastePresentation = exh.recs.loved.MangaPreferencePresentationPolicy.resolve(currentRating, isNotInterested)
+            // Not Interested is just another MangaRating value now (R1 correction) -- resolve()
+            // reads currentRating alone, no second independent flag.
+            val tastePresentation = exh.recs.loved.MangaPreferencePresentationPolicy.resolve(currentRating)
             fun markerIcon(marker: exh.recs.loved.MangaPreferencePresentationPolicy.Marker) = when (marker) {
                 exh.recs.loved.MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED -> Icons.Outlined.VisibilityOff
                 exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LOVE -> Icons.Filled.Favorite
@@ -373,6 +376,7 @@ fun MangaActionRow(
                 tachiyomi.domain.taste.model.MangaRating.LOVE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LOVE
                 tachiyomi.domain.taste.model.MangaRating.LIKE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.LIKE
                 tachiyomi.domain.taste.model.MangaRating.DISLIKE -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.DISLIKE
+                tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED -> exh.recs.loved.MangaPreferencePresentationPolicy.Marker.NOT_INTERESTED
             }
             MangaActionButton(
                 title = stringResource(tastePresentation.titleRes),
@@ -380,15 +384,14 @@ fun MangaActionRow(
                 color = if (tastePresentation.selected) MaterialTheme.colorScheme.primary else defaultActionButtonColor,
                 onClick = { tasteMenuExpanded = true },
                 stateDescription = stringResource(tastePresentation.accessibilityStateDescriptionRes),
+                enabled = !isTasteActionInProgress,
             )
-            // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: dispatches every
-            // MangaPreferenceAction through the same two existing callbacks (onTasteClicked/
-            // onNotInterestedClicked) -- the callback surface is unchanged, only the rendering below
-            // is now one shared, data-driven list instead of four independently hand-coded blocks.
+            // Dispatches every MangaPreferenceAction through the single onTasteClicked callback --
+            // Not Interested is a Rating(NOT_INTERESTED) like any other value now (R1 correction),
+            // so there is no second dispatch path.
             fun dispatch(action: exh.recs.loved.MangaPreferenceAction) {
                 when (action) {
                     is exh.recs.loved.MangaPreferenceAction.Rating -> onTasteClicked(action.value)
-                    exh.recs.loved.MangaPreferenceAction.NotInterested -> onNotInterestedClicked?.invoke()
                     exh.recs.loved.MangaPreferenceAction.Clear -> onTasteClicked(null)
                 }
                 tasteMenuExpanded = false
@@ -397,7 +400,7 @@ fun MangaActionRow(
                 expanded = tasteMenuExpanded,
                 onDismissRequest = { tasteMenuExpanded = false },
             ) {
-                // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: Love, Like, Dislike, and
+                // Love, Like, Dislike, and
                 // Not Interested render from one shared list -- Not Interested is a structural peer
                 // here, not a separately hardcoded, divider-separated standalone action.
                 exh.recs.loved.MangaPreferencePresentationPolicy.dropdownActions().forEach { action ->
@@ -407,24 +410,6 @@ fun MangaActionRow(
                             onClick = { dispatch(action) },
                             leadingIcon = { Icon(markerIcon(markerForRating(action.value)), contentDescription = null) },
                         )
-                        exh.recs.loved.MangaPreferenceAction.NotInterested -> if (onNotInterestedClicked != null) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        stringResource(
-                                            exh.recs.loved.MangaPreferencePresentationPolicy.notInterestedToggleLabel(isNotInterested),
-                                        ),
-                                    )
-                                },
-                                onClick = { dispatch(action) },
-                                leadingIcon = {
-                                    Icon(
-                                        if (isNotInterested) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                        contentDescription = null,
-                                    )
-                                },
-                            )
-                        }
                         exh.recs.loved.MangaPreferenceAction.Clear -> Unit
                     }
                 }
@@ -474,7 +459,7 @@ fun MangaActionRow(
                         )
                     }
                     // KMK <--
-                    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: "Not interested in
+                    // "Not interested in
                     // other versions" is now a peer of the other three "other versions" actions in
                     // this same group, instead of sitting behind its own second divider below.
                     if (onSeenOtherVersionsClicked != null) {
@@ -1247,13 +1232,17 @@ private fun RowScope.MangaActionButton(
     color: Color,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: optional accessibility state
+    // Optional accessibility state
     // description (e.g. "Selected"/"Not selected"), announced by accessibility services alongside
     // the visible title. Defaults to none so every other MangaActionButton call site is unaffected.
     stateDescription: String? = null,
+    // AUG-06: immediate acknowledgement for an async action already in flight. Defaults to true so
+    // every other MangaActionButton call site is unaffected.
+    enabled: Boolean = true,
 ) {
     TextButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.weight(1f).let { m ->
             if (stateDescription != null) {
                 m.semantics { this.stateDescription = stateDescription }

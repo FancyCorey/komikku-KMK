@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Pure resolver for the user-configurable Latest-catalogue exploration budget.
  *
@@ -10,23 +9,26 @@ package exh.recs
  * list grows or shrinks, which is what the owning proposal's "controlled exploration, not
  * deterministic repetition" decision requires.
  *
- * Mirrors the established [ForYouResultBudgetPolicy] / `GroupPreviewBudgetPolicy` shape: a supported
+ * Mirrors the established [ForYouResultBudgetPolicy] / `GroupPreviewBudgetPolicy` shape: a bounded
  * value set, an explicit default, and a `validate()` that falls back rather than crashing on a
- * corrupt or future/legacy preference value.
+ * corrupt or future/legacy preference value. Enablement is intentionally separate from the value.
  *
  * ## Default choice
  *
  * The packet proposed 20% as the starting point, decision-gated on fixture calibration. `20` is
  * therefore [DEFAULT]: with the pipeline's existing `MAX_SOURCE_ATTEMPTS` this yields a small
  * single-digit number of extra single-page probes per refresh, which keeps personalized search
- * clearly dominant while still giving Latest a real chance to contribute. `0` is offered as an
- * explicit off switch so the feature is fully reversible from settings without a code change --
- * this is the behavior kill switch the rollback plan depends on.
+ * clearly dominant while still giving Latest a real chance to contribute. The separate enabled
+ * preference is the behavior kill switch; the percentage remains a meaningful 1-100 value while
+ * disabled so re-enabling does not lose the user's last choice.
  */
 object RecommendationLatestBudgetPolicy {
 
-    /** Percentages the picker offers. `0` disables the Latest lane entirely. */
-    val SUPPORTED_VALUES = listOf(0, 10, 20, 30, 50)
+    const val MIN_PERCENT = 1
+    const val MAX_PERCENT = 100
+
+    /** Percentages accepted by the numeric control. Enablement is stored separately. */
+    val SUPPORTED_VALUES = (MIN_PERCENT..MAX_PERCENT).toList()
 
     /** Default exploration share, per the owning packet. */
     const val DEFAULT = 20
@@ -40,7 +42,7 @@ object RecommendationLatestBudgetPolicy {
 
     /** Validates a stored/raw preference value, falling back to [DEFAULT]. */
     fun validate(configuredPercent: Int): Int =
-        if (configuredPercent in SUPPORTED_VALUES) configuredPercent else DEFAULT
+        configuredPercent.takeIf { it in MIN_PERCENT..MAX_PERCENT } ?: DEFAULT
 
     /**
      * Resolves the absolute number of Latest attempts allowed in one refresh.
@@ -51,8 +53,14 @@ object RecommendationLatestBudgetPolicy {
      * probe; otherwise at least 1 and never more than [MAX_ATTEMPTS_PER_REFRESH].
      */
     fun resolveAttempts(configuredPercent: Int, attemptedSourceCount: Int): Int {
+        if (configuredPercent == 0) return 0
+        return resolveAttempts(enabled = true, configuredPercent = configuredPercent, attemptedSourceCount = attemptedSourceCount)
+    }
+
+    fun resolveAttempts(enabled: Boolean, configuredPercent: Int, attemptedSourceCount: Int): Int {
+        if (!enabled) return 0
         val percent = validate(configuredPercent)
-        if (percent <= 0 || attemptedSourceCount <= 0) return 0
+        if (attemptedSourceCount <= 0) return 0
         val raw = (attemptedSourceCount * percent) / 100
         // A non-zero percentage over at least one source always earns at least one probe, otherwise
         // small source lists would silently never explore at all.
@@ -60,9 +68,8 @@ object RecommendationLatestBudgetPolicy {
     }
 
     /** True when the user has switched the Latest lane off entirely. */
-    fun isDisabled(configuredPercent: Int): Boolean = validate(configuredPercent) == 0
+    fun isDisabled(configuredPercent: Int): Boolean = configuredPercent == 0
 
-    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
     /**
      * Never let more than this many Latest-catalogue candidates compete for one source's displayed
      * row when personalized results are already available. This is the hard ceiling that keeps
@@ -90,14 +97,19 @@ object RecommendationLatestBudgetPolicy {
      * @return `0` when the lane is disabled or [displayLimit] is non-positive.
      */
     fun resolveAdditiveSlotsPerSource(displayLimit: Int, configuredPercent: Int): Int {
+        if (configuredPercent == 0) return 0
+        return resolveAdditiveSlotsPerSource(enabled = true, displayLimit = displayLimit, configuredPercent = configuredPercent)
+    }
+
+    fun resolveAdditiveSlotsPerSource(enabled: Boolean, displayLimit: Int, configuredPercent: Int): Int {
+        if (!enabled) return 0
         val percent = validate(configuredPercent)
-        if (percent <= 0 || displayLimit <= 0) return 0
+        if (displayLimit <= 0) return 0
         val raw = (displayLimit * percent) / 100
         return raw.coerceIn(1, MAX_ADDITIVE_SLOTS_PER_SOURCE)
     }
     // KMK <--
 
-    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09 -->
     /**
      * Enforces the personalized-majority invariant on the **final, already-ordered display list**.
      *
@@ -141,7 +153,12 @@ object RecommendationLatestBudgetPolicy {
         val total = minOf(limit, ordered.size)
         // total / 2 is what guarantees L <= N: the remaining slots (ceil(total/2)) always match or
         // exceed the Latest allowance (floor(total/2)).
-        val allowedLatest = minOf(latestTotal, MAX_ADDITIVE_SLOTS_PER_SOURCE, total / 2)
+        val allowedLatest = minOf(
+            latestTotal,
+            nonLatestTotal,
+            MAX_ADDITIVE_SLOTS_PER_SOURCE,
+            total / 2,
+        )
         val allowedNonLatest = minOf(nonLatestTotal, total - allowedLatest)
 
         val out = ArrayList<PersonalRecommendation>(minOf(total, ordered.size))

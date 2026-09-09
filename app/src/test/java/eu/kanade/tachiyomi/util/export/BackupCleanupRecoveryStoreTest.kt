@@ -43,7 +43,7 @@ import uy.kohesive.injekt.api.get
 import java.util.UUID
 
 // KMK -->
-// KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05: real boundary tests for
+// Real boundary tests for
 // BackupCleanupRecoveryStore -- the application-scoped (not screen/model-scoped), now atomic and
 // durably-persisted SAF cleanup store the backup-creation route uses. Mirrors
 // SafExportCoordinatorTest's coverage (beginOperation/registerUri/performWrite/clear, IN_PROGRESS as
@@ -785,7 +785,7 @@ class BackupCleanupRecoveryStoreTest {
         uri: Uri,
         workRequestId: UUID?,
         outcome: SafArtifactOutcome,
-        // null -- a legacy (pre-KMK_CLAUDE_SAF_BACKUP_RECOVERY_CORRECTIVE_PASS_2026-08-07) v1 record
+        // A null value indicates a legacy v1 record
         // with no enqueueStateName field at all, exactly what a record persisted by an older build
         // looks like on disk; loadRecord() migrates this to BackupEnqueueState.UNKNOWN. Pass an
         // explicit state to simulate a record already written by *this* build (v2, ATTEMPTED/
@@ -812,7 +812,7 @@ class BackupCleanupRecoveryStoreTest {
         fakePreferenceStore.getString(RECORD_PREFERENCE_KEY, "").set(json)
     }
 
-    // --- KMK_CLAUDE_SAF_BACKUP_RECOVERY_ACTUAL_FINAL_PASS_2026-08-07: enqueue-state reconciliation matrix ---
+    // --- enqueue-state reconciliation matrix ---
 
     @Test
     fun `case A -- NOT_ATTEMPTED with no matching job is PARTIAL_OR_EMPTY without ever consulting WorkManager`() = runTest {

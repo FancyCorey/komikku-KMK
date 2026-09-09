@@ -1,0 +1,8 @@
+DELETE FROM local_tracked_work_source_progress
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM local_tracked_work_source
+    WHERE local_tracked_work_source.work_id = local_tracked_work_source_progress.work_id
+        AND local_tracked_work_source.source = local_tracked_work_source_progress.source
+        AND local_tracked_work_source.url = local_tracked_work_source_progress.url
+);

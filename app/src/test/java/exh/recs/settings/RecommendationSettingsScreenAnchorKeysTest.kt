@@ -62,6 +62,11 @@ class RecommendationSettingsScreenAnchorKeysTest {
         "versions_quality_header",
         "same_manga_results_per_source",
         "same_manga_preselect",
+        "rated_manga_action_placement",
+        "chapter_completion_rating_prompt",
+        "chapter_completion_rating_other_versions_prompt",
+        "confirmed_tracked_version_rating_propagation",
+        "confirmed_tracked_version_local_tracking_propagation",
         "best_version_header",
         "best_version_sample_size",
         "best_version_avoid_first_pages",
@@ -85,6 +90,9 @@ class RecommendationSettingsScreenAnchorKeysTest {
     // preview_for_you moved from the bottom of the screen to the top.
     private val forYouSourcesKeys = listOf(
         "preview_for_you",
+        "latest_exploration",
+        "exposure_window",
+        "exposure_clear",
         "source_header",
         "source_status_note",
         "source_reset_button",
@@ -160,6 +168,9 @@ class RecommendationSettingsScreenAnchorKeysTest {
         // exactly the class of bug ScrollToAnchorEffect otherwise swallows silently at runtime.
         val tasteTagsAnchors = listOf("rated_content", "hide_known_manga", "min_chapter_count")
         val forYouSourcesAnchors = listOf(
+            "latest_exploration",
+            "exposure_window",
+            "exposure_clear",
             "source_reset_button",
             "source_suggest_order_button",
             "preview_for_you",
@@ -169,6 +180,11 @@ class RecommendationSettingsScreenAnchorKeysTest {
             "result_budget",
             "same_manga_results_per_source",
             "same_manga_preselect",
+            "rated_manga_action_placement",
+            "chapter_completion_rating_prompt",
+            "chapter_completion_rating_other_versions_prompt",
+            "confirmed_tracked_version_rating_propagation",
+            "confirmed_tracked_version_local_tracking_propagation",
             "best_version_sample_size",
             "best_version_avoid_first_pages",
             "group_preview_budget",

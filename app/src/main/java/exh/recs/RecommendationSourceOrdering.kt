@@ -64,6 +64,22 @@ internal object RecommendationSourceOrdering {
         orderedEnabledSources.take(BOOSTED_SOURCE_COUNT).map { it.id }.toSet()
 
     /**
+     * Keeps configured source priority within each group while moving error lanes after usable
+     * content. Sources without a recorded status retain the healthy position for progressive
+     * rendering and are not treated as failures.
+     */
+    fun prioritizeHealthySources(
+        orderedSources: List<Source>,
+        statuses: Map<Long, RecommendationSourceRunStatus>,
+    ): List<Source> = orderedSources.sortedBy { source ->
+        statuses[source.id]?.status in setOf(
+            RecommendationSourceStatus.NoMatches,
+            RecommendationSourceStatus.FilteredOut,
+            RecommendationSourceStatus.Error,
+        )
+    }
+
+    /**
      * Merges a reordered visible-language subset back into the full stored order, preserving
      * ids for hidden-language sources in their relative positions.
      *

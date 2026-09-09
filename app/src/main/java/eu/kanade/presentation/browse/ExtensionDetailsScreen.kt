@@ -274,6 +274,7 @@ private fun DetailsHeader(
     onExtIncognitoChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
 
     Column {
         Column(
@@ -287,14 +288,22 @@ private fun DetailsHeader(
                 .clickable {
                     val extDebugInfo = buildString {
                         append(
-                            """
-                            Extension name: ${extension.name} (lang: ${extension.lang}; package: ${extension.pkgName})
-                            Extension version: ${extension.versionName} (lib: ${extension.libVersion}; version code: ${extension.versionCode})
-                            NSFW: ${extension.isNsfw}
-                            """.trimIndent(),
+                            if (evaluationModeEnabled) {
+                                """
+                                Extension name: ${EvaluationModeFormatter.sourceLabel(extension.pkgName)} (lang: redacted; package: redacted)
+                                Extension version: ${extension.versionName} (lib: redacted; version code: redacted)
+                                NSFW: redacted
+                                """.trimIndent()
+                            } else {
+                                """
+                                Extension name: ${extension.name} (lang: ${extension.lang}; package: ${extension.pkgName})
+                                Extension version: ${extension.versionName} (lib: ${extension.libVersion}; version code: ${extension.versionCode})
+                                NSFW: ${extension.isNsfw}
+                                """.trimIndent()
+                            },
                         )
 
-                        if (extension is Extension.Installed) {
+                        if (extension is Extension.Installed && !evaluationModeEnabled) {
                             append("\n\n")
                             appendLine(
                                 """
@@ -321,7 +330,6 @@ private fun DetailsHeader(
             )
 
             // KMK --> v0.8.19: evaluation mode name/package obfuscation
-            val evaluationModeEnabled = rememberEvaluationModeEnabled()
             Text(
                 text = if (evaluationModeEnabled) {
                     EvaluationModeFormatter.sourceLabel(extension.pkgName)

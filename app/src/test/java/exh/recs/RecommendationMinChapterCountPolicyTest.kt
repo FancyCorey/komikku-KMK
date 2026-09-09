@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Conformance tests for [RecommendationMinChapterCountPolicy] and for the existing minimum-chapter
  * *behavior contract* it now guards, per the implementation packet's Step 5A prerequisite.
@@ -22,8 +21,8 @@ class RecommendationMinChapterCountPolicyTest {
     // --- Supported values / default / malformed resolution ---
 
     @Test
-    fun `supported values are exactly Off, 5, 10, 20 and 50 in display order`() {
-        assertEquals(listOf(0, 5, 10, 20, 50), RecommendationMinChapterCountPolicy.SUPPORTED_VALUES)
+    fun `supported values cover Off through the existing maximum`() {
+        assertEquals((0..50).toList(), RecommendationMinChapterCountPolicy.SUPPORTED_VALUES)
     }
 
     @Test
@@ -40,10 +39,10 @@ class RecommendationMinChapterCountPolicyTest {
     }
 
     @Test
-    fun `negative, unsupported and oversized persisted values resolve to the safe default`() {
+    fun `negative and oversized persisted values resolve to the safe default`() {
         // A malformed value must never appear as an unformatted raw number in the UI and must never
         // silently filter at a threshold the picker never offered.
-        listOf(-100, -1, 1, 3, 7, 11, 19, 21, 49, 51, 1000, Int.MAX_VALUE, Int.MIN_VALUE).forEach { value ->
+        listOf(-100, -1, 51, 1000, Int.MAX_VALUE, Int.MIN_VALUE).forEach { value ->
             assertEquals(
                 RecommendationMinChapterCountPolicy.DEFAULT,
                 RecommendationMinChapterCountPolicy.resolve(value),
@@ -56,13 +55,13 @@ class RecommendationMinChapterCountPolicyTest {
     fun `isFilterActive is false for Off and for every malformed value`() {
         assertFalse(RecommendationMinChapterCountPolicy.isFilterActive(0))
         assertFalse(RecommendationMinChapterCountPolicy.isFilterActive(-5))
-        assertFalse(RecommendationMinChapterCountPolicy.isFilterActive(7))
+        assertFalse(RecommendationMinChapterCountPolicy.isFilterActive(51))
         assertFalse(RecommendationMinChapterCountPolicy.isFilterActive(Int.MAX_VALUE))
     }
 
     @Test
     fun `isFilterActive is true for every supported non-Off value`() {
-        listOf(5, 10, 20, 50).forEach { assertTrue(RecommendationMinChapterCountPolicy.isFilterActive(it)) }
+        listOf(1, 5, 10, 20, 50).forEach { assertTrue(RecommendationMinChapterCountPolicy.isFilterActive(it)) }
     }
 
     // --- Behavior contract, proven against the real shared visibility policy ---
@@ -114,9 +113,9 @@ class RecommendationMinChapterCountPolicyTest {
 
     @Test
     fun `a malformed persisted threshold cannot filter anything`() {
-        // 7 is not a supported value; resolving it to Off means a candidate with 5 chapters that
-        // would have been hidden at a raw 7 stays visible.
-        assertEquals(CandidateVisibility.VISIBLE, visibility(1L, 7, mapOf(1L to 5L)))
+        // 51 is outside the bounded range; resolving it to Off means a candidate with 5 chapters
+        // stays visible instead of being filtered by an untrusted persisted value.
+        assertEquals(CandidateVisibility.VISIBLE, visibility(1L, 51, mapOf(1L to 5L)))
         assertEquals(CandidateVisibility.VISIBLE, visibility(1L, -20, mapOf(1L to 1L)))
     }
 

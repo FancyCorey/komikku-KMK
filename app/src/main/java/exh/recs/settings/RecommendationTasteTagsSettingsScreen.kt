@@ -14,7 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
-import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.rememberNavigatorScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
@@ -23,6 +23,7 @@ import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.TagPreference
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK v0.8.8 -->
@@ -47,7 +48,10 @@ class RecommendationTasteTagsSettingsScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
+        val openForYou = rememberOpenForYouFromRecommendationSettings(navigator)
+        // KMK EC-04 2026-09-04: Navigator-scoped, shared with the other three Recommendation
+        // Settings destination screens -- see RecommendationSourcePrioritySettingsScreen.Content().
+        val screenModel = navigator.rememberNavigatorScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
         val lazyListState = rememberLazyListState()
         val itemKeysInOrder = remember {
@@ -72,6 +76,12 @@ class RecommendationTasteTagsSettingsScreen(
                 AppBar(
                     title = stringResource(KMR.strings.rec_settings_index_taste_filters),
                     navigateUp = navigator::pop,
+                    actions = {
+                        RecommendationSettingsDetailActions(
+                            onSearch = { navigator.push(RecommendationSettingsSearchScreen()) },
+                            onHome = openForYou,
+                        )
+                    },
                     scrollBehavior = scrollBehavior,
                 )
             },
@@ -98,7 +108,7 @@ class RecommendationTasteTagsSettingsScreen(
                             },
                         )
                         val ratedSummary = if (state.minChapterCount > 0) {
-                            stringResource(KMR.strings.rec_settings_summary_ratings_known_manga, visibilityLabel, state.minChapterCount)
+                            pluralStringResource(KMR.plurals.rec_settings_summary_ratings_known_manga, count = state.minChapterCount, visibilityLabel, state.minChapterCount)
                         } else {
                             stringResource(KMR.strings.rec_settings_summary_ratings_known_manga_no_min, visibilityLabel)
                         }
@@ -118,24 +128,16 @@ class RecommendationTasteTagsSettingsScreen(
                     }
                     item(key = "min_chapter_count") {
                         val offLabel = stringResource(KMR.strings.rec_min_chapter_count_off)
-                        // KMK v0.8.18-fix1: audited against Komikku's official SliderPreference
-                        // (IntProgression-based) during the numeric-settings standardization pass --
-                        // kept as a list/dialog control. Options are irregularly spaced (0, 5, 10, 20,
-                        // 50; no consistent step) and 0 needs the special "Off" label, neither of which
-                        // maps cleanly onto a slider without changing what values are selectable.
-                        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: the supported
-                        // values are no longer hardcoded here -- they come from the shared
-                        // RecommendationMinChapterCountPolicy that the preference read boundaries and
-                        // the setter also use, so the picker can never offer a value the pipeline
-                        // rejects (or omit one it accepts). Widget, section placement, and the "Off"
-                        // label rule are unchanged.
-                        SameMangaListPrefRow(
+                        BoundedIntPreferenceRow(
                             title = stringResource(KMR.strings.rec_min_chapter_count),
                             summary = stringResource(KMR.strings.rec_min_chapter_count_summary),
+                            valueTitle = stringResource(KMR.strings.rec_min_chapter_count),
                             current = exh.recs.RecommendationMinChapterCountPolicy.resolve(state.minChapterCount),
-                            options = exh.recs.RecommendationMinChapterCountPolicy.SUPPORTED_VALUES,
+                            enabled = true,
+                            min = exh.recs.RecommendationMinChapterCountPolicy.MIN,
+                            max = exh.recs.RecommendationMinChapterCountPolicy.MAX,
                             valueLabel = { if (it == exh.recs.RecommendationMinChapterCountPolicy.OFF) offLabel else "$it" },
-                            onSelect = screenModel::setMinChapterCount,
+                            onValueChange = screenModel::setMinChapterCount,
                         )
                     }
 
@@ -143,7 +145,19 @@ class RecommendationTasteTagsSettingsScreen(
                         val tagCounts = RecommendationSettingsSectionSummaries.tagCounts(state.tagPreferences)
                         SectionHeader(
                             stringResource(KMR.strings.taste_settings_tag_prefs),
-                            summary = stringResource(KMR.strings.rec_settings_summary_tags, tagCounts.preferred, tagCounts.blocked),
+                            summary = stringResource(
+                                KMR.strings.rec_settings_summary_tags,
+                                pluralStringResource(
+                                    KMR.plurals.rec_settings_preferred_tag_fragment,
+                                    count = tagCounts.preferred,
+                                    tagCounts.preferred,
+                                ),
+                                pluralStringResource(
+                                    KMR.plurals.rec_settings_blocked_tag_fragment,
+                                    count = tagCounts.blocked,
+                                    tagCounts.blocked,
+                                ),
+                            ),
                         )
                     }
                     item(key = "tag_content") {

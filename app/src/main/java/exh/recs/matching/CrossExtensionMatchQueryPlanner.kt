@@ -2,6 +2,7 @@ package exh.recs.matching
 
 // KMK -->
 import tachiyomi.domain.manga.model.Manga
+import java.util.Locale
 
 /**
  * Builds a deduplicated, capped list of search queries for cross-extension matching.
@@ -38,6 +39,6 @@ internal object CrossExtensionMatchQueryPlanner {
         return queries.take(MAX_QUERIES)
     }
 
-    private fun normalizeForDedup(s: String): String = s.lowercase().trim().replace(Regex("\\s+"), " ")
+    private fun normalizeForDedup(s: String): String = s.lowercase(Locale.ROOT).trim().replace(Regex("\\s+"), " ")
 }
 // KMK <--

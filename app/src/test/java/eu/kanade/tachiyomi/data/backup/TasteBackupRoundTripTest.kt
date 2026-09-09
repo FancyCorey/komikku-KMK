@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.backup
 // KMK -->
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceGroupPrimary
+import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceIdentityDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCrossSourceMangaLink
 import eu.kanade.tachiyomi.data.backup.models.BackupDisabledRecommendationSource
 import eu.kanade.tachiyomi.data.backup.models.BackupMangaSourceQualitySignal
@@ -296,6 +297,44 @@ class TasteBackupRoundTripTest {
         assertTrue(decoded.backupCrossSourceGroupPrimaries.isEmpty())
         assertEquals(mangaTastes, decoded.backupMangaTastes)
         assertEquals(crossSourceLinks, decoded.backupCrossSourceMangaLinks)
+    }
+
+    @Test
+    fun `identity decisions proto 628 round trip without private display metadata`() {
+        val decisions = listOf(
+            BackupCrossSourceIdentityDecision(
+                leftSource = 1,
+                leftUrl = "/a",
+                rightSource = 2,
+                rightUrl = "/b",
+                decision = "USER_CONFIRMED",
+                decisionVersion = 1,
+                evidenceVersion = 1,
+                reasonCodes = listOf("USER_CONFIRMATION"),
+                reviewState = "CURRENT",
+                createdAt = 1_000,
+                updatedAt = 2_000,
+            ),
+        )
+        val backup = Backup(backupManga = emptyList(), backupCrossSourceIdentityDecisions = decisions)
+        val decoded = parser.decodeFromByteArray(
+            Backup.serializer(),
+            parser.encodeToByteArray(Backup.serializer(), backup),
+        )
+        assertEquals(decisions, decoded.backupCrossSourceIdentityDecisions)
+        val fieldNames = BackupCrossSourceIdentityDecision::class.java.declaredFields.map { it.name.lowercase() }
+        assertTrue(fieldNames.none { it.contains("title") || it.contains("name") || it.contains("cookie") || it.contains("header") })
+    }
+
+    @Test
+    fun `backup without proto 628 decodes with no identity decisions`() {
+        val oldBackup = Backup(backupManga = emptyList(), backupCrossSourceGroupPrimaries = groupPrimaries)
+        val decoded = parser.decodeFromByteArray(
+            Backup.serializer(),
+            parser.encodeToByteArray(Backup.serializer(), oldBackup),
+        )
+        assertTrue(decoded.backupCrossSourceIdentityDecisions.isEmpty())
+        assertEquals(groupPrimaries, decoded.backupCrossSourceGroupPrimaries)
     }
 
     // KMK <--

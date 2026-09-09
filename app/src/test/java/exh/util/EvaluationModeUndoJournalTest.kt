@@ -31,8 +31,6 @@ class EvaluationModeUndoJournalTest {
         url = "/manga/1",
         previousRating = null,
         newRating = 2,
-        previousNotInterested = false,
-        newNotInterested = false,
         isBulk = bulkId != null,
         bulkOperationId = bulkId,
         changedFields = setOf(EvaluationJournalEntry.FIELD_RATING),

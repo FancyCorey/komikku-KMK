@@ -1,8 +1,8 @@
--- KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: additive-only migration for the
+-- Additive-only migration for the
 -- local-only For You exposure history table -- see recommendation_exposure.sq for the full schema
 -- rationale. No existing table is altered, renamed, or dropped.
 --
--- KMK_CLAUDE_TRACKER_SAFE_LOOKUP_2026-08-09: CREATE statements now carry IF NOT EXISTS, matching the
+-- CREATE statements now carry IF NOT EXISTS, matching the
 -- idempotency contract every other KMK migration follows and KmkMigrationTest enforces. Without it,
 -- re-running this migration against a database that already has the table would fail instead of
 -- being a no-op.

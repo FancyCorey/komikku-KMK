@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: proves the Browse
+// Proves the Browse
 // debug fixture always resolves to the deterministic error terminal state declared by the
 // `browse-deterministic-source-failure` host fixture (network-unavailable, retryable), regardless
 // of the requested page key, and never touches a real source/package/repository identity.

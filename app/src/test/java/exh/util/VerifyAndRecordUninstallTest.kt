@@ -62,7 +62,7 @@ class VerifyAndRecordUninstallTest {
     }
 
     @Test
-    fun `Evaluation Mode disabled records nothing even when removal is verified`() = runTest {
+    fun `Evaluation Mode disabled still records a verified removal`() = runTest {
         val installed = MutableStateFlow(emptyList<String>())
 
         val removed = verifyAndRecordUninstall(
@@ -72,7 +72,7 @@ class VerifyAndRecordUninstallTest {
         )
 
         assertTrue(removed, "the return value must still truthfully report removal regardless of Evaluation Mode")
-        assertTrue(NonUndoableEventJournal.isEmpty(), "Evaluation Mode disabled must record nothing")
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
     }
 
     @Test

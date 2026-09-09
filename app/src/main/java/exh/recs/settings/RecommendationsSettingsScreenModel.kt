@@ -10,11 +10,14 @@ import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.Source
 import exh.recs.ForYouResultBudgetPolicy
 import exh.recs.GroupPreviewBudgetPolicy
+import exh.recs.RecommendationEnrichmentCapPolicy
 import exh.recs.RecommendationLanguageAvailabilityPolicy
 import exh.recs.RecommendationSourceFilter
 import exh.recs.RecommendationSourceOrdering
 import exh.recs.RecommendationSourceRunStatus
 import exh.recs.RecommendationSourceRunStatusStore
+import exh.recs.SavedFocusMode
+import exh.recs.SavedFocusModeStore
 import exh.recs.SourceFitStats
 import exh.recs.SourceFitStatsStore
 import exh.recs.discovery.GetNonInstalledSourceSuggestions
@@ -35,12 +38,21 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
@@ -65,6 +77,44 @@ import tachiyomi.domain.taste.model.normalizeTag
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
+@Immutable
+sealed interface SourcesToTryInstallFeedback {
+    val operationId: Long
+
+    data class Installed(override val operationId: Long) : SourcesToTryInstallFeedback
+    data class Failed(override val operationId: Long) : SourcesToTryInstallFeedback
+    data class BulkInstalled(override val operationId: Long, val installedCount: Int) : SourcesToTryInstallFeedback
+    data class BulkPartial(
+        override val operationId: Long,
+        val installedCount: Int,
+        val failedCount: Int,
+    ) : SourcesToTryInstallFeedback
+    data class BulkFailed(override val operationId: Long, val failedCount: Int) : SourcesToTryInstallFeedback
+    data class Cancelled(override val operationId: Long) : SourcesToTryInstallFeedback
+}
+
+internal fun shouldClearSuggestionInstallState(activeOperationId: Long?, operationId: Long): Boolean =
+    activeOperationId == operationId
+
+private data class RatingPreferenceState(
+    val prompt: Boolean,
+    val otherVersions: Boolean,
+    val ratingPropagation: Boolean,
+    val trackingPropagation: Boolean,
+    val actionsUseSelection: Boolean,
+)
+
+// KMK EC-04 2026-09-04: shared across all four Recommendation Settings destination screens
+// (RecommendationSourcePrioritySettingsScreen, RecommendationTasteTagsSettingsScreen,
+// RecommendationNonInstalledDiscoverySettingsScreen, RecommendationDiagnosticsSettingsScreen) via
+// Navigator.rememberNavigatorScreenModel instead of each screen's own rememberScreenModel. Those four
+// screens previously each held an independent instance (Voyager's default rememberScreenModel key is
+// per-Screen), so init's eager source scan/filter/order, language-availability computation, and six
+// preference-store parses reran from scratch on every navigation between them. Navigator-scoping
+// creates this ScreenModel once per enclosing Navigator and disposes it via
+// NavigatorScreenModelDisposer when that Navigator itself is disposed (not per-screen pop), so state
+// stays live and fresh across lateral navigation within Recommendation Settings while still being
+// bounded to a single instance -- see RecommendationsSettingsScreenModelSharedInstanceSourceTest.
 class RecommendationsSettingsScreenModel(
     private val getTagTaste: GetTagTaste = Injekt.get(),
     private val setTagTaste: SetTagTaste = Injekt.get(),
@@ -93,9 +143,21 @@ class RecommendationsSettingsScreenModel(
     private val getTasteDiagnostics: GetTasteDiagnostics = Injekt.get(),
     private val getSourceEvaluations: GetSourceEvaluations = Injekt.get(),
     // KMK <--
-    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: local-only exposure history clear
+    // local-only exposure history clear
     private val clearRecommendationExposure: tachiyomi.domain.taste.interactor.ClearRecommendationExposure = Injekt.get(),
 ) : StateScreenModel<RecommendationsSettingsScreenModel.State>(State()) {
+
+    private val suggestionInstallJobs = mutableMapOf<String, Job>()
+    private val suggestionInstallOperationIds = mutableMapOf<String, Long>()
+    private var bulkSuggestionInstallJob: Job? = null
+    private var bulkSuggestionInstallOperationId: Long? = null
+    private var activeBulkSuggestion: NonInstalledSourceSuggestion? = null
+    private var retryableSuggestions: List<NonInstalledSourceSuggestion> = emptyList()
+    // The package installer can briefly report a cancelled extension as installed before its
+    // rollback reaches installedExtensionsFlow. Keep the cancelled candidate visible and
+    // retryable during that transient window instead of letting the list collapse to zero.
+    private val installRecoverySuggestions = mutableMapOf<String, NonInstalledSourceSuggestion>()
+    private var nextSuggestionInstallOperationId = 0L
 
     private val ratedVisibilityPref = sourcePreferences.recommendationRatedMangaVisibility()
     private val sourceOrderPref = sourcePreferences.recommendationSourceOrder()
@@ -113,16 +175,22 @@ class RecommendationsSettingsScreenModel(
     // KMK --> v0.8.6: initial-preview budget per extension for group recommendation rows only
     private val groupPreviewBudgetPref = sourcePreferences.groupPreviewResultBudget()
     // KMK <--
-    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: bounded Latest exploration share
+    // bounded Latest exploration share
     private val latestExplorationPercentPref = sourcePreferences.recommendationLatestExplorationPercent()
-    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: exposure window
+    private val latestExplorationEnabledPref = sourcePreferences.recommendationLatestExplorationEnabled()
+    // Exposure window
     private val exposureWindowDaysPref = sourcePreferences.recommendationExposureWindowDays()
+    private val exposureWindowEnabledPref = sourcePreferences.recommendationExposureWindowEnabled()
     private val lastSourceStatusesPref = sourcePreferences.recommendationLastSourceRunStatuses()
     // KMK --> v0.7.19
     private val sourceFitStatsPref = sourcePreferences.recommendationSourceFitStats()
     // KMK <--
     // KMK v0.8.14-fix1: read-only For You preview snapshot -- see RecommendationForYouPreviewSnapshotStore.
     private val forYouPreviewSnapshotPref = sourcePreferences.recommendationForYouPreviewSnapshot()
+    // KMK --> EC-04 2026-09-01: configurable discovery-effort policy
+    private val discoveryEffortLevelPref = sourcePreferences.recommendationDiscoveryEffortLevel()
+    private val discoveryCandidateBudgetPref = sourcePreferences.recommendationDiscoveryCandidateBudget()
+    // KMK <--
 
     init {
         val languages = RecommendationSourceFilter.normalizeLanguages(languagesPref.get())
@@ -157,21 +225,30 @@ class RecommendationsSettingsScreenModel(
                 ratedMangaVisibility = ratedVisibilityPref.get(),
                 hideKnownManga = hideKnownMangaPref.get(),
                 // KMK --> v0.7.26
-                // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: resolved on read too, so a
+                // resolved on read too, so a
                 // value persisted by an older build (or corrupted storage) renders as a real labelled
                 // option instead of an unlabelled raw number -- same treatment resultBudget and
                 // groupPreviewBudget already get below.
                 minChapterCount = exh.recs.RecommendationMinChapterCountPolicy.resolve(minChapterCountPref.get()),
                 // KMK <--
                 // KMK --> v0.7.34
-                enrichmentCap = enrichmentCapPref.get(),
+                enrichmentCap = RecommendationEnrichmentCapPolicy.resolve(enrichmentCapPref.get()),
+                // KMK <--
+                // KMK --> EC-04 2026-09-01: resolved on read, same treatment as every value above --
+                // an unknown/corrupt/blank stored value renders as the real DEFAULT (STANDARD)
+                // instead of an unlabelled raw string.
+                discoveryEffortLevel = exh.recs.memory.DiscoveryEffortLevel.resolve(discoveryEffortLevelPref.get()),
+                discoveryCandidateBudget = exh.recs.memory.RecommendationDiscoveryCandidateBudgetPolicy.resolve(
+                    discoveryCandidateBudgetPref.get(),
+                ),
                 // KMK <--
                 // KMK --> v0.8.2
                 resultBudget = ForYouResultBudgetPolicy.validate(resultBudgetPref.get()),
                 groupPreviewBudget = GroupPreviewBudgetPolicy.validate(groupPreviewBudgetPref.get()),
-                // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08
                 latestExplorationPercent = exh.recs.RecommendationLatestBudgetPolicy.validate(latestExplorationPercentPref.get()),
+                latestExplorationEnabled = latestExplorationEnabledPref.get(),
                 exposureWindowDays = exh.recs.RecommendationExposurePolicy.validateWindowDays(exposureWindowDaysPref.get()),
+                exposureWindowEnabled = exposureWindowEnabledPref.get(),
                 // KMK <--
                 recommendationLanguages = languages.toImmutableSet(),
                 availableLanguages = availableLangs.toImmutableList(),
@@ -187,12 +264,59 @@ class RecommendationsSettingsScreenModel(
                 qualityDislikedSourceKeys = qualityDislikedKeys.toImmutableSet(),
                 qualityExplicitSourceKeys = qualityExplicitKeys.toImmutableSet(),
                 // KMK --> v0.7.8
-                sameMangaResultsPerSource = sourcePreferences.sameMangaMatchResultsPerSource().get(),
-                sameMangaPreselectResults = sourcePreferences.sameMangaMatchPreselectResults().get(),
-                bestVersionPreviewSampleSize = sourcePreferences.bestVersionPreviewSampleSize().get(),
+                sameMangaResultsPerSource = exh.recs.matching.SameMangaMatchSettings.clampResultCap(
+                    sourcePreferences.sameMangaMatchResultsPerSource().get(),
+                ),
+                sameMangaPreselectionMode = exh.recs.matching.SameMangaPreselectionMode.resolve(
+                    sourcePreferences.sameMangaMatchPreselectionMode().get(),
+                    sourcePreferences.sameMangaMatchPreselectResults().get(),
+                ),
+                chapterCompletionRatingPromptEnabled = sourcePreferences.chapterCompletionRatingPromptEnabled().get(),
+                chapterCompletionRatingOtherVersionsPromptEnabled = sourcePreferences.chapterCompletionRatingOtherVersionsPromptEnabled().get(),
+                confirmedTrackedVersionRatingPropagationEnabled = sourcePreferences.confirmedTrackedVersionRatingPropagationEnabled().get(),
+                confirmedTrackedVersionLocalTrackingPropagationEnabled = sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled().get(),
+                ratedMangaActionsUseSelection = sourcePreferences.ratedMangaActionsUseSelection().get(),
+                bestVersionPreviewSampleSize = exh.recs.matching.SameMangaMatchSettings.clampSampleSize(
+                    sourcePreferences.bestVersionPreviewSampleSize().get(),
+                ),
                 bestVersionAvoidFirstPages = sourcePreferences.bestVersionAvoidFirstPages().get(),
                 // KMK <--
             )
+        }
+
+        // Keep the navigator-scoped model aligned with preference changes made by another
+        // settings route or restored profile. The initial emission also repairs a stale model
+        // without requiring the user to leave and reopen Recommendation Settings.
+        screenModelScope.launch {
+            combine(
+                sourcePreferences.chapterCompletionRatingPromptEnabled().changes().onStart {
+                    emit(sourcePreferences.chapterCompletionRatingPromptEnabled().get())
+                },
+                sourcePreferences.chapterCompletionRatingOtherVersionsPromptEnabled().changes().onStart {
+                    emit(sourcePreferences.chapterCompletionRatingOtherVersionsPromptEnabled().get())
+                },
+                sourcePreferences.confirmedTrackedVersionRatingPropagationEnabled().changes().onStart {
+                    emit(sourcePreferences.confirmedTrackedVersionRatingPropagationEnabled().get())
+                },
+                sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled().changes().onStart {
+                    emit(sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled().get())
+                },
+                sourcePreferences.ratedMangaActionsUseSelection().changes().onStart {
+                    emit(sourcePreferences.ratedMangaActionsUseSelection().get())
+                },
+            ) { prompt, otherVersions, ratingPropagation, trackingPropagation, actionsUseSelection ->
+                RatingPreferenceState(prompt, otherVersions, ratingPropagation, trackingPropagation, actionsUseSelection)
+            }.collectLatest { preferences ->
+                mutableState.update {
+                    it.copy(
+                        chapterCompletionRatingPromptEnabled = preferences.prompt,
+                        chapterCompletionRatingOtherVersionsPromptEnabled = preferences.otherVersions,
+                        confirmedTrackedVersionRatingPropagationEnabled = preferences.ratingPropagation,
+                        confirmedTrackedVersionLocalTrackingPropagationEnabled = preferences.trackingPropagation,
+                        ratedMangaActionsUseSelection = preferences.actionsUseSelection,
+                    )
+                }
+            }
         }
 
         // Live-update source statuses whenever For You finishes a run and persists new values.
@@ -233,7 +357,16 @@ class RecommendationsSettingsScreenModel(
         // KMK -->
         screenModelScope.launch {
             getNonInstalledSourceSuggestions.subscribe().collectLatest { suggestions ->
-                mutableState.update { it.copy(nonInstalledSuggestions = suggestions.toImmutableList()) }
+                val mergedSuggestions = (suggestions + installRecoverySuggestions.values)
+                    .distinctBy { it.dismissalKey }
+                val currentKeys = mergedSuggestions.mapTo(mutableSetOf()) { it.dismissalKey }
+                retryableSuggestions = retryableSuggestions.filter { it.dismissalKey in currentKeys }
+                mutableState.update {
+                    it.copy(
+                        nonInstalledSuggestions = mergedSuggestions.toImmutableList(),
+                        retryableSuggestionInstallFailureCount = retryableSuggestions.size,
+                    )
+                }
             }
         }
 
@@ -311,6 +444,44 @@ class RecommendationsSettingsScreenModel(
         }
         // KMK <--
     }
+
+    // KMK v0.8.21-fix4: R4/AUG-14 correction -- Management and Diagnostics is the persistent
+    // management surface for saved focus modes (rename/delete/reorder), per the corrected AUG-14
+    // contract: "the For You control and Management and Diagnostics settings must use the same
+    // focus-mode owner, persistence model, and ordering policy." This reads/writes the exact same
+    // sourcePreferences.savedFocusModes() preference through the exact same SavedFocusModeStore
+    // pure functions that exh.recs.BrowsePersonalRecommendationsScreenModel's own
+    // savedFocusModes/renameFocusMode/deleteFocusMode/reorderFocusModes already use -- there is
+    // only one focus-mode store; this is a second observer/writer of it, not a second system.
+    // "Edit" (changing a mode's stored groups) is intentionally not duplicated here: the For You
+    // page's Focus dialog is the only place with a live, current set of available recommendation
+    // groups to build an "Update with current selection" editor from, and Management and
+    // Diagnostics has no equivalent live context -- editing a saved mode's criteria remains a
+    // For You-page action, exactly as create/apply already are.
+    val savedFocusModes: StateFlow<List<SavedFocusMode>> =
+        sourcePreferences.savedFocusModes().changes()
+            .map { SavedFocusModeStore.parse(it) }
+            .stateIn(
+                screenModelScope,
+                SharingStarted.Eagerly,
+                SavedFocusModeStore.parse(sourcePreferences.savedFocusModes().get()),
+            )
+
+    fun renameFocusMode(id: String, newName: String) {
+        val updated = SavedFocusModeStore.rename(savedFocusModes.value, id, newName, now = System.currentTimeMillis())
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    fun deleteFocusMode(id: String) {
+        val updated = SavedFocusModeStore.delete(savedFocusModes.value, id)
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+
+    fun reorderFocusModes(orderedIds: List<String>) {
+        val updated = SavedFocusModeStore.reorder(savedFocusModes.value, orderedIds)
+        sourcePreferences.savedFocusModes().set(SavedFocusModeStore.serialize(updated))
+    }
+    // KMK <--
 
     // KMK v0.8.10: Taste suggestions + diagnostics loading -->
     /**
@@ -399,7 +570,7 @@ class RecommendationsSettingsScreenModel(
     }
 
     // KMK --> v0.7.26
-    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: validate the write. Previously any
+    // validate the write. Previously any
     // Int was persisted and mirrored into state verbatim, so an unsupported value could reach the
     // shared visibility policy and the For You cache fingerprint. The journal now records the same
     // resolved value that is actually stored and displayed, so Undo restores a legitimate value too.
@@ -412,7 +583,6 @@ class RecommendationsSettingsScreenModel(
     }
     // KMK <--
 
-    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
     /**
      * Persists the bounded Latest-catalogue exploration share. Validated on the way in (same
      * contract as [setMinChapterCount] and the budget setters), so an unsupported value can never
@@ -432,9 +602,20 @@ class RecommendationsSettingsScreenModel(
         }
         mutableState.update { it.copy(latestExplorationPercent = resolved) }
     }
+
+    fun setLatestExplorationEnabled(enabled: Boolean) {
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.RESULT_BUDGET,
+            "latestExplorationEnabled",
+            latestExplorationEnabledPref,
+            enabled,
+        ) {
+            latestExplorationEnabledPref.set(enabled)
+        }
+        mutableState.update { it.copy(latestExplorationEnabled = enabled) }
+    }
     // KMK <--
 
-    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
     /** Persists the local exposure-history window. Local-only preference; never journalled to Action History (exposure itself never is). */
     fun setExposureWindowDays(value: Int) {
         val resolved = exh.recs.RecommendationExposurePolicy.validateWindowDays(value)
@@ -442,10 +623,15 @@ class RecommendationsSettingsScreenModel(
         mutableState.update { it.copy(exposureWindowDays = resolved) }
     }
 
+    fun setExposureWindowEnabled(enabled: Boolean) {
+        exposureWindowEnabledPref.set(enabled)
+        mutableState.update { it.copy(exposureWindowEnabled = enabled) }
+    }
+
     /**
      * Clears local exposure/ordering history only.
      *
-     * KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: this deliberately calls **only**
+     * this deliberately calls **only**
      * [ClearRecommendationExposure][tachiyomi.domain.taste.interactor.ClearRecommendationExposure],
      * whose repository method is a single `DELETE FROM recommendation_exposure`. It therefore cannot
      * touch ratings, library membership, tracking, taste, Not Interested, or any manga row -- those
@@ -490,10 +676,41 @@ class RecommendationsSettingsScreenModel(
 
     // KMK --> v0.7.34: enrichment cap setter
     fun setEnrichmentCap(value: Int) {
-        journalPreferenceChange(exh.util.PreferenceJournalActionType.ENRICHMENT_CAP, "enrichmentCap", enrichmentCapPref, value) {
-            enrichmentCapPref.set(value)
+        val resolved = RecommendationEnrichmentCapPolicy.resolve(value)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.ENRICHMENT_CAP, "enrichmentCap", enrichmentCapPref, resolved) {
+            enrichmentCapPref.set(resolved)
         }
-        mutableState.update { it.copy(enrichmentCap = value) }
+        mutableState.update { it.copy(enrichmentCap = resolved) }
+    }
+    // KMK <--
+
+    // KMK --> EC-04 2026-09-01: discovery-effort level setter. Cache invalidation is automatic --
+    // the next For You refresh reads the resolved level fresh from sourcePreferences at its own
+    // discoverAdditionalPage call site; no cache fingerprint dependency is needed since this only
+    // changes how many additional pages a refresh probes, not what page-1 or cached content means.
+    fun setDiscoveryEffortLevel(value: exh.recs.memory.DiscoveryEffortLevel) {
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.DISCOVERY_EFFORT_LEVEL,
+            "discoveryEffortLevel",
+            discoveryEffortLevelPref,
+            value.storedValue,
+        ) {
+            discoveryEffortLevelPref.set(value.storedValue)
+        }
+        mutableState.update { it.copy(discoveryEffortLevel = value) }
+    }
+
+    fun setDiscoveryCandidateBudget(value: Int) {
+        val resolved = exh.recs.memory.RecommendationDiscoveryCandidateBudgetPolicy.resolve(value)
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.DISCOVERY_CANDIDATE_BUDGET,
+            "discoveryCandidateBudget",
+            discoveryCandidateBudgetPref,
+            resolved,
+        ) {
+            discoveryCandidateBudgetPref.set(resolved)
+        }
+        mutableState.update { it.copy(discoveryCandidateBudget = resolved) }
     }
     // KMK <--
 
@@ -676,12 +893,6 @@ class RecommendationsSettingsScreenModel(
 
     fun toggleSource(sourceId: Long) {
         val currentlyDisabled = sourceId in state.value.disabledSourceIds
-        if (!sourcePreferences.evaluationMode().get()) {
-            screenModelScope.launchNonCancellable {
-                setSourceEnabled.await(sourceId, enabled = currentlyDisabled)
-            }
-            return
-        }
         screenModelScope.launchNonCancellable {
             val entry = exh.util.PreferenceUndoEntry(
                 id = exh.util.PreferenceUndoEntry.newId(),
@@ -703,17 +914,202 @@ class RecommendationsSettingsScreenModel(
 
     fun installSuggestion(suggestion: NonInstalledSourceSuggestion) {
         val key = suggestion.dismissalKey
-        mutableState.update { it.copy(installingSuggestionKeys = (it.installingSuggestionKeys + key).toImmutableSet()) }
-        screenModelScope.launch {
+        if (state.value.isBulkInstallingSuggestions || key in state.value.installingSuggestionKeys) return
+
+        installRecoverySuggestions.remove(key)
+        val operationId = newSuggestionInstallOperationId()
+        suggestionInstallOperationIds[key] = operationId
+        retryableSuggestions = emptyList()
+        mutableState.update {
+            it.copy(
+                installingSuggestionKeys = (it.installingSuggestionKeys + key).toImmutableSet(),
+                suggestionInstallFeedback = null,
+                retryableSuggestionInstallFailureCount = 0,
+            )
+        }
+        val job = screenModelScope.launch(start = CoroutineStart.LAZY) {
             try {
-                // KMK -->
-                // takeWhile stops collection at any terminal InstallStep (Installed, Error, Idle)
-                // without this, installExtension() flow never terminates and the coroutine hangs.
-                val receiptId = exh.util.NonUndoableEvent.newId()
+                val installed = installSuggestionOnce(suggestion)
+                currentCoroutineContext().ensureActive()
+                if (suggestionInstallOperationIds[key] == operationId) {
+                    if (installed) installRecoverySuggestions.remove(key)
+                    retryableSuggestions = if (installed) emptyList() else listOf(suggestion)
+                    mutableState.update {
+                        it.copy(
+                            suggestionInstallFeedback = if (installed) {
+                                SourcesToTryInstallFeedback.Installed(operationId)
+                            } else {
+                                SourcesToTryInstallFeedback.Failed(operationId)
+                            },
+                            retryableSuggestionInstallFailureCount = retryableSuggestions.size,
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                installRecoverySuggestions[key] = suggestion
+                if (suggestionInstallOperationIds[key] == operationId) {
+                    retryableSuggestions = listOf(suggestion)
+                    mutableState.update {
+                        it.copy(
+                            suggestionInstallFeedback = SourcesToTryInstallFeedback.Cancelled(operationId),
+                            retryableSuggestionInstallFailureCount = retryableSuggestions.size,
+                        )
+                    }
+                }
+                throw e
+            } catch (_: Exception) {
+                logcat(LogPriority.WARN) { "Sources To Try install failed." }
+                if (suggestionInstallOperationIds[key] == operationId) {
+                    installRecoverySuggestions[key] = suggestion
+                    retryableSuggestions = listOf(suggestion)
+                    mutableState.update {
+                        it.copy(
+                            suggestionInstallFeedback = SourcesToTryInstallFeedback.Failed(operationId),
+                            retryableSuggestionInstallFailureCount = retryableSuggestions.size,
+                        )
+                    }
+                }
+            } finally {
+                if (shouldClearSuggestionInstallState(suggestionInstallOperationIds[key], operationId)) {
+                    suggestionInstallOperationIds.remove(key, operationId)
+                    suggestionInstallJobs.remove(key)
+                    mutableState.update {
+                        it.copy(installingSuggestionKeys = (it.installingSuggestionKeys - key).toImmutableSet())
+                    }
+                }
+            }
+        }
+        suggestionInstallJobs[key] = job
+        job.start()
+    }
+
+    fun installSuggestions(suggestions: List<NonInstalledSourceSuggestion>) {
+        // KMK -->
+        // Guard against overlapping bulk batches
+        if (state.value.isBulkInstallingSuggestions || state.value.installingSuggestionKeys.isNotEmpty()) return
+        // KMK <--
+        val deduped = suggestions.distinctBy { "${it.extension.signatureHash}|${it.extension.pkgName}" }
+        if (deduped.isEmpty()) return
+        val operationId = newSuggestionInstallOperationId()
+        bulkSuggestionInstallOperationId = operationId
+        retryableSuggestions = emptyList()
+        mutableState.update {
+            it.copy(
+                isBulkInstallingSuggestions = true,
+                suggestionInstallFeedback = null,
+                retryableSuggestionInstallFailureCount = 0,
+            )
+        }
+        val job = screenModelScope.launch(start = CoroutineStart.LAZY) {
+            var installedCount = 0
+            val failed = mutableListOf<NonInstalledSourceSuggestion>()
+            try {
+                for (suggestion in deduped) {
+                    currentCoroutineContext().ensureActive()
+                    val key = suggestion.dismissalKey
+                    activeBulkSuggestion = suggestion
+                    mutableState.update { it.copy(installingSuggestionKeys = (it.installingSuggestionKeys + key).toImmutableSet()) }
+                    try {
+                        if (installSuggestionOnce(suggestion)) installedCount++ else failed += suggestion
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        logcat(LogPriority.WARN) { "A Sources To Try bulk install item failed." }
+                        failed += suggestion
+                        // Per-extension failure is isolated — continue with remaining suggestions
+                    } finally {
+                        activeBulkSuggestion = null
+                        mutableState.update { it.copy(installingSuggestionKeys = (it.installingSuggestionKeys - key).toImmutableSet()) }
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                val feedback = when {
+                    failed.isEmpty() -> SourcesToTryInstallFeedback.BulkInstalled(operationId, installedCount)
+                    installedCount == 0 -> SourcesToTryInstallFeedback.BulkFailed(operationId, failed.size)
+                    else -> SourcesToTryInstallFeedback.BulkPartial(operationId, installedCount, failed.size)
+                }
+                if (bulkSuggestionInstallOperationId == operationId) {
+                    retryableSuggestions = failed.toList()
+                    mutableState.update {
+                        it.copy(
+                            suggestionInstallFeedback = feedback,
+                            retryableSuggestionInstallFailureCount = retryableSuggestions.size,
+                        )
+                    }
+                }
+            } finally {
+                activeBulkSuggestion = null
+                if (bulkSuggestionInstallOperationId == operationId) {
+                    bulkSuggestionInstallOperationId = null
+                    bulkSuggestionInstallJob = null
+                }
+                mutableState.update {
+                    it.copy(
+                        isBulkInstallingSuggestions = false,
+                        installingSuggestionKeys = persistentSetOf(),
+                    )
+                }
+            }
+        }
+        bulkSuggestionInstallJob = job
+        job.start()
+    }
+
+    fun cancelSuggestionInstall(suggestion: NonInstalledSourceSuggestion) {
+        val job = suggestionInstallJobs.remove(suggestion.dismissalKey) ?: return
+        job.cancel()
+        installRecoverySuggestions[suggestion.dismissalKey] = suggestion
+        retryableSuggestions = listOf(suggestion)
+        mutableState.update {
+            it.copy(
+                suggestionInstallFeedback = SourcesToTryInstallFeedback.Cancelled(newSuggestionInstallOperationId()),
+                retryableSuggestionInstallFailureCount = retryableSuggestions.size,
+            )
+        }
+    }
+
+    fun cancelBulkSuggestionInstall() {
+        val job = bulkSuggestionInstallJob ?: return
+        bulkSuggestionInstallJob = null
+        bulkSuggestionInstallOperationId = null
+        job.cancel()
+        retryableSuggestions = emptyList()
+        mutableState.update {
+            it.copy(
+                suggestionInstallFeedback = SourcesToTryInstallFeedback.Cancelled(newSuggestionInstallOperationId()),
+                retryableSuggestionInstallFailureCount = 0,
+            )
+        }
+    }
+
+    fun retrySuggestionInstallFailures() {
+        val currentKeys = state.value.nonInstalledSuggestions.mapTo(mutableSetOf()) { it.dismissalKey }
+        val retrySnapshot = retryableSuggestions.filter { it.dismissalKey in currentKeys }
+        retryableSuggestions = retrySnapshot
+        mutableState.update { it.copy(retryableSuggestionInstallFailureCount = retrySnapshot.size) }
+        when (retrySnapshot.size) {
+            0 -> return
+            1 -> installSuggestion(retrySnapshot.single())
+            else -> installSuggestions(retrySnapshot)
+        }
+    }
+
+    fun dismissSuggestionInstallFeedback() {
+        retryableSuggestions = emptyList()
+        mutableState.update {
+            it.copy(
+                suggestionInstallFeedback = null,
+                retryableSuggestionInstallFailureCount = 0,
+            )
+        }
+    }
+
+    private suspend fun installSuggestionOnce(suggestion: NonInstalledSourceSuggestion): Boolean {
+        val receiptId = exh.util.NonUndoableEvent.newId()
+        val terminal = try {
+            withTimeoutOrNull(SOURCES_TO_TRY_INSTALL_TIMEOUT_MS) {
                 extensionManager.installExtension(suggestion.extension)
                     .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
-                    // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: typed
-                    // PackageOperationReceipt alongside the visibility-only event above.
                     .recordPackageOperationReceipt(
                         kind = PackageOperationKind.INSTALL,
                         packageName = suggestion.extension.pkgName,
@@ -722,62 +1118,30 @@ class RecommendationsSettingsScreenModel(
                         artifactUri = suggestion.extension.apkUrl,
                         id = receiptId,
                     ) { sourcePreferences.evaluationMode().get() }
-                    .takeWhile { !it.isCompleted() }
-                    .collect()
-                // KMK <--
-            } finally {
-                mutableState.update { it.copy(installingSuggestionKeys = (it.installingSuggestionKeys - key).toImmutableSet()) }
+                    .first { it.isCompleted() }
             }
+        } catch (e: CancellationException) {
+            // Covers screen-scope cancellation as well as explicit row/bulk cancellation. The
+            // caller owns the job state; this owner owns releasing the active package operation.
+            extensionManager.cancelInstallUpdateExtension(suggestion.extension)
+            throw e
         }
+        if (terminal == null) {
+            // A stalled installer must release its package operation before the row becomes
+            // retryable; user cancellation uses this same manager-level cleanup path.
+            extensionManager.cancelInstallUpdateExtension(suggestion.extension)
+            return false
+        }
+        return terminal == InstallStep.Installed
     }
 
-    fun installSuggestions(suggestions: List<NonInstalledSourceSuggestion>) {
-        // KMK -->
-        // Guard against overlapping bulk batches
-        if (state.value.isBulkInstallingSuggestions) return
-        // KMK <--
-        val deduped = suggestions.distinctBy { "${it.extension.signatureHash}|${it.extension.pkgName}" }
-        if (deduped.isEmpty()) return
-        mutableState.update { it.copy(isBulkInstallingSuggestions = true) }
-        screenModelScope.launch {
-            try {
-                for (suggestion in deduped) {
-                    val key = suggestion.dismissalKey
-                    mutableState.update { it.copy(installingSuggestionKeys = (it.installingSuggestionKeys + key).toImmutableSet()) }
-                    try {
-                        // KMK -->
-                        // takeWhile terminates collection at any terminal step so the loop
-                        // can advance to the next suggestion. Raw .collect {} never returns
-                        // if the flow doesn't complete on its own.
-                        val receiptId = exh.util.NonUndoableEvent.newId()
-                        extensionManager.installExtension(suggestion.extension)
-                            .recordUserInitiatedInstall(id = receiptId) { sourcePreferences.evaluationMode().get() }
-                            .recordPackageOperationReceipt(
-                                kind = PackageOperationKind.INSTALL,
-                                packageName = suggestion.extension.pkgName,
-                                signatureHash = suggestion.extension.signatureHash,
-                                versionCode = suggestion.extension.versionCode,
-                                artifactUri = suggestion.extension.apkUrl,
-                                id = receiptId,
-                            ) { sourcePreferences.evaluationMode().get() }
-                            .takeWhile { !it.isCompleted() }
-                            .collect()
-                        // KMK <--
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        // Per-extension failure is isolated — continue with remaining suggestions
-                    } finally {
-                        mutableState.update { it.copy(installingSuggestionKeys = (it.installingSuggestionKeys - key).toImmutableSet()) }
-                    }
-                }
-            } finally {
-                mutableState.update { it.copy(isBulkInstallingSuggestions = false) }
-            }
-        }
+    private fun newSuggestionInstallOperationId(): Long {
+        nextSuggestionInstallOperationId += 1
+        return nextSuggestionInstallOperationId
     }
 
     fun dismissSuggestion(suggestion: NonInstalledSourceSuggestion) {
+        installRecoverySuggestions.remove(suggestion.dismissalKey)
         val pref = sourcePreferences.dismissedNonInstalledRecommendationSources()
         val current = NonInstalledSourceSuggestionStore.parse(pref.get())
         val newValue = NonInstalledSourceSuggestionStore.serialize(NonInstalledSourceSuggestionStore.dismiss(current, suggestion.dismissalKey))
@@ -852,10 +1216,11 @@ class RecommendationsSettingsScreenModel(
     // KMK --> v0.7.8: same-manga matching settings actions
     fun setSameMangaResultsPerSource(value: Int) {
         val preference = sourcePreferences.sameMangaMatchResultsPerSource()
-        journalPreferenceChange(exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING, "sameMangaResultsPerSource", preference, value) {
-            preference.set(value)
+        val resolved = exh.recs.matching.SameMangaMatchSettings.clampResultCap(value)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING, "sameMangaResultsPerSource", preference, resolved) {
+            preference.set(resolved)
         }
-        mutableState.update { it.copy(sameMangaResultsPerSource = value) }
+        mutableState.update { it.copy(sameMangaResultsPerSource = resolved) }
     }
 
     fun setSameMangaPreselectResults(enabled: Boolean) {
@@ -863,15 +1228,97 @@ class RecommendationsSettingsScreenModel(
         journalPreferenceChange(exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING, "sameMangaPreselectResults", preference, enabled) {
             preference.set(enabled)
         }
-        mutableState.update { it.copy(sameMangaPreselectResults = enabled) }
+        mutableState.update {
+            it.copy(
+                sameMangaPreselectionMode = if (enabled) {
+                    exh.recs.matching.SameMangaPreselectionMode.ALL
+                } else {
+                    exh.recs.matching.SameMangaPreselectionMode.NONE
+                },
+            )
+        }
+    }
+
+    fun setSameMangaPreselectionMode(mode: exh.recs.matching.SameMangaPreselectionMode) {
+        val preference = sourcePreferences.sameMangaMatchPreselectionMode()
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING, "sameMangaPreselectionMode", preference, mode.storedValue) {
+            preference.set(mode.storedValue)
+        }
+        mutableState.update { it.copy(sameMangaPreselectionMode = mode) }
+    }
+
+    fun setChapterCompletionRatingPromptEnabled(enabled: Boolean) {
+        val preference = sourcePreferences.chapterCompletionRatingPromptEnabled()
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING,
+            "chapterCompletionRatingPromptEnabled",
+            preference,
+            enabled,
+        ) {
+            preference.set(enabled)
+        }
+        mutableState.update { it.copy(chapterCompletionRatingPromptEnabled = enabled) }
+    }
+
+    fun setChapterCompletionRatingOtherVersionsPromptEnabled(enabled: Boolean) {
+        val preference = sourcePreferences.chapterCompletionRatingOtherVersionsPromptEnabled()
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING,
+            "chapterCompletionRatingOtherVersionsPromptEnabled",
+            preference,
+            enabled,
+        ) {
+            preference.set(enabled)
+        }
+        mutableState.update { it.copy(chapterCompletionRatingOtherVersionsPromptEnabled = enabled) }
+    }
+
+    fun setConfirmedTrackedVersionRatingPropagationEnabled(enabled: Boolean) {
+        val preference = sourcePreferences.confirmedTrackedVersionRatingPropagationEnabled()
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING,
+            "confirmedTrackedVersionRatingPropagationEnabled",
+            preference,
+            enabled,
+        ) {
+            preference.set(enabled)
+        }
+        mutableState.update { it.copy(confirmedTrackedVersionRatingPropagationEnabled = enabled) }
+    }
+
+    fun setConfirmedTrackedVersionLocalTrackingPropagationEnabled(enabled: Boolean) {
+        val preference = sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled()
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING,
+            "confirmedTrackedVersionLocalTrackingPropagationEnabled",
+            preference,
+            enabled,
+        ) {
+            preference.set(enabled)
+        }
+        mutableState.update { it.copy(confirmedTrackedVersionLocalTrackingPropagationEnabled = enabled) }
+    }
+
+    fun setRatedMangaActionsUseSelection(enabled: Boolean) {
+        val preference = sourcePreferences.ratedMangaActionsUseSelection()
+        journalPreferenceChange(
+            exh.util.PreferenceJournalActionType.SAME_MANGA_MATCHING,
+            "ratedMangaActionsUseSelection",
+            preference,
+            enabled,
+        ) {
+            preference.set(enabled)
+        }
+        mutableState.update { it.copy(ratedMangaActionsUseSelection = enabled) }
     }
 
     fun setBestVersionPreviewSampleSize(value: Int) {
         val preference = sourcePreferences.bestVersionPreviewSampleSize()
-        journalPreferenceChange(exh.util.PreferenceJournalActionType.BEST_VERSION_PREVIEW, "bestVersionPreviewSampleSize", preference, value) {
-            preference.set(value)
+        val resolved = exh.recs.matching.SameMangaMatchSettings.clampSampleSize(value)
+        journalPreferenceChange(exh.util.PreferenceJournalActionType.BEST_VERSION_PREVIEW, "bestVersionPreviewSampleSize", preference, resolved) {
+            preference.set(resolved)
         }
-        mutableState.update { it.copy(bestVersionPreviewSampleSize = value) }
+        mutableState.update { it.copy(bestVersionPreviewSampleSize = resolved) }
     }
 
     fun setBestVersionAvoidFirstPages(enabled: Boolean) {
@@ -892,8 +1339,20 @@ class RecommendationsSettingsScreenModel(
         )
 
     private fun writeRecommendationSourcePreferenceState(state: exh.util.RecommendationSourcePreferenceUndoState) {
-        sourcePreferences.likedRecommendationSourceKeys().set(RecommendationSourcePreferenceStore.serialize(state.liked))
-        sourcePreferences.dislikedRecommendationSourceKeys().set(RecommendationSourcePreferenceStore.serialize(state.disliked))
+        val liked = sourcePreferences.likedRecommendationSourceKeys()
+        val disliked = sourcePreferences.dislikedRecommendationSourceKeys()
+        val previousLiked = liked.get()
+        val previousDisliked = disliked.get()
+        try {
+            liked.set(RecommendationSourcePreferenceStore.serialize(state.liked))
+            disliked.set(RecommendationSourcePreferenceStore.serialize(state.disliked))
+        } catch (e: Throwable) {
+            runCatching {
+                liked.set(previousLiked)
+                disliked.set(previousDisliked)
+            }
+            throw e
+        }
     }
 
     fun setInstalledSourcePreference(sourceId: Long, preference: RecommendationSourcePreference) {
@@ -924,7 +1383,7 @@ class RecommendationsSettingsScreenModel(
         val next = exh.util.RecommendationSourcePreferenceUndoState(newLiked, newDisliked)
         likedPref.set(RecommendationSourcePreferenceStore.serialize(newLiked))
         dislikedPref.set(RecommendationSourcePreferenceStore.serialize(newDisliked))
-        if (sourcePreferences.evaluationMode().get() && previous != next) {
+        if (previous != next) {
             exh.util.PreferenceUndoJournal.record(
                 exh.util.PreferenceUndoEntry(
                     id = exh.util.PreferenceUndoEntry.newId(),
@@ -984,9 +1443,24 @@ class RecommendationsSettingsScreenModel(
     }
 
     private fun writeSourceQualityState(state: exh.recs.sourceprefs.SourceQualityMarkPolicy.State) {
-        sourcePreferences.likedSourceQualityKeys().set(RecommendationSourcePreferenceStore.serialize(state.liked))
-        sourcePreferences.dislikedSourceQualityKeys().set(RecommendationSourcePreferenceStore.serialize(state.disliked))
-        sourcePreferences.explicitSourceQualityKeys().set(RecommendationSourcePreferenceStore.serialize(state.explicit))
+        val liked = sourcePreferences.likedSourceQualityKeys()
+        val disliked = sourcePreferences.dislikedSourceQualityKeys()
+        val explicit = sourcePreferences.explicitSourceQualityKeys()
+        val previousLiked = liked.get()
+        val previousDisliked = disliked.get()
+        val previousExplicit = explicit.get()
+        try {
+            liked.set(RecommendationSourcePreferenceStore.serialize(state.liked))
+            disliked.set(RecommendationSourcePreferenceStore.serialize(state.disliked))
+            explicit.set(RecommendationSourcePreferenceStore.serialize(state.explicit))
+        } catch (e: Throwable) {
+            runCatching {
+                liked.set(previousLiked)
+                disliked.set(previousDisliked)
+                explicit.set(previousExplicit)
+            }
+            throw e
+        }
     }
 
     private fun journalSourceQualityChange(
@@ -995,7 +1469,7 @@ class RecommendationsSettingsScreenModel(
         previous: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
         next: exh.recs.sourceprefs.SourceQualityMarkPolicy.State,
     ) {
-        if (!sourcePreferences.evaluationMode().get() || previous == next) return
+        if (previous == next) return
         exh.util.PreferenceUndoJournal.record(
             exh.util.PreferenceUndoEntry(
                 id = exh.util.PreferenceUndoEntry.newId(),
@@ -1096,16 +1570,21 @@ class RecommendationsSettingsScreenModel(
         // KMK --> v0.7.34: enrichment cap — number of candidates to enrich per source
         val enrichmentCap: Int = 5,
         // KMK <--
+        // KMK --> EC-04 2026-09-01: configurable discovery-effort policy
+        val discoveryEffortLevel: exh.recs.memory.DiscoveryEffortLevel = exh.recs.memory.DiscoveryEffortLevel.DEFAULT,
+        val discoveryCandidateBudget: Int = exh.recs.memory.RecommendationDiscoveryCandidateBudgetPolicy.DEFAULT,
+        // KMK <--
         // KMK --> v0.8.2: visible manga cards per ordinary For You source row
         val resultBudget: Int = ForYouResultBudgetPolicy.DEFAULT,
         // KMK v0.8.6: group-recommendation initial preview budget, independent of resultBudget above
         val groupPreviewBudget: Int = GroupPreviewBudgetPolicy.DEFAULT,
         // KMK <--
-        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: bounded Latest exploration share
+        // bounded Latest exploration share
         val latestExplorationPercent: Int = exh.recs.RecommendationLatestBudgetPolicy.DEFAULT,
-        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08
+        val latestExplorationEnabled: Boolean = true,
         val exposureWindowDays: Int = exh.recs.RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS,
-        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: clear-exposure-history action state.
+        val exposureWindowEnabled: Boolean = true,
+        // Clear-exposure-history action state.
         val isClearingExposureHistory: Boolean = false,
         val exposureHistoryClearFailed: Boolean = false,
         val recommendationLanguages: ImmutableSet<String> = persistentSetOf("en"),
@@ -1134,6 +1613,10 @@ class RecommendationsSettingsScreenModel(
         val installingSuggestionKeys: ImmutableSet<String> = persistentSetOf(),
         /** True while a bulk install of visible suggestions is in progress. */
         val isBulkInstallingSuggestions: Boolean = false,
+        /** Identity-free terminal outcome for the latest Sources To Try install operation. */
+        val suggestionInstallFeedback: SourcesToTryInstallFeedback? = null,
+        /** Number of failed suggestions that still exist in the current live list and can be retried. */
+        val retryableSuggestionInstallFailureCount: Int = 0,
         /** True while the user is manually selecting suggestions for selective install. */
         val isSuggestionSelectionMode: Boolean = false,
         /** Dismissal keys of suggestions currently selected for selective install. */
@@ -1150,7 +1633,12 @@ class RecommendationsSettingsScreenModel(
         // KMK <--
         // KMK --> v0.7.8: same-manga matching settings
         val sameMangaResultsPerSource: Int = 2,
-        val sameMangaPreselectResults: Boolean = true,
+        val sameMangaPreselectionMode: exh.recs.matching.SameMangaPreselectionMode = exh.recs.matching.SameMangaPreselectionMode.ALL,
+        val chapterCompletionRatingPromptEnabled: Boolean = true,
+        val chapterCompletionRatingOtherVersionsPromptEnabled: Boolean = true,
+        val confirmedTrackedVersionRatingPropagationEnabled: Boolean = false,
+        val confirmedTrackedVersionLocalTrackingPropagationEnabled: Boolean = false,
+        val ratedMangaActionsUseSelection: Boolean = true,
         val bestVersionPreviewSampleSize: Int = 5,
         val bestVersionAvoidFirstPages: Boolean = true,
         // KMK <--
@@ -1184,4 +1672,6 @@ class RecommendationsSettingsScreenModel(
     }
     // KMK <--
 }
+
+internal const val SOURCES_TO_TRY_INSTALL_TIMEOUT_MS = 90_000L
 // KMK <--

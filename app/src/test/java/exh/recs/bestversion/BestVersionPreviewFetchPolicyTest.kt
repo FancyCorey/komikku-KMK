@@ -1,5 +1,6 @@
 package exh.recs.bestversion
 
+import exh.recs.RecommendationErrorKind
 import exh.recs.matching.MangaIdentityKey
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -42,7 +43,14 @@ class BestVersionPreviewFetchPolicyTest {
     fun `a ChapterError candidate is treated as unavailable for preview purposes, not fetched`() {
         val m = manga(3L, "/c")
         val key = MangaIdentityKey(3L, "/c")
-        val result = BestVersionPreviewFetchPolicy.partition(listOf(m), mapOf(key to CandidateChapterState.ChapterError("boom")))
+        val result = BestVersionPreviewFetchPolicy.partition(
+            listOf(m),
+            mapOf(
+                key to CandidateChapterState.ChapterError(
+                    BestVersionErrorReason.Recommendation(RecommendationErrorKind.Internal),
+                ),
+            ),
+        )
         assertTrue(result.previewable.isEmpty())
         assertEquals(listOf(m), result.unavailable)
     }

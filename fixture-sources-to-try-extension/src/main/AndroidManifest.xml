@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature
+        android:name="tachiyomi.extension"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/fixture_source_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false">
+        <meta-data
+            android:name="tachiyomi.extension.class"
+            android:value="app.komikku.fixture.sources.FixtureSource" />
+        <meta-data
+            android:name="tachiyomi.extension.nsfw"
+            android:value="0" />
+        <meta-data
+            android:name="tachiyomix.extensionLib"
+            android:value="1.6" />
+        <meta-data
+            android:name="tachiyomix.contentWarning"
+            android:value="0" />
+    </application>
+</manifest>

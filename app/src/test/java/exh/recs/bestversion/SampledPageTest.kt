@@ -6,8 +6,8 @@ import org.junit.jupiter.api.Test
 
 // KMK v0.8.16-fix1 -->
 // Regression coverage for the raw-URL -> source-aware preview model fix: SampledPage must carry a
-// PagePreview (index, imageUrl, source) so Coil can route it through PagePreviewFetcher, not a bare
-// URL string that bypasses the source-runtime boundary. See UI_AUDIT_NOTES.md for the original bug.
+// PagePreview (index, imageUrl, source) so Coil can route it through PagePreviewFetcher instead of a
+// bare URL string that bypasses the source-runtime boundary.
 class SampledPageTest {
 
     @Test

@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.DropdownMenu
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.theme.TachiyomiPreviewTheme
+import eu.kanade.tachiyomi.data.track.TrackerSearchErrorKey
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import kotlinx.coroutines.launch
@@ -90,6 +91,7 @@ import tachiyomi.presentation.core.util.secondaryItemAlpha
 @Composable
 fun TrackerSearch(
     state: TextFieldState,
+    trackerName: String,
     onDispatchQuery: () -> Unit,
     queryResult: Result<List<TrackSearch>>?,
     selected: TrackSearch?,
@@ -113,7 +115,7 @@ fun TrackerSearch(
                         IconButton(onClick = onDismissRequest) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = null,
+                                contentDescription = stringResource(MR.strings.action_bar_up_description),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -134,7 +136,7 @@ fun TrackerSearch(
                             decorator = {
                                 if (state.text.isEmpty()) {
                                     Text(
-                                        text = stringResource(MR.strings.action_search_hint),
+                                        text = stringResource(MR.strings.track_search_hint, trackerName),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodyLarge,
                                     )
@@ -153,7 +155,7 @@ fun TrackerSearch(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(MR.strings.action_clear_search),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -215,7 +217,11 @@ fun TrackerSearch(
                     ) {
                         items(
                             items = availableTracks,
-                            key = { "tracker-search-${it.hashCode()}" },
+                            // Keep result identity stable across recomposition and reordering. A
+                            // hashCode is not an explicit uniqueness contract and can collide;
+                            // tracker plus remote identity is the stable result boundary, with the
+                            // URL covering services that do not provide a usable remote id.
+                            key = { "tracker-search-${it.tracker_id}-${it.remote_id}-${it.tracking_url}" },
                         ) {
                             SearchResultItem(
                                 trackSearch = it,
@@ -228,8 +234,11 @@ fun TrackerSearch(
             } else {
                 EmptyScreen(
                     modifier = Modifier.padding(innerPadding),
-                    message = queryResult.exceptionOrNull()?.message
-                        ?: stringResource(MR.strings.unknown_error),
+                    message = when (TrackerSearchErrorKey.from(queryResult.exceptionOrNull())) {
+                        TrackerSearchErrorKey.NoNetwork ->
+                            stringResource(MR.strings.download_notifier_no_network)
+                        TrackerSearchErrorKey.Unknown -> stringResource(MR.strings.unknown_error)
+                    },
                 )
             }
         }

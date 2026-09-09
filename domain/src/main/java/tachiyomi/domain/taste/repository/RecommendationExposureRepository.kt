@@ -2,7 +2,6 @@ package tachiyomi.domain.taste.repository
 
 import tachiyomi.domain.taste.model.RecommendationExposure
 
-// KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
 interface RecommendationExposureRepository {
 
     suspend fun getBySourceUrls(keys: List<Pair<Long, String>>): List<RecommendationExposure>

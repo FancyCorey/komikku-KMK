@@ -7,6 +7,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
+import eu.kanade.tachiyomi.util.system.DeviceUtil
 import exh.recs.group.GroupRecommendationSeed
 import exh.recs.group.GroupRecommendationSeedBuilder
 import exh.recs.group.GroupSeedRecommendationScorer
@@ -81,12 +82,19 @@ open class RecommendsScreenModel(
         private const val TAG = "RecommendsScreenModel"
     }
 
-    private val coroutineDispatcher = Dispatchers.IO.limitedParallelism(5)
+    private val isLowRamDevice = DeviceUtil.isLowRamDevice(Injekt.get<android.app.Application>())
+
+    private val coroutineDispatcher = Dispatchers.IO.limitedParallelism(
+        RecommendationEffectiveResourcePolicy.sourceConcurrency(isLowRamDevice),
+    )
 
     // KMK v0.8.6: bounded concurrency + timeout for GROUP_PREVIEW row fetch/enrichment only,
     // extracted into GroupPreviewLoadCoordinator (see that class for the full contract/tests).
     // Single-manga and merged-source rows never call into this coordinator.
-    private val groupPreviewCoordinator = GroupPreviewLoadCoordinator()
+    private val groupPreviewCoordinator = GroupPreviewLoadCoordinator(
+        maxConcurrent = RecommendationEffectiveResourcePolicy.previewConcurrency(isLowRamDevice),
+        maxConcurrentEnrichment = RecommendationEffectiveResourcePolicy.previewEnrichmentConcurrency(isLowRamDevice),
+    )
 
     // KMK v0.8.6: load generation guard, extracted into GenerationGuard (see that class for tests).
     // A future refresh/reload entry point (none exists yet — this screen model currently only loads
@@ -223,25 +231,32 @@ open class RecommendsScreenModel(
             // the whole screen here; per-row known-id/chapter-count lookups are batched per row
             // (below) rather than per-candidate. Single-manga Recommendations never applied this
             // policy, so it stays scoped to the group-seed path to keep that behavior unchanged.
-            val seenKeys = if (groupSeed != null) {
-                SeenRecommendationMangaStore.parse(sourcePreferences.seenRecommendationMangaKeys().get())
-            } else {
-                emptySet()
-            }
-            val tasteByKey: Map<MangaTasteKey, MangaTaste> = if (groupSeed != null) {
+            val allTastes: List<MangaTaste> = if (groupSeed != null) {
                 try {
                     getMangaTaste.awaitAll()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     emptyList()
-                }.associateBy { MangaTasteKey(it.source, it.url) }
+                }
             } else {
-                emptyMap()
+                emptyList()
             }
+            // KMK v0.8.21-fix4: R1 correction -- Not Interested exclusion for group recommendations
+            // now reads MangaTaste (the single rating-family source of truth), matching the exact
+            // pattern BrowsePersonalRecommendationsScreenModel's own For You pipeline already uses
+            // (see its `seenKeys = allTastes.filter { it.rating == NOT_INTERESTED.value }...`).
+            // The legacy seenRecommendationMangaKeys preference is no longer read here; it remains
+            // populated only for old-backup restore compatibility (TasteRestorer.restoreSeenMangaKeys).
+            val seenKeys: Set<SeenMangaKey> = allTastes
+                .asSequence()
+                .filter { it.rating == tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED.value }
+                .map { SeenMangaKey(it.source, it.url) }
+                .toSet()
+            val tasteByKey: Map<MangaTasteKey, MangaTaste> = allTastes.associateBy { MangaTasteKey(it.source, it.url) }
             val visibility = sourcePreferences.recommendationRatedMangaVisibility().get()
             val hideKnownManga = sourcePreferences.recommendationHideKnownManga().get()
-            // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: same shared supported-value
+            // Same shared supported-value
             // resolution For You uses, so this screen and For You can never disagree about the
             // active threshold (and so it feeds the visibility fingerprint below as a legitimate value).
             val minChapterCount = RecommendationMinChapterCountPolicy.resolve(
@@ -291,7 +306,16 @@ open class RecommendsScreenModel(
                             groupFingerprint = seed.groupId
                                 ?: seed.memberKeys.sortedWith(compareBy({ it.first }, { it.second })).joinToString("|"),
                             sourceId = recSource.associatedSourceId ?: RECOMMENDS_SOURCE,
-                            language = sourcePreferences.recommendationSourceLanguages().get().sorted().joinToString(","),
+                            // Normalize before keying. Every *selection* path already normalizes (via
+                            // RecommendationSourceFilter.filterForRecommendations), so `{"EN"}`, `{"en"}` and
+                            // `{"en", " "}` all resolve to the same source set -- but as a raw cache key they
+                            // produced three different entries, fragmenting the cache and re-fetching results
+                            // that were already cached under an equivalent selection.
+                            language = RecommendationSourceFilter
+                                .normalizeLanguages(sourcePreferences.recommendationSourceLanguages().get())
+                                .sorted()
+                                .joinToString(","),
+                            // KMK <--
                             normalizedSeed = (seed.tags.sorted() + seed.titles.sorted()).joinToString("|"),
                             visibilityFingerprint = groupPreviewVisibilityFingerprint,
                             previewBudget = configuredBudget,

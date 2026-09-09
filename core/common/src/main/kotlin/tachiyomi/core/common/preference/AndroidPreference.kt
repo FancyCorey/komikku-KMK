@@ -43,6 +43,23 @@ sealed class AndroidPreference<T>(
         preferences.edit(action = write(key, value))
     }
 
+    // KMK F2-05.0 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): routes through
+    // SharedPreferences.Editor.commit() instead of apply() -- see the interface's own KDoc for why
+    // this exists and when it must NOT be used.
+    //
+    // 2026-08-27 correction (reopened by independent review): the original implementation called
+    // androidx.core.content.edit(commit = true, action = ...), whose own signature is Unit --
+    // internally it does route to Editor.commit() for the actual synchronous write, but its wrapper
+    // discards that call's real Boolean result and always returns Unit to its own caller. That
+    // meant this method could never actually report a failed write, defeating the whole point of
+    // preferring it over set()/apply() for durability-sensitive callers. This now constructs the
+    // Editor directly and returns its real, un-discarded Editor.commit() result.
+    override fun commit(value: T): Boolean {
+        val editor = preferences.edit()
+        write(key, value)(editor)
+        return editor.commit()
+    }
+
     override fun isSet(): Boolean {
         return preferences.contains(key)
     }

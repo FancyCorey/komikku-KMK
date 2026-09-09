@@ -306,7 +306,7 @@ class ExtensionsScreenModelUninstallSelectedTest {
     }
 
     @Test
-    fun `Evaluation Mode off records no receipt even for a verified removal`() = runTest {
+    fun `normal Action History records a receipt for a verified removal`() = runTest {
         val extA = installedExtension("eu.kanade.tachiyomi.extension.en.a")
         val preferences = SourcePreferences(FakePreferenceStore())
         preferences.evaluationMode().set(false)
@@ -324,8 +324,10 @@ class ExtensionsScreenModelUninstallSelectedTest {
         model.uninstallSelectedExtensions()
         advanceUntilIdle()
 
-        assertTrue(NonUndoableEventJournal.isEmpty())
-        assertTrue(PackageOperationJournal.isEmpty())
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(NonUndoableEventType.EXTENSION_UNINSTALLED, NonUndoableEventJournal.snapshot().first().eventType)
+        assertEquals(1, PackageOperationJournal.snapshot().size)
+        assertEquals(extA.pkgName, PackageOperationJournal.snapshot().first().packageName)
     }
 
     @Test

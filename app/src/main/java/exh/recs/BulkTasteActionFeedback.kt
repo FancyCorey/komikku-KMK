@@ -3,6 +3,7 @@ package exh.recs
 import android.content.Context
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.i18n.kmk.KMR
+import tachiyomi.core.common.i18n.pluralStringResource as contextPluralStringResource
 import tachiyomi.core.common.i18n.stringResource as contextStringResource
 
 // KMK v0.8.19 -->
@@ -57,6 +58,7 @@ fun bulkTasteActionRatingType(rating: MangaRating): BulkTasteActionType = when (
     MangaRating.LOVE -> BulkTasteActionType.RATE_LOVE
     MangaRating.LIKE -> BulkTasteActionType.RATE_LIKE
     MangaRating.DISLIKE -> BulkTasteActionType.RATE_DISLIKE
+    MangaRating.NOT_INTERESTED -> BulkTasteActionType.NOT_INTERESTED
 }
 
 /**
@@ -71,38 +73,58 @@ fun bulkTasteActionMessage(context: Context, action: BulkTasteActionType, outcom
         BulkTasteActionType.RATE_LOVE, BulkTasteActionType.RATE_LIKE, BulkTasteActionType.RATE_DISLIKE -> {
             val label = context.ratingLabel(action)
             when {
-                outcome.allFailed -> context.contextStringResource(
-                    KMR.strings.rec_bulk_action_rated_all_failed,
-                    failedOrSkipped,
-                    label,
-                )
+                outcome.allFailed -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_rated_all_failed, count = failedOrSkipped, failedOrSkipped, label)
                 outcome.partialFailure -> context.contextStringResource(
                     KMR.strings.rec_bulk_action_rated_partial,
-                    outcome.successCount,
-                    failedOrSkipped,
+                    context.contextPluralStringResource(
+                        KMR.plurals.rec_bulk_action_rated_manga_fragment,
+                        count = outcome.successCount,
+                        outcome.successCount,
+                    ),
                     label,
+                    context.contextPluralStringResource(
+                        KMR.plurals.rec_bulk_action_failed_item_fragment,
+                        count = failedOrSkipped,
+                        failedOrSkipped,
+                    ),
                 )
-                else -> context.contextStringResource(KMR.strings.rec_bulk_action_rated_success, outcome.successCount, label)
+                else -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_rated_success, count = outcome.successCount, outcome.successCount, label)
             }
         }
         BulkTasteActionType.NOT_INTERESTED -> when {
-            outcome.allFailed -> context.contextStringResource(KMR.strings.rec_bulk_action_not_interested_all_failed, failedOrSkipped)
+            outcome.allFailed -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_not_interested_all_failed, count = failedOrSkipped, failedOrSkipped)
             outcome.partialFailure -> context.contextStringResource(
                 KMR.strings.rec_bulk_action_not_interested_partial,
-                outcome.successCount,
-                failedOrSkipped,
+                context.contextPluralStringResource(
+                    KMR.plurals.rec_bulk_action_not_interested_manga_fragment,
+                    count = outcome.successCount,
+                    outcome.successCount,
+                ),
+                context.contextPluralStringResource(
+                    KMR.plurals.rec_bulk_action_failed_item_fragment,
+                    count = failedOrSkipped,
+                    failedOrSkipped,
+                ),
             )
-            else -> context.contextStringResource(KMR.strings.rec_bulk_action_not_interested_success, outcome.successCount)
+            else -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_not_interested_success, count = outcome.successCount, outcome.successCount)
         }
         BulkTasteActionType.CLEAR_RATING -> when {
-            outcome.allFailed -> context.contextStringResource(KMR.strings.rec_bulk_action_clear_rating_all_failed, failedOrSkipped)
+            outcome.allFailed -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_clear_rating_all_failed, count = failedOrSkipped, failedOrSkipped)
             outcome.partialFailure -> context.contextStringResource(
                 KMR.strings.rec_bulk_action_clear_rating_partial,
-                outcome.successCount,
-                failedOrSkipped,
+                context.contextPluralStringResource(
+                    KMR.plurals.rec_bulk_action_cleared_rating_fragment,
+                    count = outcome.successCount,
+                    outcome.successCount,
+                ),
+                context.contextPluralStringResource(
+                    KMR.plurals.rec_bulk_action_failed_item_fragment,
+                    count = failedOrSkipped,
+                    failedOrSkipped,
+                ),
             )
-            outcome.successCount == 1 -> context.contextStringResource(KMR.strings.rec_bulk_action_clear_rating_success_one)
-            else -> context.contextStringResource(KMR.strings.rec_bulk_action_clear_rating_success_other, outcome.successCount)
+            outcome.successCount == 1 -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_clear_rating_success, count = outcome.successCount, outcome.successCount)
+            else -> context.contextPluralStringResource(KMR.plurals.rec_bulk_action_clear_rating_success, count = outcome.successCount, outcome.successCount)
         }
     }
 }

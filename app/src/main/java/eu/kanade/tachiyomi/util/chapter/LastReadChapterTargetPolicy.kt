@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.util.chapter
 
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 
-// KMK_CLAUDE_JUMP_TO_LAST_READ_2026-08-09 -->
 /**
  * Resolves which chapter "Jump to last read" should scroll to.
  *
@@ -113,6 +112,34 @@ object LastReadChapterTargetPolicy {
         val headerCount = totalItemsCount - chapterCount
         if (headerCount < 0) return null
         return headerCount + indexInList
+    }
+
+    /**
+     * Returns whether a resolved chapter has content on both sides that can support a centered
+     * presentation. The first and last chapter deliberately remain clamped by normal list scroll
+     * behavior; this also keeps the latest chapter from being presented as if it had a later item.
+     */
+    fun shouldCenter(indexInList: Int, chapterCount: Int): Boolean =
+        chapterCount >= 3 && indexInList in 1 until chapterCount - 1
+
+    /**
+     * Returns the signed scroll delta that aligns the measured target center with the viewport
+     * center. A negative value moves an item down from above center; a positive value moves an item
+     * up from below center. Invalid or non-finite measurements fail closed.
+     */
+    fun centeringScrollDelta(
+        viewportStartOffset: Float,
+        viewportEndOffset: Float,
+        targetOffset: Float,
+        targetSize: Float,
+    ): Float? {
+        if (!viewportStartOffset.isFinite() || !viewportEndOffset.isFinite()) return null
+        if (!targetOffset.isFinite() || !targetSize.isFinite()) return null
+        if (viewportEndOffset <= viewportStartOffset || targetSize <= 0f) return null
+
+        val viewportCenter = (viewportStartOffset + viewportEndOffset) / 2f
+        val targetCenter = targetOffset + targetSize / 2f
+        return (targetCenter - viewportCenter).takeIf(Float::isFinite)
     }
 }
 // KMK <--

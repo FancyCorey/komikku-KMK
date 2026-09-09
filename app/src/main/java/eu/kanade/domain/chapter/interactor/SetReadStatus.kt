@@ -1,6 +1,7 @@
 package eu.kanade.domain.chapter.interactor
 
 import eu.kanade.domain.download.interactor.DeleteDownload
+import eu.kanade.domain.track.interactor.RecordLocalTrackedChapterProgress
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.ui.library.LibraryScreenModel
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
@@ -25,6 +26,7 @@ class SetReadStatus(
     private val chapterRepository: ChapterRepository,
     // SY -->
     private val getMergedChaptersByMangaId: GetMergedChaptersByMangaId,
+    private val recordLocalTrackedChapterProgress: RecordLocalTrackedChapterProgress,
     // SY <--
 ) {
 
@@ -56,7 +58,13 @@ class SetReadStatus(
         manually: Boolean = true,
         // KMK <--
     ): Result = withNonCancellableContext {
-        val chaptersToUpdate = chapters.filter {
+        // The manga chapter list can be assembled from merged/source-group data and may carry a
+        // stale read flag even though the selected row still points at the authoritative database
+        // ID. Re-read by ID before deciding whether this action is a no-op; otherwise Mark as read
+        // can dismiss selection while returning NoChapters without issuing an update.
+        val chaptersToUpdate = chapters.mapNotNull { chapter ->
+            chapterRepository.getChapterById(chapter.id)
+        }.filter {
             when (read) {
                 true -> !it.read
                 false -> it.read || it.lastPageRead > 0
@@ -73,6 +81,19 @@ class SetReadStatus(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             return@withNonCancellableContext Result.InternalError(e)
+        }
+
+        if (read && manually) {
+            chaptersToUpdate.forEach { chapter ->
+                runCatching {
+                    recordLocalTrackedChapterProgress.await(
+                        manga = mangaRepository.getMangaById(chapter.mangaId) ?: return@runCatching,
+                        chapter = chapter,
+                    )
+                }.onFailure { error ->
+                    logcat(LogPriority.WARN, error) { "Local tracker progress update failed" }
+                }
+            }
         }
 
         if (

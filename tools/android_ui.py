@@ -17,10 +17,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+if __package__:
+    from .workspace_paths import find_workspace_root
+else:
+    from workspace_paths import find_workspace_root
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PACKAGE = os.environ.get("ANDROID_APP_PACKAGE", "app.komikku.dev")
 ARTIFACT_ROOT = ROOT / "artifacts" / "android"
+
+
+def configure_console_encoding() -> None:
+    """Keep semantic JSON output valid on Windows consoles with non-UTF-8 defaults."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 class UiError(RuntimeError):
@@ -57,9 +70,12 @@ def find_adb() -> str:
     configured = os.environ.get("ADB_PATH")
     if configured:
         return configured
+    workspace_root = find_workspace_root(ROOT)
     candidates = [
         ROOT / ".tools" / "android-sdk" / "platform-tools" / "adb.exe",
         ROOT / ".tools" / "android-sdk" / "platform-tools" / "adb",
+        workspace_root / "komikku-source" / ".tools" / "android-sdk" / "platform-tools" / "adb.exe",
+        workspace_root / "komikku-source" / ".tools" / "android-sdk" / "platform-tools" / "adb",
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -67,7 +83,7 @@ def find_adb() -> str:
     found = shutil.which("adb")
     if found:
         return found
-    raise UiError("ADB was not found. Set ADB_PATH or install Android platform-tools.")
+    raise UiError("ADB was not found in ADB_PATH, the configured local Android SDK, or PATH.")
 
 
 class Adb:
@@ -88,6 +104,8 @@ class Adb:
                 capture_output=True,
                 timeout=timeout or self.timeout,
                 text=not binary,
+                encoding=None if binary else "utf-8",
+                errors=None if binary else "replace",
             )
         except subprocess.TimeoutExpired as exc:
             raise UiError(f"Timed out after {timeout or self.timeout:g}s: {' '.join(command)}") from exc
@@ -114,9 +132,16 @@ class Adb:
 
     def ui_xml(self) -> str:
         self.ensure_target()
-        remote = "/sdcard/codex_window.xml"
-        self.shell("uiautomator", "dump", remote, timeout=20)
-        return self.shell("cat", remote)
+        # Android 11+ can deny shell reads of a freshly dumped shared-storage
+        # file. Stream the hierarchy instead, leaving no device-side artifact.
+        raw = str(self.run("exec-out", "uiautomator", "dump", "/dev/tty", timeout=20))
+        if "already registered" in raw.lower() or raw.strip() == "Killed":
+            raise UiError("Android UI automation is busy; wait for the prior interaction to settle before retrying.")
+        start = raw.find("<?xml")
+        end = raw.rfind("</hierarchy>")
+        if start < 0 or end < 0:
+            raise UiError("The device did not return a complete UI hierarchy.")
+        return raw[start : end + len("</hierarchy>")]
 
     def elements(self) -> list[Element]:
         try:
@@ -132,7 +157,12 @@ class Adb:
             enabled = values.get("enabled", "false") == "true"
             clickable = values.get("clickable", "false") == "true"
             scrollable = values.get("scrollable", "false") == "true"
-            if not enabled or not (text or description or resource_id or clickable or scrollable):
+            bounds = values.get("bounds", "")
+            if (
+                not enabled
+                or bounds == "[0,0][0,0]"
+                or not (text or description or resource_id or clickable or scrollable)
+            ):
                 continue
             result.append(
                 Element(
@@ -144,7 +174,7 @@ class Adb:
                     scrollable=scrollable,
                     enabled=enabled,
                     selected=values.get("selected", "false") == "true",
-                    bounds=values.get("bounds", ""),
+                    bounds=bounds,
                 ),
             )
         return result
@@ -199,16 +229,24 @@ def click(adb: Adb, selector: str, value: str, partial: bool = False, wait: Opti
 
 
 def scroll_to_text(adb: Adb, text: str, click_target: bool, max_swipes: int) -> None:
-    for _ in range(max_swipes + 1):
+    previous: Optional[tuple[tuple[str, ...], ...]] = None
+    for attempt in range(max_swipes + 1):
+        values = adb.elements()
+        current = tuple((item.text, item.description, item.resource_id, item.bounds) for item in values)
+        if current == previous:
+            raise UiError(f"UI hierarchy did not change while searching for {text!r}; refusing another swipe.")
+        previous = current
         try:
-            element = select_element(adb.elements(), "text", text)
+            element = select_element(values, "text", text)
             if click_target:
                 tap_element(adb, element)
             return
         except UiError:
-            scrollables = [element for element in adb.elements() if element.scrollable]
+            scrollables = [element for element in values if element.scrollable]
             if not scrollables:
                 raise UiError(f"No scrollable container found while searching for {text!r}.")
+            if attempt == max_swipes:
+                raise UiError(f"Could not find {text!r} after {max_swipes} bounded swipes.")
             left, top, right, bottom = parse_bounds(scrollables[0].bounds)
             x = (left + right) // 2
             adb.shell("input", "swipe", str(x), str(bottom - 160), str(x), str(top + 160), "450")
@@ -299,6 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    configure_console_encoding()
     args = build_parser().parse_args(argv)
     adb = Adb(args.serial)
     try:

@@ -21,6 +21,7 @@ import androidx.work.workDataOf
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.sync.SyncPreferences
+import eu.kanade.domain.track.interactor.RecordLocalTrackedChapterProgress
 import eu.kanade.domain.track.model.toDbTrack
 import eu.kanade.domain.track.model.toDomainTrack
 import eu.kanade.tachiyomi.data.LibraryUpdateStatus
@@ -29,6 +30,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.data.track.TrackStatus
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.library.LibraryUpdateErrorMessageKey
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.source.rethrowIfFatal
@@ -116,6 +118,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get()
     private val fetchInterval: FetchInterval = Injekt.get()
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get()
+    private val recordLocalTrackedChapterProgress: RecordLocalTrackedChapterProgress = Injekt.get()
 
     // SY -->
     private val getFavorites: GetFavorites = Injekt.get()
@@ -464,19 +467,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                         // errors instead of silently recording every per-manga update
                                         // failure the same way.
                                         rethrowIfFatal(e)
-                                        val errorMessage = when (e) {
-                                            is NoChaptersException ->
-                                                context.stringResource(MR.strings.no_chapters_error)
+                                        val errorMessageKey = when (e) {
+                                            is NoChaptersException -> LibraryUpdateErrorMessageKey.NoChapters
                                             // failedUpdates will already have the source,
                                             // don't need to copy it into the message
-                                            is SourceNotInstalledException -> context.stringResource(
-                                                MR.strings.loader_not_implemented_error,
-                                            )
+                                            is SourceNotInstalledException -> LibraryUpdateErrorMessageKey.SourceNotFound
 
-                                            else -> context.stringResource(MR.strings.unknown_error)
+                                            else -> LibraryUpdateErrorMessageKey.Unknown
                                         }
-                                        writeErrorToDB(manga to errorMessage)
-                                        failedUpdates.add(manga to errorMessage)
+                                        writeErrorToDB(manga to errorMessageKey)
+                                        failedUpdates.add(manga to context.stringResource(errorMessageKey.messageResource()))
                                     }
                                 }
                             }
@@ -484,6 +484,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                     }
                 }
                 .awaitAll()
+        }
+
+        // Keep confirmed local versions aligned with persisted progress after refresh. This is
+        // deliberately best-effort so a local reconciliation failure cannot hide source updates.
+        try {
+            recordLocalTrackedChapterProgress.synchronize()
+        } catch (e: Throwable) {
+            rethrowIfFatal(e)
+            if (e is CancellationException) throw e
+            xLogE("Local tracker progress synchronization failed", e)
         }
 
         notifier.cancelProgressNotification()
@@ -672,10 +682,9 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         deleteLibraryUpdateErrors.deleteMangaError(mangaIds = listOf(mangaId))
     }
 
-    private suspend fun writeErrorToDB(error: Pair<Manga, String?>) {
-        val errorMessage = error.second ?: context.stringResource(MR.strings.unknown_error)
+    private suspend fun writeErrorToDB(error: Pair<Manga, LibraryUpdateErrorMessageKey>) {
         val errorMessageId = insertLibraryUpdateErrorMessages.insert(
-            libraryUpdateErrorMessage = LibraryUpdateErrorMessage(-1L, errorMessage),
+            libraryUpdateErrorMessage = LibraryUpdateErrorMessage(-1L, error.second.storageValue),
         )
 
         insertLibraryUpdateErrors.upsert(
@@ -683,21 +692,12 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         )
     }
 
-    private suspend fun writeErrorsToDB(errors: List<Pair<Manga, String?>>) {
-        val libraryErrors = errors.groupBy({ it.second }, { it.first })
-        val errorMessages = insertLibraryUpdateErrorMessages.insertAll(
-            libraryUpdateErrorMessages = libraryErrors.keys.map { errorMessage ->
-                LibraryUpdateErrorMessage(-1L, errorMessage.orEmpty())
-            },
-        )
-        val errorList = mutableListOf<LibraryUpdateError>()
-        errorMessages.forEach {
-            libraryErrors[it.second]?.forEach { manga ->
-                errorList.add(LibraryUpdateError(id = -1L, mangaId = manga.id, messageId = it.first))
-            }
-        }
-        insertLibraryUpdateErrors.insertAll(errorList)
+    private fun LibraryUpdateErrorMessageKey.messageResource() = when (this) {
+        LibraryUpdateErrorMessageKey.NoChapters -> MR.strings.no_chapters_error
+        LibraryUpdateErrorMessageKey.SourceNotFound -> MR.strings.loader_not_implemented_error
+        LibraryUpdateErrorMessageKey.Unknown -> MR.strings.unknown_error
     }
+
     // KMK <--
 
     /**

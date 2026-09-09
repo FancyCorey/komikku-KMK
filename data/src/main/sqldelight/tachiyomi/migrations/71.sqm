@@ -1,0 +1,3 @@
+ALTER TABLE local_tracked_work ADD COLUMN score REAL CHECK(score IS NULL OR score >= 0.0);
+ALTER TABLE local_tracked_work ADD COLUMN start_date INTEGER CHECK(start_date IS NULL OR start_date > 0);
+ALTER TABLE local_tracked_work ADD COLUMN finish_date INTEGER CHECK(finish_date IS NULL OR finish_date > 0);

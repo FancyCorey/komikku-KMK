@@ -23,6 +23,7 @@ data class BackupOptions(
     // SY <--
     // KMK -->
     val tasteProfile: Boolean = true,
+    val localTracker: Boolean = true,
     // KMK <--
 ) {
 
@@ -43,11 +44,12 @@ data class BackupOptions(
         // SY <--
         // KMK -->
         tasteProfile,
+        localTracker,
         // KMK <--
     )
 
     fun canCreate() =
-        libraryEntries || categories || appSettings || extensionStores || sourceSettings || savedSearchesFeeds
+        libraryEntries || categories || appSettings || extensionStores || sourceSettings || savedSearchesFeeds || localTracker
 
     companion object {
         val libraryOptions = persistentListOf(
@@ -106,6 +108,11 @@ data class BackupOptions(
                 getter = BackupOptions::tasteProfile,
                 setter = { options, enabled -> options.copy(tasteProfile = enabled) },
             ),
+            Entry(
+                label = KMR.strings.local_tracker_backup_option,
+                getter = BackupOptions::localTracker,
+                setter = { options, enabled -> options.copy(localTracker = enabled) },
+            ),
             // KMK <--
         )
 
@@ -150,6 +157,7 @@ data class BackupOptions(
             // SY <--
             // KMK -->
             tasteProfile = array.getOrElse(12) { true },
+            localTracker = array.getOrElse(13) { true },
             // KMK <--
         )
     }

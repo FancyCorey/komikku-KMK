@@ -1,5 +1,7 @@
 package exh.recs.loved
 
+import java.util.Locale
+
 // KMK v0.8.10 -->
 /**
  * Pure local filter for the Loved/Liked/Disliked rated-manga collections. Filters the already
@@ -38,6 +40,6 @@ object RatedMangaSearchFilter {
         return items.filter { matches(it, normalizedQuery, sourceNameOf(it.taste.source)) }
     }
 
-    private fun normalize(s: String): String = s.trim().lowercase()
+    private fun normalize(s: String): String = s.trim().lowercase(Locale.ROOT)
 }
 // KMK <--

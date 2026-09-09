@@ -1,6 +1,7 @@
 package eu.kanade.domain.source.service
 
 import eu.kanade.domain.source.interactor.SetMigrateSorting
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import exh.recs.GroupPreviewBudgetPolicy
@@ -187,7 +188,7 @@ class SourcePreferences(
     fun recommendationForYouPreviewSnapshot() = preferenceStore.getString("recommendation_for_you_preview_snapshot", "")
 
     // KMK --> v0.7.26: minimum chapter count filter for For You
-    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: the raw value stored here is only a
+    // the raw value stored here is only a
     // hint -- every read site resolves it through RecommendationMinChapterCountPolicy.resolve(), and
     // RecommendationsSettingsScreenModel.setMinChapterCount() refuses to persist an unsupported
     // value, so a corrupt/legacy/out-of-contract number can never reach the visibility policy or the
@@ -208,25 +209,51 @@ class SourcePreferences(
     /** Visible manga cards per ordinary For You source row. Supported: 5/10/15/20/30. Default 10. Boosted sources use max(value, 20). */
     fun recommendationResultBudget() = preferenceStore.getInt("recommendation_result_budget", 10)
 
-    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
     // Both values are validated at every read site through their owning pure policy (never trusted
-    // raw), exactly like recommendationResultBudget/groupPreviewResultBudget above.
+    // raw), exactly like recommendationResultBudget/groupPreviewResultBudget above. Enablement is
+    // stored separately so disabling a feature never destroys the user's last numeric value.
     /**
      * Share of a For You refresh's attempted sources that may additionally be probed for their
-     * Latest catalogue. Supported: 0/10/20/30/50 percent. Default 20. `0` switches the Latest lane
-     * off entirely and is the documented behavior kill switch -- personalized search plus the
-     * existing Popular fallback remain the default path either way.
+     * Latest catalogue. Supported: 1-100 percent. Default 20. Use
+     * [recommendationLatestExplorationEnabled] to switch the lane off without changing this value.
      */
     fun recommendationLatestExplorationPercent() =
         preferenceStore.getInt("recommendation_latest_exploration_percent", exh.recs.RecommendationLatestBudgetPolicy.DEFAULT)
 
+    /** Separate Latest-lane switch; a legacy stored `0` keeps the lane disabled on first read. */
+    fun recommendationLatestExplorationEnabled() = preferenceStore.getBoolean(
+        "recommendation_latest_exploration_enabled",
+        preferenceStore.getInt("recommendation_latest_exploration_percent", exh.recs.RecommendationLatestBudgetPolicy.DEFAULT).get() != 0,
+    )
+
     /**
      * How many days a locally-recorded For You exposure keeps influencing display order. Supported:
-     * 7/14/30. Default 14. Exposure history is local-only, is never included in backup/sync/export,
+     * 1-100. Default 14. Exposure history is local-only, is never included in backup/sync/export,
      * never creates an Action History entry, and can only ever reorder -- never hide -- a candidate.
      */
     fun recommendationExposureWindowDays() =
         preferenceStore.getInt("recommendation_exposure_window_days", exh.recs.RecommendationExposurePolicy.DEFAULT_WINDOW_DAYS)
+
+    /** Separate repeat-title cooldown switch; the previous contract had no disabled state. */
+    fun recommendationExposureWindowEnabled() =
+        preferenceStore.getBoolean("recommendation_exposure_window_enabled", true)
+    // KMK <--
+
+    // KMK --> EC-04 2026-09-01: configurable discovery-effort policy. Raw stored value is never
+    // trusted directly -- always resolved through exh.recs.memory.DiscoveryEffortLevel.resolve(),
+    // exactly like sameMangaMatchPreselectionMode above, so an unknown/corrupt/blank value falls
+    // back to DiscoveryEffortLevel.DEFAULT (STANDARD) rather than crashing or silently disabling
+    // the feature. See DiscoveryEffortLevel's own KDoc for the real, measured justification behind
+    // its three supported values.
+    /** How many additional discovery pages [exh.recs.memory.RecommendationDiscoveryPlanner.planAdditionalPages] plans per source per refresh. Default: STANDARD (matches pre-existing behavior). */
+    fun recommendationDiscoveryEffortLevel() = preferenceStore.getString(
+        "recommendation_discovery_effort_level",
+        exh.recs.memory.DiscoveryEffortLevel.DEFAULT.storedValue,
+    )
+    fun recommendationDiscoveryCandidateBudget() = preferenceStore.getInt(
+        "recommendation_discovery_candidate_budget",
+        exh.recs.memory.RecommendationDiscoveryCandidateBudgetPolicy.DEFAULT,
+    )
     // KMK <--
 
     /** Semicolon-separated dismissal keys for non-installed source suggestions. Format: signatureHash|pkgName|sourceId */
@@ -268,6 +295,13 @@ class SourcePreferences(
     /** Total rated manga count at the time of the last source-evaluation reassessment baseline. 0 = never set. */
     fun sourceEvaluationLastReassessmentRatingCount() = preferenceStore.getInt("source_evaluation_last_reassessment_rating_count", 0)
 
+    // KMK v0.8.21-fix2: AUG-14 slice 3 -- saved For You focus modes
+    /** JSON-serialized [exh.recs.SavedFocusMode] list -- see [exh.recs.SavedFocusModeStore]. */
+    fun savedFocusModes() = preferenceStore.getString("saved_focus_modes", "")
+
+    /** JSON-serialized currently applied For You focus criteria; separate from taste and saved modes. */
+    fun activeForYouFocus() = preferenceStore.getString("active_for_you_focus", "")
+
     /** Epoch-ms timestamp of the last source-evaluation reassessment baseline. 0 = never set. */
     fun sourceEvaluationLastReassessmentAt() = preferenceStore.getLong("source_evaluation_last_reassessment_at", 0L)
 
@@ -299,7 +333,13 @@ class SourcePreferences(
     fun evaluationMode() = preferenceStore.getBoolean("evaluation_mode", false)
     // KMK <--
 
-    // KMK --> KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: private
+    // KMK --> H2A0: explicit developer diagnostics opt-in. Keep this private so
+    // backup/restore cannot silently re-enable diagnostic surfaces on another install.
+    fun developerOptionsEnabled() =
+        preferenceStore.getBoolean(Preference.privateKey("developer_options_enabled"), false)
+    // KMK <--
+
+    // KMK --> private
     // developer opt-in selecting a deterministic Source Evaluation debug fixture outcome instead of
     // running the real installer/network pipeline. Only ever read behind `BuildConfig.DEBUG` (see
     // SourceEvaluationJob.selectSourceEvaluationRunner) -- this preference alone cannot activate the
@@ -326,6 +366,22 @@ class SourcePreferences(
     // stale preference cannot activate this path in release-derived builds.
     fun sourcesToTryFixtureMode() = preferenceStore.getString("sources_to_try_fixture_mode", "off")
 
+    // Debug-only For You fixture. Its consumer also requires BuildConfig.DEBUG, so this private
+    // preference cannot change a release-derived recommendation route.
+    fun forYouFixtureMode() = preferenceStore.getString(
+        "for_you_fixture_mode",
+        if (BuildConfig.KMK_BENCHMARK_FIXTURE) "top_picks" else "off",
+    )
+
+    // Debug-only Best Version paired-record fixture. Its consumer additionally requires the exact
+    // isolated profile, Evaluation Mode, fixture signer, and both installed fixture source identities.
+    fun bestVersionPairedFixtureMode() = preferenceStore.getString("best_version_paired_fixture_mode", "off")
+
+    // Debug-only Alternate Source Reader fixture scenario. The runtime additionally requires the
+    // exact isolated profiles, Evaluation Mode, signer, and installed fixture source identities.
+    fun alternateSourceReaderFixtureScenario() =
+        preferenceStore.getString("alternate_source_reader_fixture_scenario", "off")
+
     // KMK --> v0.7.31: C3 — rated count at the time evaluation was last launched (for profile-changed prompt)
     /** Total rated manga count when source evaluation was last started. -1 = never run. */
     fun sourceEvaluationLastRunRatingCount() = preferenceStore.getInt("source_evaluation_last_run_rating_count", -1)
@@ -341,8 +397,46 @@ class SourcePreferences(
     /** Max results per source for bounded same-manga workflows (Love/Like/Dislike/Seen/Favorite/Best-version). Valid: 1, 2, 5, 10. Default 2. */
     fun sameMangaMatchResultsPerSource() = preferenceStore.getInt("same_manga_match_results_per_source", 2)
 
-    /** When true, same-manga results start selected. When false, start unselected. Origin is never selected. */
-    fun sameMangaMatchPreselectResults() = preferenceStore.getBoolean("same_manga_match_preselect_results", true)
+    /** Legacy boolean retained for reading preferences created before selection modes. */
+    fun sameMangaMatchPreselectResults() = preferenceStore.getBoolean(LEGACY_PRESELECT_KEY, true)
+
+    /**
+     * Default selection mode for other-version candidates. New installs use exact-title matching;
+     * existing installs retain an explicitly stored legacy boolean until the user chooses a mode.
+     */
+    fun sameMangaMatchPreselectionMode() = preferenceStore.getString(
+        PRESELECTION_MODE_KEY,
+        if (preferenceStore.getAll().containsKey(LEGACY_PRESELECT_KEY)) "" else "exact_name",
+    )
+
+    /** Whether the reader may offer the rating prompt after the latest chapter is completed. */
+    fun chapterCompletionRatingPromptEnabled() = preferenceStore.getBoolean(
+        "chapter_completion_rating_prompt_enabled",
+        true,
+    )
+
+    /** Whether a successful completion rating may offer the other-versions follow-up. */
+    fun chapterCompletionRatingOtherVersionsPromptEnabled() = preferenceStore.getBoolean(
+        "chapter_completion_rating_other_versions_prompt_enabled",
+        true,
+    )
+
+    /** Whether ratings may follow explicitly confirmed, already locally tracked versions. */
+    fun confirmedTrackedVersionRatingPropagationEnabled() = preferenceStore.getBoolean(
+        "confirmed_tracked_version_rating_propagation_enabled",
+        false,
+    )
+
+    fun confirmedTrackedVersionLocalTrackingPropagationEnabled() = preferenceStore.getBoolean(
+        "confirmed_tracked_version_local_tracking_propagation_enabled",
+        false,
+    )
+
+    /** Whether rated-manga actions are entered from the top-right selection affordance. */
+    fun ratedMangaActionsUseSelection() = preferenceStore.getBoolean(
+        RATED_MANGA_ACTIONS_USE_SELECTION_PREF,
+        true,
+    )
 
     /** Number of pages sampled per candidate chapter in Best Version preview. Valid: 2, 5, 10. Default 5. */
     fun bestVersionPreviewSampleSize() = preferenceStore.getInt("best_version_preview_sample_size", 5)
@@ -354,6 +448,9 @@ class SourcePreferences(
 
     companion object {
         const val PINNED_SOURCES_PREF_KEY = "pinned_catalogues"
+        private const val LEGACY_PRESELECT_KEY = "same_manga_match_preselect_results"
+        private const val PRESELECTION_MODE_KEY = "same_manga_match_preselection_mode"
+        const val RATED_MANGA_ACTIONS_USE_SELECTION_PREF = "rated_manga_actions_use_selection"
     }
     // KMK <--
 }

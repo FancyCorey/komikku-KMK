@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: direct coverage for
+// Direct coverage for
 // the release-gating decision consumed by SourceEvaluationJob.doWork(). The fixture path must only
 // activate when BOTH isDebugBuild is true AND the fixture mode is not OFF -- neither condition
 // alone is sufficient, so every other combination (including "release build with the preference

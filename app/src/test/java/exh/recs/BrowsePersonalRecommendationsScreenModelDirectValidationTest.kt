@@ -4,6 +4,7 @@ import android.content.Context
 import cafe.adriel.voyager.core.model.StateScreenModel
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.Source
+import exh.recs.matching.ConfirmedMangaGroupTargets
 import exh.util.FakePreferenceStore
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -14,6 +15,7 @@ import io.mockk.runs
 import io.mockk.slot
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -50,9 +52,11 @@ import tachiyomi.domain.taste.interactor.SetMangaTasteBatch
 import tachiyomi.domain.taste.interactor.UpsertRecommendationCache
 import tachiyomi.domain.taste.interactor.UpsertRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.UpsertRecommendationDiscoveryProgress
+import tachiyomi.domain.taste.model.TasteProfile
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import java.lang.reflect.InvocationTargetException
 import kotlin.reflect.full.callSuspend
 import kotlin.reflect.full.declaredFunctions
@@ -87,11 +91,19 @@ class BrowsePersonalRecommendationsScreenModelDirectValidationTest {
     private fun buildHarness(
         trackRepository: TrackRepository = mockk(relaxed = true),
         recordExposure: RecordRecommendationExposure = mockk(relaxed = true),
+        getTasteProfile: GetTasteProfile = mockk(relaxed = true),
+        isOnline: () -> Boolean = { true },
+        clock: () -> Long = { 1_000L },
+        searchDispatcher: CoroutineDispatcher = Dispatchers.Main,
     ): Harness {
         val model = BrowsePersonalRecommendationsScreenModel(
             context = mockk<Context>(relaxed = true),
+            isOnline = isOnline,
+            clock = clock,
+            searchDispatcher = searchDispatcher,
+            isLowRamDevice = false,
             autoLoad = false,
-            getTasteProfile = mockk<GetTasteProfile>(relaxed = true),
+            getTasteProfile = getTasteProfile,
             getTagAliases = mockk<GetTagAliases>(relaxed = true),
             getDisabledSources = mockk<GetDisabledRecommendationSources>(relaxed = true),
             sourceManager = mockk<SourceManager>(relaxed = true),
@@ -112,6 +124,8 @@ class BrowsePersonalRecommendationsScreenModelDirectValidationTest {
             setMangaTasteBatch = mockk<SetMangaTasteBatch>(relaxed = true),
             clearMangaTaste = mockk<ClearMangaTaste>(relaxed = true),
             getTracks = GetTracks(trackRepository),
+            localTrackerRepository = mockk<LocalTrackerRepository>(relaxed = true),
+            confirmedMangaGroupTargets = mockk<ConfirmedMangaGroupTargets>(relaxed = true),
             getRecommendationExposure = mockk(relaxed = true),
             recordRecommendationExposure = recordExposure,
             pruneRecommendationExposure = mockk<PruneRecommendationExposure>(relaxed = true),
@@ -184,6 +198,44 @@ class BrowsePersonalRecommendationsScreenModelDirectValidationTest {
 
         assertTrue(harness.model.state.value.isLoading)
         coVerify(exactly = 0) { harness.recordExposure.await(any(), any(), any()) }
+    }
+
+    @Test
+    fun `public refresh reaches offline terminal state without Android connectivity`() = runTest {
+        val harness = buildHarness(isOnline = { false })
+
+        harness.model.refresh()
+        advanceUntilIdle()
+
+        assertFalse(harness.model.state.value.isLoading)
+        assertTrue(harness.model.state.value.isOffline)
+    }
+
+    @Test
+    fun `applying focus starts a fresh recommendation refresh`() = runTest {
+        val harness = buildHarness(isOnline = { false })
+
+        harness.model.setActiveFocus(
+            RecommendationFocusPolicy.FocusCriteria(include = setOf("comedy")),
+        )
+        advanceUntilIdle()
+
+        assertFalse(harness.model.state.value.isLoading)
+        assertTrue(harness.model.state.value.isOffline)
+        assertEquals(setOf("comedy"), harness.model.activeFocusCriteria.value.include)
+    }
+
+    @Test
+    fun `public refresh reaches profile-empty terminal state`() = runTest {
+        val getTasteProfile = mockk<GetTasteProfile>()
+        coEvery { getTasteProfile.await() } returns TasteProfile.EMPTY
+        val harness = buildHarness(getTasteProfile = getTasteProfile)
+
+        harness.model.refresh()
+        advanceUntilIdle()
+
+        assertFalse(harness.model.state.value.isLoading)
+        assertTrue(harness.model.state.value.profileIsEmpty)
     }
 
     @Test
@@ -271,6 +323,7 @@ class BrowsePersonalRecommendationsScreenModelDirectValidationTest {
 
         coVerify(exactly = 2) { recordExposure.await(any(), any(), any()) }
         assertEquals(setOf(11L to "/same", 22L to "/same"), keys.captured.toSet())
+        coVerify(exactly = 2) { recordExposure.await(any(), any(), 1_000L) }
     }
 
     @Test

@@ -24,6 +24,15 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.InfoScreen
 
+// KMK F2-05.0 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): stable, locale- and
+// text-independent Compose semantics tag for the shared Next/Finish button across every onboarding
+// step -- see InfoScreen's own acceptButtonTestTag KDoc for the exact current scope (Compose-level
+// test tooling today; UI Automator resourceId matching once F2-05.1 wires up
+// testTagsAsResourceId). A Compose-level test can act on this same tag repeatedly (it reads "Next"
+// on earlier steps, "Finish" on the last) to drive onboarding to completion deterministically,
+// without locale-sensitive text matching or raw coordinates.
+const val ONBOARDING_ACCEPT_BUTTON_TEST_TAG = "onboarding_accept_button"
+
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
@@ -63,6 +72,7 @@ fun OnboardingScreen(
                 currentStep++
             }
         },
+        acceptButtonTestTag = ONBOARDING_ACCEPT_BUTTON_TEST_TAG,
     ) {
         Box(
             modifier = Modifier

@@ -28,6 +28,7 @@ import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.DebugBrowseFixtureSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceRuntime
 import eu.kanade.tachiyomi.source.SourceRuntimeOperation
@@ -99,19 +100,25 @@ import xyz.nulldev.ts.api.http.serializer.FilterSerializer
 import java.time.Instant
 import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
 
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: see
+// See
 // BrowseSourceScreenModel.createSourcePagingSource for call site and rationale.
 internal fun selectBrowseSourcePagingSource(
     isDebugBuild: Boolean,
+    sourceId: Long,
     fixtureModeEnabled: Boolean,
     realPagingSourceProvider: () -> SourcePagingSource,
     fixturePagingSourceProvider: () -> SourcePagingSource,
 ): SourcePagingSource =
-    if (isDebugBuild && fixtureModeEnabled) {
+    if (shouldUseBrowseFixture(isDebugBuild, sourceId) && fixtureModeEnabled) {
         fixturePagingSourceProvider()
     } else {
         realPagingSourceProvider()
     }
+
+internal fun shouldUseBrowseFixture(
+    isDebugBuild: Boolean,
+    sourceId: Long,
+): Boolean = isDebugBuild && sourceId == DebugBrowseFixtureSource.ID
 
 open class BrowseSourceScreenModel(
     /* KMK --> */
@@ -152,7 +159,14 @@ open class BrowseSourceScreenModel(
 
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
 
-    var source = sourceManager.getOrStub(sourceId)
+    // Keep the persisted debug fixture selector in the same state owner as the paging source.
+    // The Browse route uses this value to select the matching rendered empty-state policy.
+    val browseFixtureFailureMode by sourcePreferences.browseFixtureFailureMode().asState(screenModelScope)
+
+    // The source can be rebound asynchronously when an extension or debug fixture becomes
+    // available. Keep the visible Browse route in sync with that owner change so the error
+    // surface evaluates the same source instance that created the paging request.
+    var source by mutableStateOf(sourceManager.getOrStub(sourceId))
 
     // KMK v0.8.10-fix4 -->
     /**
@@ -531,7 +545,7 @@ open class BrowseSourceScreenModel(
 
     // SY -->
     open fun createSourcePagingSource(query: String, filters: FilterList): SourcePagingSource {
-        // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: pure decision
+        // Pure decision
         // extracted to selectBrowseSourcePagingSource so the debug/release gating is directly
         // unit-testable. BuildConfig.DEBUG folds to `false` for every non-debug build type, so this
         // is unreachable and dead-code-eliminable outside a debug build regardless of the
@@ -545,9 +559,12 @@ open class BrowseSourceScreenModel(
         // debug-only fixture systems can never cross-activate each other.
         return selectBrowseSourcePagingSource(
             isDebugBuild = BuildConfig.DEBUG,
-            fixtureModeEnabled = BrowseDebugFixtureMode.fromPrefValue(
-                sourcePreferences.browseFixtureFailureMode().get(),
-            ) != BrowseDebugFixtureMode.OFF,
+            sourceId = sourceId,
+            fixtureModeEnabled = shouldUseBrowseFixture(
+                isDebugBuild = BuildConfig.DEBUG,
+                sourceId = sourceId,
+            ) && sourcePreferences.browseFixtureFailureMode().get() ==
+                BrowseDebugFixtureMode.SOURCE_UNAVAILABLE.prefValue,
             realPagingSourceProvider = { getRemoteManga(sourceId, query, filters) },
             fixturePagingSourceProvider = { BrowseDeterministicFixturePagingSource() },
         )

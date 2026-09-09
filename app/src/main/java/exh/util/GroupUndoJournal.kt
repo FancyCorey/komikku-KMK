@@ -12,9 +12,8 @@ import java.util.UUID
  * mutation snapshots a different, richer shape: a set of complete link rows plus primary-version rows
  * spanning potentially several groups, not a single manga's rating.
  *
- * Same in-memory-only, bounded, typed-inverse design as [EvaluationModeUndoJournal] -- see
- * `docs/community/KMK_EVALUATION_MODE_UNDO_JOURNAL.md` for the persistence-decision reasoning, which
- * applies identically here. No generic snapshot/rollback: every field below is a concrete, named
+ * Same in-memory-only, bounded, typed-inverse design as [EvaluationModeUndoJournal]. It deliberately
+ * avoids generic snapshot/rollback: every field below is a concrete, named
  * link/primary row, never an opaque blob.
  */
 data class RatedLinkKey(val source: Long, val url: String)
@@ -99,6 +98,15 @@ object GroupUndoJournal {
                 entries.removeFirst()
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "group",
+            operation = entry.actionType.name,
+            readCount = entry.previousLinks.size + entry.previousPrimaries.size,
+            writeCount = entry.expectedPostLinks.size + entry.expectedPostPrimaries.size,
+            affectedCount = entry.touchedKeys.size + entry.touchedGroupIds.size,
+            timestamp = entry.timestamp,
+        )
     }
 
     /** Most recent first. */

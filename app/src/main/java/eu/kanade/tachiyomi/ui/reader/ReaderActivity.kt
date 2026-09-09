@@ -31,6 +31,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,6 +65,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
@@ -74,12 +76,15 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.connections.service.ConnectionsPreferences
 import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.reader.AlternateSourceReaderDialog
 import eu.kanade.presentation.reader.ChapterListDialog
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.OrientationSelectDialog
 import eu.kanade.presentation.reader.ReaderContentOverlay
 import eu.kanade.presentation.reader.ReaderPageActionsDialog
 import eu.kanade.presentation.reader.ReaderPageIndicator
+import eu.kanade.presentation.reader.ReaderScheduleDialog
+import eu.kanade.presentation.reader.ReaderTimerDialog
 import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.appbars.NavBarType
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
@@ -100,10 +105,14 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.AddToLibraryFirst
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Error
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Success
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderNotice
+import eu.kanade.tachiyomi.ui.reader.loader.ArchiveReaderDegradation
+import eu.kanade.tachiyomi.ui.reader.loader.ArchiveReaderResourcePolicy
 import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleStore
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -189,6 +198,15 @@ class ReaderActivity : BaseActivity() {
     lateinit var binding: ReaderActivityBinding
 
     val viewModel by viewModels<ReaderViewModel>()
+    private val alternateSourceSearchLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            result.data?.getLongExtra(MainActivity.EXTRA_ALTERNATE_SOURCE_MANGA_ID, -1L)
+                ?.takeIf { it > 0L }
+                ?.let(viewModel::acceptAlternateSourceSearchResult)
+        }
+    }
     private var assistUrl: String? = null
 
     // SY -->
@@ -329,6 +347,33 @@ class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.ChapterCompletionActionFailed -> {
                         toast(KMR.strings.chapter_completion_action_failed)
                     }
+                    is ReaderViewModel.Event.ArchiveReaderDegraded -> {
+                        toast(
+                            when (event.reason) {
+                                ArchiveReaderDegradation.MEMORY_LIMIT -> KMR.strings.archive_reader_memory_limit
+                                ArchiveReaderDegradation.STORAGE_LIMIT -> KMR.strings.archive_reader_storage_limit
+                            },
+                        )
+                    }
+                    is ReaderViewModel.Event.AlternateSourceNotice -> {
+                        toast(
+                            when (event.notice) {
+                                AlternateSourceReaderNotice.UNCERTAIN_ALIGNMENT ->
+                                    KMR.strings.alternate_source_reader_uncertain_notice
+                                AlternateSourceReaderNotice.CORRECTED ->
+                                    KMR.strings.alternate_source_reader_corrected_notice
+                                AlternateSourceReaderNotice.SKIPPED ->
+                                    KMR.strings.alternate_source_reader_skipped_notice
+                                AlternateSourceReaderNotice.RETURNED ->
+                                    KMR.strings.alternate_source_reader_returned_notice
+                                AlternateSourceReaderNotice.SESSION_ENDED ->
+                                    KMR.strings.alternate_source_reader_session_ended_notice
+                            },
+                        )
+                        if (event.notice == AlternateSourceReaderNotice.UNCERTAIN_ALIGNMENT) {
+                            viewModel.acknowledgeAlternateSourceUncertainAlignment()
+                        }
+                    }
                     // KMK <--
                 }
             }
@@ -346,6 +391,8 @@ class ReaderActivity : BaseActivity() {
             val context = LocalContext.current
             // KMK <--
             val state by viewModel.state.collectAsState()
+            val alternateSourcePresentation by viewModel.alternateSourcePresentation.collectAsStateWithLifecycle()
+            val isBlockedBySchedule by viewModel.isReadingBlockedBySchedule.collectAsStateWithLifecycle()
             val showPageNumber by readerPreferences.showPageNumber().collectAsState()
             val settingsScreenModel = remember {
                 ReaderSettingsScreenModel(
@@ -378,7 +425,6 @@ class ReaderActivity : BaseActivity() {
                 // consumes touch input over both the page content and the app bars beneath it —
                 // there is no way to "swipe past" this overlay to reach a page. See
                 // ReaderViewModel.isReadingBlockedBySchedule / ReaderScheduleEntitlement.
-                val isBlockedBySchedule by viewModel.isReadingBlockedBySchedule.collectAsState()
                 if (isBlockedBySchedule) {
                     androidx.compose.foundation.layout.Column(
                         modifier = Modifier
@@ -412,6 +458,23 @@ class ReaderActivity : BaseActivity() {
                 // KMK <--
             }
 
+            if (!isBlockedBySchedule) {
+                AlternateSourceReaderDialog(
+                    presentation = alternateSourcePresentation,
+                    onDismiss = viewModel::dismissAlternateSourcePresentation,
+                    onSearchMore = viewModel::searchAlternateSourceCandidates,
+                    onSearchInApp = ::searchAlternateSourceInApp,
+                    onSelectSource = viewModel::toggleAlternateSourceCandidate,
+                    onConfirmSource = viewModel::confirmAlternateSourceCandidate,
+                    onSelectChapter = viewModel::selectAlternateSourceChapter,
+                    onConfirmChapter = viewModel::confirmAlternateSourceChapterSelection,
+                    onConfirmPair = viewModel::confirmAlternateSourcePairSelection,
+                    onConfirmProvisional = viewModel::confirmProvisionalAlternateSourceSelection,
+                    onConfirmSkip = viewModel::confirmSkipAlternateSourceChapter,
+                    onRetry = viewModel::retryAlternateSourcePresentation,
+                )
+            }
+
             // KMK -->
             val externalStoragePermissionNotGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
                 context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
@@ -428,12 +491,18 @@ class ReaderActivity : BaseActivity() {
             // previous value so a threshold is announced exactly once, in-reader (a Toast), never
             // as a system notification.
             val timerState by viewModel.timerState.collectAsState()
+            // Keep an unstarted timer draft above the modal switch so opening schedule settings
+            // cannot discard the user's setup choices when the timer dialog subtree is replaced.
+            var timerCustomMinutes by rememberSaveable { mutableStateOf("") }
+            var timerWarnMinutesSelected by rememberSaveable { mutableStateOf(setOf<Int>()) }
+            var timerFinishCurrentChapter by rememberSaveable { mutableStateOf(true) }
+            var timerAllowExtraChapter by rememberSaveable { mutableStateOf(false) }
             var lastFiredWarnings by rememberSaveable { mutableStateOf(setOf<Int>()) }
             LaunchedEffect(timerState.firedWarningMinutes) {
                 val newlyFired = timerState.firedWarningMinutes - lastFiredWarnings
                 if (newlyFired.isNotEmpty()) {
                     val minute = newlyFired.max()
-                    toast(stringResource(KMR.strings.reading_timer_warning_toast, minute))
+                    toast(pluralStringResource(KMR.plurals.reading_timer_warning_toast, minute, minute))
                 }
                 lastFiredWarnings = timerState.firedWarningMinutes
             }
@@ -518,7 +587,7 @@ class ReaderActivity : BaseActivity() {
 
                 // KMK v0.8.4
                 is ReaderViewModel.Dialog.ReadingTimer -> {
-                    eu.kanade.presentation.reader.ReaderTimerDialog(
+                    ReaderTimerDialog(
                         onDismissRequest = onDismissRequest,
                         session = timerState,
                         onStart = viewModel::startTimer,
@@ -526,14 +595,28 @@ class ReaderActivity : BaseActivity() {
                         onResume = viewModel::resumeTimer,
                         onReset = viewModel::resetTimer,
                         onStop = viewModel::stopTimer,
-                        onConfigureSchedule = {
-                            onDismissRequest()
-                            startActivity(
-                                Intent(this@ReaderActivity, MainActivity::class.java).apply {
-                                    action = Constants.OPEN_READER_SCHEDULE_SETTINGS
-                                },
-                            )
+                        customMinutes = timerCustomMinutes,
+                        warnMinutesSelected = timerWarnMinutesSelected,
+                        finishCurrentChapter = timerFinishCurrentChapter,
+                        allowExtraChapter = timerAllowExtraChapter,
+                        onDraftChange = { custom, warnings, finish, extra ->
+                            timerCustomMinutes = custom
+                            timerWarnMinutesSelected = warnings
+                            timerFinishCurrentChapter = finish
+                            timerAllowExtraChapter = extra
                         },
+                        onConfigureSchedule = {
+                            viewModel.openReadingScheduleDialog()
+                        },
+                    )
+                }
+
+                is ReaderViewModel.Dialog.ReadingSchedule -> {
+                    ReaderScheduleDialog(
+                        onDismissRequest = viewModel::returnToReadingTimerDialog,
+                        initialMode = ReaderScheduleStore.parseMode(readerPreferences.readingScheduleMode().get()),
+                        initialWindows = ReaderScheduleStore.parseWindows(readerPreferences.readingScheduleWindows().get()),
+                        onSave = viewModel::saveReadingSchedule,
                     )
                 }
 
@@ -665,35 +748,49 @@ class ReaderActivity : BaseActivity() {
                         onDismissRequest = onDismissRequest,
                         title = { Text(stringResource(KMR.strings.chapter_completion_rating_title)) },
                         text = {
-                            Column(
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
+                                maxItemsInEachRow = 2,
+                                horizontalArrangement = Arrangement.SpaceEvenly,
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                androidx.compose.material3.TextButton(onClick = {
-                                    viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LOVE)
-                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                androidx.compose.material3.TextButton(
+                                    enabled = !dialog.isProcessing,
+                                    onClick = {
+                                        viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LOVE)
+                                    },
+                                    modifier = Modifier.defaultMinSize(minWidth = 120.dp, minHeight = 48.dp),
+                                ) {
                                     Text(stringResource(KMR.strings.rated_manga_rating_love))
                                 }
-                                androidx.compose.material3.TextButton(onClick = {
-                                    viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LIKE)
-                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                androidx.compose.material3.TextButton(
+                                    enabled = !dialog.isProcessing,
+                                    onClick = {
+                                        viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.LIKE)
+                                    },
+                                    modifier = Modifier.defaultMinSize(minWidth = 120.dp, minHeight = 48.dp),
+                                ) {
                                     Text(stringResource(KMR.strings.rated_manga_rating_like))
                                 }
-                                androidx.compose.material3.TextButton(onClick = {
-                                    viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.DISLIKE)
-                                }, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                                androidx.compose.material3.TextButton(
+                                    enabled = !dialog.isProcessing,
+                                    onClick = {
+                                        viewModel.rateFromChapterCompletionPrompt(dialog.mangaId, tachiyomi.domain.taste.model.MangaRating.DISLIKE)
+                                    },
+                                    modifier = Modifier.defaultMinSize(minWidth = 120.dp, minHeight = 48.dp),
+                                ) {
                                     Text(stringResource(KMR.strings.rated_manga_rating_dislike))
+                                }
+                                androidx.compose.material3.TextButton(
+                                    enabled = !dialog.isProcessing,
+                                    onClick = { viewModel.markNotInterestedFromChapterCompletionPrompt(dialog.mangaId) },
+                                    modifier = Modifier.defaultMinSize(minWidth = 120.dp, minHeight = 48.dp),
+                                ) {
+                                    Text(stringResource(KMR.strings.rated_manga_action_mark_not_interested))
                                 }
                             }
                         },
-                        confirmButton = {
-                            androidx.compose.material3.TextButton(
-                                onClick = { viewModel.markNotInterestedFromChapterCompletionPrompt(dialog.mangaId) },
-                                modifier = Modifier.defaultMinSize(minWidth = 112.dp, minHeight = 48.dp),
-                            ) {
-                                Text(stringResource(KMR.strings.rated_manga_action_mark_not_interested))
-                            }
-                        },
+                        confirmButton = {},
                         dismissButton = {
                             androidx.compose.material3.TextButton(
                                 onClick = viewModel::dismissChapterCompletionPrompt,
@@ -734,7 +831,6 @@ class ReaderActivity : BaseActivity() {
                         confirmButton = {
                             androidx.compose.material3.TextButton(
                                 onClick = {
-                                    onDismissRequest()
                                     startActivity(
                                         Intent(this@ReaderActivity, MainActivity::class.java).apply {
                                             action = tachiyomi.core.common.Constants.OPEN_CROSS_EXTENSION_MATCH_FOR_RATING
@@ -743,6 +839,9 @@ class ReaderActivity : BaseActivity() {
                                             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                                         },
                                     )
+                                    // Launch before dismissing: dismissal clears the dialog and the
+                                    // reader finish effect may finish this activity immediately.
+                                    onDismissRequest()
                                 },
                                 modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 48.dp),
                             ) {
@@ -775,6 +874,13 @@ class ReaderActivity : BaseActivity() {
         config = null
         menuToggleToast?.cancel()
         readingModeToast?.cancel()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (ArchiveReaderResourcePolicy.shouldReleaseForTrimLevel(level)) {
+            viewModel.onMemoryPressure()
+        }
     }
 
     override fun onPause() {
@@ -926,6 +1032,7 @@ class ReaderActivity : BaseActivity() {
         }
 
         val isHttpSource = viewModel.getSource() is HttpSource
+        val alternateSourceActions by viewModel.alternateSourceContextActions.collectAsStateWithLifecycle()
 
         val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
         val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
@@ -977,6 +1084,15 @@ class ReaderActivity : BaseActivity() {
             onOpenInWebView = ::openChapterInWebView.takeIf { isHttpSource },
             onOpenInBrowser = ::openChapterInBrowser.takeIf { isHttpSource },
             onShare = ::shareChapter.takeIf { isHttpSource },
+            onReturnToPrimarySource = viewModel::requestReturnToPrimarySource.takeIf {
+                alternateSourceActions.returnToPrimary
+            },
+            onCorrectAlternateSourceMapping = viewModel::correctAlternateSourceMapping.takeIf {
+                alternateSourceActions.correctMapping
+            },
+            onSkipAlternateSourceChapter = viewModel::requestSkipAlternateSourceChapter.takeIf {
+                alternateSourceActions.skipChapter
+            },
 
             viewer = state.viewer,
             onNextChapter = ::loadNextChapter,
@@ -1027,6 +1143,9 @@ class ReaderActivity : BaseActivity() {
             dualPageSplitEnabled = dualPageSplitPaged,
             doublePages = state.doublePages,
             onClickChapterList = viewModel::openChapterListDialog,
+            onClickAlternateSource = viewModel::openAlternateSourceChooserForCurrentChapter.takeIf {
+                viewModel.canOfferAlternateSourceChooser()
+            },
             onClickPageLayout = {
                 if (readerPreferences.pageLayout().get() == PagerConfig.PageLayout.AUTOMATIC) {
                     (viewModel.state.value.viewer as? PagerViewer)?.config?.let { config ->
@@ -1095,45 +1214,27 @@ class ReaderActivity : BaseActivity() {
     }
 
     private fun exhRetryAll() {
-        var retried = 0
+        val pages = viewModel.state.value.viewerChapters?.currChapter?.pages.orEmpty()
+        val retryablePages = pages.filter { it.status is Page.State.Error }
+        val currentPage = exhCurrentpage()
 
-        viewModel.state.value.viewerChapters
-            ?.currChapter
-            ?.pages
-            ?.forEachIndexed { _, page ->
-                var shouldQueuePage = false
-                if (page.status is Page.State.Error) {
-                    shouldQueuePage = true
-                } /*else if (page.status == Page.State.LoadPage ||
-                                    page.status == Page.State.DownloadImage) {
-                                // Do nothing
-                            }*/
-
-                if (shouldQueuePage) {
-                    page.status = Page.State.Queue
-                } else {
-                    return@forEachIndexed
+        retryablePages.forEach { page ->
+            viewModel.manga?.let { manga ->
+                val source = sourceManager.get(manga.source)
+                if (source?.isEhBasedSource() == true) {
+                    page.imageUrl = null
                 }
-
-                // If we are using EHentai/ExHentai, get a new image URL
-                viewModel.manga?.let { m ->
-                    val src = sourceManager.get(m.source)
-                    if (src?.isEhBasedSource() == true) {
-                        page.imageUrl = null
-                    }
-                }
-
-                val loader = page.chapter.pageLoader
-                if (page.index == exhCurrentpage()?.index && loader is HttpPageLoader) {
-                    loader.boostPage(page)
-                } else {
-                    loader?.retryPage(page)
-                }
-
-                retried++
             }
 
-        toast(pluralStringResource(SYMR.plurals.eh_retry_toast, retried, retried))
+            val loader = page.chapter.pageLoader
+            if (page == currentPage && loader is HttpPageLoader) {
+                loader.boostPage(page)
+            } else {
+                loader?.retryPage(page)
+            }
+        }
+
+        toast(pluralStringResource(SYMR.plurals.eh_retry_toast, retryablePages.size, retryablePages.size))
     }
 
     private fun exhBoostPage() {
@@ -1313,6 +1414,17 @@ class ReaderActivity : BaseActivity() {
         }
     }
 
+    private fun searchAlternateSourceInApp() {
+        val manga = viewModel.state.value.manga ?: return
+        alternateSourceSearchLauncher.launch(
+            Intent(this@ReaderActivity, MainActivity::class.java).apply {
+                action = MainActivity.INTENT_SEARCH
+                putExtra(MainActivity.INTENT_SEARCH_QUERY, manga.title)
+                putExtra(MainActivity.EXTRA_ALTERNATE_SOURCE_RETURN_SELECTION, true)
+            },
+        )
+    }
+
     private fun shareChapter() {
         assistUrl?.let {
             val intent = it.toUri().toShareIntent(this, type = "text/plain")
@@ -1377,7 +1489,8 @@ class ReaderActivity : BaseActivity() {
      * this case the activity is closed and a toast is shown to the user.
      */
     private fun setInitialChapterError(error: Throwable) {
-        logcat(LogPriority.ERROR) { "Reader initial chapter load failed" }
+        val category = ReaderInitialChapterLoadFailurePolicy.category(error)
+        logcat(LogPriority.ERROR) { "Reader initial chapter load failed (${category.name})" }
         finish()
         toast(with(this) { error.formattedMessage })
     }

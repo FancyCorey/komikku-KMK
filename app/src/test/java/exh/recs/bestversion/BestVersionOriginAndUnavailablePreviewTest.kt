@@ -1,6 +1,7 @@
 package exh.recs.bestversion
 
 // KMK v0.8.18 -->
+import exh.recs.RecommendationErrorKind
 import exh.recs.matching.MangaIdentityKey
 import kotlinx.collections.immutable.persistentMapOf
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -98,7 +99,11 @@ class BestVersionOriginAndUnavailablePreviewTest {
 
     @Test
     fun `Skipped is a distinct terminal state from PreviewError`() {
-        assertTrue(CandidatePreviewState.Skipped != CandidatePreviewState.PreviewError("x"))
+        assertTrue(
+            CandidatePreviewState.Skipped != CandidatePreviewState.PreviewError(
+                BestVersionErrorReason.Recommendation(RecommendationErrorKind.Internal),
+            ),
+        )
     }
 }
 // KMK <--

@@ -96,7 +96,6 @@ object ExtensionApkExporter {
         data object WriteFailed : ExportResult
     }
 
-    // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 5 -->
     /**
      * Removes exactly the document a caller just exported, through the same SAF `Uri` the user
      * granted write access to via the system document picker (`ACTION_CREATE_DOCUMENT` /

@@ -2,6 +2,7 @@ package exh.recs
 
 // KMK -->
 import tachiyomi.domain.manga.model.Manga
+import java.util.Locale
 
 /**
  * Accumulates [PersonalRecommendation] results from multiple sources and ranks them for
@@ -154,7 +155,7 @@ internal class CombinedPicksAccumulator {
         }
 
         private fun normalizeForDedup(s: String): String =
-            s.lowercase()
+            s.lowercase(Locale.ROOT)
                 .replace(Regex("[^a-z0-9]"), " ")
                 .trim()
                 .replace(Regex("\\s+"), " ")

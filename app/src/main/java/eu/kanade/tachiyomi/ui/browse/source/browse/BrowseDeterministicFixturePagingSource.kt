@@ -21,7 +21,7 @@ enum class BrowseDebugFixtureMode(val prefValue: String) {
     }
 }
 
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: deterministic,
+// Deterministic,
 // source-generic failure matching the terminal state declared by the
 // `browse-deterministic-source-failure` host fixture (network-unavailable, retryable, no library
 // mutation). Never touches a real [eu.kanade.tachiyomi.source.Source], the network, or any real

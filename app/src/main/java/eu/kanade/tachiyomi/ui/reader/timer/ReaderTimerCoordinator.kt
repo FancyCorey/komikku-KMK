@@ -46,6 +46,8 @@ class ReaderTimerCoordinator(
     fun reset() = dispatch(ReaderTimerEvent.Reset)
     fun stop() = dispatch(ReaderTimerEvent.Stop)
 
+    fun restore(session: ReaderTimerSession) = dispatch(ReaderTimerEvent.Restore(session))
+
     /** Call from ReaderActivity.onResume (idempotent — a no-op unless a background-pause is active). */
     fun onReaderForeground() = dispatch(ReaderTimerEvent.ReaderForeground)
 

@@ -28,6 +28,9 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
 import exh.eh.EHentaiUpdateHelper
+import exh.recs.bestversion.fixture.BestVersionPairedFixtureRuntime
+import exh.recs.bridge.fixture.AlternateSourceReaderFixtureRuntime
+import exh.uconfig.EHConfigurationCoordinator
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
@@ -178,6 +181,9 @@ class AppModule(val app: Application) : InjektModule {
 
         // SY -->
         addSingletonFactory { EHentaiUpdateHelper(app) }
+        addSingletonFactory { EHConfigurationCoordinator(app) }
+        addSingletonFactory { BestVersionPairedFixtureRuntime() }
+        addSingletonFactory { AlternateSourceReaderFixtureRuntime(app) }
 
         addSingletonFactory { PagePreviewCache(app) }
         // SY <--

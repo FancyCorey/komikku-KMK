@@ -129,7 +129,7 @@
     <string name="scale_type_3_2">3:2</string>
     <string name="action_manual_install">Hand­matige installatie</string>
     <string name="connections_discord">Discord</string>
-    <string name="connections_discord_info">Deze Discord Service werkt met token loggen. Gebruik op eigen risico. Je token wordt lokaal opgeslagen en Anikku deelt het nergens anders</string>
+    <string name="connections_discord_info">Deze Discord Service werkt met token loggen. Gebruik op eigen risico. Je token wordt lokaal opgeslagen en %s deelt het nergens anders</string>
     <string name="pref_discord_online">🟢 Online</string>
     <string name="pref_category_discord_incognito">RPC Incognito</string>
     <string name="pref_discord_show_download_button_summary">Toont een knop om de app te downloaden</string>

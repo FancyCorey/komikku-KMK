@@ -45,6 +45,7 @@ abstract class SearchScreenModel(
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
+    private val forceAllSources: Boolean = false,
 ) : StateScreenModel<SearchScreenModel.State>(initialState) {
 
     private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
@@ -81,7 +82,9 @@ abstract class SearchScreenModel(
         // KMK -->
         screenModelScope.launch {
             preferences.globalSearchPinnedState().changes().collectLatest { state ->
-                mutableState.update { it.copy(sourceFilter = state) }
+                mutableState.update {
+                    it.copy(sourceFilter = if (forceAllSources) SourceFilter.All else state)
+                }
             }
         }
         // KMK <--
@@ -141,6 +144,10 @@ abstract class SearchScreenModel(
     }
 
     fun setSourceFilter(filter: SourceFilter) {
+        // Update the local state before searching. The preference flow is asynchronous, so
+        // searching immediately after only writing the preference can otherwise reuse the old
+        // filter and return without issuing the requested source search.
+        mutableState.update { it.copy(sourceFilter = if (forceAllSources) SourceFilter.All else filter) }
         preferences.globalSearchPinnedState().set(filter)
         search()
     }

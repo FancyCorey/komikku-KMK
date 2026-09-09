@@ -5,51 +5,40 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.DialogProperties
 import eu.kanade.tachiyomi.util.system.toast
-import exh.log.xLogE
 import exh.source.ExhPreferences
-import exh.uconfig.EHConfigurator
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import tachiyomi.core.common.util.lang.launchUI
+import exh.uconfig.EHConfigurationCoordinator
+import exh.uconfig.EHConfigurationState
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.sy.SYMR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun ConfigureExhDialog(run: Boolean, onRunning: () -> Unit) {
     val exhPreferences = remember {
         Injekt.get<ExhPreferences>()
     }
-    var warnDialogOpen by remember { mutableStateOf(false) }
-    var configureDialogOpen by remember { mutableStateOf(false) }
-    var configureFailedDialogOpen by remember { mutableStateOf<Exception?>(null) }
+    val coordinator = remember { Injekt.get<EHConfigurationCoordinator>() }
+    val state by coordinator.state.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(run) {
         if (run) {
-            if (exhPreferences.exhShowSettingsUploadWarning().get()) {
-                warnDialogOpen = true
-            } else {
-                configureDialogOpen = true
-            }
+            coordinator.request(exhPreferences.exhShowSettingsUploadWarning().get())
             onRunning()
         }
     }
 
-    if (warnDialogOpen) {
+    if (state == EHConfigurationState.AwaitingConfirmation) {
         AlertDialog(
-            onDismissRequest = { warnDialogOpen = false },
+            onDismissRequest = coordinator::dismissConfirmation,
             properties = DialogProperties(
                 dismissOnBackPress = false,
                 dismissOnClickOutside = false,
@@ -58,8 +47,7 @@ fun ConfigureExhDialog(run: Boolean, onRunning: () -> Unit) {
                 TextButton(
                     onClick = {
                         exhPreferences.exhShowSettingsUploadWarning().set(false)
-                        configureDialogOpen = true
-                        warnDialogOpen = false
+                        coordinator.confirm()
                     },
                 ) {
                     Text(text = stringResource(MR.strings.action_ok))
@@ -73,24 +61,7 @@ fun ConfigureExhDialog(run: Boolean, onRunning: () -> Unit) {
             },
         )
     }
-    if (configureDialogOpen) {
-        val context = LocalContext.current
-        LaunchedEffect(Unit) {
-            withContext(Dispatchers.IO + NonCancellable) {
-                try {
-                    delay(0.2.seconds)
-                    EHConfigurator(context).configureAll()
-                    launchUI {
-                        context.toast(SYMR.strings.eh_settings_successfully_uploaded)
-                    }
-                } catch (e: Exception) {
-                    configureFailedDialogOpen = e
-                    xLogE("Configuration error!", e)
-                } finally {
-                    configureDialogOpen = false
-                }
-            }
-        }
+    if (state == EHConfigurationState.Running) {
         AlertDialog(
             onDismissRequest = {},
             properties = DialogProperties(
@@ -106,25 +77,45 @@ fun ConfigureExhDialog(run: Boolean, onRunning: () -> Unit) {
             },
         )
     }
-    if (configureFailedDialogOpen != null) {
+    if (state == EHConfigurationState.Failed) {
         AlertDialog(
-            onDismissRequest = { configureFailedDialogOpen = null },
+            onDismissRequest = coordinator::dismissFailure,
             confirmButton = {
-                TextButton(onClick = { configureFailedDialogOpen = null }) {
-                    Text(text = stringResource(MR.strings.action_ok))
+                TextButton(onClick = { coordinator.retry() }) {
+                    Text(text = stringResource(MR.strings.action_retry))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { coordinator.dismissFailure() }) {
+                    Text(text = stringResource(MR.strings.action_close))
                 }
             },
             title = {
                 Text(text = stringResource(SYMR.strings.eh_settings_configuration_failed))
             },
             text = {
-                Text(
-                    text = stringResource(
-                        SYMR.strings.eh_settings_configuration_failed_message,
-                        configureFailedDialogOpen?.message.orEmpty(),
-                    ),
-                )
+                Text(text = stringResource(SYMR.strings.eh_settings_configuration_failed_message_safe))
             },
         )
+    }
+
+    LaunchedEffect(state) {
+        if (state == EHConfigurationState.Succeeded) {
+            context.toast(SYMR.strings.eh_settings_successfully_uploaded)
+            coordinator.consumeSuccess()
+        }
+    }
+}
+
+/** Dispatches a request to the application-level [ConfigureExhDialog] host without rendering a second dialog. */
+@Composable
+fun RequestExhConfiguration(run: Boolean, onRunning: () -> Unit) {
+    val exhPreferences = remember { Injekt.get<ExhPreferences>() }
+    val coordinator = remember { Injekt.get<EHConfigurationCoordinator>() }
+    LaunchedEffect(run) {
+        if (run) {
+            coordinator.request(exhPreferences.exhShowSettingsUploadWarning().get())
+            onRunning()
+        }
     }
 }

@@ -1,9 +1,23 @@
 package exh.recs.discovery
 
 import eu.kanade.tachiyomi.extension.model.Extension
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 
 // KMK -->
 enum class SuggestionConfidence { LOW, MEDIUM }
+
+data class SourcesToTryRankingEvidence(
+    val catalogueSampleCount: Int = 0,
+    val noveltyScore: Double = 0.0,
+    val duplicateCoverage: Double = 0.0,
+    val catalogueFitScore: Double = 0.0,
+    val visibleCandidateCount: Int = 0,
+    val filteredOutCount: Int = 0,
+    val matchedGroupCount: Int = 0,
+    val topPicksContribution: Int = 0,
+    val recommendationQualityScore: Double = 0.0,
+    val catalogueMetadataConfidence: SourceEvaluationMetadataConfidence = SourceEvaluationMetadataConfidence.UNKNOWN,
+)
 
 sealed interface NonInstalledSuggestionReason {
     data class LanguageMatch(val lang: String) : NonInstalledSuggestionReason
@@ -34,6 +48,7 @@ data class NonInstalledSourceSuggestion(
     val score: Double,
     val confidence: SuggestionConfidence,
     val reasons: List<NonInstalledSuggestionReason>,
+    val rankingEvidence: SourcesToTryRankingEvidence = SourcesToTryRankingEvidence(),
 ) {
     val dismissalKey: String = buildDismissalKey(extension.signatureHash, extension.pkgName, source?.id)
     val displayName: String = source?.name ?: extension.name

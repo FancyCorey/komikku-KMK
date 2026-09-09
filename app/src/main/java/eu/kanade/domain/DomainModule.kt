@@ -22,6 +22,7 @@ import eu.kanade.domain.source.interactor.ToggleLanguage
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.interactor.ToggleSourcePin
 import eu.kanade.domain.track.interactor.AddTracks
+import eu.kanade.domain.track.interactor.RecordLocalTrackedChapterProgress
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
@@ -142,7 +143,7 @@ class DomainModule : InjektModule {
         addFactory { SetExcludedScanlators(get()) }
         addFactory {
             MigrateMangaUseCase(
-                get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+                get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
             )
         }
 
@@ -151,6 +152,7 @@ class DomainModule : InjektModule {
 
         addSingletonFactory<TrackRepository> { TrackRepositoryImpl(get()) }
         addFactory { TrackChapter(get(), get(), get(), get()) }
+        addFactory { RecordLocalTrackedChapterProgress(get()) }
         addFactory { AddTracks(get(), get(), get(), get()) }
         addFactory { RefreshTracks(get(), get(), get(), get()) }
         addFactory { DeleteTrack(get()) }
@@ -165,16 +167,14 @@ class DomainModule : InjektModule {
         addFactory { GetBookmarkedChaptersByMangaId(get(), get(), get()) }
         addFactory { GetChapterByUrlAndMangaId(get()) }
         addFactory { UpdateChapter(get()) }
-        addFactory { SetReadStatus(get(), get(), get(), get(), get()) }
+        addFactory { SetReadStatus(get(), get(), get(), get(), get(), get()) }
         addFactory { ShouldUpdateDbChapter() }
         addFactory { SyncChaptersWithSource(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
         addFactory { GetAvailableScanlators(get()) }
         addFactory { FilterChaptersForDownload(get(), get(), get(), get()) }
-        // KMK v0.8.10-fix1: was never registered -- BulkFavoriteScreenModel's constructor default
-        // arg `Injekt.get()` for this type threw an uncaught InjektionException immediately on
-        // construction, which happens for any Browse/Global Search/manga-update bulk-selection flow.
-        // See docs/community/KMK_RECS_V0_8_10_FIX1_CRASH_FIX_IMPLEMENTATION.md for the confirmed
-        // device stack trace and root cause.
+        // BulkFavoriteScreenModel resolves this interactor through Injekt during construction.
+        // Register it here so Browse, Global Search, and manga-update bulk-selection flows cannot fail
+        // before their screen model finishes initializing.
         addFactory {
             UpdateMangaFromRemote(
                 get(),

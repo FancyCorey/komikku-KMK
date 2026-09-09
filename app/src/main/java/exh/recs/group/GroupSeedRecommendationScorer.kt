@@ -2,6 +2,7 @@ package exh.recs.group
 
 // KMK -->
 import tachiyomi.domain.manga.model.Manga
+import java.util.Locale
 
 /**
  * Pure scorer that computes the group-seed component of a recommendation score.
@@ -33,7 +34,7 @@ object GroupSeedRecommendationScorer {
         if (seed.seedTags.isEmpty()) return 0.0
 
         val candidateGenres = candidate.genre
-            ?.map { g -> (aliasMap[g.trim().lowercase()] ?: g.trim().lowercase()) }
+            ?.map { g -> (aliasMap[g.trim().lowercase(Locale.ROOT)] ?: g.trim().lowercase(Locale.ROOT)) }
             ?.filter { it.isNotBlank() }
             ?.toSet()
             ?: return 0.0

@@ -15,15 +15,19 @@ package exh.recs
  */
 object ForYouResultBudgetPolicy {
 
-    /** Every value the picker offers. Values outside this set (corrupt/future/past preference data) fall back to [DEFAULT]. */
-    val SUPPORTED_VALUES = listOf(5, 10, 15, 20, 30)
+    /** The inclusive range accepted by the shared slider and exact-entry control. */
+    const val MIN = 5
+    const val MAX = 30
+
+    /** Kept as a named range for callers that need to expose or test all valid values. */
+    val SUPPORTED_VALUES = (MIN..MAX).toList()
 
     const val DEFAULT = 10
 
     /** The boosted-row floor this policy has always guaranteed (BrowsePersonalRecommendationsScreenModel's prior BOOSTED_RESULTS_PER_SOURCE). */
     const val BOOSTED_MINIMUM = 20
 
-    /** Validates a stored/raw preference value, falling back to [DEFAULT] for anything not in [SUPPORTED_VALUES]. */
+    /** Validates a stored/raw preference value, falling back to [DEFAULT] outside [MIN]..[MAX]. */
     fun validate(configuredValue: Int): Int = if (configuredValue in SUPPORTED_VALUES) configuredValue else DEFAULT
 
     /**

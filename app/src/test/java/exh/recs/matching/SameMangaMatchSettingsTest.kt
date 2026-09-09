@@ -39,8 +39,8 @@ class SameMangaMatchSettingsTest {
     }
 
     @Test
-    fun `invalid cap 3 clamps to default`() {
-        assertEquals(2, SameMangaMatchSettings.clampResultCap(3))
+    fun `exact cap 3 is accepted`() {
+        assertEquals(3, SameMangaMatchSettings.clampResultCap(3))
     }
 
     @Test
@@ -81,18 +81,48 @@ class SameMangaMatchSettingsTest {
     }
 
     @Test
-    fun `invalid sample size 3 clamps to default`() {
-        assertEquals(5, SameMangaMatchSettings.clampSampleSize(3))
+    fun `exact sample size 3 is accepted`() {
+        assertEquals(3, SameMangaMatchSettings.clampSampleSize(3))
     }
 
     @Test
-    fun `invalid sample size 7 clamps to default`() {
-        assertEquals(5, SameMangaMatchSettings.clampSampleSize(7))
+    fun `exact sample size 7 is accepted`() {
+        assertEquals(7, SameMangaMatchSettings.clampSampleSize(7))
     }
 
     @Test
     fun `invalid sample size negative clamps to default`() {
         assertEquals(5, SameMangaMatchSettings.clampSampleSize(-5))
+    }
+
+    // KMK --> EC-04 2026-09-01: migration-safe legacy fallback -- corrected 2026-09-01. A legacy
+    // `true` reading is indistinguishable from "never touched the old toggle" (its own default was
+    // `true`), so it can no longer be trusted as an explicit "keep ALL" choice; it must resolve to
+    // the same EXACT_NAME a fresh install gets. A legacy `false` reading IS unambiguous -- it only
+    // occurs when a user actually disabled the old toggle -- so that explicit opt-out is preserved.
+    @Test
+    fun `missing mode with untouched legacy default resolves to the truthful exact-title default`() {
+        assertEquals(
+            SameMangaPreselectionMode.EXACT_NAME,
+            SameMangaPreselectionMode.resolve("", legacyPreselect = true),
+        )
+    }
+
+    @Test
+    fun `missing mode preserves explicit legacy disabled selection`() {
+        assertEquals(
+            SameMangaPreselectionMode.NONE,
+            SameMangaPreselectionMode.resolve("", legacyPreselect = false),
+        )
+    }
+    // KMK <--
+
+    @Test
+    fun `explicit exact title mode overrides legacy value`() {
+        assertEquals(
+            SameMangaPreselectionMode.EXACT_NAME,
+            SameMangaPreselectionMode.resolve("exact_name", legacyPreselect = false),
+        )
     }
 }
 // KMK <--

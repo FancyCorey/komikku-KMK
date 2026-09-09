@@ -3,9 +3,15 @@ package exh.recs.bestversion
 import cafe.adriel.voyager.core.model.StateScreenModel
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.model.SChapter
+import exh.recs.matching.CrossSourceIdentityDecisionController
 import exh.recs.matching.MangaIdentityKey
 import exh.recs.matching.SameMangaCandidateResult
+import exh.util.CrossSourceIdentityUndoJournal
+import exh.util.DispatcherHandle
 import exh.util.FakePreferenceStore
+import exh.util.FakeTasteRepository
+import exh.util.MigrationReceiptJournal
 import exh.util.NonUndoableEventJournal
 import exh.util.NonUndoableEventType
 import io.mockk.coEvery
@@ -16,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -33,6 +40,8 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.taste.interactor.GetCrossSourceIdentityDecisions
+import tachiyomi.domain.taste.interactor.ReplaceCrossSourceIdentityDecisions
 import tachiyomi.domain.taste.interactor.UpsertMangaSourceQualitySignal
 import java.util.concurrent.Executors
 
@@ -72,6 +81,8 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
     fun tearDown() {
         Dispatchers.resetMain()
         NonUndoableEventJournal.clear()
+        MigrationReceiptJournal.clear()
+        CrossSourceIdentityUndoJournal.clear()
     }
 
     private fun manga(source: Long, url: String, id: Long = source) =
@@ -112,7 +123,7 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
         sourcePreferences: SourcePreferences = SourcePreferences(FakePreferenceStore()),
         sourceManager: SourceManager = mockk(relaxed = true),
         upsertQualitySignal: UpsertMangaSourceQualitySignal = mockk(relaxed = true),
-        dispatcherHandle: DispatcherHandle = DispatcherHandle(UnconfinedTestDispatcher()),
+        dispatcherHandle: DispatcherHandle = DispatcherHandle(StandardTestDispatcher()),
     ): BestVersionCompareScreenModel {
         coEvery { getManga.await(originMangaId) } returns null
         return BestVersionCompareScreenModel(
@@ -124,13 +135,75 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
             networkToLocalManga = mockk(relaxed = true),
             migrateMangaUseCase = migrateMangaUseCase,
             upsertQualitySignal = upsertQualitySignal,
+            isLowRamDevice = false,
             dispatcherHandle = dispatcherHandle,
+            candidateSearchGateway = mockk(relaxed = true),
+            identityController = identityController(),
+        )
+    }
+
+    private fun identityController(): CrossSourceIdentityDecisionController {
+        val repository = FakeTasteRepository()
+        return CrossSourceIdentityDecisionController(
+            GetCrossSourceIdentityDecisions(repository),
+            ReplaceCrossSourceIdentityDecisions(repository),
         )
     }
 
     @Test
+    fun `retryCandidate retries every failed preview while preserving loaded and skipped rows`() = runTest {
+        val model = buildModel()
+        val failed = manga(2L, "failed")
+        val loaded = manga(3L, "loaded")
+        val skipped = manga(4L, "skipped")
+        val failedKey = MangaIdentityKey(failed.source, failed.url)
+        val loadedKey = MangaIdentityKey(loaded.source, loaded.url)
+        val skippedKey = MangaIdentityKey(skipped.source, skipped.url)
+        val loadedPreview = CandidatePreviewState.Loaded(emptyList())
+        val origin = manga(1L, "origin")
+        model.forceOriginManga(origin)
+
+        model.forceState(
+            BestVersionCompareScreenModel.State(
+                step = BestVersionStep.ComparePreview,
+                originManga = origin,
+                candidates = persistentMapOf(
+                    mockk<Source>(relaxed = true) to SameMangaCandidateResult.Success(listOf(failed, loaded, skipped)),
+                ),
+                selectedKeys = setOf(failedKey, loadedKey, skippedKey),
+                candidateChapters = persistentMapOf(
+                    failedKey to CandidateChapterState.Available(SChapter.create(), 1),
+                    loadedKey to CandidateChapterState.Available(SChapter.create(), 1),
+                    skippedKey to CandidateChapterState.Unavailable,
+                ),
+                candidatePreviews = persistentMapOf(
+                    failedKey to CandidatePreviewState.PreviewError(BestVersionErrorReason.OriginMissing),
+                    loadedKey to loadedPreview,
+                    skippedKey to CandidatePreviewState.Skipped,
+                ),
+            ),
+        )
+
+        model.retryCandidate(failedKey)
+
+        assertEquals(CandidatePreviewState.Loading, model.state.value.candidatePreviews[failedKey])
+        assertEquals(loadedPreview, model.state.value.candidatePreviews[loadedKey])
+        assertEquals(CandidatePreviewState.Skipped, model.state.value.candidatePreviews[skippedKey])
+        model.onDispose()
+    }
+
+    @Test
+    fun `missing origin uses a typed localized error reason`() = runTest {
+        val model = buildModel()
+
+        advanceUntilIdle()
+
+        assertEquals(BestVersionStep.Error(BestVersionErrorReason.OriginMissing), model.state.value.step)
+    }
+
+    @Test
     fun `keepCurrentVersion reaches Done without invoking the migration use case or recording a receipt`() = runTest {
-        // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 3: direct call
+        // Direct call
         // coverage for the "keep current" path (plan item: "candidate preview, keep-current,
         // successful local migration..."). Previously only the resulting State shape was asserted
         // (BestVersionOriginAndUnavailablePreviewTest); this exercises the real
@@ -196,19 +269,26 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
     }
 
     @Test
-    fun `a successful migration records no receipt when Evaluation Mode is off`() = runTest {
+    fun `a successful migration records a correlated event and receipt when Evaluation Mode is off`() = runTest {
         val origin = manga(source = 1L, url = "/origin")
         val target = manga(source = 2L, url = "/target", id = 99L)
+        val sourcePreferences = SourcePreferences(FakePreferenceStore())
+        sourcePreferences.evaluationMode().set(false)
         val migrateMangaUseCase = mockk<MigrateMangaUseCase>()
         coEvery { migrateMangaUseCase(current = eq(origin), target = eq(target), replace = eq(false), presetFlags = any(), throttleFunc = any()) } returns
             MigrationOutcome.Success(requestedFlags = emptySet(), completedFlags = emptySet(), skippedFlags = emptySet())
-        val model = buildModel(migrateMangaUseCase = migrateMangaUseCase)
+        val model = buildModel(migrateMangaUseCase = migrateMangaUseCase, sourcePreferences = sourcePreferences)
         model.seedReadyToMigrate(origin, target)
 
         model.confirmMigration(replace = false)
         advanceUntilIdle()
 
-        assertTrue(NonUndoableEventJournal.isEmpty(), "Evaluation Mode is off -- no receipt may be recorded")
+        val event = NonUndoableEventJournal.snapshot().single()
+        val receipt = MigrationReceiptJournal.snapshot().single()
+        assertEquals(NonUndoableEventType.MIGRATION_COMPLETED, event.eventType)
+        assertEquals(event.id, receipt.id, "the event and recovery receipt must share one correlation id")
+        assertEquals(origin.id, receipt.originMangaId)
+        assertEquals(target.id, receipt.targetMangaId)
         assertEquals(BestVersionStep.Done, model.state.value.step, "the migration itself must still succeed")
     }
 
@@ -332,6 +412,9 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
             upsertQualitySignal = mockk(relaxed = true),
             sourcePreferences = SourcePreferences(FakePreferenceStore()),
             sourceManager = mockk(relaxed = true),
+            isLowRamDevice = false,
+            candidateSearchGateway = mockk(relaxed = true),
+            identityController = identityController(),
         )
         val handle = model.javaClass.getDeclaredField("dispatcherHandle").apply { isAccessible = true }.get(model) as DispatcherHandle
         val executorService = (handle.dispatcher as kotlinx.coroutines.ExecutorCoroutineDispatcher).executor as java.util.concurrent.ExecutorService
@@ -376,7 +459,7 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
     fun `onDispose never attempts to close a caller-supplied test dispatcher`() = runTest {
         // A TestDispatcher wrapped in the default no-op-close DispatcherHandle must never be closed --
         // this test exists to prove onDispose() doesn't throw or otherwise misbehave for it either.
-        val model = buildModel(dispatcherHandle = DispatcherHandle(UnconfinedTestDispatcher()))
+        val model = buildModel(dispatcherHandle = DispatcherHandle(StandardTestDispatcher()))
 
         model.onDispose()
     }
@@ -388,7 +471,7 @@ class BestVersionCompareScreenModelConfirmMigrationTest {
         // fail if the guard in onDispose() were ever removed even for a close action that isn't naturally
         // idempotent.
         var closeCount = 0
-        val model = buildModel(dispatcherHandle = DispatcherHandle(UnconfinedTestDispatcher()) { closeCount++ })
+        val model = buildModel(dispatcherHandle = DispatcherHandle(StandardTestDispatcher()) { closeCount++ })
 
         model.onDispose()
         model.onDispose()

@@ -1,0 +1,50 @@
+-- KMK A12 Batch 05: role-ordered Alternate Source Reading Bridge foundation. Additive only.
+CREATE TABLE IF NOT EXISTS alternate_source_bridge (
+    primary_source INTEGER NOT NULL CHECK(primary_source > 0),
+    primary_url TEXT NOT NULL CHECK(length(primary_url) BETWEEN 1 AND 4096),
+    alternate_source INTEGER NOT NULL CHECK(alternate_source > 0),
+    alternate_url TEXT NOT NULL CHECK(length(alternate_url) BETWEEN 1 AND 4096),
+    version INTEGER NOT NULL CHECK(version = 1),
+    offset_milli INTEGER CHECK(offset_milli BETWEEN -1000000 AND 1000000),
+    offset_state TEXT CHECK(offset_state IS NULL OR offset_state IN ('PROVISIONAL', 'CONFIRMED', 'CONFLICT')),
+    continuation_primary_chapter_url TEXT CHECK(continuation_primary_chapter_url IS NULL OR length(continuation_primary_chapter_url) BETWEEN 1 AND 4096),
+    automatic_return INTEGER NOT NULL DEFAULT 0,
+    review_state TEXT NOT NULL CHECK(review_state IN ('CURRENT', 'CONFLICT')),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    deleted_at INTEGER CHECK(deleted_at IS NULL OR (deleted_at >= created_at AND deleted_at <= updated_at)),
+    PRIMARY KEY (primary_source, primary_url, alternate_source, alternate_url),
+    CHECK(primary_source != alternate_source OR primary_url != alternate_url),
+    CHECK((offset_milli IS NULL) = (offset_state IS NULL)),
+    CHECK(automatic_return = 0 OR continuation_primary_chapter_url IS NOT NULL),
+    CHECK(review_state != 'CONFLICT' OR automatic_return = 0)
+);
+
+CREATE INDEX IF NOT EXISTS alternate_source_bridge_updated_index ON alternate_source_bridge(updated_at);
+
+CREATE TABLE IF NOT EXISTS alternate_source_bridge_mapping (
+    primary_source INTEGER NOT NULL CHECK(primary_source > 0),
+    primary_url TEXT NOT NULL CHECK(length(primary_url) BETWEEN 1 AND 4096),
+    alternate_source INTEGER NOT NULL CHECK(alternate_source > 0),
+    alternate_url TEXT NOT NULL CHECK(length(alternate_url) BETWEEN 1 AND 4096),
+    target_id TEXT NOT NULL CHECK(length(target_id) = 36),
+    primary_chapter_url TEXT CHECK(primary_chapter_url IS NULL OR length(primary_chapter_url) BETWEEN 1 AND 4096),
+    alternate_chapter_url TEXT CHECK(alternate_chapter_url IS NULL OR length(alternate_chapter_url) BETWEEN 1 AND 4096),
+    relation TEXT NOT NULL CHECK(relation IN ('EXACT', 'OFFSET', 'DUPLICATE', 'PRIMARY_MISSING', 'ALTERNATE_SKIPPED')),
+    state TEXT NOT NULL CHECK(state IN ('PROVISIONAL', 'CONFIRMED', 'CONFLICT')),
+    offset_milli INTEGER CHECK(offset_milli BETWEEN -1000000 AND 1000000),
+    version INTEGER NOT NULL CHECK(version = 1),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    deleted_at INTEGER CHECK(deleted_at IS NULL OR (deleted_at >= created_at AND deleted_at <= updated_at)),
+    PRIMARY KEY (primary_source, primary_url, alternate_source, alternate_url, target_id),
+    CHECK(primary_source != alternate_source OR primary_url != alternate_url),
+    CHECK(
+        (relation IN ('EXACT', 'DUPLICATE') AND primary_chapter_url IS NOT NULL AND alternate_chapter_url IS NOT NULL AND offset_milli IS NULL)
+        OR (relation = 'OFFSET' AND primary_chapter_url IS NOT NULL AND alternate_chapter_url IS NOT NULL AND offset_milli IS NOT NULL)
+        OR (relation = 'PRIMARY_MISSING' AND primary_chapter_url IS NULL AND alternate_chapter_url IS NOT NULL AND offset_milli IS NULL)
+        OR (relation = 'ALTERNATE_SKIPPED' AND alternate_chapter_url IS NOT NULL AND offset_milli IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS alternate_source_bridge_mapping_updated_index ON alternate_source_bridge_mapping(updated_at);

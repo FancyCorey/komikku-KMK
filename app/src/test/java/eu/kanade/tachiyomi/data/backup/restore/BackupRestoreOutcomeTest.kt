@@ -17,23 +17,21 @@ import org.junit.jupiter.api.Test
 class BackupRestoreOutcomeTest {
 
     @Test
-    fun `a manual restore with zero errors records an event when Evaluation Mode is on`() {
+    fun `a manual restore with zero errors records an event regardless of Evaluation Mode`() {
         assertTrue(
             shouldRecordBackupRestoreEvent(
                 isSync = false,
                 outcome = BackupRestoreOutcome.Success(restoredCount = 10),
-                evaluationModeEnabled = true,
             ),
         )
     }
 
     @Test
-    fun `a manual restore with zero errors records nothing when Evaluation Mode is off`() {
-        assertFalse(
+    fun `a manual restore with zero errors records an event when Evaluation Mode is off`() {
+        assertTrue(
             shouldRecordBackupRestoreEvent(
                 isSync = false,
                 outcome = BackupRestoreOutcome.Success(restoredCount = 10),
-                evaluationModeEnabled = false,
             ),
         )
     }
@@ -44,7 +42,6 @@ class BackupRestoreOutcomeTest {
             shouldRecordBackupRestoreEvent(
                 isSync = true,
                 outcome = BackupRestoreOutcome.Success(restoredCount = 10),
-                evaluationModeEnabled = true,
             ),
         )
     }
@@ -55,7 +52,6 @@ class BackupRestoreOutcomeTest {
             shouldRecordBackupRestoreEvent(
                 isSync = false,
                 outcome = BackupRestoreOutcome.PartialSuccess(restoredCount = 8, errorCount = 2),
-                evaluationModeEnabled = true,
             ),
         )
     }
@@ -66,7 +62,6 @@ class BackupRestoreOutcomeTest {
             shouldRecordBackupRestoreEvent(
                 isSync = true,
                 outcome = BackupRestoreOutcome.PartialSuccess(restoredCount = 8, errorCount = 2),
-                evaluationModeEnabled = true,
             ),
         )
     }

@@ -4,7 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -14,18 +18,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerGracePolicy
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerSession
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerWarningPolicy
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK v0.8.4 -->
@@ -44,15 +49,31 @@ fun ReaderTimerDialog(
     onResume: () -> Unit,
     onReset: () -> Unit,
     onStop: () -> Unit,
+    customMinutes: String,
+    warnMinutesSelected: Set<Int>,
+    finishCurrentChapter: Boolean,
+    allowExtraChapter: Boolean,
+    onDraftChange: (String, Set<Int>, Boolean, Boolean) -> Unit,
     onConfigureSchedule: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = { Text(stringResource(KMR.strings.reading_timer_title)) },
         text = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 if (session.phase == ReaderTimerPhase.IDLE || session.phase == ReaderTimerPhase.EXPIRED) {
-                    ReaderTimerSetupContent(onStart = onStart)
+                    ReaderTimerSetupContent(
+                        customMinutes = customMinutes,
+                        warnMinutesSelected = warnMinutesSelected,
+                        finishCurrentChapter = finishCurrentChapter,
+                        allowExtraChapter = allowExtraChapter,
+                        onDraftChange = onDraftChange,
+                        onStart = onStart,
+                    )
                 } else {
                     ReaderTimerRunningContent(session = session, onPause = onPause, onResume = onResume, onReset = onReset)
                 }
@@ -84,13 +105,13 @@ fun ReaderTimerDialog(
 
 @Composable
 private fun ReaderTimerSetupContent(
+    customMinutes: String,
+    warnMinutesSelected: Set<Int>,
+    finishCurrentChapter: Boolean,
+    allowExtraChapter: Boolean,
+    onDraftChange: (String, Set<Int>, Boolean, Boolean) -> Unit,
     onStart: (durationMs: Long, warningPolicy: ReaderTimerWarningPolicy, gracePolicy: ReaderTimerGracePolicy) -> Unit,
 ) {
-    var customMinutes by rememberSaveable { mutableStateOf("") }
-    var warnMinutesSelected by rememberSaveable { mutableStateOf(setOf<Int>()) }
-    var finishCurrentChapter by rememberSaveable { mutableStateOf(true) }
-    var allowExtraChapter by rememberSaveable { mutableStateOf(false) }
-
     fun start(minutes: Int) {
         val bounded = minutes.coerceIn(1, MAX_CUSTOM_MINUTES)
         onStart(
@@ -123,7 +144,11 @@ private fun ReaderTimerSetupContent(
         ) {
             OutlinedTextField(
                 value = customMinutes,
-                onValueChange = { new -> if (new.length <= 3 && new.all(Char::isDigit)) customMinutes = new },
+                onValueChange = { new ->
+                    if (new.length <= 3 && new.all(Char::isDigit)) {
+                        onDraftChange(new, warnMinutesSelected, finishCurrentChapter, allowExtraChapter)
+                    }
+                },
                 label = { Text(stringResource(KMR.strings.reading_timer_custom_minutes)) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
@@ -142,25 +167,59 @@ private fun ReaderTimerSetupContent(
             modifier = Modifier.padding(top = MaterialTheme.padding.medium),
         )
         ReaderTimerWarningPolicy.SUPPORTED_MINUTES.sortedDescending().forEach { minute ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = minute in warnMinutesSelected,
-                    onCheckedChange = { checked ->
-                        warnMinutesSelected = if (checked) warnMinutesSelected + minute else warnMinutesSelected - minute
-                    },
+            val checked = minute in warnMinutesSelected
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = checked,
+                        role = Role.Checkbox,
+                        onValueChange = { value ->
+                            val updated = if (value) warnMinutesSelected + minute else warnMinutesSelected - minute
+                            onDraftChange(customMinutes, updated, finishCurrentChapter, allowExtraChapter)
+                        },
+                    ),
+            ) {
+                Checkbox(checked = checked, onCheckedChange = null)
+                Text(
+                    pluralStringResource(
+                        KMR.plurals.reading_timer_warning_minutes_option,
+                        count = minute,
+                        minute,
+                    ),
                 )
-                Text(stringResource(KMR.strings.reading_timer_warning_minutes_option, minute))
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = MaterialTheme.padding.small)) {
-            Checkbox(checked = finishCurrentChapter, onCheckedChange = { finishCurrentChapter = it })
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = MaterialTheme.padding.small)
+                .toggleable(
+                    value = finishCurrentChapter,
+                    role = Role.Checkbox,
+                    onValueChange = { onDraftChange(customMinutes, warnMinutesSelected, it, allowExtraChapter) },
+                ),
+        ) {
+            Checkbox(checked = finishCurrentChapter, onCheckedChange = null)
             Text(stringResource(KMR.strings.reading_timer_finish_chapter))
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = allowExtraChapter,
+                    role = Role.Checkbox,
+                    enabled = finishCurrentChapter,
+                    onValueChange = { onDraftChange(customMinutes, warnMinutesSelected, finishCurrentChapter, it) },
+                ),
+        ) {
             Checkbox(
                 checked = allowExtraChapter,
-                onCheckedChange = { allowExtraChapter = it },
+                onCheckedChange = null,
                 enabled = finishCurrentChapter,
             )
             Text(stringResource(KMR.strings.reading_timer_allow_extra_chapter))

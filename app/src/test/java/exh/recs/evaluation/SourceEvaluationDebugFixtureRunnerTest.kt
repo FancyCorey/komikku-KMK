@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: direct coverage for
+// Direct coverage for
 // the debug-only, deterministic Source Evaluation fixture runner. Proves each declared mode reaches
 // exactly the terminal state described by
 // the isolated source-evaluation fixture contract, that cancellation

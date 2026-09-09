@@ -241,8 +241,8 @@ object SettingsDataScreen : SearchableSettings {
         val lastAutoBackup by backupPreferences.lastAutoBackupTimestamp().collectAsState()
 
         val chooseBackup = rememberLauncherForActivityResult(
-            object : ActivityResultContracts.GetContent() {
-                override fun createIntent(context: Context, input: String): Intent {
+            object : ActivityResultContracts.OpenDocument() {
+                override fun createIntent(context: Context, input: Array<String>): Intent {
                     val intent = super.createIntent(context, input)
                     return Intent.createChooser(intent, context.stringResource(MR.strings.file_select_backup))
                 }
@@ -289,7 +289,7 @@ object SettingsDataScreen : SearchableSettings {
                                             }
 
                                             // no need to catch because it's wrapped with a chooser
-                                            chooseBackup.launch("*/*")
+                                            chooseBackup.launch(arrayOf("*/*"))
                                         } else {
                                             context.toast(MR.strings.restore_in_progress)
                                         }
@@ -429,7 +429,7 @@ object SettingsDataScreen : SearchableSettings {
         }
 
         val context = LocalContext.current
-        // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 2: CSV export
+        // CSV export
         // lifecycle ownership moved off this Composable's `remember`/`rememberCoroutineScope()` and
         // onto `SettingsDataScreenModel` (screenModelScope-owned). `SettingsDataScreen` is itself a
         // Voyager `Screen` (`SearchableSettings : Screen`, pushed via the settings navigator) rather
@@ -447,14 +447,14 @@ object SettingsDataScreen : SearchableSettings {
             favorites = getFavorites.await()
         }
 
-        // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 2: the favorite
+        // The favorite
         // list and export options are snapshotted into `exportSnapshot` at the same
         // ColumnSelectionDialog confirm click that launches the picker (the last point before the
         // external CreateDocument boundary), not re-read from live `favorites`/`exportOptions` state
         // inside the launcher callback after the picker returns -- mirroring the Phase 1 bulk-export
         // selection-snapshot fix.
         var exportSnapshot by remember { mutableStateOf<Pair<List<Manga>, ExportOptions>?>(null) }
-        // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2: the operation is reserved
+        // The operation is reserved
         // at the ColumnSelectionDialog confirm click, before the picker launches -- see onConfirm below.
         var exportPendingOperationId by remember { mutableStateOf<String?>(null) }
         val saveFileLauncher = rememberLauncherForActivityResult(
@@ -506,7 +506,7 @@ object SettingsDataScreen : SearchableSettings {
             )
         }
 
-        // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 Phase 2C: exact-Uri-only Remove/Keep
+        // Exact-Uri-only Remove/Keep
         // cleanup for the CSV export, offered for every outcome (not only success) -- see
         // SafExportCoordinator.
         exportCleanupOffer?.let { offer ->
@@ -726,8 +726,8 @@ object SettingsDataScreen : SearchableSettings {
             Preference.PreferenceItem.TextPreference(
                 title = stringResource(SYMR.strings.pref_google_drive_sign_in),
                 onClick = {
-                    val intent = googleDriveSync.getSignInIntent()
-                    context.startActivity(intent)
+                    googleDriveSync.getSignInIntent()?.let(context::startActivity)
+                        ?: context.toast(SYMR.strings.google_drive_not_signed_in)
                 },
             ),
             getGoogleDrivePurge(),
@@ -998,7 +998,7 @@ object SettingsDataScreen : SearchableSettings {
     // SY <--
 }
 
-// KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 2: real lifecycle owner
+// Real lifecycle owner
 // for the library CSV export route -- screenModelScope-scoped, not Composable-`remember`-owned.
 // `SettingsDataScreen` (the enclosing `object`) is itself the `Screen` this model is scoped to (see
 // `SearchableSettings : Screen`), so this model's lifetime matches every other CreateDocument writer

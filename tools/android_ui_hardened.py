@@ -16,6 +16,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
+if __package__:
+    from .workspace_paths import find_workspace_root
+else:
+    from workspace_paths import find_workspace_root
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PACKAGE = os.environ.get("ANDROID_APP_PACKAGE", "app.komikku.dev")
 
@@ -205,9 +215,12 @@ def find_adb() -> str:
     configured = os.environ.get("ADB_PATH")
     if configured:
         return configured
+    workspace_root = find_workspace_root(ROOT)
     for path in (
         ROOT / ".tools" / "android-sdk" / "platform-tools" / "adb.exe",
         ROOT / ".tools" / "android-sdk" / "platform-tools" / "adb",
+        workspace_root / "komikku-source" / ".tools" / "android-sdk" / "platform-tools" / "adb.exe",
+        workspace_root / "komikku-source" / ".tools" / "android-sdk" / "platform-tools" / "adb",
     ):
         if path.exists():
             return str(path)
@@ -227,7 +240,15 @@ class Adb:
     def run(self, *args: str, timeout: Optional[float] = None, binary: bool = False) -> str | bytes:
         command = [self.adb] + (["-s", self.serial] if self.serial else []) + list(args)
         try:
-            result = subprocess.run(command, capture_output=True, check=False, timeout=timeout or self.timeout, text=not binary)
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                timeout=timeout or self.timeout,
+                text=not binary,
+                encoding=None if binary else "utf-8",
+                errors=None if binary else "replace",
+            )
         except subprocess.TimeoutExpired as exc:
             raise AdbTransportError(f"ADB timed out: {' '.join(command)}") from exc
         if result.returncode != 0:
@@ -266,8 +287,14 @@ class Adb:
 
     def hierarchy(self) -> str:
         self.ensure_target()
-        self.shell("uiautomator", "dump", "/sdcard/codex_window.xml", timeout=20)
-        return self.shell("cat", "/sdcard/codex_window.xml")
+        raw = str(self.run("exec-out", "uiautomator", "dump", "/dev/tty", timeout=20))
+        if "already registered" in raw.lower() or raw.strip() == "Killed":
+            raise AdbTransportError("Android UI automation is busy; wait for the prior interaction to settle before retrying.")
+        start = raw.find("<?xml")
+        end = raw.rfind("</hierarchy>")
+        if start < 0 or end < start:
+            raise AdbTransportError("The device did not return a fresh, complete UI hierarchy.")
+        return raw[start : end + len("</hierarchy>")]
 
     def elements(self, include_all: bool = False) -> list[UiElement]:
         try:
@@ -319,12 +346,14 @@ class Adb:
 
 def deduplicate(elements: list[UiElement]) -> list[UiElement]:
     result: list[UiElement] = []
+    old_to_new: dict[int, int] = {}
     seen: set[tuple[object, ...]] = set()
     for element in elements:
         key = (element.text, element.description, element.resource_id, element.class_name, element.bounds.as_string(), element.clickable, element.selected)
         if key in seen:
             continue
         seen.add(key)
+        old_to_new[element.index] = len(result)
         result.append(element)
     return [
         UiElement(
@@ -344,7 +373,7 @@ def deduplicate(elements: list[UiElement]) -> list[UiElement]:
             checked=item.checked,
             checkable=item.checkable,
             bounds=item.bounds,
-            parent_index=item.parent_index,
+            parent_index=old_to_new.get(item.parent_index) if item.parent_index is not None else None,
             depth=item.depth,
         )
         for index, item in enumerate(result)
@@ -383,6 +412,56 @@ def resolve(elements: Iterable[UiElement], selector: Selector) -> UiElement:
     return candidates[0]
 
 
+def resolve_selected_text(elements: Iterable[UiElement], value: str, partial: bool = False) -> UiElement:
+    """Resolve a text label whose selectable ancestor reports selected=true."""
+    values = list(elements)
+    labels = [item for item in values if item.enabled and field_match(item.text, value, partial)]
+    if not labels:
+        raise ElementNotFoundError(f"Selected text {value!r} was not found.")
+    if len(labels) > 1:
+        raise AmbiguousSelectorError(f"Selected text {value!r} matched {len(labels)} labels.")
+    label = labels[0]
+    by_index = {item.index: item for item in values}
+    current = label
+    visited = set()
+    while current.index not in visited:
+        visited.add(current.index)
+        if current.selected or current.checked:
+            return current
+        if current.parent_index is None:
+            break
+        current = by_index.get(current.parent_index)
+        if current is None:
+            break
+    raise ActionVerificationError(f"Text {value!r} has no selected semantic ancestor.")
+
+
+def resolve_click_target(elements: Iterable[UiElement], item: UiElement) -> UiElement:
+    """Promote a semantic child label to its unique clickable ancestor."""
+    values = list(elements)
+    by_index = {value.index: value for value in values}
+    targets: list[UiElement] = []
+    parent_index = item.parent_index
+    visited: set[int] = set()
+    while parent_index is not None and parent_index not in visited:
+        visited.add(parent_index)
+        parent = by_index.get(parent_index)
+        if parent is None:
+            break
+        if parent.enabled and parent.clickable and parent.bounds.contains(item.bounds):
+            targets.append(parent)
+        parent_index = parent.parent_index
+    if item.enabled and item.clickable:
+        targets.append(item)
+    if not targets:
+        return item
+    if len(targets) > 1:
+        raise AmbiguousSelectorError(
+            f"Semantic item {item.text or item.description or item.resource_id!r} has {len(targets)} clickable ancestor targets."
+        )
+    return targets[0]
+
+
 def selector_from_args(args: argparse.Namespace) -> Selector:
     region = None
     if any(value is not None for value in (args.within_left, args.within_top, args.within_right, args.within_bottom)):
@@ -409,17 +488,21 @@ def selector_from_args(args: argparse.Namespace) -> Selector:
 
 def wait_visible(adb: Adb, selector: Selector, timeout: float = 10.0) -> UiElement:
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    while True:
         try:
             return resolve(adb.elements(), selector)
         except ElementNotFoundError:
-            time.sleep(0.25)
-    raise ActionVerificationError(f"Timed out waiting for selector: {selector}")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ActionVerificationError(f"Timed out waiting for selector: {selector}")
+            time.sleep(min(0.25, remaining))
 
 
 def tap(adb: Adb, selector: Selector, wait_selector: Optional[Selector] = None, timeout: float = 10.0) -> None:
-    item = resolve(adb.elements(), selector)
-    adb.shell("input", "tap", str(item.bounds.center_x), str(item.bounds.center_y))
+    elements = adb.elements()
+    item = resolve(elements, selector)
+    target = resolve_click_target(elements, item)
+    adb.shell("input", "tap", str(target.bounds.center_x), str(target.bounds.center_y))
     if wait_selector:
         wait_visible(adb, wait_selector, timeout)
 
@@ -446,18 +529,217 @@ def validate_routes(path: Path) -> dict:
         raise RouteValidationError(f"Could not read routes: {exc}") from exc
     if not isinstance(routes, dict):
         raise RouteValidationError("Routes root must be an object.")
-    allowed = {"click", "click-text", "click-description", "scroll-to-text", "back"}
+    allowed = {"back", "back-until-text", "click", "click-text", "click-description", "click-bottom-navigation-text", "ensure-bottom-navigation-text", "click-tab-text", "swipe-pager-to-text", "scroll-to-text"}
     for name, route in routes.items():
         if not isinstance(route, dict) or not isinstance(route.get("steps"), list):
             raise RouteValidationError(f"Route {name!r} needs a steps array.")
-        if "verify" not in route:
+        verification = route.get("verify")
+        if not isinstance(verification, dict):
             raise RouteValidationError(f"Route {name!r} needs final verification.")
+        _route_selector(verification, f"Route {name!r} final verification")
         for index, step in enumerate(route["steps"], 1):
-            if step.get("action") not in allowed:
+            if not isinstance(step, dict) or step.get("action") not in allowed:
                 raise RouteValidationError(f"Route {name!r} step {index} has an unsupported action.")
-            if step["action"] != "back" and not step.get("value") and step["action"] != "click":
-                raise RouteValidationError(f"Route {name!r} step {index} needs a selector value.")
+            action = step["action"]
+            if action in {"back-until-text", "click-text", "click-description", "click-bottom-navigation-text", "ensure-bottom-navigation-text", "click-tab-text", "swipe-pager-to-text", "scroll-to-text"} and (not isinstance(step.get("value"), str) or not step["value"]):
+                raise RouteValidationError(f"Route {name!r} step {index} needs a non-empty selector value.")
+            if action == "click":
+                selector = step.get("selector")
+                if not isinstance(selector, dict):
+                    raise RouteValidationError(f"Route {name!r} step {index} needs a semantic selector object.")
+                _route_selector(selector, f"Route {name!r} step {index}")
+            if action == "scroll-to-text":
+                max_swipes = step.get("max_swipes", 8)
+                if not isinstance(max_swipes, int) or not 0 <= max_swipes <= 8:
+                    raise RouteValidationError(f"Route {name!r} step {index} max_swipes must be an integer from 0 through 8.")
+            if action == "back-until-text":
+                max_backs = step.get("max_backs", 4)
+                if not isinstance(max_backs, int) or not 0 <= max_backs <= 4:
+                    raise RouteValidationError(f"Route {name!r} step {index} max_backs must be an integer from 0 through 4.")
+            if action == "swipe-pager-to-text":
+                swipes = step.get("swipes")
+                if not isinstance(swipes, int) or not 1 <= swipes <= 3:
+                    raise RouteValidationError(f"Route {name!r} step {index} swipes must be an integer from 1 through 3.")
     return routes
+
+
+def _route_selector(value: dict, context: str) -> Selector:
+    selector_type = value.get("selector")
+    selector_value = value.get("value")
+    if selector_type not in {"text", "description", "resource-id"} or not isinstance(selector_value, str) or not selector_value:
+        raise RouteValidationError(f"{context} needs one non-empty semantic selector.")
+    field = {"text": "text", "description": "description", "resource-id": "resource_id"}[selector_type]
+    return Selector(**{field: selector_value})
+
+
+def _scroll_to_text(adb: Adb, value: str, max_swipes: int) -> None:
+    previous: Optional[tuple[tuple[object, ...], ...]] = None
+    for attempt in range(max_swipes + 1):
+        values = list(adb.elements())
+        current = tuple((item.text, item.description, item.resource_id, item.bounds.as_string(), item.selected, item.checked) for item in values)
+        if current == previous:
+            raise ActionVerificationError(f"UI hierarchy did not change while searching for {value!r}; refusing another swipe.")
+        previous = current
+        try:
+            resolve(values, Selector(text=value))
+            return
+        except ElementNotFoundError:
+            containers = [item for item in values if item.scrollable]
+            if not containers:
+                raise ElementNotFoundError(f"No scrollable container while searching for {value!r}.")
+            if attempt == max_swipes:
+                raise ElementNotFoundError(f"Target {value!r} was not found after {max_swipes} bounded swipes.")
+            containers.sort(key=lambda item: item.bounds.area, reverse=True)
+            swipe(adb, "up", 0.7, 450, containers[0])
+    raise ElementNotFoundError(f"Target {value!r} was not found after bounded swipes.")
+
+
+def _back_until_text(adb: Adb, value: str, max_backs: int, expected_package: str = "app.komikku.dev") -> None:
+    for attempt in range(max_backs + 1):
+        elements = adb.elements()
+        try:
+            resolve(elements, Selector(text=value))
+            return
+        except ElementNotFoundError:
+            if attempt == max_backs:
+                break
+            packages = {item.package_name for item in elements if item.package_name}
+            if packages and expected_package not in packages:
+                raise ActionVerificationError(
+                    f"Route left expected foreground package {expected_package!r} while searching for {value!r}."
+                )
+            adb.shell("input", "keyevent", "4")
+            time.sleep(0.25)
+    raise ElementNotFoundError(f"Target {value!r} was not found after bounded Back navigation.")
+
+
+def _click_bottom_navigation_text(adb: Adb, value: str) -> None:
+    display = adb.display()
+    bottom_navigation = Bounds(0, display.height * 4 // 5, display.width, display.height)
+    elements = list(adb.elements())
+    labels = [
+        item
+        for item in elements
+        if item.enabled and item.text == value and bottom_navigation.contains(item.bounds)
+    ]
+    if not labels:
+        raise ElementNotFoundError(f"Bottom-navigation label {value!r} was not found in the lower strip.")
+    if len(labels) > 1:
+        raise AmbiguousSelectorError(f"Bottom-navigation label {value!r} matched {len(labels)} lower-strip elements.")
+    label = labels[0]
+    targets = []
+    parent_index = label.parent_index
+    visited = set()
+    by_index = {item.index: item for item in elements}
+    while parent_index is not None and parent_index not in visited:
+        visited.add(parent_index)
+        parent = by_index.get(parent_index)
+        if parent is None:
+            break
+        if parent.enabled and parent.clickable and parent.bounds.contains(label.bounds):
+            targets.append(parent)
+        parent_index = parent.parent_index
+    if label.enabled and label.clickable:
+        targets.append(label)
+    if not targets:
+        # Compose may expose a unique lower-navigation label without a
+        # clickable ancestor. Its semantic bounds remain the safest target.
+        targets.append(label)
+    if len(targets) > 1:
+        raise AmbiguousSelectorError(f"Bottom-navigation label {value!r} has {len(targets)} clickable ancestor targets.")
+    target = targets[0]
+    adb.shell("input", "tap", str(target.bounds.center_x), str(target.bounds.center_y))
+    time.sleep(0.5)
+
+
+def _ensure_bottom_navigation_text(adb: Adb, value: str) -> None:
+    display = adb.display()
+    bottom_navigation = Bounds(0, display.height * 4 // 5, display.width, display.height)
+    elements = list(adb.elements())
+    labels = [
+        item
+        for item in elements
+        if item.enabled and item.text == value and bottom_navigation.contains(item.bounds)
+    ]
+    if not labels:
+        raise ElementNotFoundError(f"Bottom-navigation label {value!r} was not found in the lower strip.")
+    if len(labels) > 1:
+        raise AmbiguousSelectorError(f"Bottom-navigation label {value!r} matched {len(labels)} lower-strip elements.")
+    label = labels[0]
+    by_index = {item.index: item for item in elements}
+    current = label
+    visited = set()
+    while current is not None and current.index not in visited:
+        visited.add(current.index)
+        if current.selected:
+            return
+        current = by_index.get(current.parent_index) if current.parent_index is not None else None
+    _click_bottom_navigation_text(adb, value)
+
+
+def _click_tab_text(adb: Adb, value: str) -> None:
+    display = adb.display()
+    tab_band = Bounds(0, display.height // 10, display.width, display.height * 2 // 5)
+    elements = list(adb.elements())
+    labels = [
+        item
+        for item in elements
+        if item.enabled and item.text == value and tab_band.contains(item.bounds)
+    ]
+    if not labels:
+        raise ElementNotFoundError(f"Top-tab label {value!r} was not found in the tab band.")
+    if len(labels) > 1:
+        raise AmbiguousSelectorError(f"Top-tab label {value!r} matched {len(labels)} tab-band elements.")
+    label = labels[0]
+    targets = []
+    parent_index = label.parent_index
+    visited = set()
+    by_index = {item.index: item for item in elements}
+    while parent_index is not None and parent_index not in visited:
+        visited.add(parent_index)
+        parent = by_index.get(parent_index)
+        if parent is None:
+            break
+        if parent.enabled and parent.clickable and parent.bounds.contains(label.bounds):
+            targets.append(parent)
+        parent_index = parent.parent_index
+    if label.enabled and label.clickable:
+        targets.append(label)
+    if not targets:
+        targets.append(label)
+    if len(targets) > 1:
+        raise AmbiguousSelectorError(f"Top-tab label {value!r} has {len(targets)} clickable ancestor targets.")
+    target = targets[0]
+    adb.shell("input", "tap", str(target.bounds.center_x), str(target.bounds.center_y))
+
+
+def execute_route(adb: Adb, route: dict, verification_timeout: float = 10.0) -> None:
+    for step in route["steps"]:
+        action = step["action"]
+        if action == "click-text":
+            tap(adb, Selector(text=step["value"]))
+        elif action == "click-description":
+            tap(adb, Selector(description=step["value"]))
+        elif action == "click-bottom-navigation-text":
+            _click_bottom_navigation_text(adb, step["value"])
+        elif action == "ensure-bottom-navigation-text":
+            _ensure_bottom_navigation_text(adb, step["value"])
+        elif action == "click-tab-text":
+            _click_tab_text(adb, step["value"])
+        elif action == "swipe-pager-to-text":
+            for _ in range(step["swipes"]):
+                swipe(adb, "left", 0.8, 350)
+                time.sleep(0.5)
+            wait_visible(adb, Selector(text=step["value"]), verification_timeout)
+        elif action == "click":
+            tap(adb, _route_selector(step["selector"], "Route click step"))
+        elif action == "scroll-to-text":
+            _scroll_to_text(adb, step["value"], step.get("max_swipes", 8))
+        elif action == "back-until-text":
+            _back_until_text(adb, step["value"], step.get("max_backs", 4), route.get("package", "app.komikku.dev"))
+        elif action == "back":
+            adb.shell("input", "keyevent", "4")
+    wait_visible(adb, _route_selector(route["verify"], "Route final verification"), verification_timeout)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -506,6 +788,9 @@ def parser() -> argparse.ArgumentParser:
     assertion.add_argument("--description")
     assertion.add_argument("--resource-id")
     assertion.add_argument("--partial", action="store_true")
+    selected_assertion = sub.add_parser("assert-selected-text")
+    selected_assertion.add_argument("text")
+    selected_assertion.add_argument("--partial", action="store_true")
     routes = sub.add_parser("routes")
     routes.add_argument("action", choices=("validate", "list"))
     route = sub.add_parser("route")
@@ -524,6 +809,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                 print("\n".join(sorted(routes)))
             else:
                 print(f"validated {len(routes)} routes")
+            return 0
+        if args.command == "route" and args.dry_run:
+            routes = validate_routes(route_file)
+            if args.name not in routes:
+                raise RouteValidationError(f"Unknown route: {args.name}")
+            print(f"validated route {args.name}")
             return 0
         adb = Adb(args.serial)
         if args.command == "status":
@@ -550,21 +841,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             selector = Selector(**{field: args.value}, clickable=args.clickable, selected=args.selected, parent_text=args.parent_text, occurrence=args.occurrence, partial=args.partial)
             tap(adb, selector, Selector(text=args.wait_text) if args.wait_text else None)
         elif args.command == "scroll-to-text":
-            for _ in range(args.max_swipes + 1):
-                try:
-                    item = resolve(adb.elements(), Selector(text=args.value))
-                    if args.click:
-                        tap(adb, Selector(text=args.value))
-                    break
-                except ElementNotFoundError:
-                    containers = [item for item in adb.elements() if item.scrollable]
-                    if not containers:
-                        raise ElementNotFoundError(f"No scrollable container while searching for {args.value!r}.")
-                    if len(containers) > 1:
-                        containers.sort(key=lambda item: item.bounds.area, reverse=True)
-                    swipe(adb, "up", 0.7, 450, containers[0])
-            else:
-                raise ElementNotFoundError(f"Target {args.value!r} was not found after bounded swipes.")
+            _scroll_to_text(adb, args.value, args.max_swipes)
+            if args.click:
+                tap(adb, Selector(text=args.value))
         elif args.command == "swipe":
             swipe(adb, args.direction, args.amount, args.duration_ms)
         elif args.command == "input":
@@ -594,14 +873,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             selector = Selector(text=args.text, description=args.description, resource_id=args.resource_id, partial=args.partial)
             resolve(adb.elements(), selector)
             print("ok")
+        elif args.command == "assert-selected-text":
+            resolve_selected_text(adb.elements(), args.text, args.partial)
+            print("ok")
         elif args.command == "route":
             routes = validate_routes(route_file)
             if args.name not in routes:
                 raise RouteValidationError(f"Unknown route: {args.name}")
-            if args.dry_run:
-                print(f"validated route {args.name}")
-            else:
-                raise RouteExecutionError("Route execution requires the hardened route schema migration before use.")
+            execute_route(adb, routes[args.name])
         return 0
     except AndroidUiError as exc:
         print(f"error: {exc}", file=sys.stderr)

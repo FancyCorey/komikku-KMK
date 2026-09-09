@@ -48,8 +48,7 @@ import eu.kanade.presentation.util.Screen as KomikkuScreen
  *
  * KMK v0.8.14: rebuilt to the approved five-section structure -- "For You" and "Matching and
  * versions" are retired as top-level destinations. Their controls were general taste/filter/display
- * controls and advanced version/quality controls respectively, not meaningful sections of their own
- * (confirmed via live-device audit -- see `docs/community/KMK_RECS_STRUCTURAL_UX_CORRECTION_AUDIT.md`).
+ * controls and advanced version/quality controls respectively, not meaningful sections of their own.
  * Every control they owned still exists, reachable now under "Taste and filters" (rated visibility,
  * hide known manga, minimum chapter count) or "Management and diagnostics" (result budget, same-manga
  * matching, Best Version preview, group-preview budget) -- same `screenModel` methods, same

@@ -42,8 +42,6 @@ object CustomCoverUndoRecorder {
         coverCache: CoverCache,
         mangaId: Long,
     ): PendingCustomCoverUndo? = withIOContext {
-        if (!sourcePreferences.evaluationMode().get()) return@withIOContext null
-
         val current = coverCache.getCustomCoverFile(mangaId)
         val previousDigest = current.takeIf { it.isFile }?.let(::sha256)
         val entryId = CustomCoverUndoJournal.newId()

@@ -27,17 +27,23 @@ import tachiyomi.domain.taste.model.MangaRating
  * [ReaderViewModel.markNotInterestedFromChapterCompletionPrompt]: both previously wrote directly to
  * [SetMangaTaste]/the seen-manga preference store without going through
  * [EvaluationModeJournalRecorder], so a rating or Not-Interested action taken from the reader's own
- * chapter-completion prompt never appeared in Evaluation Mode Action History -- exactly the plan's
- * required row "Love/Like/Dislike | rating writes, prompt state advances, history entry is created
- * when Evaluation Mode is enabled" and "Not Interested | preference write, prompt state advances,
- * history entry is created" (implementation plan, Phase 2, §6).
+ * chapter-completion prompt never appeared in Evaluation Mode Action History.
+ *
+ * KMK v0.8.21-fix3: R1 correction -- [ReaderViewModel.markNotInterestedFromChapterCompletionPrompt]
+ * itself was found to have a second, deeper defect during R1: it wrote ONLY the legacy
+ * seenRecommendationMangaKeys preference and never wrote [tachiyomi.domain.taste.model.MangaTaste]
+ * at all, so marking a manga Not Interested from the reader's completion prompt never actually
+ * registered with manga-detail state, Rated Manga, or For You exclusion. It is fixed to route
+ * through [SetMangaTaste]/[EvaluationModeJournalRecorder.buildRatingChange] exactly like every
+ * other rating now, so this file's `markNotInterestedWithJournal` helper mirrors that corrected
+ * sequence -- the single-store path, not a second preference write.
  *
  * [ReaderViewModel] has a very large constructor-injected dependency graph (no existing test in this
  * codebase instantiates it directly), so this exercises the exact same
- * [EvaluationModeJournalRecorder.buildRatingChange]/[buildNotInterested] + real interactor +
+ * [EvaluationModeJournalRecorder.buildRatingChange] + real [SetMangaTaste] +
  * [EvaluationModeJournalRecorder.commit] sequence the two fixed methods now use, against the same
- * [FakeTasteRepository]/[FakePreferenceStore] fakes [MangaScreenModelTasteJournalTest] (the prior
- * pass's equivalent fix for the manga-detail screen) already established for this exact contract.
+ * [FakeTasteRepository]/[FakePreferenceStore] fakes [MangaScreenModelTasteJournalTest] already
+ * established for this exact contract.
  */
 class ReaderChapterCompletionPromptJournalTest {
 
@@ -62,19 +68,20 @@ class ReaderChapterCompletionPromptJournalTest {
         EvaluationModeUndoJournal.clear()
     }
 
+    private fun journalActionType(rating: MangaRating) = when (rating) {
+        MangaRating.LOVE -> EvaluationJournalActionType.RATE_LOVE
+        MangaRating.LIKE -> EvaluationJournalActionType.RATE_LIKE
+        MangaRating.DISLIKE -> EvaluationJournalActionType.RATE_DISLIKE
+        MangaRating.NOT_INTERESTED -> EvaluationJournalActionType.NOT_INTERESTED
+    }
+
     /** Mirrors [ReaderViewModel.rateFromChapterCompletionPrompt]'s exact build/write/commit sequence. */
     private suspend fun rateWithJournal(rating: MangaRating) {
-        val journalActionType = when (rating) {
-            MangaRating.LOVE -> EvaluationJournalActionType.RATE_LOVE
-            MangaRating.LIKE -> EvaluationJournalActionType.RATE_LIKE
-            MangaRating.DISLIKE -> EvaluationJournalActionType.RATE_DISLIKE
-        }
         val journalEntries = EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             listOf(manga),
             rating.value,
-            journalActionType,
+            journalActionType(rating),
         )
         setMangaTaste.await(
             mangaId = manga.id,
@@ -86,19 +93,12 @@ class ReaderChapterCompletionPromptJournalTest {
         EvaluationModeJournalRecorder.commit(journalEntries)
     }
 
-    /** Mirrors [ReaderViewModel.markNotInterestedFromChapterCompletionPrompt]'s build/commit sequence. */
-    private suspend fun markNotInterestedWithJournal() {
-        val journalEntries = EvaluationModeJournalRecorder.buildNotInterested(
-            sourcePreferences,
-            getMangaTaste,
-            listOf(manga),
-        )
-        // The real method's preference write is exercised in
-        // ReaderScheduleDialogWindowDeletionTest-adjacent style tests are unnecessary here -- the
-        // preference write itself (SeenRecommendationMangaStore) has its own existing test coverage;
-        // this test isolates the journal side of the contract only.
-        EvaluationModeJournalRecorder.commit(journalEntries)
-    }
+    /**
+     * Mirrors [ReaderViewModel.markNotInterestedFromChapterCompletionPrompt]'s corrected
+     * build/write/commit sequence -- the same single-store rating-change sequence as [rateWithJournal],
+     * just always with [MangaRating.NOT_INTERESTED].
+     */
+    private suspend fun markNotInterestedWithJournal() = rateWithJournal(MangaRating.NOT_INTERESTED)
 
     @Test
     fun `rating from the reader completion prompt creates a history entry when Evaluation Mode is enabled`() = runTest {
@@ -116,7 +116,7 @@ class ReaderChapterCompletionPromptJournalTest {
     }
 
     @Test
-    fun `Not Interested from the reader completion prompt creates a history entry when Evaluation Mode is enabled`() = runTest {
+    fun `Not Interested from the reader completion prompt writes MangaTaste and creates a history entry`() = runTest {
         sourcePreferences.evaluationMode().set(true)
 
         markNotInterestedWithJournal()
@@ -124,17 +124,25 @@ class ReaderChapterCompletionPromptJournalTest {
         val snapshot = EvaluationModeUndoJournal.snapshot()
         assertEquals(1, snapshot.size)
         assertEquals(EvaluationJournalActionType.NOT_INTERESTED, snapshot.first().actionType)
+        // R1 regression coverage: this action must genuinely write MangaTaste now, not just the
+        // legacy preference (the confirmed defect this correction fixes).
+        assertEquals(MangaRating.NOT_INTERESTED.value, tasteRepository.getMangaTaste(manga.id)?.rating)
     }
 
     @Test
-    fun `Evaluation Mode disabled records nothing for either action`() = runTest {
+    fun `normal Action History records both actions when Evaluation Mode is disabled`() = runTest {
         sourcePreferences.evaluationMode().set(false)
 
         rateWithJournal(MangaRating.DISLIKE)
-        assertTrue(EvaluationModeUndoJournal.isEmpty())
+        assertEquals(1, EvaluationModeUndoJournal.snapshot().size)
 
         markNotInterestedWithJournal()
-        assertTrue(EvaluationModeUndoJournal.isEmpty())
+        assertEquals(2, EvaluationModeUndoJournal.snapshot().size)
+        assertEquals(EvaluationJournalActionType.NOT_INTERESTED, EvaluationModeUndoJournal.snapshot().first().actionType)
+        // The second action overwrote the same manga's rating (single store, one row) -- the final
+        // state is NOT_INTERESTED, not DISLIKE, confirming there is nowhere for the prior rating to
+        // linger.
+        assertEquals(MangaRating.NOT_INTERESTED.value, tasteRepository.getMangaTaste(manga.id)?.rating)
     }
 
     @Test
@@ -146,7 +154,6 @@ class ReaderChapterCompletionPromptJournalTest {
         EvaluationModeUndoJournal.clear()
 
         val detailEntries = EvaluationModeJournalRecorder.buildRatingChange(
-            sourcePreferences,
             getMangaTaste,
             listOf(manga),
             MangaRating.LIKE.value,
@@ -170,10 +177,11 @@ class ReaderChapterCompletionPromptJournalTest {
      * file's own established pattern above for the sibling rating path.
      */
     private suspend fun markNotInterestedWithFailingWrite(write: suspend () -> Unit) {
-        val journalEntries = EvaluationModeJournalRecorder.buildNotInterested(
-            sourcePreferences,
+        val journalEntries = EvaluationModeJournalRecorder.buildRatingChange(
             getMangaTaste,
             listOf(manga),
+            MangaRating.NOT_INTERESTED.value,
+            EvaluationJournalActionType.NOT_INTERESTED,
         )
         try {
             write()
@@ -185,16 +193,16 @@ class ReaderChapterCompletionPromptJournalTest {
     }
 
     @Test
-    fun `a failed preference write records no journal entry`() = runTest {
+    fun `a failed write records no journal entry`() = runTest {
         sourcePreferences.evaluationMode().set(true)
 
-        markNotInterestedWithFailingWrite { throw RuntimeException("preference write failed") }
+        markNotInterestedWithFailingWrite { throw RuntimeException("write failed") }
 
         assertTrue(EvaluationModeUndoJournal.isEmpty(), "a failed write must never produce a journal entry")
     }
 
     @Test
-    fun `a successful preference write still records the journal entry`() = runTest {
+    fun `a successful write still records the journal entry`() = runTest {
         sourcePreferences.evaluationMode().set(true)
 
         markNotInterestedWithFailingWrite { /* succeeds */ }

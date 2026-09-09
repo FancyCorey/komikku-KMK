@@ -105,6 +105,22 @@ object ReaderTimerReducer {
             state.copy(lastResumeMonotonicMs = null)
         }
 
+        is ReaderTimerEvent.Restore -> {
+            // Persisted sessions intentionally do not retain a monotonic resume timestamp. Treat
+            // an actively-counting session restored without one as background-paused so the
+            // owning ReaderActivity can explicitly resume it after foregrounding. Returning a
+            // RUNNING session with a null timestamp leaves the ticker unable to advance forever.
+            if (event.session.isActivelyCounting && event.session.lastResumeMonotonicMs == null) {
+                event.session.copy(
+                    phase = ReaderTimerPhase.PAUSED,
+                    pausedFromPhase = event.session.phase,
+                    pauseReason = ReaderTimerPauseReason.BACKGROUND,
+                )
+            } else {
+                event.session
+            }
+        }
+
         ReaderTimerEvent.InvalidPersistedState -> ReaderTimerSession()
     }
 

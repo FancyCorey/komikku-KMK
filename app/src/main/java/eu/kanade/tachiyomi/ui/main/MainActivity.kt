@@ -13,6 +13,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -40,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.animation.doOnEnd
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen
@@ -65,6 +68,7 @@ import eu.kanade.presentation.components.RestoringBannerBackgroundColor
 import eu.kanade.presentation.components.SyncingBannerBackgroundColor
 import eu.kanade.presentation.components.UpdatingBannerBackgroundColor
 import eu.kanade.presentation.more.settings.screen.ConfigureExhDialog
+import eu.kanade.presentation.more.settings.screen.SearchableSettings
 import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen.Companion.getReleaseNotes
 import eu.kanade.presentation.more.settings.screen.about.KmkRecsWhatsNewDialog
@@ -94,6 +98,7 @@ import eu.kanade.tachiyomi.ui.browse.source.feed.SourceFeedScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.deeplink.DeepLinkScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
+import eu.kanade.tachiyomi.ui.library.LibraryTab
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.more.KmkRecsWhatsNewScreen
 import eu.kanade.tachiyomi.ui.more.NewUpdateScreen
@@ -198,6 +203,21 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+
+        if (!firstPaint) {
+            window.decorView.postDelayed({
+                if (!firstPaint) {
+                    firstPaint = true
+                    val queuedTasks = iuuQueue.toList()
+                    iuuQueue.clear()
+                    queuedTasks.forEach { it() }
+                }
+            }, FIRST_PAINT_IDLE_DELAY_MS)
+        }
+    }
+
     private var runExhConfigureDialog by mutableStateOf(false)
     // SY <--
 
@@ -215,8 +235,14 @@ class MainActivity : BaseActivity() {
             false
         }
 
-        // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079
-        if (!isTaskRoot) {
+        // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079.
+        // Reader alternate-source search is intentionally launched for a result above the reader;
+        // it must be allowed to host GlobalSearchScreen and return the selected manga.
+        val isAlternateSourceReturnSelection = intent.getBooleanExtra(
+            EXTRA_ALTERNATE_SOURCE_RETURN_SELECTION,
+            false,
+        )
+        if (!isTaskRoot && !isAlternateSourceReturnSelection) {
             finish()
             return
         }
@@ -225,6 +251,16 @@ class MainActivity : BaseActivity() {
         @Suppress("KotlinConstantConditions")
         val hasDebugOverlay = (isDebugBuildType || BuildConfig.BUILD_TYPE == "releaseTest")
         // SY <--
+
+        // KMK F2-05.0.1 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): resets the
+        // process-lifetime LibraryTab.isInitiallyLoaded latch for THIS Activity instance before any
+        // Composition (and therefore before ReportDrawnWhen below or LibraryTab's own
+        // Content()) can observe it -- see LibraryTab.resetForNewActivityInstance's own KDoc for
+        // why this exact ordering boundary (onCreate() strictly completes before setComposeContent's
+        // Composition is created) makes this race-free for every fresh Activity instance: true cold
+        // start, same-process recreation (e.g. configuration change), and process-death relaunch
+        // alike.
+        LibraryTab.resetForNewActivityInstance()
 
         setComposeContent {
             val context = LocalContext.current
@@ -309,8 +345,29 @@ class MainActivity : BaseActivity() {
                         .collectLatest { incognito = it }
                 }
 
+                // KMK F2-05.0 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): reports
+                // Time-To-Full-Display only once the app's first meaningful content is genuinely on
+                // screen -- see isHomeScreenTrulyDrawn's own KDoc for exactly why this predicate
+                // cannot fire during initial loading, onboarding, or a blocking update dialog.
+                // Deliberately NOT `ready` (see that predicate's own KDoc for why `ready` is too
+                // coarse a signal for this purpose, despite being correct for the splash screen's
+                // own keep-on-screen condition below).
+                val libraryInitiallyLoaded by LibraryTab.isInitiallyLoaded.collectAsState()
+                ReportDrawnWhen { isHomeScreenTrulyDrawn(navigator.lastItem, libraryInitiallyLoaded) }
+
                 val scaffoldInsets = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
                 Scaffold(
+                    // KMK F2-05.0.2 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): maps
+                    // every descendant Modifier.testTag (e.g. LibraryTab.LIBRARY_READY_CONTENT_TEST_TAG,
+                    // OnboardingScreen's ONBOARDING_ACCEPT_BUTTON_TEST_TAG) onto the Android View
+                    // accessibility node's resource-id, so UI Automator's By.res(...) can find them --
+                    // Compose-level testTag alone is invisible to UI Automator/device automation.
+                    // Applied exactly once, high in the hierarchy, per the official guidance at
+                    // developer.android.com/develop/ui/compose/testing/interoperability. isImportantForAccessibility
+                    // is false for this property (confirmed via AndroidX source,
+                    // SemanticsProperties.android.kt) -- it only maps tags that are already explicitly
+                    // set via testTag elsewhere; it does not itself expose any new accessibility surface.
+                    modifier = Modifier.semantics { testTagsAsResourceId = true },
                     topBar = {
                         AppStateBanners(
                             downloadedOnlyMode = downloadOnly,
@@ -502,7 +559,7 @@ class MainActivity : BaseActivity() {
             ConfigureExhDialog(run = runExhConfigureDialog, onRunning = { runExhConfigureDialog = false })
             // SY <--
 
-            // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 3: rendered at
+            // Rendered at
             // the application composition root -- alongside the other always-reachable dialogs above
             // -- so a pending backup SAF cleanup offer stays visible/actionable regardless of which
             // screen is currently active, or whether CreateBackupScreen itself has been popped.
@@ -730,6 +787,7 @@ class MainActivity : BaseActivity() {
             }
             Constants.OPEN_READER_SCHEDULE_SETTINGS -> {
                 navigator.popUntilRoot()
+                SearchableSettings.highlightKey = stringResource(KMR.strings.reading_schedule_configure)
                 navigator.push(SettingsReaderScreen)
                 null
             }
@@ -776,7 +834,13 @@ class MainActivity : BaseActivity() {
                 if (!query.isNullOrEmpty()) {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
                     navigator.popUntilRoot()
-                    navigator.push(GlobalSearchScreen(query, filter))
+                    navigator.push(
+                        GlobalSearchScreen(
+                            query,
+                            filter,
+                            intent.getBooleanExtra(EXTRA_ALTERNATE_SOURCE_RETURN_SELECTION, false),
+                        ),
+                    )
                 }
                 null
             }
@@ -813,6 +877,8 @@ class MainActivity : BaseActivity() {
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
+        const val EXTRA_ALTERNATE_SOURCE_RETURN_SELECTION = "alternate_source_return_selection"
+        const val EXTRA_ALTERNATE_SOURCE_MANGA_ID = "alternate_source_manga_id"
     }
 }
 
@@ -820,3 +886,4 @@ class MainActivity : BaseActivity() {
 private const val SPLASH_MIN_DURATION = 500 // ms
 private const val SPLASH_MAX_DURATION = 5000 // ms
 private const val SPLASH_EXIT_ANIM_DURATION = 400L // ms
+private const val FIRST_PAINT_IDLE_DELAY_MS = 500L

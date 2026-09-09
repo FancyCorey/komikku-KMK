@@ -3,6 +3,7 @@ package exh.recs.evaluation
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.source.Source
 import tachiyomi.domain.taste.model.SourceEvaluation
+import java.util.Locale
 
 // KMK --> v0.7.10
 /**
@@ -55,8 +56,8 @@ object SourceRecommendationQualitySourceResolver {
         }
 
         // Step 4: normalized name + lang (unambiguous)
-        val normalizedQuery = evaluation.sourceName.lowercase().trim()
-        val byNormLang = sources.filter { it.name.lowercase().trim() == normalizedQuery && it.lang == evaluation.lang }
+        val normalizedQuery = evaluation.sourceName.lowercase(Locale.ROOT).trim()
+        val byNormLang = sources.filter { it.name.lowercase(Locale.ROOT).trim() == normalizedQuery && it.lang == evaluation.lang }
         if (byNormLang.size == 1) return ResolveResult.Found(byNormLang.first())
         if (byNormLang.size > 1) {
             return ResolveResult.Ambiguous(
@@ -65,7 +66,7 @@ object SourceRecommendationQualitySourceResolver {
         }
 
         // Step 5: normalized name only (unambiguous)
-        val byNorm = sources.filter { it.name.lowercase().trim() == normalizedQuery }
+        val byNorm = sources.filter { it.name.lowercase(Locale.ROOT).trim() == normalizedQuery }
         if (byNorm.size == 1) return ResolveResult.Found(byNorm.first())
         if (byNorm.size > 1) {
             return ResolveResult.Ambiguous(

@@ -1,6 +1,7 @@
 package exh.recs
 
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.isRecoverableSourceRuntimeFailure
 import eu.kanade.tachiyomi.source.unwrapSourceRuntimeCause
 import kotlinx.coroutines.CancellationException
@@ -26,6 +27,24 @@ enum class RecommendationErrorKind(val storageKey: String) {
     // never the whole recommendation load.
     ExtensionIncompatible("REC_ERROR_EXTENSION_INCOMPATIBLE"),
     Internal("REC_ERROR_INTERNAL"),
+    // KMK v0.8.21-fix2: distinguished from Internal per the reopened AUG-05/AUG-09 investigation --
+    // eu.kanade.tachiyomi.network.HttpException carries a real HTTP status code that was previously
+    // discarded into the generic Internal bucket, giving the user no truthful reason for a source
+    // failure (confirmed live: a genuine HTTP 502 from a real source was showing as unclassified
+    // "Something went wrong"). RateLimit and Authentication are the two status-derived categories
+    // named in that investigation's required taxonomy; other HTTP statuses remain Internal rather
+    // than inventing categories the investigation did not ask for.
+    RateLimit("REC_ERROR_RATE_LIMIT"),
+    Authentication("REC_ERROR_AUTHENTICATION"),
+    // KMK v0.8.21-fix4: R2/AUG-05 source-review correction -- the live-observed failure was a real
+    // HTTP 502 from the source's own server, which the prior fix2 taxonomy deliberately left folded
+    // into Internal ("other HTTP statuses remain Internal rather than inventing categories the
+    // investigation did not ask for"). The corrective source review specifically named 502 as the
+    // reproduced failure and required truthful classification, so this adds the one HTTP-status-derived
+    // category that was still missing: any 5xx status (the source's server reporting its own failure,
+    // as opposed to a 4xx client-side rejection). Distinct from Internal (an unclassified app-side
+    // failure) and from Network/Timeout (no response was ever received at all).
+    ServerError("REC_ERROR_SERVER"),
     ;
 
     companion object {
@@ -42,6 +61,17 @@ object RecommendationErrorClassifier {
         e is UnknownHostException -> RecommendationErrorKind.Network
         e is SocketTimeoutException -> RecommendationErrorKind.Timeout
         e is FileNotFoundException -> RecommendationErrorKind.FileAccess
+        // KMK v0.8.21-fix2: HttpException does not extend IOException in this codebase (it extends
+        // IllegalStateException, see core/common HttpException.kt), so it was previously falling all
+        // the way through to Internal regardless of its carried status code. Checked before the
+        // generic IOException branch since HttpException is the more specific, more informative type.
+        e is HttpException && e.code == 429 -> RecommendationErrorKind.RateLimit
+        e is HttpException && (e.code == 401 || e.code == 403) -> RecommendationErrorKind.Authentication
+        // KMK v0.8.21-fix4: checked before the generic IOException branch, same reasoning as the
+        // 429/401/403 checks above -- a 5xx is the source's own server reporting failure, not a
+        // connectivity problem, so it should never share a bucket with UnknownHostException/generic
+        // IOException even though HttpException doesn't extend IOException in this codebase anyway.
+        e is HttpException && e.code in 500..599 -> RecommendationErrorKind.ServerError
         e is IOException -> RecommendationErrorKind.Network
         else -> RecommendationErrorKind.Internal
     }
@@ -78,6 +108,30 @@ object RecommendationErrorClassifier {
     // KMK <--
 }
 
+// KMK v0.8.21-fix4 -->
+/**
+ * True for a failure kind where an identical second attempt against the same source could
+ * plausibly succeed -- a transient network hiccup, timeout, rate limit, or the source's own
+ * server reporting a 5xx. False for a terminal condition (authentication, file access, an
+ * incompatible extension, or an unclassified internal failure) that repeating the exact same
+ * request cannot change. Used by [exh.recs.matching.SameMangaCandidateSearcher] to bound its
+ * same-source discovery retry to failures actually worth retrying.
+ */
+fun RecommendationErrorKind.isRetryableForDiscovery(): Boolean = when (this) {
+    RecommendationErrorKind.Network,
+    RecommendationErrorKind.Timeout,
+    RecommendationErrorKind.RateLimit,
+    RecommendationErrorKind.ServerError,
+    -> true
+    RecommendationErrorKind.Cancelled,
+    RecommendationErrorKind.FileAccess,
+    RecommendationErrorKind.ExtensionIncompatible,
+    RecommendationErrorKind.Internal,
+    RecommendationErrorKind.Authentication,
+    -> false
+}
+// KMK <--
+
 /**
  * Non-Composable KMR string lookup for [RecommendationErrorKind], for call sites that have a
  * [android.content.Context] but are not themselves `@Composable` (e.g. [exh.recs.share.RecommendationBundleImporter]).
@@ -90,5 +144,8 @@ fun recommendationErrorMessageRes(kind: RecommendationErrorKind): StringResource
     RecommendationErrorKind.FileAccess -> KMR.strings.rec_error_file_access
     RecommendationErrorKind.ExtensionIncompatible -> KMR.strings.rec_error_extension_incompatible
     RecommendationErrorKind.Internal -> KMR.strings.rec_error_internal
+    RecommendationErrorKind.RateLimit -> KMR.strings.rec_error_rate_limited
+    RecommendationErrorKind.Authentication -> KMR.strings.rec_error_authentication
+    RecommendationErrorKind.ServerError -> KMR.strings.rec_error_server
 }
 // KMK <--

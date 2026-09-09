@@ -109,14 +109,16 @@ jobs:
         id: current_commit
         run: |
           set -e
-          echo "The git ref is: ${{ github.ref }}"
-          version_tag=p$(echo ${{ github.ref }} | cut -d '/' -f 3)
+          echo "The git ref is: $GITHUB_REF_VALUE"
+          version_tag=p$(printf '%s' "$GITHUB_REF_VALUE" | cut -d '/' -f 3)
           commit_count=$(git rev-list --count HEAD)
           echo "VERSION_TAG=$version_tag"
           echo "VERSION_TAG=$version_tag" >> $GITHUB_OUTPUT
           echo "COMMIT_COUNT=$commit_count"
           echo "COMMIT_COUNT=$commit_count" >> $GITHUB_OUTPUT
           mv app/build/outputs/apk/preview/app-universal-preview${{ steps.signed_filename.outputs.SIGNED_TRAIL }}.apk Komikku-$version_tag-r$commit_count.apk
+        env:
+          GITHUB_REF_VALUE: ${{ github.ref }}
 
       - name: Upload APK
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

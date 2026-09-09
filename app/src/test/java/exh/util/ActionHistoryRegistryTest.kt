@@ -11,10 +11,10 @@ import org.junit.jupiter.api.Test
 // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29 -->
 /**
  * Direct tests for the [ActionHistoryRegistry] mechanism introduced this pass to replace
- * `EvaluationModeActionHistoryScreen`'s previous pattern of enumerating all 7 journal families by
+ * `EvaluationModeActionHistoryScreen`'s previous pattern of enumerating all 9 journal families by
  * name in two separate, hand-kept-in-sync places (row building and Clear All). The pure merge/clear
  * logic ([mergeHistorySources]/[clearHistorySources]) is tested here against small fake
- * [ActionHistorySource] implementations rather than the real 7 journals, since
+ * [ActionHistorySource] implementations rather than the real 9 journals, since
  * [ActionHistoryRegistry.sources] is a fixed list of private adapter objects that can't be swapped
  * out for a test double -- the fakes prove the registry's own merge/sort/clear-all mechanism is
  * correct, independent of any single journal's implementation. [wiring real journals reach
@@ -54,7 +54,24 @@ class ActionHistoryRegistryTest {
     )
 
     @Test
-    fun `ActionHistoryRegistry registers exactly the 7 known journal families by identity, with no duplicates or omissions`() {
+    fun `context manga id is carried only when the journal owns it`() {
+        val contextual = ActionHistoryEntryDescriptor(
+            id = "taste:context",
+            timestamp = 2L,
+            summary = { "context" },
+            undo = null,
+            contextMangaId = 42L,
+        )
+        val viewOnly = descriptor("diagnostic", timestamp = 1L, undoable = false)
+
+        val merged = mergeHistorySources(listOf(FakeSource(listOf(contextual, viewOnly))))
+
+        assertEquals(42L, merged.first { it.id == "taste:context" }.contextMangaId)
+        assertNull(merged.first { it.id == "diagnostic" }.contextMangaId)
+    }
+
+    @Test
+    fun `ActionHistoryRegistry registers every known journal family by identity, with no duplicates or omissions`() {
         // KMK Confirmed Blocker Remediation Corrective Completion Plan V3 2026-07-29 Phase C (gap
         // closure): the prior version of this test only asserted `sources.size == 7`, which cannot
         // distinguish "7 correct, distinct families" from e.g. "the taste adapter registered twice and
@@ -76,11 +93,21 @@ class ActionHistoryRegistryTest {
         // check for that mechanism's actual output.
         val familyIds = ActionHistoryRegistry.sources.map { it.familyId }
         assertEquals(
-            setOf("taste", "group", "library", "preference", "chapter", "cover", "nonundoable"),
+            setOf(
+                "taste",
+                "group",
+                "cross_source_identity",
+                "alternate_source_bridge",
+                "library",
+                "preference",
+                "chapter",
+                "cover",
+                "nonundoable",
+            ),
             familyIds.toSet(),
         )
         assertEquals(familyIds.size, familyIds.distinct().size, "no two registered families may share a familyId")
-        assertEquals(7, ActionHistoryRegistry.sources.size)
+        assertEquals(9, ActionHistoryRegistry.sources.size)
     }
 
     @Test
@@ -160,7 +187,7 @@ class ActionHistoryRegistryTest {
 
     @Test
     fun `wiring real journals reach ActionHistoryRegistry clearAll`() = runTest {
-        // Seed real entries in 3 of the 7 real journals (mirroring the construction patterns already
+        // Seed real entries in 3 of the 9 real journals (mirroring the construction patterns already
         // used in their own dedicated *JournalTest.kt files) to prove the real, hardcoded
         // ActionHistoryRegistry actually reaches real production journals, not just the fakes above.
         EvaluationModeUndoJournal.record(
@@ -173,8 +200,6 @@ class ActionHistoryRegistryTest {
                 url = "/manga/1",
                 previousRating = null,
                 newRating = 2,
-                previousNotInterested = false,
-                newNotInterested = false,
                 isBulk = false,
                 bulkOperationId = null,
                 changedFields = setOf(EvaluationJournalEntry.FIELD_RATING),

@@ -84,5 +84,34 @@ object SourceRuntimeFailureRegistry {
     fun clearAll() {
         entries.update { emptyMap() }
     }
+
+    // KMK v0.8.21-fix6 -->
+    /**
+     * Clears [sourceId]'s entry only if it is still exactly [expected] (the entry read before some
+     * caller's bounded action began). Returns `true` if the clear was applied, `false` if the entry
+     * had already changed (a newer failure was recorded by a concurrent caller in the meantime) --
+     * in which case nothing is cleared, preserving that newer evidence.
+     *
+     * This is the compare-and-swap counterpart to the unconditional [clear]: [clear]/[clearAll]
+     * remain correct for a genuinely user-initiated "forget this failure" action (the entry the user
+     * sees is exactly the one being discarded, by definition), but an *automatic* bypassed retry
+     * (see [SourceRuntime.run]'s `bypassSuppression` parameter) must not blindly erase whatever
+     * entry happens to exist by the time its own attempt finishes -- a concurrent caller may have
+     * recorded a newer, unrelated failure for the same source while the bypassed attempt was still
+     * in flight, and that newer evidence must survive.
+     */
+    fun clearIfUnchanged(sourceId: Long, expected: Entry?): Boolean {
+        var cleared = false
+        entries.update { current ->
+            if (current[sourceId] == expected) {
+                cleared = true
+                current - sourceId
+            } else {
+                current
+            }
+        }
+        return cleared
+    }
+    // KMK <--
 }
 // KMK <--

@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.data.database
 
-// KMK_CLAUDE_TRACKER_SAFE_LOOKUP_2026-08-09 -->
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import org.junit.jupiter.api.Assertions.assertEquals

@@ -4,6 +4,7 @@ package eu.kanade.tachiyomi.source
 
 import android.content.Context
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -86,9 +87,13 @@ class AndroidSourceManager(
                 .combine(
                     exhPreferences.isHentaiEnabled().changes(),
                 ) { (a, b), c -> Triple(a, b, c) }
+                .combine(sourcePreferences.browseFixtureFailureMode().changes()) { state, browseFixtureMode ->
+                    state to browseFixtureMode
+                }
                 // KMK <--
                 // SY <--
-                .collectLatest { (extensions, enableExhentai/* KMK --> */, isHentaiEnabled/* KMK <-- */) ->
+                .collectLatest { (state, browseFixtureMode) ->
+                    val (extensions, enableExhentai, isHentaiEnabled) = state
                     val mutableMap = ConcurrentHashMap<Long, Source>(
                         mapOf(
                             LocalSource.ID to LocalSource(
@@ -101,6 +106,9 @@ class AndroidSourceManager(
                             ),
                         ),
                     ).apply {
+                        if (shouldExposeDebugBrowseFixture(BuildConfig.DEBUG, browseFixtureMode)) {
+                            put(DebugBrowseFixtureSource.ID, DebugBrowseFixtureSource())
+                        }
                         // KMK -->
                         if (isHentaiEnabled) {
                             EHENTAI_EXT_SOURCES.forEach { (id, lang) ->
@@ -195,9 +203,15 @@ class AndroidSourceManager(
     }
 
     override fun getOrStub(sourceKey: Long): Source {
-        return sourcesMapFlow.value[sourceKey] ?: stubSourcesMap.getOrPut(sourceKey) {
-            runBlocking { createStubSource(sourceKey) }
-        }
+        return sourcesMapFlow.value[sourceKey]
+            ?: resolveDebugBrowseFixture(
+                sourceKey = sourceKey,
+                isDebugBuild = BuildConfig.DEBUG,
+                mode = sourcePreferences.browseFixtureFailureMode().get(),
+            )
+            ?: stubSourcesMap.getOrPut(sourceKey) {
+                runBlocking { createStubSource(sourceKey) }
+            }
     }
 
     override fun getAll() = sourcesMapFlow.value.values.toList()

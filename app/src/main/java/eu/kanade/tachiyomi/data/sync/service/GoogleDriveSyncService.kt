@@ -17,6 +17,7 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File
 import eu.kanade.domain.sync.SyncPreferences
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -67,7 +68,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
     private val protoBuf: ProtoBuf = Injekt.get()
 
     override suspend fun doSync(syncData: SyncData): Backup? {
-        beforeSync()
+        if (!beforeSync()) return null
 
         try {
             val remoteSData = pullSyncData()
@@ -103,8 +104,8 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
         }
     }
 
-    private suspend fun beforeSync() {
-        googleDriveService.refreshToken()
+    private suspend fun beforeSync(): Boolean {
+        return googleDriveService.refreshToken()
     }
 
     private fun pullSyncData(): SyncData? {
@@ -131,7 +132,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Google Drive sync download failed" }
-            throw Exception("Failed to download sync data: ${e.message}", e)
+            throw Exception("Failed to download Google Drive sync data")
         }
     }
 
@@ -215,7 +216,7 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
             logcat(LogPriority.ERROR) { "Google Drive service not initialized" }
             return DeleteSyncDataStatus.NOT_INITIALIZED
         }
-        googleDriveService.refreshToken()
+        if (!googleDriveService.refreshToken()) return DeleteSyncDataStatus.NOT_INITIALIZED
 
         return withIOContext {
             try {
@@ -247,9 +248,46 @@ class GoogleDriveSyncService(context: Context, json: Json, syncPreferences: Sync
 class GoogleDriveService(private val context: Context) {
     var driveService: Drive? = null
     companion object {
-        const val REDIRECT_URI = "eu.kanade.google.oauth:/oauth2redirect"
+        const val REDIRECT_URI =
+            "${GoogleDriveAuthorizationCallbackPolicy.REDIRECT_SCHEME}:${GoogleDriveAuthorizationCallbackPolicy.REDIRECT_PATH}"
     }
     private val syncPreferences = Injekt.get<SyncPreferences>()
+
+    private data class ClientSecretsLoadResult(
+        val state: GoogleDriveClientConfigurationState,
+        val secrets: GoogleClientSecrets? = null,
+    )
+
+    private fun loadClientSecrets(): ClientSecretsLoadResult {
+        val assetName = BuildConfig.GOOGLE_DRIVE_CLIENT_SECRETS_ASSET
+        if (assetName.isBlank()) {
+            return ClientSecretsLoadResult(GoogleDriveClientConfigurationState.MISSING_ASSET)
+        }
+
+        return runCatching {
+            val jsonFactory = GsonFactory.getDefaultInstance()
+            val secrets = context.assets.open(assetName).reader().use { reader ->
+                GoogleClientSecrets.load(jsonFactory, reader)
+            }
+            val clientId = secrets.installed?.clientId ?: secrets.web?.clientId
+            val state = GoogleDriveClientConfigurationPolicy.classify(
+                clientSecretsAvailable = true,
+                parsedClientId = clientId,
+                expectedClientId = BuildConfig.GOOGLE_DRIVE_CLIENT_ID,
+            )
+            ClientSecretsLoadResult(state, secrets.takeIf { state == GoogleDriveClientConfigurationState.AVAILABLE })
+        }.getOrElse {
+            ClientSecretsLoadResult(GoogleDriveClientConfigurationState.MALFORMED_ASSET)
+        }
+    }
+
+    private fun availableClientSecrets(): GoogleClientSecrets? = loadClientSecrets().secrets
+
+    private fun logUnavailableConfiguration(state: GoogleDriveClientConfigurationState) {
+        this.logcat(LogPriority.WARN) {
+            "Google Drive unavailable: client configuration state=${state.name}"
+        }
+    }
 
     init {
         initGoogleDriveService()
@@ -263,7 +301,14 @@ class GoogleDriveService(private val context: Context) {
         val accessToken = syncPreferences.googleDriveAccessToken().get()
         val refreshToken = syncPreferences.googleDriveRefreshToken().get()
 
-        if (accessToken == "" || refreshToken == "") {
+        val configurationState = loadClientSecrets().state
+        val tokenState = GoogleDriveTokenLifecyclePolicy.initialState(
+            configurationAvailable = !GoogleDriveAvailabilityPolicy.shouldSkipBackgroundSync(configurationState),
+            refreshTokenPresent = refreshToken.isNotBlank(),
+        )
+        if (accessToken.isBlank() ||
+            tokenState != GoogleDriveTokenLifecycleState.READY
+        ) {
             driveService = null
             return
         }
@@ -277,8 +322,8 @@ class GoogleDriveService(private val context: Context) {
      * and grant the application permission to access their Google Drive account.
      * @return An Intent configured to launch a browser for Google Drive OAuth sign-in.
      */
-    fun getSignInIntent(): Intent {
-        val authorizationUrl = generateAuthorizationUrl()
+    fun getSignInIntent(): Intent? {
+        val authorizationUrl = generateAuthorizationUrl() ?: return null
 
         return Intent(Intent.ACTION_VIEW).apply {
             data = Uri.parse(authorizationUrl)
@@ -293,12 +338,12 @@ class GoogleDriveService(private val context: Context) {
      * even if they have previously granted access.
      * @return The authorization URL.
      */
-    private fun generateAuthorizationUrl(): String {
+    private fun generateAuthorizationUrl(): String? {
         val jsonFactory: GsonFactory = GsonFactory.getDefaultInstance()
-        val secrets = GoogleClientSecrets.load(
-            jsonFactory,
-            context.assets.open("client_secrets.json").reader(),
-        )
+        val secrets = availableClientSecrets() ?: run {
+            logUnavailableConfiguration(loadClientSecrets().state)
+            return null
+        }
 
         val flow = GoogleAuthorizationCodeFlow.Builder(
             NetHttpTransport(),
@@ -312,14 +357,27 @@ class GoogleDriveService(private val context: Context) {
             .setApprovalPrompt("force")
             .build()
     }
-    internal suspend fun refreshToken() = withIOContext {
+    internal suspend fun refreshToken(): Boolean = withIOContext {
+        val clientSecretsResult = loadClientSecrets()
+        if (GoogleDriveAvailabilityPolicy.shouldSkipBackgroundSync(clientSecretsResult.state)) {
+            logUnavailableConfiguration(clientSecretsResult.state)
+            return@withIOContext false
+        }
         val refreshToken = syncPreferences.googleDriveRefreshToken().get()
+        if (GoogleDriveTokenLifecyclePolicy.initialState(
+                configurationAvailable = true,
+                refreshTokenPresent = refreshToken.isNotBlank(),
+            ) == GoogleDriveTokenLifecycleState.MISSING_REFRESH_TOKEN
+        ) {
+            driveService = null
+            this@GoogleDriveService.logcat(LogPriority.INFO) {
+                "Google Drive refresh skipped because authorization is not configured"
+            }
+            return@withIOContext false
+        }
 
         val jsonFactory: GsonFactory = GsonFactory.getDefaultInstance()
-        val secrets = GoogleClientSecrets.load(
-            jsonFactory,
-            context.assets.open("client_secrets.json").reader(),
-        )
+        val secrets = clientSecretsResult.secrets ?: return@withIOContext false
 
         val credential = GoogleCredential.Builder()
             .setJsonFactory(jsonFactory)
@@ -327,36 +385,66 @@ class GoogleDriveService(private val context: Context) {
             .setClientSecrets(secrets)
             .build()
 
-        if (refreshToken == "") {
-            throw Exception(context.stringResource(SYMR.strings.google_drive_not_signed_in))
+        val tokenStore = object : GoogleDriveTokenStore {
+            override fun refreshToken(): String = syncPreferences.googleDriveRefreshToken().get()
+
+            override fun saveAccessToken(accessToken: String) {
+                syncPreferences.googleDriveAccessToken().set(accessToken)
+            }
+
+            override fun clearCredentials() {
+                syncPreferences.googleDriveAccessToken().set("")
+                syncPreferences.googleDriveRefreshToken().set("")
+            }
         }
+        val state = GoogleDriveTokenRefreshCoordinator.refresh(
+            configurationAvailable = true,
+            tokenStore = tokenStore,
+            tokenRefresher = GoogleCredentialTokenRefresher(credential),
+        )
 
-        credential.refreshToken = refreshToken
+        when (state) {
+            GoogleDriveTokenLifecycleState.READY -> {
+                val accessToken = syncPreferences.googleDriveAccessToken().get()
+                setupGoogleDriveService(accessToken, refreshToken)
+                driveService != null
+            }
 
-        try {
-            credential.refreshToken()
-            val newAccessToken = credential.accessToken
-            // Save the new access token
-            syncPreferences.googleDriveAccessToken().set(newAccessToken)
-            setupGoogleDriveService(newAccessToken, credential.refreshToken)
-        } catch (e: TokenResponseException) {
-            if (e.details.error == "invalid_grant") {
-                // The refresh token is invalid, prompt the user to sign in again
+            GoogleDriveTokenLifecycleState.AUTHORIZATION_REVOKED -> {
+                driveService = null
                 this@GoogleDriveService.logcat(LogPriority.ERROR) {
                     "Google Drive refresh token is invalid"
                 }
-                throw e.message?.let { Exception(it, e) } ?: Exception("Unknown error", e)
-            } else {
-                // Token refresh failed; handle this situation
-                this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive access-token refresh failed" }
-                this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive sync will be disabled" }
-                throw e.message?.let { Exception(it, e) } ?: Exception("Unknown error", e)
+                false
             }
-        } catch (e: IOException) {
-            // Token refresh failed; handle this situation
-            this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive access-token refresh failed" }
-            this@GoogleDriveService.logcat(LogPriority.ERROR) { "Google Drive sync will be disabled" }
-            throw e.message?.let { Exception(it, e) } ?: Exception("Unknown error", e)
+
+            GoogleDriveTokenLifecycleState.MALFORMED_RESPONSE -> {
+                driveService = null
+                this@GoogleDriveService.logcat(LogPriority.ERROR) {
+                    "Google Drive token response was unusable"
+                }
+                false
+            }
+
+            GoogleDriveTokenLifecycleState.TRANSIENT_FAILURE -> {
+                driveService = null
+                this@GoogleDriveService.logcat(LogPriority.ERROR) {
+                    "Google Drive access-token refresh failed"
+                }
+                false
+            }
+
+            GoogleDriveTokenLifecycleState.CANCELED -> {
+                driveService = null
+                false
+            }
+
+            GoogleDriveTokenLifecycleState.MISSING_CONFIGURATION,
+            GoogleDriveTokenLifecycleState.MISSING_REFRESH_TOKEN,
+            -> {
+                driveService = null
+                false
+            }
         }
     }
 
@@ -367,10 +455,11 @@ class GoogleDriveService(private val context: Context) {
      */
     private fun setupGoogleDriveService(accessToken: String, refreshToken: String) {
         val jsonFactory: GsonFactory = GsonFactory.getDefaultInstance()
-        val secrets = GoogleClientSecrets.load(
-            jsonFactory,
-            context.assets.open("client_secrets.json").reader(),
-        )
+        val secrets = availableClientSecrets() ?: run {
+            logUnavailableConfiguration(loadClientSecrets().state)
+            driveService = null
+            return
+        }
 
         val credential = GoogleCredential.Builder()
             .setJsonFactory(jsonFactory)
@@ -406,21 +495,24 @@ class GoogleDriveService(private val context: Context) {
         onFailure: (String) -> Unit,
     ) {
         val jsonFactory: GsonFactory = GsonFactory.getDefaultInstance()
-        val secrets = GoogleClientSecrets.load(
-            jsonFactory,
-            context.assets.open("client_secrets.json").reader(),
-        )
-
-        val tokenResponse: GoogleTokenResponse = GoogleAuthorizationCodeTokenRequest(
-            NetHttpTransport(),
-            jsonFactory,
-            secrets.installed.clientId,
-            secrets.installed.clientSecret,
-            authorizationCode,
-            REDIRECT_URI,
-        ).setGrantType("authorization_code").execute()
+        val secrets = availableClientSecrets() ?: run {
+            logUnavailableConfiguration(loadClientSecrets().state)
+            activity.runOnUiThread {
+                onFailure(context.stringResource(SYMR.strings.google_drive_not_signed_in))
+            }
+            return
+        }
 
         try {
+            val tokenResponse: GoogleTokenResponse = GoogleAuthorizationCodeTokenRequest(
+                NetHttpTransport(),
+                jsonFactory,
+                secrets.installed.clientId,
+                secrets.installed.clientSecret,
+                authorizationCode,
+                REDIRECT_URI,
+            ).setGrantType("authorization_code").execute()
+
             // Save the access token and refresh token
             val accessToken = tokenResponse.accessToken
             val refreshToken = tokenResponse.refreshToken
@@ -438,8 +530,35 @@ class GoogleDriveService(private val context: Context) {
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Google Drive authorization handling failed" }
             activity.runOnUiThread {
-                onFailure(e.localizedMessage ?: "Unknown error")
+                onFailure(context.stringResource(SYMR.strings.google_drive_not_signed_in))
             }
+        }
+    }
+}
+
+private class GoogleCredentialTokenRefresher(
+    private val credential: GoogleCredential,
+) : GoogleDriveTokenRefresher {
+    override fun refresh(refreshToken: String): GoogleDriveRefreshResult {
+        credential.refreshToken = refreshToken
+        return try {
+            credential.refreshToken()
+            val accessToken = credential.accessToken
+            if (accessToken.isNullOrBlank()) {
+                GoogleDriveRefreshResult.MalformedResponse
+            } else {
+                GoogleDriveRefreshResult.Success(accessToken)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TokenResponseException) {
+            if (e.details?.error == "invalid_grant") {
+                GoogleDriveRefreshResult.AuthorizationRevoked
+            } else {
+                GoogleDriveRefreshResult.TransientFailure
+            }
+        } catch (e: IOException) {
+            throw e
         }
     }
 }

@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
@@ -81,6 +83,8 @@ fun MangaBottomActionMenu(
     onMarkAsReadClicked: (() -> Unit)? = null,
     onMarkAsUnreadClicked: (() -> Unit)? = null,
     onMarkPreviousAsReadClicked: (() -> Unit)? = null,
+    onSetChapterLinePreferenceClicked: (() -> Unit)? = null,
+    onResetChapterLinePreferenceClicked: (() -> Unit)? = null,
     onDownloadClicked: (() -> Unit)? = null,
     onDeleteClicked: (() -> Unit)? = null,
 ) {
@@ -96,7 +100,14 @@ fun MangaBottomActionMenu(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             val haptic = LocalHapticFeedback.current
-            val confirm = remember { mutableStateListOf(false, false, false, false, false, false, false) }
+            // KMK --> EC-04 2026-09-01: was 7 slots (0..6) for 7 buttons, one-to-one. Adding the two
+            // chapter-line buttons without adding new slots left them both reusing index 4 alongside
+            // "mark previous as read" -- a real collision: since onLongClickItem() clears every OTHER
+            // index when arming one, all three buttons shared the same armed/confirm state, so
+            // arming any one of them and then tapping a DIFFERENT one of the three would fire that
+            // other action without ever having long-pressed it. Now 9 slots (0..8), one per button.
+            val confirm = remember { mutableStateListOf(false, false, false, false, false, false, false, false, false) }
+            // KMK <--
             var resetJob by remember { mutableStateOf<Job?>(null) }
             val onLongClickItem: (Int) -> Unit = { toConfirmIndex ->
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -109,6 +120,7 @@ fun MangaBottomActionMenu(
             }
             Row(
                 modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
                     .padding(
                         WindowInsets.navigationBars
                             .only(WindowInsetsSides.Bottom)
@@ -161,12 +173,30 @@ fun MangaBottomActionMenu(
                         onClick = onMarkPreviousAsReadClicked,
                     )
                 }
+                if (onSetChapterLinePreferenceClicked != null) {
+                    Button(
+                        title = stringResource(KMR.strings.action_prefer_chapter_line),
+                        icon = Icons.Outlined.SwapCalls,
+                        toConfirm = confirm[5],
+                        onLongClick = { onLongClickItem(5) },
+                        onClick = onSetChapterLinePreferenceClicked,
+                    )
+                }
+                if (onResetChapterLinePreferenceClicked != null) {
+                    Button(
+                        title = stringResource(KMR.strings.action_reset_chapter_line),
+                        icon = Icons.Outlined.Refresh,
+                        toConfirm = confirm[6],
+                        onLongClick = { onLongClickItem(6) },
+                        onClick = onResetChapterLinePreferenceClicked,
+                    )
+                }
                 if (onDownloadClicked != null) {
                     Button(
                         title = stringResource(MR.strings.action_download),
                         icon = Icons.Outlined.Download,
-                        toConfirm = confirm[5],
-                        onLongClick = { onLongClickItem(5) },
+                        toConfirm = confirm[7],
+                        onLongClick = { onLongClickItem(7) },
                         onClick = onDownloadClicked,
                     )
                 }
@@ -174,8 +204,8 @@ fun MangaBottomActionMenu(
                     Button(
                         title = stringResource(MR.strings.action_delete),
                         icon = Icons.Outlined.Delete,
-                        toConfirm = confirm[6],
-                        onLongClick = { onLongClickItem(6) },
+                        toConfirm = confirm[8],
+                        onLongClick = { onLongClickItem(8) },
                         onClick = onDeleteClicked,
                     )
                 }

@@ -16,6 +16,7 @@ data class RestoreOptions(
     // SY <--
     // KMK -->
     val tasteProfile: Boolean = true,
+    val localTracker: Boolean = true,
     // KMK <--
 ) {
 
@@ -30,6 +31,7 @@ data class RestoreOptions(
         // SY <--
         // KMK -->
         tasteProfile,
+        localTracker,
         // KMK <--
     )
 
@@ -40,7 +42,8 @@ data class RestoreOptions(
             extensionStores ||
             sourceSettings /* SY --> */ ||
             savedSearchesFeeds /* SY <-- */ /* KMK --> */ ||
-            tasteProfile /* KMK <-- */
+            tasteProfile /* KMK <-- */ ||
+            localTracker
 
     companion object {
         val options = persistentListOf(
@@ -84,6 +87,11 @@ data class RestoreOptions(
                 getter = RestoreOptions::tasteProfile,
                 setter = { options, enabled -> options.copy(tasteProfile = enabled) },
             ),
+            Entry(
+                label = KMR.strings.local_tracker_backup_option,
+                getter = RestoreOptions::localTracker,
+                setter = { options, enabled -> options.copy(localTracker = enabled) },
+            ),
             // KMK <--
         )
 
@@ -98,6 +106,7 @@ data class RestoreOptions(
             // SY <--
             // KMK -->
             tasteProfile = array.getOrElse(6) { true },
+            localTracker = array.getOrElse(7) { true },
             // KMK <--
         )
     }

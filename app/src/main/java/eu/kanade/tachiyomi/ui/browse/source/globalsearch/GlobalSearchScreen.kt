@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -18,12 +19,14 @@ import eu.kanade.presentation.browse.components.BulkFavoriteDialogs
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.browse.BulkFavoriteScreenModel
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
+import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class GlobalSearchScreen(
     val searchQuery: String = "",
     private val extensionFilter: String? = null,
+    private val returnSelection: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -34,16 +37,22 @@ class GlobalSearchScreen(
         }
 
         val navigator = LocalNavigator.currentOrThrow
+        val context = LocalContext.current
 
         val screenModel = rememberScreenModel {
             GlobalSearchScreenModel(
                 initialQuery = searchQuery,
                 initialExtensionFilter = extensionFilter,
+                returnSelection = returnSelection,
             )
         }
         val state by screenModel.state.collectAsState()
         var showSingleLoadingScreen by remember {
-            mutableStateOf(searchQuery.isNotEmpty() && !extensionFilter.isNullOrEmpty() && state.total == 1)
+            mutableStateOf(
+                searchQuery.isNotEmpty() &&
+                    !extensionFilter.isNullOrEmpty() &&
+                    GlobalSearchSelectionPolicy.shouldAutoSelect(returnSelection, state.total),
+            )
         }
 
         // KMK -->
@@ -66,7 +75,11 @@ class GlobalSearchScreen(
                     is SearchItemResult.Success -> {
                         val manga = result.result.singleOrNull()
                         if (manga != null) {
-                            navigator.replace(MangaScreen(manga.id, true))
+                            if (returnSelection) {
+                                finishWithSelection(context, manga.id)
+                            } else {
+                                navigator.replace(MangaScreen(manga.id, true))
+                            }
                         } else {
                             // Backoff to result screen
                             showSingleLoadingScreen = false
@@ -78,19 +91,33 @@ class GlobalSearchScreen(
         } else {
             GlobalSearchScreen(
                 state = state,
-                navigateUp = navigator::pop,
+                navigateUp = {
+                    if (returnSelection) {
+                        (context as? android.app.Activity)?.finish()
+                    } else {
+                        navigator.pop()
+                    }
+                },
                 onChangeSearchQuery = screenModel::updateSearchQuery,
                 onSearch = { screenModel.search() },
                 getManga = { screenModel.getManga(it) },
                 onChangeSearchFilter = screenModel::setSourceFilter,
                 onToggleResults = screenModel::toggleFilterResults,
                 onClickSource = {
-                    navigator.push(BrowseSourceScreen(it.id, state.searchQuery))
+                    navigator.push(
+                        BrowseSourceScreen(
+                            sourceId = it.id,
+                            listingQuery = state.searchQuery,
+                            returnSelection = returnSelection,
+                        ),
+                    )
                 },
                 onClickItem = { manga ->
                     // KMK -->
                     if (bulkFavoriteState.selectionMode) {
                         bulkFavoriteScreenModel.toggleSelection(manga)
+                    } else if (returnSelection) {
+                        finishWithSelection(context, manga.id)
                     } else {
                         // KMK <--
                         navigator.push(MangaScreen(manga.id, true))
@@ -118,5 +145,14 @@ class GlobalSearchScreen(
             dialog = bulkFavoriteState.dialog,
         )
         // KMK <--
+    }
+
+    private fun finishWithSelection(context: android.content.Context, mangaId: Long) {
+        val activity = context as? android.app.Activity ?: return
+        activity.setResult(
+            android.app.Activity.RESULT_OK,
+            android.content.Intent().putExtra(MainActivity.EXTRA_ALTERNATE_SOURCE_MANGA_ID, mangaId),
+        )
+        activity.finish()
     }
 }

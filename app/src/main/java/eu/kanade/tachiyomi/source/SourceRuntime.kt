@@ -4,6 +4,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 // KMK v0.8.10-fix3 -->
 /**
@@ -54,36 +56,86 @@ object SourceRuntime {
      * [Result.success] on success, or [Result.failure] with the (possibly unwrapped) throwable when
      * the failure is recoverable. A non-recoverable failure ([CancellationException] or a genuinely
      * fatal error) is rethrown, not returned as a [Result].
+     *
+     * @param bypassSuppression KMK v0.8.21-fix5: R2 correction -- when `true`, skips the
+     * suppression-window check for this one call only, without touching
+     * [SourceRuntimeFailureRegistry] in any way. Intended for a caller that has already decided,
+     * within its own bounded retry policy, to make exactly one more attempt against a source that
+     * just failed (e.g. [exh.recs.matching.SameMangaCandidateSearcher]'s same-source retry). Prefer
+     * this over [SourceRuntimeFailureRegistry.clear] for an *automatic* retry: `clear` erases the
+     * recorded entry process-wide, which (a) lifts suppression for every other unrelated concurrent
+     * caller of the same source, not just this one, and (b) makes a second consecutive failure
+     * record as a misleadingly fresh single-failure entry instead of correctly incrementing the
+     * existing one's count and preserving its original `firstFailureAt`. Reserve
+     * [SourceRuntimeFailureRegistry.clear]/`clearAll` for genuinely user-initiated "retry now"
+     * actions (the reader's explicit page retry, Source Evaluation's runtime-health dialog), where
+     * discarding the recorded failure entirely is the correct, requested behavior.
+     *
+     * KMK v0.8.21-fix6: R2 correction -- a successful bypassed call used to unconditionally call
+     * [SourceRuntimeFailureRegistry.clear] on success, which had its own race: if a *different*
+     * concurrent caller recorded a newer failure for the same source while this bypassed attempt
+     * was still in flight, the unconditional clear would erase that newer evidence too. The entry
+     * present *before* this bypassed attempt starts is now captured and the post-success clear uses
+     * [SourceRuntimeFailureRegistry.clearIfUnchanged], which only clears if nothing else changed the
+     * entry in the meantime -- a newer concurrent failure survives.
      */
     suspend inline fun <T> run(
         source: Source,
         operation: SourceRuntimeOperation,
         dispatcher: CoroutineDispatcher = Dispatchers.IO,
+        bypassSuppression: Boolean = false,
         crossinline block: suspend Source.() -> T,
     ): Result<T> {
         // KMK v0.8.10-fix8: enforce suppression before ever touching the source again -- previously
         // SourceRuntimeFailureRegistry.isTemporarilyUnavailable() was advisory only (callers had to
         // remember to check it themselves), so a source that had just thrown a lazy-init LinkageError
         // could still be re-invoked by any call site that didn't opt in, re-triggering the same crash
-        // risk. This check is unconditional for every run()/runBlockingSourceCall() caller now.
-        suppressionFailureOrNull(source)?.let { return Result.failure(it) }
+        // risk. This check is unconditional for every run()/runBlockingSourceCall() caller now,
+        // unless the caller explicitly opts out via [bypassSuppression] for one bounded retry.
+        if (!bypassSuppression) {
+            suppressionFailureOrNull(source)?.let { return Result.failure(it) }
+        }
+        // KMK v0.8.21-fix6: captured before the attempt so a post-success clear can detect whether a
+        // concurrent caller recorded a newer failure while this attempt was in flight (see
+        // clearIfUnchanged below). Only meaningful when bypassSuppression is true; a plain call never
+        // reads it.
+        val entryBeforeAttempt = if (bypassSuppression) SourceRuntimeFailureRegistry.get(source.id) else null
         return try {
-            Result.success(withContext(dispatcher) { source.block() })
+            val result = withContext(dispatcher) { source.block() }
+            // KMK v0.8.21-fix5/fix6: R2 correction -- a bypassed call that succeeds is fresh, direct
+            // proof the source is healthy again, so the stale failure it bypassed no longer
+            // reflects reality. Clearing here (only on confirmed success, never preemptively, and
+            // only if the entry has not changed since this attempt started) is what makes a
+            // subsequent, non-bypassed call to the same source within the same caller's own retry
+            // loop -- e.g. a later query in the same batch -- not get wrongly suppressed by a
+            // failure that was already superseded, while still preserving a genuinely newer failure
+            // recorded by an unrelated concurrent caller. This never fires for an ordinary
+            // non-bypassed call: suppression would already have blocked it before this point if a
+            // recent failure existed.
+            if (bypassSuppression) SourceRuntimeFailureRegistry.clearIfUnchanged(source.id, entryBeforeAttempt)
+            Result.success(result)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
             val unwrapped = e.unwrapSourceRuntimeCause()
             if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+            val kind = unwrapped.toSourceRuntimeFailureKind()
             SourceRuntimeFailureRegistry.record(
                 SourceRuntimeFailure(
                     sourceId = source.id,
                     sourceName = source.name,
                     sourceLang = source.lang,
                     operation = operation,
-                    kind = unwrapped.toSourceRuntimeFailureKind(),
+                    kind = kind,
                     throwable = unwrapped,
                 ),
             )
+            // KMK: this is the only place a recoverable per-source failure is actually logged --
+            // without it, any UI copy telling the user to "see logs for details" was untrue, since
+            // SourceRuntime previously only recorded into the in-memory registry and never logged.
+            logcat(LogPriority.WARN, unwrapped) {
+                "SourceRuntime: ${source.name} (${source.lang}, id=${source.id}) failed $operation -- $kind"
+            }
             Result.failure(unwrapped)
         }
     }
@@ -106,16 +158,23 @@ object SourceRuntime {
         } catch (e: Throwable) {
             val unwrapped = e.unwrapSourceRuntimeCause()
             if (!unwrapped.isRecoverableSourceRuntimeFailure()) throw e
+            val kind = unwrapped.toSourceRuntimeFailureKind()
             SourceRuntimeFailureRegistry.record(
                 SourceRuntimeFailure(
                     sourceId = source.id,
                     sourceName = source.name,
                     sourceLang = source.lang,
                     operation = operation,
-                    kind = unwrapped.toSourceRuntimeFailureKind(),
+                    kind = kind,
                     throwable = unwrapped,
                 ),
             )
+            // KMK: this is the only place a recoverable per-source failure is actually logged --
+            // without it, any UI copy telling the user to "see logs for details" was untrue, since
+            // SourceRuntime previously only recorded into the in-memory registry and never logged.
+            logcat(LogPriority.WARN, unwrapped) {
+                "SourceRuntime: ${source.name} (${source.lang}, id=${source.id}) failed $operation -- $kind"
+            }
             Result.failure(unwrapped)
         }
     }

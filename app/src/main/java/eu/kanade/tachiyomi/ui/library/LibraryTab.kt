@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -21,6 +23,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.util.fastAll
 import androidx.compose.ui.util.fastAny
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -65,6 +68,9 @@ import exh.source.MERGED_SOURCE_ID
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -107,6 +113,52 @@ data object LibraryTab : Tab {
     override suspend fun onReselect(navigator: Navigator) {
         requestOpenSettingsSheet()
     }
+
+    // KMK F2-05.0 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM): a lightweight,
+    // companion-level readiness signal -- same established pattern as this object's own
+    // librarySearchEvent/openTabEvent-style singletons used elsewhere in this codebase for
+    // cross-screen communication without full DI -- exposing whether LibraryScreenModel's real
+    // [LibraryScreenModel.State.isLoading] has finished its FIRST transition to false. This is the
+    // one genuinely truthful "Library tab has real content" signal: it can only be set from inside
+    // this Tab's own Content() composable, which Voyager only composes at all when this Tab is
+    // both the visible screen (HomeScreen is navigator.lastItem, not OnboardingScreen or
+    // NewUpdateScreen) AND the currently selected tab. See MainActivity's ReportDrawnWhen wiring,
+    // which combines this with an explicit navigator.lastItem check for a belt-and-suspenders
+    // predicate that structurally cannot fire during onboarding, a blocking update dialog, or
+    // Library's own initial load.
+    //
+    // KMK F2-05.0.1 (KFC-V0.8.21-FIX2-CORRECTIVE-RECHECK-AND-RELEASE-PROGRAM) lifecycle
+    // correction: this field lives on a process-lifetime Kotlin `object`, so once it latches
+    // `true` it survives a same-process Activity recreation (e.g. configuration change) even
+    // though `androidx.activity.compose.ReportDrawnWhen`'s own predicate is evaluated fresh on
+    // that NEW Activity instance's first composition, with no built-in gate on that instance
+    // having actually measured/laid out/drawn its own Library content yet (confirmed by reading
+    // ReportDrawnWhen's and FullyDrawnReporter's actual AndroidX source: the predicate is
+    // observed via a plain SnapshotStateObserver read at composition time, and
+    // Activity.reportFullyDrawn() is gated only on a reporter-count reaching zero, not on any
+    // draw/layout completion signal of its own). [resetForNewActivityInstance] closes that gap:
+    // [eu.kanade.tachiyomi.ui.main.MainActivity.onCreate] calls it unconditionally, before Compose
+    // content is ever set, so every fresh Activity instance -- true cold start, same-process
+    // recreation, or process-death relaunch -- starts this signal at `false` and can only latch
+    // `true` again once ITS OWN LibraryTab.Content() observes ITS OWN LibraryScreenModel's real
+    // isLoading transition to false. `onCreate()` is a hard, unambiguous ordering boundary (it
+    // completes before the Composition that could set this back to `true` is even created), so
+    // this fix is race-free by construction rather than dependent on Compose effect-ordering.
+    private val _isInitiallyLoaded = MutableStateFlow(false)
+    val isInitiallyLoaded: StateFlow<Boolean> = _isInitiallyLoaded.asStateFlow()
+
+    fun resetForNewActivityInstance() {
+        _isInitiallyLoaded.value = false
+    }
+
+    // KMK F2-05.0.1: stable, locale- and text-independent Compose semantics tag for the
+    // Library-ready destination -- same established pattern as
+    // eu.kanade.presentation.more.onboarding.ONBOARDING_ACCEPT_BUTTON_TEST_TAG. Applied to the
+    // Scaffold's content slot exactly when state.isLoading is false (the identical condition that
+    // latches isInitiallyLoaded), covering both the populated-library and empty-library ready
+    // states -- not just the populated branch -- so an automation check for "Library reached its
+    // ready state" cannot spuriously fail against a genuinely empty but fully-loaded library.
+    const val LIBRARY_READY_CONTENT_TEST_TAG = "library_ready_content"
 
     @Composable
     override fun Content() {
@@ -290,65 +342,76 @@ data object LibraryTab : Tab {
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { contentPadding ->
-            when {
-                state.isLoading -> {
-                    LoadingScreen(Modifier.padding(contentPadding))
-                }
-                state.searchQuery.isNullOrEmpty() && !state.hasActiveFilters && state.isLibraryEmpty -> {
-                    val handler = LocalUriHandler.current
-                    EmptyScreen(
-                        stringRes = MR.strings.information_empty_library,
-                        modifier = Modifier.padding(contentPadding),
-                        actions = persistentListOf(
-                            EmptyScreenAction(
-                                stringRes = MR.strings.getting_started_guide,
-                                icon = Icons.AutoMirrored.Outlined.HelpOutline,
-                                onClick = { handler.openUri(GETTING_STARTED_URL) },
+            // KMK F2-05.0.1: tags the entire content slot with LIBRARY_READY_CONTENT_TEST_TAG
+            // exactly when state.isLoading is false -- the identical condition that latches
+            // isInitiallyLoaded -- so an automation check can distinguish "still loading" from
+            // "genuinely ready" regardless of whether the ready library turns out empty or
+            // populated.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .let { if (!state.isLoading) it.testTag(LIBRARY_READY_CONTENT_TEST_TAG) else it },
+            ) {
+                when {
+                    state.isLoading -> {
+                        LoadingScreen(Modifier.padding(contentPadding))
+                    }
+                    state.searchQuery.isNullOrEmpty() && !state.hasActiveFilters && state.isLibraryEmpty -> {
+                        val handler = LocalUriHandler.current
+                        EmptyScreen(
+                            stringRes = MR.strings.information_empty_library,
+                            modifier = Modifier.padding(contentPadding),
+                            actions = persistentListOf(
+                                EmptyScreenAction(
+                                    stringRes = MR.strings.getting_started_guide,
+                                    icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                                    onClick = { handler.openUri(GETTING_STARTED_URL) },
+                                ),
                             ),
-                        ),
-                    )
-                }
-                else -> {
-                    LibraryContent(
-                        categories = state.displayedCategories,
-                        // KMK -->
-                        activeCategoryIndex = state.coercedActiveCategoryIndex,
-                        // KMK <--
-                        searchQuery = state.searchQuery,
-                        selection = state.selection,
-                        contentPadding = contentPadding,
-                        currentPage = state.coercedActiveCategoryIndex,
-                        hasActiveFilters = state.hasActiveFilters,
-                        showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
-                        onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
-                        onClickManga = { navigator.push(MangaScreen(it)) },
-                        onContinueReadingClicked = { it: LibraryManga ->
-                            scope.launchIO {
-                                val chapter = screenModel.getNextUnreadChapter(it.manga)
-                                if (chapter != null) {
-                                    context.startActivity(
-                                        ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
-                                    )
-                                } else {
-                                    snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))
+                        )
+                    }
+                    else -> {
+                        LibraryContent(
+                            categories = state.displayedCategories,
+                            // KMK -->
+                            activeCategoryIndex = state.coercedActiveCategoryIndex,
+                            // KMK <--
+                            searchQuery = state.searchQuery,
+                            selection = state.selection,
+                            contentPadding = contentPadding,
+                            currentPage = state.coercedActiveCategoryIndex,
+                            hasActiveFilters = state.hasActiveFilters,
+                            showPageTabs = state.showCategoryTabs || !state.searchQuery.isNullOrEmpty(),
+                            onChangeCurrentPage = screenModel::updateActiveCategoryIndex,
+                            onClickManga = { navigator.push(MangaScreen(it)) },
+                            onContinueReadingClicked = { it: LibraryManga ->
+                                scope.launchIO {
+                                    val chapter = screenModel.getNextUnreadChapter(it.manga)
+                                    if (chapter != null) {
+                                        context.startActivity(
+                                            ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
+                                        )
+                                    } else {
+                                        snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))
+                                    }
                                 }
-                            }
-                            Unit
-                        }.takeIf { state.showMangaContinueButton },
-                        onToggleSelection = screenModel::toggleSelection,
-                        onToggleRangeSelection = { category, manga ->
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            screenModel.toggleRangeSelection(category, manga)
-                        },
-                        onRefresh = { onClickRefresh(state.activeCategory) },
-                        onGlobalSearchClicked = {
-                            navigator.push(GlobalSearchScreen(screenModel.state.value.searchQuery ?: ""))
-                        },
-                        getItemCountForCategory = { state.getItemCountForCategory(it) },
-                        getDisplayMode = { screenModel.getDisplayMode() },
-                        getColumnsForOrientation = { screenModel.getColumnsForOrientation(it) },
-                        getItemsForCategory = { state.getItemsForCategory(it) },
-                    )
+                                Unit
+                            }.takeIf { state.showMangaContinueButton },
+                            onToggleSelection = screenModel::toggleSelection,
+                            onToggleRangeSelection = { category, manga ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                screenModel.toggleRangeSelection(category, manga)
+                            },
+                            onRefresh = { onClickRefresh(state.activeCategory) },
+                            onGlobalSearchClicked = {
+                                navigator.push(GlobalSearchScreen(screenModel.state.value.searchQuery ?: ""))
+                            },
+                            getItemCountForCategory = { state.getItemCountForCategory(it) },
+                            getDisplayMode = { screenModel.getDisplayMode() },
+                            getColumnsForOrientation = { screenModel.getColumnsForOrientation(it) },
+                            getItemsForCategory = { state.getItemsForCategory(it) },
+                        )
+                    }
                 }
             }
         }
@@ -455,6 +518,9 @@ data object LibraryTab : Tab {
         LaunchedEffect(state.isLoading) {
             if (!state.isLoading) {
                 (context as? MainActivity)?.ready = true
+                // KMK F2-05.0: latches true permanently on Library's first genuine data-loaded
+                // transition -- see isInitiallyLoaded's own KDoc.
+                _isInitiallyLoaded.value = true
 
                 // AM (DISCORD) -->
                 with(DiscordRPCService) {

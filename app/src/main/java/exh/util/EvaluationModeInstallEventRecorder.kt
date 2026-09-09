@@ -19,9 +19,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: [eventType] defaults
  * to [NonUndoableEventType.EXTENSION_INSTALLED] for a fresh install, but
- * `ExtensionsScreenModel.updateExtension()` passes [NonUndoableEventType.EXTENSION_UPDATED] --
- * previously every update was misrecorded as an install because this function only ever wrote
- * `EXTENSION_INSTALLED`.
+ * `ExtensionsScreenModel.updateExtension()` passes [NonUndoableEventType.EXTENSION_UPDATED].
+ * Evaluation Mode does not suppress the generic history event; privacy-sensitive package and
+ * artifact fields remain private receipt data and are never rendered as the row summary.
  */
 fun Flow<InstallStep>.recordUserInitiatedInstall(
     eventType: NonUndoableEventType = NonUndoableEventType.EXTENSION_INSTALLED,
@@ -38,15 +38,13 @@ fun Flow<InstallStep>.recordUserInitiatedInstall(
     this@recordUserInitiatedInstall.collect { step ->
         if (step == InstallStep.Installed && !recorded) {
             recorded = true
-            if (isEvaluationModeEnabled()) {
-                NonUndoableEventJournal.record(
-                    NonUndoableEvent(
-                        id = id,
-                        timestamp = System.currentTimeMillis(),
-                        eventType = eventType,
-                    ),
-                )
-            }
+            NonUndoableEventJournal.record(
+                NonUndoableEvent(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    eventType = eventType,
+                ),
+            )
         }
         emit(step)
     }
@@ -77,19 +75,17 @@ fun Flow<InstallStep>.recordPackageOperationReceipt(
     this@recordPackageOperationReceipt.collect { step ->
         if (step == InstallStep.Installed && !recorded) {
             recorded = true
-            if (isEvaluationModeEnabled()) {
-                PackageOperationJournal.record(
-                    PackageOperationReceipt(
-                        id = id,
-                        timestamp = System.currentTimeMillis(),
-                        kind = kind,
-                        packageName = packageName,
-                        signatureHash = signatureHash,
-                        versionCode = versionCode,
-                        artifactUri = artifactUri,
-                    ),
-                )
-            }
+            PackageOperationJournal.record(
+                PackageOperationReceipt(
+                    id = id,
+                    timestamp = System.currentTimeMillis(),
+                    kind = kind,
+                    packageName = packageName,
+                    signatureHash = signatureHash,
+                    versionCode = versionCode,
+                    artifactUri = artifactUri,
+                ),
+            )
         }
         emit(step)
     }
@@ -160,7 +156,7 @@ suspend fun verifyAndRecordUninstall(
     val removed = withTimeoutOrNull(timeoutMillis) {
         installedPackageNames.first { pkgName !in it }
     } != null
-    if (removed && isEvaluationModeEnabled()) {
+    if (removed) {
         // KMK Confirmed Blocker Remediation Corrective Completion Plan V2 2026-07-29: one shared id
         // for both records -- see recordUserInitiatedInstall()'s [id] parameter doc for why.
         val sharedId = NonUndoableEvent.newId()

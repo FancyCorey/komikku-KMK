@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
 /**
  * Domain B capture-gating tests: loaded-visible-result records exactly once, recomposition/loading/
  * empty/partial states never record, and a stale generation is rejected.

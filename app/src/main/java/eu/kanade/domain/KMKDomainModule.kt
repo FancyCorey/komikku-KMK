@@ -3,9 +3,13 @@ package eu.kanade.domain
 import exh.ocr.OcrIndexRepository
 import exh.recs.discovery.GetNonInstalledSourceSuggestions
 import exh.recs.evaluation.GetSourceEvaluationCandidates
+import exh.recs.matching.ConfirmedGroupLocalTrackingPropagator
+import exh.recs.matching.CrossSourceIdentityAuthorizationResolver
+import tachiyomi.data.chapter.ChapterLinePreferenceRepositoryImpl
 import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorRepositoryImpl
 import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorWithRelationsRepositoryImpl
 import tachiyomi.data.libraryUpdateErrorMessage.LibraryUpdateErrorMessageRepositoryImpl
+import tachiyomi.data.taste.AlternateSourceBridgeRepositoryImpl
 import tachiyomi.data.taste.MangaSourceQualitySignalRepositoryImpl
 import tachiyomi.data.taste.RecommendationCacheRepositoryImpl
 import tachiyomi.data.taste.RecommendationCandidateMemoryRepositoryImpl
@@ -15,6 +19,8 @@ import tachiyomi.data.taste.SourceEvaluationSafetyRepositoryImpl
 import tachiyomi.data.taste.SourceRecommendationFitRepositoryImpl
 import tachiyomi.data.taste.TasteRepositoryImpl
 import tachiyomi.data.taste.UnsafeExtensionPackageRepositoryImpl
+import tachiyomi.data.tracker.LocalTrackerRepositoryImpl
+import tachiyomi.domain.chapter.repository.ChapterLinePreferenceRepository
 import tachiyomi.domain.libraryUpdateError.interactor.DeleteLibraryUpdateErrors
 import tachiyomi.domain.libraryUpdateError.interactor.GetLibraryUpdateErrorWithRelations
 import tachiyomi.domain.libraryUpdateError.interactor.GetLibraryUpdateErrors
@@ -25,7 +31,9 @@ import tachiyomi.domain.libraryUpdateErrorMessage.interactor.DeleteLibraryUpdate
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.GetLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.InsertLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.repository.LibraryUpdateErrorMessageRepository
+import tachiyomi.domain.taste.interactor.ClearAlternateSourceBridges
 import tachiyomi.domain.taste.interactor.ClearCrossSourceGroupPrimary
+import tachiyomi.domain.taste.interactor.ClearCrossSourceIdentityDecisions
 import tachiyomi.domain.taste.interactor.ClearMangaTaste
 import tachiyomi.domain.taste.interactor.ClearRecommendationCache
 import tachiyomi.domain.taste.interactor.ClearRecommendationCandidateMemory
@@ -41,8 +49,10 @@ import tachiyomi.domain.taste.interactor.DeleteRecommendationCandidateMemory
 import tachiyomi.domain.taste.interactor.DeleteSourceEvaluation
 import tachiyomi.domain.taste.interactor.DeleteSourceEvaluationUnsafe
 import tachiyomi.domain.taste.interactor.DeleteUnsafeExtensionPackage
+import tachiyomi.domain.taste.interactor.GetAlternateSourceBridge
 import tachiyomi.domain.taste.interactor.GetChapterCountsByMangaIds
 import tachiyomi.domain.taste.interactor.GetCrossSourceGroupPrimary
+import tachiyomi.domain.taste.interactor.GetCrossSourceIdentityDecisions
 import tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.GetDisabledRecommendationSources
 import tachiyomi.domain.taste.interactor.GetKnownRecommendationMangaIds
@@ -64,12 +74,17 @@ import tachiyomi.domain.taste.interactor.GetTasteSuggestions
 import tachiyomi.domain.taste.interactor.GetUnsafeExtensionPackages
 import tachiyomi.domain.taste.interactor.MarkSourceEvaluationUnsafe
 import tachiyomi.domain.taste.interactor.PruneRecommendationCandidateMemory
+import tachiyomi.domain.taste.interactor.ReplaceAlternateSourceBridge
+import tachiyomi.domain.taste.interactor.ReplaceCrossSourceIdentityDecision
+import tachiyomi.domain.taste.interactor.ReplaceCrossSourceIdentityDecisions
 import tachiyomi.domain.taste.interactor.ReplaceSourceEvaluation
 import tachiyomi.domain.taste.interactor.SetCrossSourceGroupPrimary
 import tachiyomi.domain.taste.interactor.SetMangaTaste
 import tachiyomi.domain.taste.interactor.SetMangaTasteBatch
 import tachiyomi.domain.taste.interactor.SetRecommendationSourceEnabled
 import tachiyomi.domain.taste.interactor.SetTagTaste
+import tachiyomi.domain.taste.interactor.UpsertAlternateSourceBridge
+import tachiyomi.domain.taste.interactor.UpsertCrossSourceIdentityDecisions
 import tachiyomi.domain.taste.interactor.UpsertCrossSourceMangaLinks
 import tachiyomi.domain.taste.interactor.UpsertMangaSourceQualitySignal
 import tachiyomi.domain.taste.interactor.UpsertRecommendationCache
@@ -80,6 +95,7 @@ import tachiyomi.domain.taste.interactor.UpsertSourceEvaluationProbeMarker
 import tachiyomi.domain.taste.interactor.UpsertSourceRecommendationFit
 import tachiyomi.domain.taste.interactor.UpsertTagAlias
 import tachiyomi.domain.taste.interactor.UpsertUnsafeExtensionPackage
+import tachiyomi.domain.taste.repository.AlternateSourceBridgeRepository
 import tachiyomi.domain.taste.repository.MangaSourceQualitySignalRepository
 import tachiyomi.domain.taste.repository.RecommendationCacheRepository
 import tachiyomi.domain.taste.repository.RecommendationCandidateMemoryRepository
@@ -89,6 +105,7 @@ import tachiyomi.domain.taste.repository.SourceEvaluationSafetyRepository
 import tachiyomi.domain.taste.repository.SourceRecommendationFitRepository
 import tachiyomi.domain.taste.repository.TasteRepository
 import tachiyomi.domain.taste.repository.UnsafeExtensionPackageRepository
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addFactory
@@ -115,10 +132,19 @@ class KMKDomainModule : InjektModule {
 
         // KMK --> Personal recommendations taste profile
         addSingletonFactory<TasteRepository> { TasteRepositoryImpl(get()) }
+        addSingletonFactory<LocalTrackerRepository> { LocalTrackerRepositoryImpl(get()) }
+        addSingletonFactory<ChapterLinePreferenceRepository> { ChapterLinePreferenceRepositoryImpl(get()) }
         addFactory { GetMangaTaste(get()) }
         addFactory { SetMangaTaste(get()) }
         addFactory { SetMangaTasteBatch(get()) }
         addFactory { ClearMangaTaste(get()) }
+        addFactory {
+            exh.recs.matching.ConfirmedTrackedMangaTasteTargets(get(), get(), get(), get())
+        }
+        addFactory {
+            exh.recs.matching.ConfirmedMangaGroupTargets(get(), get(), get())
+        }
+        addFactory { ConfirmedGroupLocalTrackingPropagator(get()) }
         addFactory { GetTasteProfile(get(), get()) }
         // KMK v0.8.10: Taste Suggestions -- deliberately a separate read-only interactor from
         // GetTasteProfile above (which feeds live recommendation/source-evaluation scoring and is
@@ -155,6 +181,17 @@ class KMKDomainModule : InjektModule {
         addFactory { GetCrossSourceGroupPrimary(get()) }
         addFactory { SetCrossSourceGroupPrimary(get()) }
         addFactory { ClearCrossSourceGroupPrimary(get()) }
+        addFactory { GetCrossSourceIdentityDecisions(get()) }
+        addFactory { UpsertCrossSourceIdentityDecisions(get()) }
+        addFactory { ReplaceCrossSourceIdentityDecision(get()) }
+        addFactory { ReplaceCrossSourceIdentityDecisions(get()) }
+        addFactory { ClearCrossSourceIdentityDecisions(get()) }
+        addFactory { CrossSourceIdentityAuthorizationResolver(get()) }
+        addSingletonFactory<AlternateSourceBridgeRepository> { AlternateSourceBridgeRepositoryImpl(get()) }
+        addFactory { GetAlternateSourceBridge(get()) }
+        addFactory { UpsertAlternateSourceBridge(get()) }
+        addFactory { ReplaceAlternateSourceBridge(get()) }
+        addFactory { ClearAlternateSourceBridges(get()) }
         // KMK <--
         // KMK --> v0.7.8: user-confirmed source quality signals
         addSingletonFactory<MangaSourceQualitySignalRepository> { MangaSourceQualitySignalRepositoryImpl(get()) }
@@ -183,7 +220,7 @@ class KMKDomainModule : InjektModule {
         addFactory { UpsertRecommendationDiscoveryProgress(get()) }
         addFactory { ClearRecommendationDiscoveryProgress(get()) }
         // KMK <--
-        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: local-only For You
+        // local-only For You
         // exposure history (not in backup/sync/export -- see RecommendationExposureRepository KDoc)
         addSingletonFactory<tachiyomi.domain.taste.repository.RecommendationExposureRepository> {
             tachiyomi.data.taste.RecommendationExposureRepositoryImpl(get())

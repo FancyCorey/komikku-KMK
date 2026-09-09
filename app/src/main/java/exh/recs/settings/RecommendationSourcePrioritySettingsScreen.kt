@@ -34,7 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.model.rememberNavigatorScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
@@ -55,6 +55,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 // KMK v0.8.8 -->
@@ -89,7 +90,13 @@ class RecommendationSourcePrioritySettingsScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val screenModel = rememberScreenModel { RecommendationsSettingsScreenModel() }
+        val openForYou = rememberOpenForYouFromRecommendationSettings(navigator)
+        // KMK EC-04 2026-09-04: shared across all four Recommendation Settings destination screens
+        // via the enclosing Navigator instead of rememberScreenModel's per-Screen scoping, so the
+        // ScreenModel's eager init (source scan/filter/order, language processing, several
+        // preference-store parses) runs once per navigator lifetime rather than on every navigation
+        // between these sibling screens -- see RecommendationsSettingsScreenModel's shared class doc.
+        val screenModel = navigator.rememberNavigatorScreenModel { RecommendationsSettingsScreenModel() }
         val state by screenModel.state.collectAsState()
         // KMK v0.8.14-fix1: read-only For You preview -- see RecommendationForYouPreviewSnapshotStore.
         var showForYouPreview by rememberSaveable { mutableStateOf(false) }
@@ -102,6 +109,12 @@ class RecommendationSourcePrioritySettingsScreen(
                 AppBar(
                     title = stringResource(KMR.strings.rec_settings_index_for_you_sources),
                     navigateUp = navigator::pop,
+                    actions = {
+                        RecommendationSettingsDetailActions(
+                            onSearch = { navigator.push(RecommendationSettingsSearchScreen()) },
+                            onHome = openForYou,
+                        )
+                    },
                     scrollBehavior = scrollBehavior,
                 )
             },
@@ -116,6 +129,12 @@ class RecommendationSourcePrioritySettingsScreen(
             )
             val lazyListState = rememberLazyListState()
             val sourcesState = remember { state.orderedSources.toMutableStateList() }
+            fun moveSource(fromIndex: Int, toIndex: Int) {
+                if (fromIndex !in sourcesState.indices || toIndex !in sourcesState.indices || fromIndex == toIndex) return
+                val item = sourcesState.removeAt(fromIndex)
+                sourcesState.add(toIndex, item)
+                screenModel.setSourceOrder(sourcesState.map { it.id })
+            }
             // KMK v0.8.10: mirrors the LazyColumn's item order below, including its conditional
             // sections and the dynamic per-source row count, so a static control key placed after
             // the reorderable source list still resolves to the correct scroll index. The dynamic
@@ -142,9 +161,7 @@ class RecommendationSourcePrioritySettingsScreen(
                 val toSourceIndex = sourcesState.indexOfFirst { it.id == toSourceId }
                 if (fromSourceIndex == -1 || toSourceIndex == -1) return@rememberReorderableLazyListState
 
-                val item = sourcesState.removeAt(fromSourceIndex)
-                sourcesState.add(toSourceIndex.coerceIn(0, sourcesState.size), item)
-                screenModel.setSourceOrder(sourcesState.map { it.id })
+                moveSource(fromSourceIndex, toSourceIndex.coerceIn(0, sourcesState.lastIndex))
             }
 
             LaunchedEffect(state.orderedSources) {
@@ -173,50 +190,42 @@ class RecommendationSourcePrioritySettingsScreen(
                             onPreferenceClick = { showForYouPreview = true },
                         )
                     }
-                    // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08: the Latest-catalogue
+                    // The Latest-catalogue
                     // exploration share lives on this screen because it governs how For You uses its
-                    // *sources*, which is exactly what this destination already owns. Reuses the same
-                    // SameMangaListPrefRow widget as every other numeric recommendation setting; the
-                    // supported values and default come from RecommendationLatestBudgetPolicy, never
-                    // hardcoded here.
+                    // *sources*, which is exactly what this destination already owns. Enablement and
+                    // the bounded value are separate so disabling preserves the last chosen value.
                     item(key = "latest_exploration") {
-                        val offLabel = stringResource(KMR.strings.rec_latest_exploration_off)
-                        // Labels are resolved here rather than inside valueLabel because
-                        // SameMangaListPrefRow's valueLabel is a plain (Int) -> String, not a
-                        // @Composable lambda -- same pattern the minimum-chapter row already uses.
-                        val percentLabels = exh.recs.RecommendationLatestBudgetPolicy.SUPPORTED_VALUES
-                            .associateWith { percent ->
-                                if (percent == 0) {
-                                    offLabel
-                                } else {
-                                    stringResource(KMR.strings.rec_latest_exploration_percent, percent)
-                                }
-                            }
-                        SameMangaListPrefRow(
+                        BoundedIntPreferenceRow(
                             title = stringResource(KMR.strings.rec_latest_exploration),
                             summary = stringResource(KMR.strings.rec_latest_exploration_summary),
+                            valueTitle = stringResource(KMR.strings.rec_latest_exploration_value),
                             current = exh.recs.RecommendationLatestBudgetPolicy.validate(state.latestExplorationPercent),
-                            options = exh.recs.RecommendationLatestBudgetPolicy.SUPPORTED_VALUES,
-                            valueLabel = { percent -> percentLabels[percent] ?: "$percent" },
-                            onSelect = screenModel::setLatestExplorationPercent,
+                            enabled = state.latestExplorationEnabled,
+                            min = exh.recs.RecommendationLatestBudgetPolicy.MIN_PERCENT,
+                            max = exh.recs.RecommendationLatestBudgetPolicy.MAX_PERCENT,
+                            valueLabel = { percent -> stringResource(KMR.strings.rec_latest_exploration_percent, percent) },
+                            onEnabledChange = screenModel::setLatestExplorationEnabled,
+                            onValueChange = screenModel::setLatestExplorationPercent,
                         )
                     }
-                    // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08: how long a
+                    // How long a
                     // repeatedly-shown, untouched title keeps its soft ordering penalty. Placed next
                     // to the Latest control since both govern how For You composes a source's row.
                     item(key = "exposure_window") {
-                        val dayLabels = exh.recs.RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS
-                            .associateWith { days -> stringResource(KMR.strings.rec_exposure_window_days, days) }
-                        SameMangaListPrefRow(
+                        BoundedIntPreferenceRow(
                             title = stringResource(KMR.strings.rec_exposure_window),
                             summary = stringResource(KMR.strings.rec_exposure_window_summary),
+                            valueTitle = stringResource(KMR.strings.rec_exposure_window_value),
                             current = exh.recs.RecommendationExposurePolicy.validateWindowDays(state.exposureWindowDays),
-                            options = exh.recs.RecommendationExposurePolicy.SUPPORTED_WINDOW_DAYS,
-                            valueLabel = { days -> dayLabels[days] ?: "$days" },
-                            onSelect = screenModel::setExposureWindowDays,
+                            enabled = state.exposureWindowEnabled,
+                            min = exh.recs.RecommendationExposurePolicy.MIN_WINDOW_DAYS,
+                            max = exh.recs.RecommendationExposurePolicy.MAX_WINDOW_DAYS,
+                            valueLabel = { days -> pluralStringResource(KMR.plurals.rec_exposure_window_days, count = days, days) },
+                            onEnabledChange = screenModel::setExposureWindowEnabled,
+                            onValueChange = screenModel::setExposureWindowDays,
                         )
                     }
-                    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: user-facing clear action for the
+                    // User-facing clear action for the
                     // local repeat/exposure history, gated behind an explicit confirmation. The dialog
                     // states plainly that only ordering history is removed -- ratings, library, and
                     // tracking are untouched, which matches what clearExposureHistoryNow() actually does.
@@ -310,6 +319,16 @@ class RecommendationSourcePrioritySettingsScreen(
                                         if (isDisliked) RecommendationSourcePreference.NEUTRAL else RecommendationSourcePreference.DISLIKE,
                                     )
                                 },
+                                onMoveUp = if (index > 0) {
+                                    { moveSource(index, index - 1) }
+                                } else {
+                                    null
+                                },
+                                onMoveDown = if (index < sourcesState.lastIndex) {
+                                    { moveSource(index, index + 1) }
+                                } else {
+                                    null
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
@@ -400,20 +419,39 @@ class RecommendationSourcePrioritySettingsScreen(
                             } else if (src != null) {
                                 item(key = "status_src_${src.id}_$i") {
                                     // KMK --> v0.8.19: evaluation mode source-name obfuscation
-                                    Text(
-                                        text = if (rememberEvaluationModeEnabled()) {
-                                            EvaluationModeFormatter.sourceLabel(src.id)
-                                        } else {
-                                            src.name
-                                        },
-                                        // KMK <--
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(
-                                            horizontal = MaterialTheme.padding.medium + MaterialTheme.padding.small,
-                                            vertical = MaterialTheme.padding.extraSmall,
-                                        ),
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = MaterialTheme.padding.medium + MaterialTheme.padding.small,
+                                                vertical = MaterialTheme.padding.extraSmall,
+                                            ),
+                                    ) {
+                                        Text(
+                                            text = if (rememberEvaluationModeEnabled()) {
+                                                EvaluationModeFormatter.sourceLabel(src.id)
+                                            } else {
+                                                src.name
+                                            },
+                                            // KMK <--
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        state.sourceStatuses[src.id]?.evaluatedCount
+                                            ?.takeIf { it > 0 }
+                                            ?.let { count ->
+                                                Text(
+                                                    text = stringResource(
+                                                        KMR.strings.rec_for_you_source_evaluated_candidates,
+                                                        count,
+                                                    ),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                    }
                                 }
                             }
                         }
@@ -461,8 +499,8 @@ class RecommendationSourcePrioritySettingsScreen(
  *
  * KMK v0.8.16-fix1: replaced the compact `AlertDialog` (`LazyColumn(heightIn(max = 420.dp))`) with a
  * full-screen `Dialog` + `Scaffold`/`AppBar`, matching how [exh.recs.bestversion.BestVersionCompareScreen]'s
- * fullscreen dialogs are built -- see `UI_AUDIT_NOTES.md`, which found the compact dialog too small and
- * not close enough to the real For You layout. The close action is top-left (`AppBar`'s standard
+ * fullscreen dialogs are built. The compact dialog was too small to represent the real For You layout.
+ * The close action is top-left (`AppBar`'s standard
  * navigation-icon position), matching every other Komikku/KMK top app bar in this app, rather than a
  * top-right icon that would be the only top-right close affordance in the app.
  */

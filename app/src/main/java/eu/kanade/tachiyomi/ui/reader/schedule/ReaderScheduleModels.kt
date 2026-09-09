@@ -4,11 +4,11 @@ import java.time.DayOfWeek
 
 // KMK v0.8.5 -->
 /**
- * Pure data model for the optional local reading schedule. See [ReaderScheduleResolver] and
- * `docs/recommendations/KMK_RECS_V0_8_5_READING_SCHEDULE_IMPLEMENTATION_PLAN.md`.
+ * Pure data model for the optional local reading schedule. [ReaderScheduleResolver] owns the
+ * corresponding window and enforcement decisions.
  *
- * A schedule has exactly one [ReaderScheduleMode] applied to every window it contains — the plan
- * explicitly sanctions this simplification ("If the product does not need mixed rules, use one
+ * A schedule has exactly one [ReaderScheduleMode] applied to every window it contains. The model
+ * deliberately uses one shared rule rather than mixed per-window behavior ("If the product does not need mixed rules, use one
  * mode per schedule") to make overlap handling trivially deterministic: windows of the same mode
  * simply OR together (any match is a match), so there is no cross-window priority to define.
  */

@@ -105,6 +105,7 @@
     <string name="eh_settings_successfully_uploaded">Settings successfully uploaded!</string>
     <string name="eh_settings_configuration_failed">Configuration failed!</string>
     <string name="eh_settings_configuration_failed_message">An error occurred during the configuration process: %1$s</string>
+    <string name="eh_settings_configuration_failed_message_safe">The settings could not be uploaded. Check your connection and try again.</string>
     <string name="eh_settings_uploading_to_server">Uploading settings to server</string>
     <string name="eh_settings_uploading_to_server_message">Please wait, this may take some time…</string>
     <string name="eh_settings_out_of_slots_error">You are out of profile slots on %1$s, please delete a profile!</string>
@@ -744,4 +745,14 @@
 
     <!-- Humanize time -->
     <string name="humanize_fallback">moments ago</string>
+    <string name="gallery_adder_success_safe">Entry added successfully</string>
+    <string name="gallery_adder_unknown_type_safe">This link type is not supported</string>
+    <string name="gallery_adder_unknown_source_safe">No installed source can open this entry</string>
+    <string name="gallery_adder_not_found_safe">The entry could not be found</string>
+    <string name="gallery_adder_chapter_not_found_safe">The chapter could not be identified</string>
+    <string name="gallery_adder_import_failed_safe">The entry could not be added</string>
+    <string name="favorites_sync_bad_library_state_safe">A library entry belongs to multiple remote categories. Review the entry and try again.</string>
+    <string name="favorites_sync_unable_to_add_to_remote_safe">An entry could not be added to remote favorites</string>
+    <string name="favorites_sync_failed_to_add_to_local_safe">Could not add an entry locally: %1$s</string>
+    <string name="favorites_sync_failed_to_add_to_local_named_safe">Could not add “%1$s” locally: %2$s</string>
 </resources>

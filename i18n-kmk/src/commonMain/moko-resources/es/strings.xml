@@ -151,7 +151,7 @@
     <string name="custom_theme_palette_pop">Pop</string>
     <string name="custom_theme_palette_outrun">Outrun</string>
     <string name="pref_connections_summary">Discord, más por venir..</string>
-    <string name="connections_discord_info">Este Servicio de Discord funciona a través del registro de token. Úsalo bajo tu propio riesgo. Tu token se almacena localmente y Anikku no lo comparte en ningún otro lugar</string>
+    <string name="connections_discord_info">Este Servicio de Discord funciona a través del registro de token. Úsalo bajo tu propio riesgo. Tu token se almacena localmente y %s no lo comparte en ningún otro lugar</string>
     <string name="chapters_from_database">Episodios e historial de la base de datos</string>
     <string name="pref_category_connections">Conexiones</string>
     <string name="connections_discord">Discord</string>

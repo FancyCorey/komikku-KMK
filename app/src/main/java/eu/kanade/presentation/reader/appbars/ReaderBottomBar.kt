@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
@@ -43,6 +44,7 @@ fun ReaderBottomBar(
     dualPageSplitEnabled: Boolean,
     doublePages: Boolean,
     onClickChapterList: () -> Unit,
+    onClickAlternateSource: (() -> Unit)?,
     onClickWebView: (() -> Unit)?,
     onClickBrowser: (() -> Unit)?,
     onClickShare: (() -> Unit)?,
@@ -71,6 +73,16 @@ fun ReaderBottomBar(
                     // KMK -->
                     tint = iconColor,
                     // KMK <--
+                )
+            }
+        }
+
+        onClickAlternateSource?.let { onClick ->
+            IconButton(onClick = onClick) {
+                Icon(
+                    imageVector = Icons.Outlined.MenuBook,
+                    contentDescription = stringResource(tachiyomi.i18n.kmk.KMR.strings.alternate_source_reader_choose_source_title),
+                    tint = iconColor,
                 )
             }
         }

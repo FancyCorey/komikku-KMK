@@ -10,7 +10,6 @@ import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.RatedMangaVisibility
 import tachiyomi.domain.taste.model.TasteProfile
 
-// KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09 -->
 /**
  * Domain A: proves the personalized-majority invariant on the **final merged display list**.
  *
@@ -88,6 +87,20 @@ class RecommendationLatestLaneCompositionTest {
         assertTrue(merged.latestCount() <= merged.nonLatestCount(), "Latest outnumbered personalized: $merged")
         assertEquals(1, merged.nonLatestCount())
         assertEquals(1, merged.latestCount())
+    }
+
+    @Test
+    fun `a sparse non-Latest set also bounds an oversized Latest input to a tie`() {
+        val input = listOf(
+            rec(1L, RecommendationDiscoveryLane.PERSONALIZED),
+        ) + (2L..6L).map { id ->
+            rec(id, RecommendationDiscoveryLane.LATEST_CATALOGUE, score = 9.0)
+        }
+
+        val balanced = RecommendationLatestBudgetPolicy.enforcePersonalizedMajority(input, limit = 5)
+
+        assertEquals(1, balanced.nonLatestCount())
+        assertEquals(1, balanced.latestCount())
     }
 
     @Test

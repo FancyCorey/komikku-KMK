@@ -57,4 +57,9 @@ val migrations: List<Migration>
         DisabledRepoMigration(),
         ChapterUrlHashMigration(),
         // KMK <--
+        RecommendationLanguageInitializationMigration(),
+        // KMK v0.8.21-fix2: AUG-02 redesign -- migrates legacy seenRecommendationMangaKeys into
+        // real MangaRating.NOT_INTERESTED rows.
+        NotInterestedRatingMigration(),
+        // KMK <--
     )

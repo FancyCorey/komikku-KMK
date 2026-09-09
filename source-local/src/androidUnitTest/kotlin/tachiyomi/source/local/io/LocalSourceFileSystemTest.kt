@@ -14,7 +14,7 @@ import tachiyomi.domain.storage.service.StorageManager
 import java.io.File
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 4: this module had no
+// This module had no
 // unit test source set before this pass (see source-local/build.gradle.kts's new androidUnitTest
 // block). [UniFile.fromFile] wraps a plain java.io.File without needing a real Android Context, so
 // the local-source directory-enumeration contract can be exercised directly on a real temp

@@ -47,6 +47,7 @@ import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import java.util.Locale
 
 /**
  * Focused version-list view for one confirmed cross-source link group. Loads directly from
@@ -258,7 +259,7 @@ private fun LinkedVersionRowCard(
                 Text(
                     text = buildString {
                         append(row.sourceName ?: stringResource(KMR.strings.source_evaluation_unknown_source))
-                        if (row.lang.isNotBlank()) append(" (${row.lang.uppercase()})")
+                        if (row.lang.isNotBlank()) append(" (${row.lang.uppercase(Locale.ROOT)})")
                         append(" · ")
                         append(
                             if (row.isInstalled) {
@@ -310,6 +311,7 @@ private fun ratingLabel(rating: MangaRating?): String = when (rating) {
     MangaRating.LOVE -> stringResource(KMR.strings.rated_manga_rating_love)
     MangaRating.LIKE -> stringResource(KMR.strings.rated_manga_rating_like)
     MangaRating.DISLIKE -> stringResource(KMR.strings.rated_manga_rating_dislike)
+    MangaRating.NOT_INTERESTED -> stringResource(KMR.strings.rec_mark_seen)
     null -> stringResource(KMR.strings.rated_manga_rating_none)
 }
 // KMK <--

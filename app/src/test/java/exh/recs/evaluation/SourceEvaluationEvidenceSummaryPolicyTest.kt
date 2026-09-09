@@ -54,6 +54,38 @@ class SourceEvaluationEvidenceSummaryPolicyTest {
         val evidence = SourceEvaluationEvidenceSummaryPolicy.evidenceFor(eval, displayState)
         assertNotNull(evidence)
         assertEquals(1, evidence!!.sampleCount)
+        assertEquals(eval.popularCount, evidence.popularCount)
+        assertEquals(eval.latestCount, evidence.latestCount)
+    }
+
+    @Test
+    fun `evidence preserves popular and latest sample split`() {
+        val eval = evaluation(listOf(manga(listOf("action"), id = 1L))).copy(
+            popularCount = 4,
+            latestCount = 3,
+        )
+        val evidence = SourceEvaluationEvidenceSummaryPolicy.evidenceFor(
+            eval,
+            SourceEvaluationDisplayPolicy.state(eval),
+        )
+        assertNotNull(evidence)
+        assertEquals(4, evidence!!.popularCount)
+        assertEquals(3, evidence.latestCount)
+    }
+
+    @Test
+    fun `negative catalogue counts are clamped for defensive presentation`() {
+        val eval = evaluation(listOf(manga(listOf("action"), id = 1L))).copy(
+            popularCount = -2,
+            latestCount = -1,
+        )
+        val evidence = SourceEvaluationEvidenceSummaryPolicy.evidenceFor(
+            eval,
+            SourceEvaluationDisplayPolicy.state(eval),
+        )
+        assertNotNull(evidence)
+        assertEquals(0, evidence!!.popularCount)
+        assertEquals(0, evidence.latestCount)
     }
 
     @Test

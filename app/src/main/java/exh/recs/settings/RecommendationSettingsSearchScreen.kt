@@ -412,7 +412,6 @@ internal fun rememberRecommendationSettingsSearchEntries(): List<RecommendationS
         // -- For You sources --
         // KMK v0.8.14-fix1: "source_priority_languages" control entry removed here -- language
         // selection moved to Management and diagnostics, see "diagnostics_languages" below.
-        // KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08
         RecommendationSettingsSearchIndex.Entry(
             key = "source_priority_latest_exploration",
             title = stringResource(KMR.strings.rec_latest_exploration),
@@ -422,7 +421,6 @@ internal fun rememberRecommendationSettingsSearchEntries(): List<RecommendationS
             destination = RecommendationSourcePrioritySettingsScreen(anchor = "latest_exploration"),
             anchor = "latest_exploration",
         ),
-        // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08
         RecommendationSettingsSearchIndex.Entry(
             key = "source_priority_exposure_window",
             title = stringResource(KMR.strings.rec_exposure_window),
@@ -432,7 +430,6 @@ internal fun rememberRecommendationSettingsSearchEntries(): List<RecommendationS
             destination = RecommendationSourcePrioritySettingsScreen(anchor = "exposure_window"),
             anchor = "exposure_window",
         ),
-        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09
         RecommendationSettingsSearchIndex.Entry(
             key = "source_priority_exposure_clear",
             title = stringResource(KMR.strings.rec_exposure_clear),
@@ -514,6 +511,60 @@ internal fun rememberRecommendationSettingsSearchEntries(): List<RecommendationS
             synonyms = listOf("preselect results", "selection defaults"),
             destination = RecommendationDiagnosticsSettingsScreen(anchor = "same_manga_preselect"),
             anchor = "same_manga_preselect",
+        ),
+        RecommendationSettingsSearchIndex.Entry(
+            key = "chapter_completion_rating_prompt",
+            title = stringResource(KMR.strings.chapter_completion_rating_prompt_title),
+            summary = stringResource(KMR.strings.chapter_completion_rating_prompt_summary),
+            category = diagnostics,
+            synonyms = listOf("reader rating prompt", "finished chapter rating", "completion prompt"),
+            destination = RecommendationDiagnosticsSettingsScreen(anchor = "chapter_completion_rating_prompt"),
+            anchor = "chapter_completion_rating_prompt",
+        ),
+        RecommendationSettingsSearchIndex.Entry(
+            key = "rated_manga_action_placement",
+            title = stringResource(KMR.strings.rated_manga_action_placement_title),
+            summary = stringResource(KMR.strings.rated_manga_action_placement_summary),
+            category = diagnostics,
+            synonyms = listOf("rating action placement", "top right rating actions", "per card rating actions"),
+            destination = RecommendationDiagnosticsSettingsScreen(anchor = "rated_manga_action_placement"),
+            anchor = "rated_manga_action_placement",
+        ),
+        RecommendationSettingsSearchIndex.Entry(
+            key = "confirmed_tracked_version_rating_propagation",
+            title = stringResource(KMR.strings.confirmed_tracked_version_rating_propagation_title),
+            summary = stringResource(KMR.strings.confirmed_tracked_version_rating_propagation_summary),
+            category = diagnostics,
+            synonyms = listOf("rating versions", "tracked versions", "propagate ratings"),
+            destination = RecommendationDiagnosticsSettingsScreen(anchor = "confirmed_tracked_version_rating_propagation"),
+            anchor = "confirmed_tracked_version_rating_propagation",
+        ),
+        RecommendationSettingsSearchIndex.Entry(
+            key = "chapter_completion_rating_other_versions_prompt",
+            title = stringResource(KMR.strings.chapter_completion_rating_other_versions_prompt_title),
+            summary = stringResource(KMR.strings.chapter_completion_rating_other_versions_prompt_summary),
+            category = diagnostics,
+            synonyms = listOf("rate other versions", "rating follow-up", "completion rating versions"),
+            destination = RecommendationDiagnosticsSettingsScreen(anchor = "chapter_completion_rating_other_versions_prompt"),
+            anchor = "chapter_completion_rating_other_versions_prompt",
+        ),
+        RecommendationSettingsSearchIndex.Entry(
+            key = "confirmed_tracked_version_local_tracking_propagation",
+            title = stringResource(KMR.strings.confirmed_tracked_version_local_tracking_propagation_title),
+            summary = stringResource(KMR.strings.confirmed_tracked_version_local_tracking_propagation_summary),
+            category = diagnostics,
+            synonyms = listOf("local tracking versions", "track versions", "propagate tracking"),
+            destination = RecommendationDiagnosticsSettingsScreen(anchor = "confirmed_tracked_version_local_tracking_propagation"),
+            anchor = "confirmed_tracked_version_local_tracking_propagation",
+        ),
+        RecommendationSettingsSearchIndex.Entry(
+            key = "identity_review",
+            title = stringResource(KMR.strings.identity_review_title),
+            summary = stringResource(KMR.strings.identity_review_summary),
+            category = diagnostics,
+            synonyms = listOf("same manga decisions", "confirmed versions", "rejected versions"),
+            destination = exh.recs.matching.CrossSourceIdentityReviewScreen(),
+            anchor = null,
         ),
         RecommendationSettingsSearchIndex.Entry(
             key = "best_version_sample_size",

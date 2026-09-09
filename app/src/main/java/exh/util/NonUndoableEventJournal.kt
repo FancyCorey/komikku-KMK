@@ -62,8 +62,8 @@ enum class NonUndoableEventType {
     // KMK Universal Action History Recovery Plan 2026-08-01: a guarded tracker unlink follow-up
     // completed. This event has no receipt and is intentionally not itself reversible.
     TRACKER_UNBOUND,
-    // KMK Codex continuous completion 2026-08-05: manual Source Evaluation management actions
-    // delete diagnostic/quarantine records with no safe generic inverse; retain visibility only.
+    // Manual Source Evaluation management actions delete diagnostic or quarantine records with no
+    // safe generic inverse; retain truthful history visibility without claiming reversibility.
     SOURCE_EVALUATION_DATA_CLEARED,
 }
 
@@ -91,10 +91,23 @@ object NonUndoableEventJournal {
                 entries.removeFirst()
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = event.id,
+            family = "event",
+            operation = event.eventType.name,
+            readCount = 0,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = event.timestamp,
+        )
     }
 
     /** Most recent first. */
     fun snapshot(): List<NonUndoableEvent> = synchronized(lock) { entries.toList().asReversed() }
+
+    fun removeById(id: String) {
+        synchronized(lock) { entries.removeAll { it.id == id } }
+    }
 
     fun clear() {
         synchronized(lock) { entries.clear() }

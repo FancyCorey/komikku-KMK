@@ -7,10 +7,29 @@ import android.content.pm.PackageInstaller
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.util.system.getParcelableExtraCompat
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import tachiyomi.i18n.kmk.KMR
 
 class AppUpdateBroadcast : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            // Package replacement is delivered while the app is being relaunched. Keep notification
+            // construction and binder work off the receiver's main thread so install completion
+            // cannot turn into a broadcast ANR under device pressure.
+            val pendingResult = goAsync()
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                try {
+                    AppUpdateNotifier(context.applicationContext).onInstallFinished()
+                } finally {
+                    pendingResult.finish()
+                }
+            }
+            return
+        }
+
         val appUpdateNotifier = AppUpdateNotifier(context)
 
         if (intent.action == AppUpdateDownloadJob.PACKAGE_INSTALLED_ACTION) {
@@ -52,12 +71,6 @@ class AppUpdateBroadcast : BroadcastReceiver() {
                     }
                 }
             }
-        } else if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            /*
-             * System broadcast that is sent when the current application package has been replaced with a new version,
-             * to perform actions when app is updated or reinstalled.
-             */
-            appUpdateNotifier.onInstallFinished()
         }
     }
 }

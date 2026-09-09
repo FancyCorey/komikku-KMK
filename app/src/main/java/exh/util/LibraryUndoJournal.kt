@@ -5,9 +5,8 @@ import java.util.UUID
 // KMK Undo Expansion Phase 1 -->
 /**
  * Evaluation Mode Undo Journal for local library membership and category-assignment mutations --
- * a sibling to [EvaluationModeUndoJournal] (taste) and [GroupUndoJournal] (cross-source links), same
- * in-memory-only, bounded, typed-inverse design. See
- * `docs/community/KMK_EVALUATION_MODE_UNDO_JOURNAL.md` for the shared persistence-decision reasoning.
+ * a sibling to [EvaluationModeUndoJournal] (taste) and [GroupUndoJournal] (cross-source links), with
+ * the same in-memory-only, bounded, typed-inverse design.
  *
  * Deliberately narrow: a [LibraryJournalEntry] only ever describes the `favorite`/`dateAdded` row flip
  * or the category-id-set replacement for one manga. It never describes the coupled side effects a
@@ -61,6 +60,15 @@ object LibraryUndoJournal {
                 }
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "library",
+            operation = entry.actionType.name,
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     fun snapshot(): List<LibraryJournalEntry> = synchronized(lock) { entries.toList().asReversed() }

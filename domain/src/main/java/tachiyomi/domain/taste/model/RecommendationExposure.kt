@@ -1,6 +1,5 @@
 package tachiyomi.domain.taste.model
 
-// KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
 /**
  * Local-only record that a For You candidate was actually present in a loaded, visible result state.
  *

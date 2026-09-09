@@ -7,6 +7,7 @@ data class RecommendationSourceRunStatus(
     val status: RecommendationSourceStatus,
     val visibleCount: Int = 0,
     val updatedAt: Long = System.currentTimeMillis(),
+    val evaluatedCount: Int = 0,
 )
 
 enum class RecommendationSourceStatus {
@@ -25,7 +26,7 @@ object RecommendationSourceRunStatusStore {
 
     fun serialize(statuses: Collection<RecommendationSourceRunStatus>): String =
         statuses.joinToString(ROW_SEP) { s ->
-            "${s.sourceId}$FIELD_SEP${s.status.name}$FIELD_SEP${s.visibleCount}$FIELD_SEP${s.updatedAt}"
+            "${s.sourceId}$FIELD_SEP${s.status.name}$FIELD_SEP${s.visibleCount}$FIELD_SEP${s.updatedAt}$FIELD_SEP${s.evaluatedCount}"
         }
 
     fun parse(value: String): Map<Long, RecommendationSourceRunStatus> {
@@ -39,7 +40,8 @@ object RecommendationSourceRunStatusStore {
                 val status = RecommendationSourceStatus.valueOf(parts[1])
                 val visibleCount = parts[2].toInt()
                 val updatedAt = parts[3].toLong()
-                result[sourceId] = RecommendationSourceRunStatus(sourceId, status, visibleCount, updatedAt)
+                val evaluatedCount = parts.getOrNull(4)?.toIntOrNull() ?: 0
+                result[sourceId] = RecommendationSourceRunStatus(sourceId, status, visibleCount, updatedAt, evaluatedCount)
             }
         }
         return result

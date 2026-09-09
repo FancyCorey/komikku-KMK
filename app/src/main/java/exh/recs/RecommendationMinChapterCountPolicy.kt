@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Single pure contract for the existing For You "Minimum chapter count" filter: which values are
  * supported, what the default is, how a malformed persisted value resolves, and which label a value
@@ -42,14 +41,18 @@ object RecommendationMinChapterCountPolicy {
      * Every value the picker offers, in display order. Any other persisted value (negative,
      * unsupported, oversized, or written by a future/older build) resolves to [DEFAULT].
      */
-    val SUPPORTED_VALUES = listOf(0, 5, 10, 20, 50)
+    const val MIN = OFF
+    const val MAX = 50
+
+    /** Kept as a named range for callers that need to expose or test all valid values. */
+    val SUPPORTED_VALUES = (MIN..MAX).toList()
 
     /**
      * Resolves a raw/stored preference value to a supported threshold. Used at every read boundary
      * *and* by the setter, so a value that reaches storage is already legitimate and a value that
      * somehow predates this policy is still corrected on the way out.
      */
-    fun resolve(configuredValue: Int): Int = if (configuredValue in SUPPORTED_VALUES) configuredValue else DEFAULT
+    fun resolve(configuredValue: Int): Int = if (configuredValue in MIN..MAX) configuredValue else DEFAULT
 
     /** True when [configuredValue] would actually filter anything once resolved. */
     fun isFilterActive(configuredValue: Int): Boolean = resolve(configuredValue) > OFF

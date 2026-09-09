@@ -220,7 +220,7 @@ class ActionHistoryRegistryPackageFollowUpTest {
     }
 
     @Test
-    fun `uninstall follow-up trigger records nothing when Evaluation Mode is off, even though removal is truthfully observed`() = runTest {
+    fun `uninstall follow-up trigger records a verified removal when Evaluation Mode is off`() = runTest {
         bindFakes()
         sourcePreferences.evaluationMode().set(false)
         val target = installed()
@@ -233,8 +233,8 @@ class ActionHistoryRegistryPackageFollowUpTest {
 
         followUp.trigger()
 
-        assertTrue(NonUndoableEventJournal.snapshot().none { it.eventType == NonUndoableEventType.EXTENSION_UNINSTALLED })
-        assertTrue(PackageOperationJournal.snapshot().none { it.kind == PackageOperationKind.UNINSTALL })
+        assertEquals(1, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.EXTENSION_UNINSTALLED })
+        assertEquals(1, PackageOperationJournal.snapshot().count { it.kind == PackageOperationKind.UNINSTALL })
     }
 
     @Test
@@ -273,7 +273,7 @@ class ActionHistoryRegistryPackageFollowUpTest {
     }
 
     @Test
-    fun `reinstall follow-up trigger records nothing when Evaluation Mode is off, even on a successful install`() = runTest {
+    fun `reinstall follow-up trigger records a successful install when Evaluation Mode is off`() = runTest {
         bindFakes()
         sourcePreferences.evaluationMode().set(false)
         val artifact = available()
@@ -286,8 +286,8 @@ class ActionHistoryRegistryPackageFollowUpTest {
         val result = followUp.trigger()
 
         assertEquals(ActionHistoryFollowUpResult.Started, result, "the install itself must still truthfully report success")
-        assertTrue(NonUndoableEventJournal.snapshot().none { it.eventType == NonUndoableEventType.EXTENSION_INSTALLED })
-        assertTrue(PackageOperationJournal.snapshot().none { it.kind == PackageOperationKind.INSTALL })
+        assertEquals(1, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.EXTENSION_INSTALLED })
+        assertEquals(1, PackageOperationJournal.snapshot().count { it.kind == PackageOperationKind.INSTALL })
     }
 
     @Test

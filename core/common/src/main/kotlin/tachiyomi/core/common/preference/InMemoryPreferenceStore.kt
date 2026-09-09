@@ -105,5 +105,14 @@ class InMemoryPreferenceStore(
         override fun set(value: T) {
             data = value
         }
+
+        // KMK F2-05.0: already fully synchronous in-memory (no disk I/O to defer), so commit() and
+        // set() write identically here -- the async/sync distinction only exists for the real
+        // Android-backed AndroidPreference. There is no I/O that can fail, so this unconditionally
+        // reports success (2026-08-27 correction: commit() now returns Boolean).
+        override fun commit(value: T): Boolean {
+            data = value
+            return true
+        }
     }
 }

@@ -1,8 +1,5 @@
 package exh.util
 
-import eu.kanade.domain.source.service.SourcePreferences
-import exh.recs.SeenMangaKey
-import exh.recs.SeenRecommendationMangaStore
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.taste.interactor.GetMangaTaste
 import tachiyomi.domain.taste.model.MangaTaste
@@ -19,8 +16,19 @@ import tachiyomi.domain.taste.model.MangaTaste
  * `build*` function BEFORE the write (to capture pre-action state), then `commit` its result AFTER the
  * write succeeds -- never before.
  *
- * No-ops entirely (reads nothing, records nothing) when Evaluation Mode is disabled, per the feature's
- * explicit requirement that normal users receive no journal behavior and no extra database work.
+ * Records the same bounded, local-only inverse for ordinary users and Evaluation Mode. The journal's
+ * historical `EvaluationMode` name remains for compatibility, but Action History is now a normal
+ * user-facing destination. Developer-only diagnostic details are still gated separately by
+ * [DeveloperOptionsGatePolicy], and nothing here is persisted, backed up, synced, or exported.
+ *
+ * KMK v0.8.21-fix3: R1 correction -- Not Interested is a real [tachiyomi.domain.taste.model.
+ * MangaRating] value (`MangaTaste.rating`) now, not a second axis backed by a separate preference
+ * key-set. Every entry this recorder builds therefore carries exactly one rating-family
+ * before/after pair ([EvaluationJournalEntry.previousRating]/[newRating]); the previous
+ * `previousNotInterested`/`newNotInterested` fields and the builders that existed only to keep two
+ * stores in sync ([buildNotInterested], [buildNotInterestedRemoval],
+ * [buildRatingChangeReplacingNotInterested], and friends) are gone, because there is no longer a
+ * second store to keep in sync with.
  */
 object EvaluationModeJournalRecorder {
 
@@ -29,15 +37,19 @@ object EvaluationModeJournalRecorder {
         entries.forEach { EvaluationModeUndoJournal.record(it) }
     }
 
-    /** Builds a rating-set/clear journal entry for [manga] ahead of the caller writing [newRating] (null = clear). */
+    /**
+     * Builds a rating-set/clear journal entry for [manga] ahead of the caller writing [newRating]
+     * (null = clear). [newRating] may be any [tachiyomi.domain.taste.model.MangaRating.value],
+     * including [tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED.value] -- it is just
+     * another rating from this recorder's point of view.
+     */
     suspend fun buildRatingChange(
-        sourcePreferences: SourcePreferences,
         getMangaTaste: GetMangaTaste,
         manga: List<Manga>,
         newRating: Int?,
         actionType: EvaluationJournalActionType,
     ): List<EvaluationJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || manga.isEmpty()) return emptyList()
+        if (manga.isEmpty()) return emptyList()
         val bulkId = if (manga.size > 1) EvaluationJournalEntry.newBulkId() else null
         return manga.map { m ->
             val previousTaste = getMangaTaste.await(m.source, m.url)
@@ -50,8 +62,6 @@ object EvaluationModeJournalRecorder {
                 url = m.url,
                 previousRating = previousTaste?.rating,
                 newRating = newRating,
-                previousNotInterested = currentSeenState(sourcePreferences, m.source, m.url),
-                newNotInterested = currentSeenState(sourcePreferences, m.source, m.url),
                 isBulk = manga.size > 1,
                 bulkOperationId = bulkId,
                 changedFields = setOf(EvaluationJournalEntry.FIELD_RATING),
@@ -59,114 +69,17 @@ object EvaluationModeJournalRecorder {
         }
     }
 
-    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07 -->
     /**
-     * Builds a single journal entry covering the "Not Interested -> Love/Like/Dislike" transition:
-     * the caller is about to clear the manga's Not Interested state *and* apply [newRating]
-     * atomically. Unlike [buildRatingChange] (which always records `previousNotInterested ==
-     * newNotInterested` since it never changes that axis), this always sets `newNotInterested =
-     * false` and includes [EvaluationJournalEntry.FIELD_NOT_INTERESTED] in `changedFields`, so
-     * [EvaluationModeUndoService.restoreOne] restores both the prior rating and the prior Not
-     * Interested state from one entry. Only call this when the manga is actually currently Not
-     * Interested -- use [buildRatingChange] for the ordinary case.
-     */
-    suspend fun buildRatingChangeReplacingNotInterested(
-        sourcePreferences: SourcePreferences,
-        getMangaTaste: GetMangaTaste,
-        manga: List<Manga>,
-        newRating: Int,
-        actionType: EvaluationJournalActionType,
-    ): List<EvaluationJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || manga.isEmpty()) return emptyList()
-        val bulkId = if (manga.size > 1) EvaluationJournalEntry.newBulkId() else null
-        return manga.map { m ->
-            val previousTaste = getMangaTaste.await(m.source, m.url)
-            EvaluationJournalEntry(
-                id = EvaluationJournalEntry.newId(),
-                timestamp = System.currentTimeMillis(),
-                actionType = actionType,
-                mangaId = m.id,
-                source = m.source,
-                url = m.url,
-                previousRating = previousTaste?.rating,
-                newRating = newRating,
-                previousNotInterested = true,
-                newNotInterested = false,
-                isBulk = manga.size > 1,
-                bulkOperationId = bulkId,
-                changedFields = setOf(EvaluationJournalEntry.FIELD_RATING, EvaluationJournalEntry.FIELD_NOT_INTERESTED),
-            )
-        }
-    }
-    // KMK <--
-
-    /** Builds a Not-Interested journal entry for [manga] ahead of the caller setting the "seen" store. */
-    suspend fun buildNotInterested(
-        sourcePreferences: SourcePreferences,
-        getMangaTaste: GetMangaTaste,
-        manga: List<Manga>,
-    ): List<EvaluationJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || manga.isEmpty()) return emptyList()
-        val bulkId = if (manga.size > 1) EvaluationJournalEntry.newBulkId() else null
-        return manga.map { m ->
-            val previousTaste = getMangaTaste.await(m.source, m.url)
-            EvaluationJournalEntry(
-                id = EvaluationJournalEntry.newId(),
-                timestamp = System.currentTimeMillis(),
-                actionType = EvaluationJournalActionType.NOT_INTERESTED,
-                mangaId = m.id,
-                source = m.source,
-                url = m.url,
-                previousRating = previousTaste?.rating,
-                newRating = previousTaste?.rating,
-                previousNotInterested = currentSeenState(sourcePreferences, m.source, m.url),
-                newNotInterested = true,
-                isBulk = manga.size > 1,
-                bulkOperationId = bulkId,
-                changedFields = setOf(EvaluationJournalEntry.FIELD_NOT_INTERESTED),
-            )
-        }
-    }
-
-    /** Builds the inverse journal entry for removing a stored Not Interested state. */
-    suspend fun buildNotInterestedRemoval(
-        sourcePreferences: SourcePreferences,
-        getMangaTaste: GetMangaTaste,
-        manga: List<Manga>,
-    ): List<EvaluationJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || manga.isEmpty()) return emptyList()
-        val bulkId = if (manga.size > 1) EvaluationJournalEntry.newBulkId() else null
-        return manga.map { m ->
-            val previousTaste = getMangaTaste.await(m.source, m.url)
-            EvaluationJournalEntry(
-                id = EvaluationJournalEntry.newId(),
-                timestamp = System.currentTimeMillis(),
-                actionType = EvaluationJournalActionType.NOT_INTERESTED,
-                mangaId = m.id,
-                source = m.source,
-                url = m.url,
-                previousRating = previousTaste?.rating,
-                newRating = previousTaste?.rating,
-                previousNotInterested = true,
-                newNotInterested = false,
-                isBulk = manga.size > 1,
-                bulkOperationId = bulkId,
-                changedFields = setOf(EvaluationJournalEntry.FIELD_NOT_INTERESTED),
-            )
-        }
-    }
-
-    /**
-     * Same as [buildRatingChange] but for callers (Loved/Liked/Disliked) that already hold each
-     * item's current [MangaTaste] from screen state, avoiding a redundant [GetMangaTaste] lookup.
+     * Same as [buildRatingChange] but for callers (Loved/Liked/Disliked/Not Interested) that
+     * already hold each item's current [MangaTaste] from screen state, avoiding a redundant
+     * [GetMangaTaste] lookup.
      */
     fun buildRatingChangeFromTaste(
-        sourcePreferences: SourcePreferences,
         previousTastes: List<MangaTaste>,
         newRating: Int?,
         actionType: EvaluationJournalActionType,
     ): List<EvaluationJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || previousTastes.isEmpty()) return emptyList()
+        if (previousTastes.isEmpty()) return emptyList()
         val bulkId = if (previousTastes.size > 1) EvaluationJournalEntry.newBulkId() else null
         return previousTastes.map { taste ->
             EvaluationJournalEntry(
@@ -178,46 +91,11 @@ object EvaluationModeJournalRecorder {
                 url = taste.url,
                 previousRating = taste.rating,
                 newRating = newRating,
-                previousNotInterested = currentSeenState(sourcePreferences, taste.source, taste.url),
-                newNotInterested = currentSeenState(sourcePreferences, taste.source, taste.url),
                 isBulk = previousTastes.size > 1,
                 bulkOperationId = bulkId,
                 changedFields = setOf(EvaluationJournalEntry.FIELD_RATING),
             )
         }
-    }
-
-    /** Not-Interested variant of [buildRatingChangeFromTaste]. */
-    fun buildNotInterestedFromTaste(
-        sourcePreferences: SourcePreferences,
-        previousTastes: List<MangaTaste?>,
-        keys: List<Pair<Long, String>>,
-    ): List<EvaluationJournalEntry> {
-        if (!sourcePreferences.evaluationMode().get() || keys.isEmpty()) return emptyList()
-        val bulkId = if (keys.size > 1) EvaluationJournalEntry.newBulkId() else null
-        return keys.mapIndexed { index, (source, url) ->
-            val taste = previousTastes.getOrNull(index)
-            EvaluationJournalEntry(
-                id = EvaluationJournalEntry.newId(),
-                timestamp = System.currentTimeMillis(),
-                actionType = EvaluationJournalActionType.NOT_INTERESTED,
-                mangaId = taste?.mangaId,
-                source = source,
-                url = url,
-                previousRating = taste?.rating,
-                newRating = taste?.rating,
-                previousNotInterested = currentSeenState(sourcePreferences, source, url),
-                newNotInterested = true,
-                isBulk = keys.size > 1,
-                bulkOperationId = bulkId,
-                changedFields = setOf(EvaluationJournalEntry.FIELD_NOT_INTERESTED),
-            )
-        }
-    }
-
-    private fun currentSeenState(sourcePreferences: SourcePreferences, source: Long, url: String): Boolean {
-        val raw = sourcePreferences.seenRecommendationMangaKeys().get()
-        return SeenMangaKey(source, url) in SeenRecommendationMangaStore.parse(raw)
     }
 }
 // KMK <--

@@ -5,13 +5,15 @@ import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import exh.recs.RecommendationSourceFilter
 import exh.recs.sourceprefs.RecommendationSourcePreferenceStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.taste.interactor.GetSourceEvaluations
-import tachiyomi.domain.taste.model.SourceEvaluationVerdict
+import tachiyomi.domain.taste.interactor.GetSourceRecommendationFit
+import tachiyomi.domain.taste.model.SourceEvaluation
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -20,6 +22,9 @@ class GetNonInstalledSourceSuggestions(
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val getSourceEvaluations: GetSourceEvaluations = Injekt.get(),
+    private val getSourceRecommendationFit: GetSourceRecommendationFit = Injekt.get(),
+    private val isDebugBuild: Boolean = BuildConfig.DEBUG,
+    private val fixtureSignerSha256: String = BuildConfig.SOURCES_TO_TRY_FIXTURE_SIGNER_SHA256,
 ) {
     fun subscribe(): Flow<List<NonInstalledSourceSuggestion>> {
         val dismissedPref = sourcePreferences.dismissedNonInstalledRecommendationSources()
@@ -49,9 +54,9 @@ class GetNonInstalledSourceSuggestions(
             safeEvaluationsFlow,
             qualityDislikedPref.changes(),
         ) { dislikedRaw, evaluationList, qualityDislikedRaw ->
-            val verdictMap: Map<String, SourceEvaluationVerdict> =
-                evaluationList.associate { it.evaluationKey to it.verdict }
-            Triple(dislikedRaw, verdictMap, qualityDislikedRaw)
+            val evaluationsByKey: Map<String, SourceEvaluation> =
+                evaluationList.associateBy { it.evaluationKey }
+            Triple(dislikedRaw, evaluationsByKey, qualityDislikedRaw)
         }
 
         return combine(
@@ -61,6 +66,14 @@ class GetNonInstalledSourceSuggestions(
             likedPref.changes(),
             dislikedAndEvaluationsFlow,
         ) { (available, installed, untrusted), dismissedRaw, _, likedRaw, (dislikedRaw, evaluations, qualityDislikedRaw) ->
+            val fits = try {
+                getSourceRecommendationFit.awaitAll().associateBy { it.evaluationKey }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "source recommendation-fit table unavailable; falling back to catalogue evidence" }
+                emptyMap()
+            }
             val nsfwEnabled = sourcePreferences.showNsfwSource().get()
             // KMK -->
             val blockExplicit = sourcePreferences.blockExplicitPornHentaiSources().get()
@@ -94,20 +107,28 @@ class GetNonInstalledSourceSuggestions(
                 dislikedKeys = dislikedKeys,
                 // KMK -->
                 evaluations = evaluations,
+                fits = fits,
                 // KMK <--
                 qualityDislikedKeys = qualityDislikedKeys, // KMK v0.8.1-fix4
             )
-            SourcesToTryDebugFixture.appendSuggestion(
+            SourcesToTryDebugFixture.appendSuggestions(
                 mode = SourcesToTryDebugFixtureMode.fromPrefValue(
                     sourcePreferences.sourcesToTryFixtureMode().get(),
                 ),
-                isDebugBuild = BuildConfig.DEBUG,
+                isDebugBuild = isDebugBuild,
+                expectedSignerSha256 = fixtureSignerSha256,
                 available = available,
-                installed = installedHints.map { it.signatureHash + "|" + it.pkgName }.toSet(),
-                untrusted = untrusted.map { it.signatureHash + "|" + it.pkgName }.toSet(),
+                installedPackages = installedHints.map { it.pkgName }.toSet(),
+                untrustedPackages = untrusted.map { it.pkgName }.toSet(),
                 enabledLanguages = recLanguages,
                 showNsfw = nsfwEnabled,
                 blockExplicit = blockExplicit,
+                dismissed = dismissed,
+                dislikedKeys = dislikedKeys,
+                qualityDislikedKeys = qualityDislikedKeys,
+                // The debug fixture only needs verdict filtering; keep its narrow contract while
+                // the production scorer receives the full persisted evaluation record above.
+                evaluations = evaluations.mapValues { it.value.verdict },
                 existing = scored,
             )
         }

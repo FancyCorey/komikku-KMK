@@ -3,7 +3,11 @@ package exh.recs.discovery
 import eu.kanade.tachiyomi.extension.model.Extension
 import exh.recs.sourceprefs.RecommendationSourcePreferenceStore
 import exh.source.ExplicitSourceClassifier
+import tachiyomi.domain.taste.model.SourceEvaluation
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
+import tachiyomi.domain.taste.model.SourceRecommendationFit
+import java.util.Locale
 
 // KMK -->
 /**
@@ -60,15 +64,16 @@ object NonInstalledSourceSuggestionScorer {
         likedKeys: Set<String> = emptySet(),
         dislikedKeys: Set<String> = emptySet(),
         // KMK -->
-        /** Map of evaluation_key → verdict for sources already evaluated via source evaluation. */
-        evaluations: Map<String, SourceEvaluationVerdict> = emptyMap(),
+        /** Map of evaluation_key → persisted source-evaluation facts for already evaluated sources. */
+        evaluations: Map<String, SourceEvaluation> = emptyMap(),
+        fits: Map<String, SourceRecommendationFit> = emptyMap(),
         // KMK <--
         // KMK v0.8.1-fix4: source/library-quality dislike axis -- separate from dislikedKeys
         // (recommendation-behavior dislike). Hides poor/too-explicit-marked sources regardless of
         // the global explicit filter, since this is an explicit per-source user judgement.
         qualityDislikedKeys: Set<String> = emptySet(),
     ): List<NonInstalledSourceSuggestion> {
-        val normalizedLangs = recLanguages.map { it.lowercase() }.toSet()
+        val normalizedLangs = recLanguages.map { it.lowercase(Locale.ROOT) }.toSet()
         val installedKeys = installedHints.map { it.signatureHash + "|" + it.pkgName }.toSet()
         val untrustedKeys = untrusted.map { it.signatureHash + "|" + it.pkgName }.toSet()
         val installedSourceNames = installedHints.flatMap { it.sourceNames }.filter { it.isNotBlank() }
@@ -85,39 +90,42 @@ object NonInstalledSourceSuggestionScorer {
             // KMK <--
 
             if (ext.sources.isEmpty()) {
-                if (ext.lang.lowercase() !in normalizedLangs) continue
+                if (ext.lang.lowercase(Locale.ROOT) !in normalizedLangs) continue
                 val dismissalKey = buildDismissalKey(ext.signatureHash, ext.pkgName, null)
                 if (dismissalKey in dismissed) continue
                 val candKey = RecommendationSourcePreferenceStore.availableKey(ext.signatureHash, ext.pkgName, null)
                 if (candKey in dislikedKeys) continue
                 if (candKey in qualityDislikedKeys) continue // KMK v0.8.1-fix4
                 // KMK -->
-                val evalVerdict = evaluations[dismissalKey]
-                if (evalVerdict == SourceEvaluationVerdict.REJECTED) continue
-                if (blockExplicit && evalVerdict == SourceEvaluationVerdict.EXPLICIT_HEAVY) continue
+                val evaluation = evaluations[dismissalKey]
+                val fit = fits[dismissalKey]
+                if (evaluation?.verdict == SourceEvaluationVerdict.REJECTED) continue
+                if (blockExplicit && evaluation?.verdict == SourceEvaluationVerdict.EXPLICIT_HEAVY) continue
                 // KMK <--
-                score(ext, null, ext.name, installedSourceNames, candKey, likedKeys, evalVerdict)?.let { suggestions += it }
+                score(ext, null, ext.name, installedSourceNames, candKey, likedKeys, evaluation, fit)?.let { suggestions += it }
             } else {
                 for (src in ext.sources) {
-                    if (src.lang.lowercase() !in normalizedLangs) continue
+                    if (src.lang.lowercase(Locale.ROOT) !in normalizedLangs) continue
                     val dismissalKey = buildDismissalKey(ext.signatureHash, ext.pkgName, src.id)
                     if (dismissalKey in dismissed) continue
                     val candKey = RecommendationSourcePreferenceStore.availableKey(ext.signatureHash, ext.pkgName, src.id)
                     if (candKey in dislikedKeys) continue
                     if (candKey in qualityDislikedKeys) continue // KMK v0.8.1-fix4
                     // KMK -->
-                    val evalVerdict = evaluations[dismissalKey]
-                    if (evalVerdict == SourceEvaluationVerdict.REJECTED) continue
-                    if (blockExplicit && evalVerdict == SourceEvaluationVerdict.EXPLICIT_HEAVY) continue
+                    val evaluation = evaluations[dismissalKey]
+                    val fit = fits[dismissalKey]
+                    if (evaluation?.verdict == SourceEvaluationVerdict.REJECTED) continue
+                    if (blockExplicit && evaluation?.verdict == SourceEvaluationVerdict.EXPLICIT_HEAVY) continue
                     // KMK <--
-                    score(ext, src, src.name, installedSourceNames, candKey, likedKeys, evalVerdict)?.let { suggestions += it }
+                    score(ext, src, src.name, installedSourceNames, candKey, likedKeys, evaluation, fit)?.let { suggestions += it }
                 }
             }
         }
 
         return suggestions.sortedWith(
             compareByDescending<NonInstalledSourceSuggestion> { it.score }
-                .thenBy { it.displayName.lowercase() },
+                .thenBy { it.displayName.lowercase(Locale.ROOT) }
+                .thenBy { it.dismissalKey },
         )
     }
 
@@ -133,34 +141,33 @@ object NonInstalledSourceSuggestionScorer {
         installedSourceNames: List<String>,
         candidateKey: String,
         likedKeys: Set<String>,
-        // KMK -->
-        evalVerdict: SourceEvaluationVerdict? = null,
-        // KMK <--
+        evaluation: SourceEvaluation? = null,
+        fit: SourceRecommendationFit? = null,
     ): NonInstalledSourceSuggestion? {
         // KMK -->
-        if (evalVerdict != null) {
-            return when (evalVerdict) {
+        if (evaluation != null) {
+            return when (evaluation.verdict) {
                 SourceEvaluationVerdict.STRONG_FIT -> {
                     val reasons = listOf(NonInstalledSuggestionReason.EvaluatedStrongFit)
-                    NonInstalledSourceSuggestion(extension = ext, source = src, score = 0.90, confidence = SuggestionConfidence.MEDIUM, reasons = reasons)
+                    NonInstalledSourceSuggestion(extension = ext, source = src, score = evaluatedScore(0.90, evaluation, fit), confidence = confidenceFor(evaluation), reasons = reasons, rankingEvidence = rankingEvidenceFor(evaluation, fit))
                 }
                 SourceEvaluationVerdict.WORTH_TRYING -> {
                     val reasons = listOf(NonInstalledSuggestionReason.EvaluatedWorthTrying)
-                    NonInstalledSourceSuggestion(extension = ext, source = src, score = 0.75, confidence = SuggestionConfidence.MEDIUM, reasons = reasons)
+                    NonInstalledSourceSuggestion(extension = ext, source = src, score = evaluatedScore(0.75, evaluation, fit), confidence = confidenceFor(evaluation), reasons = reasons, rankingEvidence = rankingEvidenceFor(evaluation, fit))
                 }
                 SourceEvaluationVerdict.EXPLICIT_HEAVY -> {
                     val reasons = listOf(NonInstalledSuggestionReason.EvaluatedExplicitHeavy)
-                    NonInstalledSourceSuggestion(extension = ext, source = src, score = 0.10, confidence = SuggestionConfidence.LOW, reasons = reasons)
+                    NonInstalledSourceSuggestion(extension = ext, source = src, score = evaluatedScore(0.10, evaluation, fit), confidence = SuggestionConfidence.LOW, reasons = reasons, rankingEvidence = rankingEvidenceFor(evaluation, fit))
                 }
                 SourceEvaluationVerdict.ECCHI_HEAVY -> {
                     val reasons = listOf(NonInstalledSuggestionReason.EvaluatedEcchiHeavy)
-                    NonInstalledSourceSuggestion(extension = ext, source = src, score = 0.30, confidence = SuggestionConfidence.LOW, reasons = reasons)
+                    NonInstalledSourceSuggestion(extension = ext, source = src, score = evaluatedScore(0.30, evaluation, fit), confidence = SuggestionConfidence.LOW, reasons = reasons, rankingEvidence = rankingEvidenceFor(evaluation, fit))
                 }
                 SourceEvaluationVerdict.WEAK, SourceEvaluationVerdict.POOR_SEARCH, SourceEvaluationVerdict.NEUTRAL -> {
                     // Evaluated but not recommended — still show if we have metadata evidence
-                    scoreFromMetadata(ext, src, name, installedSourceNames, candidateKey, likedKeys)
+                    scoreFromMetadata(ext, src, name, installedSourceNames, candidateKey, likedKeys, evaluation, fit)
                 }
-                else -> scoreFromMetadata(ext, src, name, installedSourceNames, candidateKey, likedKeys)
+                else -> scoreFromMetadata(ext, src, name, installedSourceNames, candidateKey, likedKeys, evaluation, fit)
             }
         }
         // KMK <--
@@ -174,11 +181,13 @@ object NonInstalledSourceSuggestionScorer {
         installedSourceNames: List<String>,
         candidateKey: String,
         likedKeys: Set<String>,
+        evaluation: SourceEvaluation? = null,
+        fit: SourceRecommendationFit? = null,
     ): NonInstalledSourceSuggestion? {
         if (candidateKey in likedKeys) {
             val reasons = listOf(NonInstalledSuggestionReason.UserLikedSource, NonInstalledSuggestionReason.NeedsTesting)
             val s = minOf(SCORE_USER_LIKED, SCORE_CAP)
-            return NonInstalledSourceSuggestion(extension = ext, source = src, score = s, confidence = SuggestionConfidence.MEDIUM, reasons = reasons)
+            return NonInstalledSourceSuggestion(extension = ext, source = src, score = s, confidence = SuggestionConfidence.MEDIUM, reasons = reasons, rankingEvidence = rankingEvidenceFor(evaluation, fit))
         }
 
         val reasons = mutableListOf<NonInstalledSuggestionReason>()
@@ -191,11 +200,35 @@ object NonInstalledSourceSuggestionScorer {
 
         reasons += NonInstalledSuggestionReason.NeedsTesting
 
-        val rawScore = if (isExact) SCORE_EXACT_SOURCE_NAME else SCORE_SIMILAR_SOURCE_NAME
+        val metadataScore = if (isExact) SCORE_EXACT_SOURCE_NAME else SCORE_SIMILAR_SOURCE_NAME
+        val rawScore = if (evaluation == null) metadataScore else evaluatedScore(metadataScore, evaluation, fit)
         val s = minOf(rawScore, SCORE_CAP)
-        val confidence = if (s >= MEDIUM_CONFIDENCE_THRESHOLD) SuggestionConfidence.MEDIUM else SuggestionConfidence.LOW
-        return NonInstalledSourceSuggestion(extension = ext, source = src, score = s, confidence = confidence, reasons = reasons)
+        val confidence = evaluation?.let(::confidenceFor)
+            ?: if (s >= MEDIUM_CONFIDENCE_THRESHOLD) SuggestionConfidence.MEDIUM else SuggestionConfidence.LOW
+        return NonInstalledSourceSuggestion(extension = ext, source = src, score = s, confidence = confidence, reasons = reasons, rankingEvidence = rankingEvidenceFor(evaluation, fit))
     }
+
+    /**
+     * Apply persisted catalogue evidence to the existing verdict/name score. The evaluator already
+     * owns these facts; Sources To Try only combines them for ordering and never probes a source.
+     */
+    private fun evaluatedScore(baseScore: Double, evaluation: SourceEvaluation, fit: SourceRecommendationFit?): Double {
+        val quality = SourcesToTryRankingPolicy.usefulnessScore(SourcesToTryRankingPolicy.evidence(evaluation, fit))
+        return (baseScore * (0.40 + quality * 0.60)).coerceIn(0.0, 1.0)
+    }
+
+    private fun confidenceFor(evaluation: SourceEvaluation): SuggestionConfidence =
+        when (evaluation.catalogueMetadataConfidence) {
+            SourceEvaluationMetadataConfidence.HIGH,
+            SourceEvaluationMetadataConfidence.MODERATE,
+            -> SuggestionConfidence.MEDIUM
+            SourceEvaluationMetadataConfidence.LOW,
+            SourceEvaluationMetadataConfidence.UNKNOWN,
+            -> SuggestionConfidence.LOW
+        }
+
+    private fun rankingEvidenceFor(evaluation: SourceEvaluation?, fit: SourceRecommendationFit?): SourcesToTryRankingEvidence =
+        SourcesToTryRankingPolicy.evidence(evaluation, fit)
 
     private fun hasMeaningfulEvidence(reasons: List<NonInstalledSuggestionReason>): Boolean =
         reasons.any { it is NonInstalledSuggestionReason.SimilarToInstalledSource }
@@ -240,20 +273,20 @@ object NonInstalledSourceSuggestionScorer {
     }
 
     internal fun normalizeSourceName(name: String): String =
-        name.lowercase().replace(Regex("[^a-z0-9]"), "")
+        name.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
 
     /**
      * Tokens from [name] that are distinctive: length >= 5 and not a generic content word.
      * Uses the original (non-normalized) name so word boundaries are preserved.
      */
     internal fun distinctiveTokens(name: String): Set<String> =
-        name.lowercase()
+        name.lowercase(Locale.ROOT)
             .split(Regex("[^a-z0-9]+"))
             .filter { it.length >= 5 && it !in GENERIC_TOKENS }
             .toSet()
 
     /** Kept for compatibility with existing tests. */
     internal fun sourceKeywordTokens(name: String, baseUrl: String): Set<String> =
-        "$name $baseUrl".lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }.toSet()
+        "$name $baseUrl".lowercase(Locale.ROOT).split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }.toSet()
 }
 // KMK <--

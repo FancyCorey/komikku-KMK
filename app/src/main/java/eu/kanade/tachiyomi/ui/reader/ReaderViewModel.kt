@@ -9,12 +9,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.sync.SyncPreferences
+import eu.kanade.domain.track.interactor.RecordLocalTrackedChapterProgress
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.domain.ui.UiPreferences
@@ -33,7 +35,34 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MergedSource
 import eu.kanade.tachiyomi.source.rethrowIfFatal
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderCandidateGateway
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderCandidateRequest
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderCandidateRow
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderChapterDiscovery
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderCommandResult
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderContextActions
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderCoordinator
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderEntryRequest
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderLoadState
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderMangaCandidate
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderNotice
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderOpaqueToken
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderPhase
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderPresentation
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderPresentationPolicy
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderRecoveryReason
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderResolvingPurpose
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderResultPresentation
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderRoute
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderRouteResolver
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderRouteRole
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderRouteSwitcher
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderSession
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderSessionStore
+import eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderStateCodec
+import eu.kanade.tachiyomi.ui.reader.bridge.DefaultAlternateSourceReaderCandidateReads
 import eu.kanade.tachiyomi.ui.reader.chapter.ReaderChapterItem
+import eu.kanade.tachiyomi.ui.reader.loader.ArchiveReaderDegradation
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
@@ -42,9 +71,12 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderSchedule
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleEntitlement
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleMode
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderSchedulePersistence
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleResolver
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleResult
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleStore
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleWindow
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
@@ -53,6 +85,7 @@ import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerCoordinator
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerGracePolicy
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerPhase
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerSession
+import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerSessionStore
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerStateCodec
 import eu.kanade.tachiyomi.ui.reader.timer.ReaderTimerWarningPolicy
 import eu.kanade.tachiyomi.ui.reader.timer.SystemReaderTimerClock
@@ -67,13 +100,23 @@ import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.DiskUtil.MAX_FILE_NAME_BYTES
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import exh.metadata.metadata.RaisedSearchMetadata
+import exh.recs.bridge.AlternateSourceBridgeController
+import exh.recs.matching.ConfirmedGroupLocalTrackingPropagator
+import exh.recs.matching.ConfirmedMangaGroupTargets
+import exh.recs.matching.CrossSourceIdentityAuthorizationResolver
+import exh.recs.matching.CrossSourceIdentityDecisionController
+import exh.recs.matching.SameMangaPreselectionMode
+import exh.recs.matching.SameMangaPreselectionPolicy
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
 import exh.source.isEhBasedManga
+import exh.util.EvaluationModeFormatter
 import exh.util.defaultReaderType
 import exh.util.mangaType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -91,6 +134,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.storage.UniFileTempFileManager
 import tachiyomi.core.common.util.lang.launchIO
@@ -100,6 +144,7 @@ import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.decoder.ImageDecoder
+import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetMergedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
@@ -113,20 +158,31 @@ import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetFlatMetadataById
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.manga.interactor.GetMergedMangaById
 import tachiyomi.domain.manga.interactor.GetMergedReferencesById
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.taste.interactor.GetAlternateSourceBridge
+import tachiyomi.domain.taste.interactor.GetCrossSourceIdentityDecisions
+import tachiyomi.domain.taste.interactor.SetMangaTasteBatch
+import tachiyomi.domain.taste.model.AlternateSourceBridgeKey
 import tachiyomi.domain.taste.model.MangaRating
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
+import tachiyomi.i18n.MR
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.util.Date
+import java.util.UUID
 
 /**
  * Presenter used by the activity to perform background operations.
  */
+private const val KEY_SCHEDULE_ENTITLEMENT = "reader_schedule_entitlement"
+
 class ReaderViewModel @JvmOverloads constructor(
     private val savedState: SavedStateHandle,
     private val sourceManager: SourceManager = Injekt.get(),
@@ -139,7 +195,9 @@ class ReaderViewModel @JvmOverloads constructor(
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val trackPreferences: TrackPreferences = Injekt.get(),
     private val trackChapter: TrackChapter = Injekt.get(),
+    private val recordLocalTrackedChapterProgress: RecordLocalTrackedChapterProgress = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
+    private val getChapter: GetChapter = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val getNextChapters: GetNextChapters = Injekt.get(),
     private val upsertHistory: UpsertHistory = Injekt.get(),
@@ -157,16 +215,22 @@ class ReaderViewModel @JvmOverloads constructor(
     // SY <--
     // KMK v0.8.4: test-only clock override for the reading timer; production always uses SystemReaderTimerClock
     private val readerTimerClockOverride: ReaderTimerClock? = null,
-    // KMK v0.8.8: chapter-completion rating prompt — reuses the exact same exclusive-rating mutation
-    // and confirmed-group lookup MangaScreenModel/LovedMangaScreenModel already use; no parallel path.
-    private val setMangaTasteInteractor: tachiyomi.domain.taste.interactor.SetMangaTaste = Injekt.get(),
+    // KMK v0.8.8: chapter-completion rating prompt — reuses the same exclusive-rating batch owner
+    // and confirmed-group lookup as the detail and alternate-version rating surfaces.
+    private val setMangaTasteBatch: SetMangaTasteBatch = Injekt.get(),
     private val getCrossSourceMangaLinks: tachiyomi.domain.taste.interactor.GetCrossSourceMangaLinks = Injekt.get(),
+    private val crossSourceIdentityAuthorizationResolver: exh.recs.matching.CrossSourceIdentityAuthorizationResolver =
+        exh.recs.matching.CrossSourceIdentityAuthorizationResolver(),
     private val sourcePreferencesForRatingPrompt: eu.kanade.domain.source.service.SourcePreferences = Injekt.get(),
     // KMK Confirmed Blocker Remediation Phase 2 2026-07-29: same build-before-write/commit-after-
     // success Evaluation Mode journal contract MangaScreenModel.setMangaTaste/clearMangaTaste use
     // (see exh.util.EvaluationModeJournalRecorder) -- the reader's own rating/Not-Interested prompt
     // previously bypassed the journal entirely, so its writes never appeared in Action History.
     private val getMangaTasteForRatingPrompt: tachiyomi.domain.taste.interactor.GetMangaTaste = Injekt.get(),
+    private val confirmedMangaGroupTargets: ConfirmedMangaGroupTargets = Injekt.get(),
+    private val localTrackerRepository: LocalTrackerRepository = Injekt.get(),
+    private val confirmedGroupLocalTrackingPropagator: ConfirmedGroupLocalTrackingPropagator =
+        ConfirmedGroupLocalTrackingPropagator(localTrackerRepository),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(State())
@@ -174,6 +238,78 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private val eventChannel = Channel<Event>()
     val eventFlow = eventChannel.receiveAsFlow()
+
+    @Volatile
+    private var activeRoute: ReaderRouteState? = null
+
+    private val routeOwner = SerializedReaderRouteOwner(
+        scope = viewModelScope,
+        buildDispatcher = Dispatchers.IO,
+        commitDispatcher = Dispatchers.Main.immediate,
+        releaseCandidate = ReaderRouteState::release,
+    )
+
+    private val alternateSourceReaderSessionStore = AlternateSourceReaderSessionStore(
+        get = { key -> savedState.get<Any>(key) },
+        set = { key, value -> savedState[key] = value },
+        remove = { key -> savedState.remove<Any>(key) },
+    )
+    private val alternateSourceReaderCoordinator = AlternateSourceReaderCoordinator(
+        getBridge = Injekt.get<GetAlternateSourceBridge>(),
+        routeResolver = AlternateSourceReaderRouteResolver(getManga, getChapter),
+        bridgeController = AlternateSourceBridgeController(),
+        identityResolver = CrossSourceIdentityAuthorizationResolver(),
+        identityController = CrossSourceIdentityDecisionController(),
+        sessionStore = alternateSourceReaderSessionStore,
+        routeSwitcher = AlternateSourceReaderRouteSwitcher(::switchReaderRoute),
+    )
+    val alternateSourceReaderState = alternateSourceReaderCoordinator.state
+
+    private val alternateSourceReaderCandidateGateway = AlternateSourceReaderCandidateGateway(
+        DefaultAlternateSourceReaderCandidateReads(
+            getManga = getManga,
+            getMangaByUrlAndSourceId = Injekt.get<GetMangaByUrlAndSourceId>(),
+            getChapter = getChapter,
+            getBridge = Injekt.get<GetAlternateSourceBridge>(),
+            getLinks = getCrossSourceMangaLinks,
+            getIdentityDecisions = Injekt.get<GetCrossSourceIdentityDecisions>(),
+            identityResolver = crossSourceIdentityAuthorizationResolver,
+            sourceManager = sourceManager,
+            sourcePreferences = sourcePreferencesForRatingPrompt,
+            networkToLocalManga = Injekt.get<NetworkToLocalManga>(),
+            syncChaptersWithSource = Injekt.get<SyncChaptersWithSource>(),
+            dispatcher = Dispatchers.IO,
+        ),
+    )
+    private val mutableAlternateSourcePresentation = MutableStateFlow<AlternateSourceReaderPresentation>(
+        AlternateSourceReaderPresentation.Hidden,
+    )
+    val alternateSourcePresentation: StateFlow<AlternateSourceReaderPresentation> =
+        mutableAlternateSourcePresentation.asStateFlow()
+    private val mutableAlternateSourceContextActions = MutableStateFlow(AlternateSourceReaderContextActions())
+    val alternateSourceContextActions: StateFlow<AlternateSourceReaderContextActions> =
+        mutableAlternateSourceContextActions.asStateFlow()
+    private var alternateSourceCandidateJob: Job? = null
+    private var alternateSourceCommandJob: Job? = null
+    private var alternateSourceCandidateGeneration = 0L
+    private var alternateSourceCommandGeneration = 0L
+    private var lastAlternateSourceCandidateRequest: AlternateSourceReaderCandidateRequest? = null
+    private val alternateSourceMangaTokens = mutableMapOf<AlternateSourceReaderOpaqueToken, AlternateSourceMangaSelection>()
+    private val alternateSourceChapterTokens = mutableMapOf<AlternateSourceReaderOpaqueToken, AlternateSourceChapterSelection>()
+    private var retainedAlternateSourceMangaSelection: AlternateSourceMangaSelection? = null
+    private var retainedAlternateSourceSelection: AlternateSourceChapterSelection? = null
+    private var selectedAlternateSourceToken: AlternateSourceReaderOpaqueToken? = null
+
+    private data class AlternateSourceMangaSelection(
+        val request: AlternateSourceReaderCandidateRequest,
+        val candidate: AlternateSourceReaderMangaCandidate,
+    )
+
+    private data class AlternateSourceChapterSelection(
+        val request: AlternateSourceReaderCandidateRequest,
+        val candidate: AlternateSourceReaderMangaCandidate,
+        val chapterUrl: String,
+    )
 
     /**
      * The manga loaded in the reader. It can be null when instantiated for a short time.
@@ -202,11 +338,14 @@ class ReaderViewModel @JvmOverloads constructor(
             field = value
         }
 
+    private var timerSessionKey: String? = null
+
     // KMK v0.8.4 -->
     /**
      * Active-reading timer. Lifecycle-bound to this ViewModel (survives rotation the same way
-     * [chapterId]/[chapterPageIndex] do) and persisted as individual primitive [SavedStateHandle]
-     * entries via [ReaderTimerStateCodec] — never as a single Parcelable/Serializable object.
+     * [chapterId]/[chapterPageIndex] do), mirrored to a manga/chapter session store for normal
+     * reader reopen, and persisted as individual primitive [SavedStateHandle] entries via
+     * [ReaderTimerStateCodec] — never as a single Parcelable/Serializable object.
      * Counts only while [ReaderTimerSession.isActivelyCounting] AND the reader is foregrounded; see
      * `onReaderForeground`/`onReaderBackground`, called from ReaderActivity's lifecycle callbacks.
      */
@@ -237,6 +376,7 @@ class ReaderViewModel @JvmOverloads constructor(
             savedState[ReaderTimerStateCodec.KEY_EXTRA_USED] = encoded.extraUsed
             savedState[ReaderTimerStateCodec.KEY_PAUSED_FROM] = encoded.pausedFrom
             savedState[ReaderTimerStateCodec.KEY_PAUSE_REASON] = encoded.pauseReason
+            timerSessionKey?.let { ReaderTimerSessionStore.put(it, session) }
         },
     )
     val timerState: StateFlow<ReaderTimerSession> = timerCoordinator.state
@@ -255,16 +395,34 @@ class ReaderViewModel @JvmOverloads constructor(
     fun resetTimer() = timerCoordinator.reset()
     fun stopTimer() = timerCoordinator.stop()
 
+    private fun setTimerSessionKey(mangaId: Long, chapterId: Long) {
+        val key = "$mangaId:$chapterId"
+        if (timerSessionKey == key) return
+        timerSessionKey = key
+        ReaderTimerSessionStore.get(key)?.let {
+            timerCoordinator.restore(it)
+            // The activity may have resumed before asynchronous reader initialization completed.
+            // Replaying foreground here preserves the documented auto-resume behavior.
+            timerCoordinator.onReaderForeground()
+        }
+    }
+
     /** Called from ReaderActivity.onResume. Idempotent. */
     fun onReaderForeground() {
         timerCoordinator.onReaderForeground()
         scheduleGraceCoordinator.onReaderForeground() // KMK v0.8.5
+        state.value.viewerChapters
+            ?.let { listOfNotNull(it.prevChapter, it.currChapter, it.nextChapter) }
+            ?.forEach { it.pageLoader?.onReaderForeground() }
     }
 
     /** Called from ReaderActivity.onPause/onStop. Idempotent. */
     fun onReaderBackground() {
         timerCoordinator.onReaderBackground()
         scheduleGraceCoordinator.onReaderBackground() // KMK v0.8.5
+        state.value.viewerChapters
+            ?.let { listOfNotNull(it.prevChapter, it.currChapter, it.nextChapter) }
+            ?.forEach { it.pageLoader?.onReaderBackground() }
     }
     // KMK <--
 
@@ -278,20 +436,21 @@ class ReaderViewModel @JvmOverloads constructor(
      * already-tested, unmodified grace logic — the current chapter is never interrupted, and the
      * session ends non-destructively at the next chapter boundary. Kept fully separate from the
      * manual timer's session/state so a schedule restriction can never stomp a user-started timer,
-     * and vice versa. Not persisted across process death (see the implementation report's "Known
-     * limitations" — an interrupted grace period is safely re-derived by re-evaluating the schedule
-     * on the next `evaluateSchedule()` call rather than restored verbatim).
+     * and vice versa. The coordinator is restored from the same primitive SavedStateHandle contract
+     * as the manual timer, so an interrupted grace period is not silently discarded on recreation.
      */
     private val scheduleGraceCoordinator = ReaderTimerCoordinator(
         scope = viewModelScope,
         clock = readerTimerClockOverride ?: SystemReaderTimerClock,
+        initialSession = restoreScheduleGraceState(),
+        onPersist = ::persistScheduleGraceState,
     )
     val scheduleGraceState: StateFlow<ReaderTimerSession> = scheduleGraceCoordinator.state
 
     // KMK v0.8.7-fix1 -->
     /**
      * This reader session's [ReaderScheduleEntitlement]. Owned directly by this ViewModel instance
-     * (not the coordinator, not any persisted store) so it survives rotation/recreation exactly the
+     * (not the coordinator or a persisted preference) so it survives rotation/recreation exactly the
      * way this ViewModel itself does, but is never reused across a genuinely new reader session (a
      * new manga, or the same manga reopened after fully leaving the reader, always gets a fresh
      * `ReaderViewModel` and therefore starts back at [ReaderScheduleEntitlement.NotStarted]).
@@ -300,7 +459,40 @@ class ReaderViewModel @JvmOverloads constructor(
      * [ReaderScheduleEntitlement]'s class doc for the confirmed defect this fixes.
      */
     @Volatile
-    private var scheduleEntitlement: ReaderScheduleEntitlement = ReaderScheduleEntitlement.NotStarted
+    private var scheduleEntitlement: ReaderScheduleEntitlement = savedState
+        .get<String>(KEY_SCHEDULE_ENTITLEMENT)
+        ?.let { runCatching { ReaderScheduleEntitlement.valueOf(it) }.getOrNull() }
+        ?: ReaderScheduleEntitlement.NotStarted
+
+    private fun scheduleGraceKey(timerKey: String): String =
+        timerKey.replace("reader_timer_", "reader_schedule_grace_")
+
+    private fun restoreScheduleGraceState(): ReaderTimerSession = ReaderTimerStateCodec.decode(
+        phase = savedState.get<String>(scheduleGraceKey(ReaderTimerStateCodec.KEY_PHASE)),
+        totalMs = savedState.get<Long>(scheduleGraceKey(ReaderTimerStateCodec.KEY_TOTAL_MS)),
+        elapsedMs = savedState.get<Long>(scheduleGraceKey(ReaderTimerStateCodec.KEY_ELAPSED_MS)),
+        warningMinutesCsv = savedState.get<String>(scheduleGraceKey(ReaderTimerStateCodec.KEY_WARNING_MINUTES)),
+        finishChapter = savedState.get<Boolean>(scheduleGraceKey(ReaderTimerStateCodec.KEY_FINISH_CHAPTER)),
+        allowExtra = savedState.get<Boolean>(scheduleGraceKey(ReaderTimerStateCodec.KEY_ALLOW_EXTRA)),
+        firedWarningsCsv = savedState.get<String>(scheduleGraceKey(ReaderTimerStateCodec.KEY_FIRED_WARNINGS)),
+        extraUsed = savedState.get<Boolean>(scheduleGraceKey(ReaderTimerStateCodec.KEY_EXTRA_USED)),
+        pausedFrom = savedState.get<String>(scheduleGraceKey(ReaderTimerStateCodec.KEY_PAUSED_FROM)),
+        pauseReason = savedState.get<String>(scheduleGraceKey(ReaderTimerStateCodec.KEY_PAUSE_REASON)),
+    )
+
+    private fun persistScheduleGraceState(session: ReaderTimerSession) {
+        val encoded = ReaderTimerStateCodec.encode(session)
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_PHASE)] = encoded.phase
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_TOTAL_MS)] = encoded.totalMs
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_ELAPSED_MS)] = encoded.elapsedMs
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_WARNING_MINUTES)] = encoded.warningMinutesCsv
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_FINISH_CHAPTER)] = encoded.finishChapter
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_ALLOW_EXTRA)] = encoded.allowExtra
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_FIRED_WARNINGS)] = encoded.firedWarningsCsv
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_EXTRA_USED)] = encoded.extraUsed
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_PAUSED_FROM)] = encoded.pausedFrom
+        savedState[scheduleGraceKey(ReaderTimerStateCodec.KEY_PAUSE_REASON)] = encoded.pauseReason
+    }
 
     private val mutableIsReadingBlockedBySchedule = kotlinx.coroutines.flow.MutableStateFlow(false)
 
@@ -328,14 +520,20 @@ class ReaderViewModel @JvmOverloads constructor(
         val previousEntitlement = scheduleEntitlement
         val nextEntitlement = ReaderScheduleEntitlement.next(previousEntitlement, result, graceConsumed)
         scheduleEntitlement = nextEntitlement
+        savedState[KEY_SCHEDULE_ENTITLEMENT] = nextEntitlement.name
 
         // KMK v0.8.7-fix1: only OpenedWhileAllowed -> RESTRICTED (a session that was already active
         // and allowed) may start the chapter-grace coordinator. A session that starts at
         // OpenedWhileRestricted never starts it — it is blocked immediately with no grace at all.
-        if (previousEntitlement == ReaderScheduleEntitlement.OpenedWhileAllowed && nextEntitlement == ReaderScheduleEntitlement.CurrentChapterGrace) {
-            if (scheduleGraceCoordinator.state.value.phase == ReaderTimerPhase.IDLE) {
-                scheduleGraceCoordinator.start(0L, ReaderTimerWarningPolicy.NONE, ReaderTimerGracePolicy(finishCurrentChapter = true, allowExtraChapter = false))
-            }
+        if (
+            nextEntitlement == ReaderScheduleEntitlement.CurrentChapterGrace &&
+            scheduleGraceCoordinator.state.value.phase == ReaderTimerPhase.IDLE
+        ) {
+            scheduleGraceCoordinator.start(
+                0L,
+                ReaderTimerWarningPolicy.NONE,
+                ReaderTimerGracePolicy(finishCurrentChapter = true, allowExtraChapter = false),
+            )
         } else if (nextEntitlement == ReaderScheduleEntitlement.OpenedWhileAllowed && scheduleGraceCoordinator.state.value.phase != ReaderTimerPhase.IDLE) {
             // Schedule reverted to ALLOWED/DISABLED before grace ever started for this session (only
             // reachable from OpenedWhileAllowed -> OpenedWhileAllowed, i.e. never actually entered
@@ -344,6 +542,9 @@ class ReaderViewModel @JvmOverloads constructor(
         }
 
         mutableIsReadingBlockedBySchedule.value = nextEntitlement.blocksReading
+        if (nextEntitlement.blocksReading) {
+            dismissAlternateSourcePresentation()
+        }
     }
 
     /**
@@ -379,6 +580,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private var chapterCompletionPromptState: ChapterCompletionPromptState = ChapterCompletionPromptState.None
 
     private suspend fun maybeShowChapterCompletionRatingPrompt(
+        route: ReaderRouteState,
         readerChapter: ReaderChapter,
         pageIndex: Int,
         hasExtraPage: Boolean,
@@ -388,22 +590,28 @@ class ReaderViewModel @JvmOverloads constructor(
         if (ratingPromptEvaluatedForChapterId == chapterId) return
         ratingPromptEvaluatedForChapterId = chapterId
 
+        // The prompt is optional and is owned by Recommendation Settings. Read the preference at
+        // evaluation time so a settings change applies to a newly completed chapter immediately.
+        if (!sourcePreferencesForRatingPrompt.chapterCompletionRatingPromptEnabled().get()) return
+
         // KMK v0.8.7-fix1: the prompt must never itself become a schedule-bypass vector — if this
         // session is currently blocked from reading, do not offer a rating prompt either. Reuses the
         // exact same gate every chapter-navigation entry point already checks, rather than adding a
         // second, possibly-divergent check.
-        if (isChapterNavigationBlockedBySchedule()) return
+        if (!canOfferAlternateSourceGapAction()) return
 
         val isGenuine = LatestChapterCompletionPolicy.isGenuineLatestChapterCompletion(
             pageIndex = pageIndex,
             lastPageIndex = readerChapter.pages?.lastIndex,
             hasExtraPage = hasExtraPage,
-            hasNextChapter = state.value.viewerChapters?.nextChapter != null,
+            hasNextChapter = route.viewerChapters?.nextChapter != null,
             isErrorPage = isErrorPage,
+            currentChapterNumber = readerChapter.chapter.chapter_number,
+            nextChapterNumber = route.viewerChapters?.nextChapter?.chapter?.chapter_number,
         )
         if (!isGenuine) return
 
-        val mangaId = manga?.id ?: return
+        val mangaId = route.manga.id
         // KMK v0.8.10: record the pending completion only — do NOT interrupt the reader. The
         // dialog is shown later, when the reader is actually left (see
         // takePendingChapterCompletionRatingPromptForExit / ReaderActivity.finish()).
@@ -433,31 +641,86 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(dialog = Dialog.ChapterCompletionRating(mangaId)) }
     }
 
+    /**
+     * Fences a chapter-completion prompt action against duplicate taps and stale-dismiss races.
+     * Returns true and synchronously marks the dialog `isProcessing` if this call may proceed;
+     * returns false if an action for the same [mangaId] is already in flight (the caller must
+     * then no-op). Every action must resolve through [resolveChapterCompletionPromptAction]
+     * (success or failure) so the fence never gets stuck.
+     */
+    private fun beginChapterCompletionPromptAction(mangaId: Long): Boolean {
+        var began = false
+        mutableState.update { current ->
+            if (ChapterCompletionRatingActionGate.canBegin(current.dialog, mangaId)) {
+                began = true
+                current.copy(dialog = (current.dialog as Dialog.ChapterCompletionRating).copy(isProcessing = true))
+            } else {
+                current
+            }
+        }
+        return began
+    }
+
+    /**
+     * Applies [onStillPending] only if the prompt for [mangaId] is still the exact dialog this
+     * action started against (not dismissed, not superseded) -- otherwise the write already
+     * happened and is preserved, but the now-stale dialog transition is dropped so a dismissed
+     * or already-advanced prompt can never be resurrected by a delayed callback.
+     */
+    private fun resolveChapterCompletionPromptAction(mangaId: Long, onStillPending: () -> Dialog?) {
+        mutableState.update { current ->
+            if (ChapterCompletionRatingActionGate.isStillPending(current.dialog, mangaId)) {
+                current.copy(dialog = onStillPending())
+            } else {
+                current
+            }
+        }
+    }
+
     /** Commits [rating] via the same exclusive-rating mutation MangaScreenModel/LovedMangaScreenModel already use — no parallel rating path. */
     fun rateFromChapterCompletionPrompt(mangaId: Long, rating: MangaRating) {
+        if (!beginChapterCompletionPromptAction(mangaId)) return
         val currentManga = manga
         viewModelScope.launchNonCancellable {
             if (currentManga != null && currentManga.id == mangaId) {
+                // KMK v0.8.21-fix3: R1 correction -- Not Interested is a real MangaRating value;
+                // this prompt still only ever offers Love/Like/Dislike, but the journal/write path
+                // below is the same single-store rating change every other rating uses now, no
+                // second legacy-preference write to keep in sync.
                 val journalActionType = when (rating) {
                     MangaRating.LOVE -> exh.util.EvaluationJournalActionType.RATE_LOVE
                     MangaRating.LIKE -> exh.util.EvaluationJournalActionType.RATE_LIKE
                     MangaRating.DISLIKE -> exh.util.EvaluationJournalActionType.RATE_DISLIKE
+                    MangaRating.NOT_INTERESTED -> exh.util.EvaluationJournalActionType.NOT_INTERESTED
+                }
+                val targets = ratingTargets(currentManga)
+                val decision = ChapterCompletionRatingPolicy.decide(
+                    existingRatings = targets.map { target ->
+                        getMangaTasteForRatingPrompt.await(target.source, target.url)?.rating?.let(MangaRating::fromValue)
+                    },
+                    selectedRating = rating,
+                    followUpEnabled = sourcePreferencesForRatingPrompt.chapterCompletionRatingOtherVersionsPromptEnabled().get(),
+                )
+                if (decision == ChapterCompletionRatingPolicy.Decision.NO_OP_ALREADY_RATED) {
+                    withUIContext { resolveChapterCompletionPromptAction(mangaId) { null } }
+                    return@launchNonCancellable
                 }
                 val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
-                    sourcePreferencesForRatingPrompt,
                     getMangaTasteForRatingPrompt,
-                    listOf(currentManga),
+                    targets,
                     rating.value,
                     journalActionType,
                 )
-                setMangaTasteInteractor.await(
-                    mangaId = currentManga.id,
-                    source = currentManga.source,
-                    url = currentManga.url,
-                    title = currentManga.title,
-                    rating = rating,
-                )
-                exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+                try {
+                    setMangaTasteBatch.await(targets, rating)
+                    exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+                    propagateConfirmedLocalTracking(targets)
+                } catch (e: Throwable) {
+                    rethrowIfFatal(e)
+                    resolveChapterCompletionPromptAction(mangaId) { Dialog.ChapterCompletionRating(mangaId, isProcessing = false) }
+                    eventChannel.send(Event.ChapterCompletionActionFailed)
+                    return@launchNonCancellable
+                }
                 // KMK v0.8.8: reusing the same GetCrossSourceMangaLinks lookup LovedMangaScreenModel
                 // already relies on for hasConfirmedGroup, not a new duplicate check.
                 // KMK v0.8.17-fix1: step 2 is now always offered after a successful rating -- a
@@ -465,10 +728,25 @@ class ReaderViewModel @JvmOverloads constructor(
                 // Dialog.ChapterCompletionRatingGroupOffer). Previously, no confirmed group meant no
                 // offer at all, even though the same CrossExtensionMatchScreen route can search live
                 // for other versions regardless of whether a group is already confirmed.
-                val hasConfirmedGroup = getCrossSourceMangaLinks.awaitBySourceUrl(currentManga.source, currentManga.url) != null
+                if (decision != ChapterCompletionRatingPolicy.Decision.APPLY_WITH_FOLLOW_UP) {
+                    withUIContext { resolveChapterCompletionPromptAction(mangaId) { null } }
+                    return@launchNonCancellable
+                }
+                val groupLink = getCrossSourceMangaLinks.awaitBySourceUrl(currentManga.source, currentManga.url)
+                val hasConfirmedGroup = groupLink?.let { link ->
+                    getCrossSourceMangaLinks.awaitByGroupId(link.groupId).any { member ->
+                        (member.source != currentManga.source || member.url != currentManga.url) &&
+                            crossSourceIdentityAuthorizationResolver.isConfirmed(
+                                currentManga.source,
+                                currentManga.url,
+                                member.source,
+                                member.url,
+                            )
+                    }
+                } == true
                 withUIContext {
-                    mutableState.update {
-                        it.copy(dialog = Dialog.ChapterCompletionRatingGroupOffer(mangaId, rating.value, hasConfirmedGroup))
+                    resolveChapterCompletionPromptAction(mangaId) {
+                        Dialog.ChapterCompletionRatingGroupOffer(mangaId, rating.value, hasConfirmedGroup)
                     }
                 }
             } else {
@@ -477,39 +755,83 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
-    /** Reuses the same "not interested" store the rated-manga item menu already writes to (SeenRecommendationMangaStore), not a new mechanism. */
-    // KMK Confirmed Blocker Remediation follow-up Phase 2 2026-07-29: previously wrapped the write
-    // in `runCatching { ... }` and then unconditionally closed the dialog afterward regardless of
-    // outcome -- runCatching also catches CancellationException, silently absorbing what should be
-    // structured-concurrency cancellation, and a failed preference write looked identical to a
-    // successful one from the UI's perspective (the prompt just closed either way, no error ever
-    // surfaced). The journal-entry ordering itself (build before write, commit only after the write
-    // line, so a failed write already could never reach the commit call) was already correct and is
-    // unchanged.
+    private suspend fun ratingTargets(manga: Manga): List<Manga> = if (
+        sourcePreferencesForRatingPrompt.confirmedTrackedVersionRatingPropagationEnabled().get() ||
+        sourcePreferencesForRatingPrompt.confirmedTrackedVersionLocalTrackingPropagationEnabled().get()
+    ) {
+        confirmedMangaGroupTargets.await(manga)
+    } else {
+        listOf(manga)
+    }
+
+    private suspend fun propagateConfirmedLocalTracking(targets: List<Manga>) {
+        if (!sourcePreferencesForRatingPrompt.confirmedTrackedVersionLocalTrackingPropagationEnabled().get()) return
+        confirmedGroupLocalTrackingPropagator.propagateIfAnyTracked(targets)
+    }
+
+    // KMK v0.8.21-fix3: R1 correction -- this previously wrote ONLY to the legacy
+    // seenRecommendationMangaKeys preference and never touched MangaTaste at all, a genuine
+    // dangling writer the corrected architecture cannot allow (manga-detail state trusts
+    // MangaTaste.rating exclusively). Now routes through the same setMangaTasteInteractor/
+    // buildRatingChange path every other rating action uses, with
+    // MangaRating.NOT_INTERESTED.value as the target rating.
     fun markNotInterestedFromChapterCompletionPrompt(mangaId: Long) {
+        if (!beginChapterCompletionPromptAction(mangaId)) return
         val currentManga = manga
         viewModelScope.launchNonCancellable {
             if (currentManga != null && currentManga.id == mangaId) {
                 try {
-                    val journalEntries = exh.util.EvaluationModeJournalRecorder.buildNotInterested(
-                        sourcePreferencesForRatingPrompt,
+                    val targets = ratingTargets(currentManga)
+                    val decision = ChapterCompletionRatingPolicy.decide(
+                        existingRatings = targets.map { target ->
+                            getMangaTasteForRatingPrompt.await(target.source, target.url)?.rating?.let(MangaRating::fromValue)
+                        },
+                        selectedRating = MangaRating.NOT_INTERESTED,
+                        followUpEnabled = sourcePreferencesForRatingPrompt.chapterCompletionRatingOtherVersionsPromptEnabled().get(),
+                    )
+                    if (decision == ChapterCompletionRatingPolicy.Decision.NO_OP_ALREADY_RATED) {
+                        withUIContext { resolveChapterCompletionPromptAction(mangaId) { null } }
+                        return@launchNonCancellable
+                    }
+                    val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
                         getMangaTasteForRatingPrompt,
-                        listOf(currentManga),
+                        targets,
+                        MangaRating.NOT_INTERESTED.value,
+                        exh.util.EvaluationJournalActionType.NOT_INTERESTED,
                     )
-                    val key = exh.recs.SeenMangaKey(currentManga.source, currentManga.url)
-                    val current = exh.recs.SeenRecommendationMangaStore.parse(
-                        sourcePreferencesForRatingPrompt.seenRecommendationMangaKeys().get(),
-                    )
-                    val updated = exh.recs.SeenRecommendationMangaStore.add(current, key)
-                    sourcePreferencesForRatingPrompt.seenRecommendationMangaKeys().set(
-                        exh.recs.SeenRecommendationMangaStore.serialize(updated),
-                    )
+                    setMangaTasteBatch.await(targets, MangaRating.NOT_INTERESTED)
                     exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
-                    withUIContext { mutableState.update { it.copy(dialog = null) } }
+                    propagateConfirmedLocalTracking(targets)
+                    if (decision == ChapterCompletionRatingPolicy.Decision.APPLY_WITH_FOLLOW_UP) {
+                        val groupLink = getCrossSourceMangaLinks.awaitBySourceUrl(currentManga.source, currentManga.url)
+                        val hasConfirmedGroup = groupLink?.let { link ->
+                            getCrossSourceMangaLinks.awaitByGroupId(link.groupId).any { member ->
+                                (member.source != currentManga.source || member.url != currentManga.url) &&
+                                    crossSourceIdentityAuthorizationResolver.isConfirmed(
+                                        currentManga.source,
+                                        currentManga.url,
+                                        member.source,
+                                        member.url,
+                                    )
+                            }
+                        } == true
+                        withUIContext {
+                            resolveChapterCompletionPromptAction(mangaId) {
+                                Dialog.ChapterCompletionRatingGroupOffer(
+                                    mangaId,
+                                    MangaRating.NOT_INTERESTED.value,
+                                    hasConfirmedGroup,
+                                )
+                            }
+                        }
+                    } else {
+                        withUIContext { resolveChapterCompletionPromptAction(mangaId) { null } }
+                    }
                 } catch (e: Throwable) {
                     // Rethrows CancellationException and genuine fatal VM errors; only a
                     // recoverable, non-fatal failure reaches the truthful-error path below.
                     rethrowIfFatal(e)
+                    resolveChapterCompletionPromptAction(mangaId) { Dialog.ChapterCompletionRating(mangaId, isProcessing = false) }
                     eventChannel.send(Event.ChapterCompletionActionFailed)
                 }
             } else {
@@ -588,118 +910,35 @@ class ReaderViewModel @JvmOverloads constructor(
     // KMK <--
 
     /**
-     * The chapter loader for the loaded manga. It'll be null until [manga] is set.
-     */
-    private var loader: ChapterLoader? = null
-
-    /**
      * The time the chapter was started reading
      */
     private var chapterReadStartTime: Long? = null
 
-    private var chapterToDownload: Download? = null
-
-    private val unfilteredChapterList by lazy {
-        val manga = manga!!
-        runBlocking {
-            // KMK -->
-            if (manga.source == MERGED_SOURCE_ID) {
-                getMergedChaptersByMangaId.await(manga.id, dedupe = false, applyFilter = false)
-            } else {
-                getChaptersByMangaId.await(manga.id, applyFilter = false)
-            }
-            // KMK <--
-        }
-    }
+    private val unfilteredChapterList: List<Chapter>
+        get() = activeRoute?.unfilteredChapterList.orEmpty()
 
     /**
      * Chapter list for the active manga. It's retrieved lazily and should be accessed for the first
      * time in a background thread to avoid blocking the UI.
      */
-    private val chapterList by lazy {
-        val manga = manga!!
-        // SY -->
-        val (chapters, mangaMap) = runBlocking {
-            if (manga.source == MERGED_SOURCE_ID) {
-                getMergedChaptersByMangaId.await(manga.id, applyFilter = true) to
-                    state.value.mergedManga
-            } else {
-                getChaptersByMangaId.await(manga.id, applyFilter = true) to null
-            }
-        }
-        fun isChapterDownloaded(chapter: Chapter): Boolean {
-            val chapterManga = mangaMap?.get(chapter.mangaId) ?: manga
-            return downloadManager.isChapterDownloaded(
-                chapterName = chapter.name,
-                chapterScanlator = chapter.scanlator,
-                chapterUrl = chapter.url,
-                mangaTitle = chapterManga.ogTitle,
-                sourceId = chapterManga.source,
-            )
-        }
-        // SY <--
+    private val chapterList: List<ReaderChapter>
+        get() = activeRoute?.chapterList.orEmpty()
 
-        val selectedChapter = chapters.find { it.id == chapterId }
-            ?: error("Requested chapter of id $chapterId not found in chapter list")
-
-        val chaptersForReader = when {
-            (readerPreferences.skipRead().get() || readerPreferences.skipFiltered().get()) -> {
-                val filteredChapters = chapters.filterNot {
-                    when {
-                        readerPreferences.skipRead().get() && it.read -> true
-                        readerPreferences.skipFiltered().get() -> {
-                            (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_READ && !it.read) ||
-                                (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_UNREAD && it.read) ||
-                                // SY -->
-                                (
-                                    manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED &&
-                                        !isChapterDownloaded(it)
-                                    ) ||
-                                (
-                                    manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_NOT_DOWNLOADED &&
-                                        isChapterDownloaded(it)
-                                    ) ||
-                                // SY <--
-                                (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED && !it.bookmark) ||
-                                (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_NOT_BOOKMARKED && it.bookmark)
-                        }
-                        else -> false
-                    }
-                }
-
-                if (filteredChapters.any { it.id == chapterId }) {
-                    filteredChapters
-                } else {
-                    filteredChapters + listOf(selectedChapter)
-                }
-            }
-            else -> chapters
-        }
-
-        chaptersForReader
-            .sortedWith(getChapterSort(manga, sortDescending = false))
-            .run {
-                if (readerPreferences.skipDupe().get()) {
-                    removeDuplicates(selectedChapter)
-                } else {
-                    this
-                }
-            }
-            .run {
-                if (basePreferences.downloadedOnly().get()) {
-                    filterDownloaded(manga, mangaMap)
-                } else {
-                    this
-                }
-            }
-            .map { it.toDbChapter() }
-            .map(::ReaderChapter)
-    }
-
-    val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
+    val incognitoMode: Boolean
+        get() = activeRoute?.incognitoMode ?: false
     private val downloadAheadAmount = downloadPreferences.autoDownloadWhileReading().get()
 
     init {
+        alternateSourceReaderState
+            .onEach { machineState ->
+                mutableAlternateSourceContextActions.value =
+                    AlternateSourceReaderPresentationPolicy.contextActions(machineState)
+                if (machineState.session == null && machineState.phase != eu.kanade.tachiyomi.ui.reader.bridge.AlternateSourceReaderPhase.RESOLVING_ENTRY) {
+                    clearAlternateSourceSelectionTokens()
+                }
+            }
+            .launchIn(viewModelScope)
+
         // To save state
         state.map { it.viewerChapters?.currChapter }
             .distinctUntilChanged()
@@ -715,6 +954,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     currentChapter.requestedPage = currentChapter.chapter.last_page_read
                 }
                 chapterId = currentChapter.chapter.id!!
+                setTimerSessionKey(state.value.manga?.id ?: return@onEach, chapterId)
                 // KMK v0.8.4: every real chapter-identity change feeds the reading timer's
                 // chapter-grace boundary detection. Only an automatic forward "next chapter"
                 // transition (pendingChapterChangeIsNatural) may consume the one-extra-chapter
@@ -750,13 +990,16 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     override fun onCleared() {
-        val currentChapters = state.value.viewerChapters
-        if (currentChapters != null) {
-            currentChapters.unref()
-            chapterToDownload?.let {
-                downloadManager.addDownloadsToStartOfQueue(listOf(it))
-            }
-        }
+        alternateSourceCandidateGeneration++
+        alternateSourceCommandGeneration++
+        alternateSourceCandidateJob?.cancel()
+        alternateSourceCommandJob?.cancel()
+        clearAlternateSourceSelectionTokens()
+        alternateSourceReaderCoordinator.dismiss()
+        routeOwner.close()
+        val route = activeRoute
+        activeRoute = null
+        route?.release()
         // KMK v0.8.7-fix1: reader close/destroy clears this session's schedule entitlement. Since a
         // new reader always gets a brand-new ReaderViewModel instance (starting at NotStarted), this
         // is mostly documentation of intent rather than something a later call can observe — but it
@@ -777,7 +1020,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Whether this presenter is initialized yet.
      */
     fun needsInit(): Boolean {
-        return manga == null
+        return activeRoute == null
     }
 
     /**
@@ -786,98 +1029,820 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     suspend fun init(mangaId: Long, initialChapterId: Long /* SY --> */, page: Int?/* SY <-- */): Result<Boolean> {
         if (!needsInit()) return Result.success(true)
-        return withIOContext {
-            try {
-                val manga = getManga.await(mangaId)
-                if (manga != null) {
-                    // SY -->
-                    sourceManager.isInitialized.first { it }
-                    val source = sourceManager.getOrStub(manga.source)
-                    val metadataSource = source.getMainSource<MetadataSource<*, *>>()
-                    val metadata = if (metadataSource != null) {
-                        getFlatMetadataById.await(mangaId)?.raise(metadataSource.metaClass)
-                    } else {
-                        null
-                    }
-                    val mergedReferences = if (source is MergedSource) {
-                        runBlocking {
-                            getMergedReferencesById.await(manga.id)
-                        }
-                    } else {
-                        emptyList()
-                    }
-                    val mergedManga = if (source is MergedSource) {
-                        runBlocking {
-                            getMergedMangaById.await(manga.id)
-                        }.associateBy { it.id }
-                    } else {
-                        null
-                    }
-                    val relativeTime = uiPreferences.relativeTime().get()
-                    val autoScrollFreq = readerPreferences.autoscrollInterval().get()
-                    // SY <--
-                    mutableState.update {
-                        it.copy(
-                            manga = manga,
-                            // SY -->
-                            meta = metadata,
-                            mergedManga = mergedManga,
-                            dateRelativeTime = relativeTime,
-                            ehAutoscrollFreq = if (autoScrollFreq == -1f) {
-                                ""
-                            } else {
-                                autoScrollFreq.toString()
-                            },
-                            isAutoScrollEnabled = autoScrollFreq != -1f,
-                            // SY <--
-                        )
-                    }
-                    if (chapterId == -1L) chapterId = initialChapterId
-
-                    val context = Injekt.get<Application>()
-                    // val source = sourceManager.getOrStub(manga.source)
-                    loader = ChapterLoader(
-                        context = context,
-                        downloadManager = downloadManager,
-                        downloadProvider = downloadProvider,
-                        manga = manga,
-                        source = source,
-                        // SY -->
-                        sourceManager = sourceManager,
-                        readerPrefs = readerPreferences,
-                        mergedReferences = mergedReferences,
-                        mergedManga = mergedManga,
-                        // SY <--
-                    )
-
-                    // KMK v0.8.7-fix1: real enforcement, not just the overlay — a reader session
-                    // whose very first schedule evaluation was RESTRICTED (or whose grace has
-                    // already been consumed, e.g. a saved/restored session) must never load actual
-                    // chapter content, including via a deep link straight into a specific chapter.
-                    // The full-screen overlay in ReaderActivity still renders on top for the visible
-                    // "blocked" UX; this is what makes that block real underneath it.
-                    if (!isChapterNavigationBlockedBySchedule()) {
-                        loadChapter(
-                            loader!!,
-                            chapterList.first { chapterId == it.chapter.id },
-                            // SY -->
-                            page,
-                            // SY <--
-                        )
-                    }
-                    Result.success(true)
-                } else {
-                    // Unlikely but okay
+        val requestedChapterId = chapterId.takeUnless { it == -1L } ?: initialChapterId
+        return when (val replacement = replaceReaderRoute(mangaId, requestedChapterId, page)) {
+            is ReaderRouteReplacementResult.Applied -> {
+                restoreAlternateSourceReaderSession()
+                Result.success(true)
+            }
+            is ReaderRouteReplacementResult.Failed -> {
+                if (replacement.cause is ReaderMangaUnavailableException) {
                     Result.success(false)
+                } else {
+                    Result.failure(replacement.cause)
                 }
-            } catch (e: Throwable) {
-                if (e is CancellationException) {
-                    throw e
+            }
+            ReaderRouteReplacementResult.Stale,
+            ReaderRouteReplacementResult.Closed,
+            ReaderRouteReplacementResult.GenerationExhausted,
+            -> Result.success(false)
+        }
+    }
+
+    private suspend fun replaceReaderRoute(
+        mangaId: Long,
+        requestedChapterId: Long,
+        page: Int?,
+    ): ReaderRouteReplacementResult = routeOwner.replace(
+        build = { generation -> buildReaderRoute(mangaId, requestedChapterId, page, generation) },
+        commit = ::commitReaderRoute,
+    )
+
+    private suspend fun switchReaderRoute(route: AlternateSourceReaderRoute): Boolean =
+        when (replaceReaderRoute(route.mangaId, route.chapterId, route.pageIndex)) {
+            is ReaderRouteReplacementResult.Applied -> true
+            is ReaderRouteReplacementResult.Failed,
+            ReaderRouteReplacementResult.Stale,
+            ReaderRouteReplacementResult.Closed,
+            ReaderRouteReplacementResult.GenerationExhausted,
+            -> false
+        }
+
+    private suspend fun buildReaderRoute(
+        mangaId: Long,
+        requestedChapterId: Long,
+        page: Int?,
+        generation: Long,
+    ): ReaderRouteState {
+        val manga = getManga.await(mangaId) ?: throw ReaderMangaUnavailableException()
+        sourceManager.isInitialized.first { it }
+        val source = sourceManager.getOrStub(manga.source)
+        val metadataSource = source.getMainSource<MetadataSource<*, *>>()
+        val metadata = metadataSource?.let { getFlatMetadataById.await(mangaId)?.raise(it.metaClass) }
+        val mergedReferences = if (source is MergedSource) {
+            getMergedReferencesById.await(manga.id)
+        } else {
+            emptyList()
+        }
+        val mergedManga = if (source is MergedSource) {
+            getMergedMangaById.await(manga.id).associateBy { it.id }
+        } else {
+            null
+        }
+        val unfilteredChapters = if (manga.source == MERGED_SOURCE_ID) {
+            getMergedChaptersByMangaId.await(manga.id, dedupe = false, applyFilter = false)
+        } else {
+            getChaptersByMangaId.await(manga.id, applyFilter = false)
+        }
+        val chapters = if (manga.source == MERGED_SOURCE_ID) {
+            getMergedChaptersByMangaId.await(manga.id, applyFilter = true)
+        } else {
+            getChaptersByMangaId.await(manga.id, applyFilter = true)
+        }
+        val selectedIndex = ReaderInitialChapterPolicy.resolveIndex(chapters.map { it.id }, requestedChapterId)
+        val selectedChapter = chapters.getOrNull(selectedIndex ?: -1)
+            ?: error("No chapters available for reader")
+        if (selectedChapter.id != requestedChapterId) {
+            logcat(LogPriority.WARN) { "Reader launch chapter was unavailable; using the first ordered chapter" }
+        }
+
+        fun isChapterDownloaded(chapter: Chapter): Boolean {
+            val chapterManga = mergedManga?.get(chapter.mangaId) ?: manga
+            return downloadManager.isChapterDownloaded(
+                chapterName = chapter.name,
+                chapterScanlator = chapter.scanlator,
+                chapterUrl = chapter.url,
+                mangaTitle = chapterManga.ogTitle,
+                sourceId = chapterManga.source,
+            )
+        }
+
+        val chaptersForReader = if (readerPreferences.skipRead().get() || readerPreferences.skipFiltered().get()) {
+            val filteredChapters = chapters.filterNot {
+                when {
+                    readerPreferences.skipRead().get() && it.read -> true
+                    readerPreferences.skipFiltered().get() -> {
+                        (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_READ && !it.read) ||
+                            (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_UNREAD && it.read) ||
+                            (
+                                manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED &&
+                                    !isChapterDownloaded(it)
+                                ) ||
+                            (
+                                manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_NOT_DOWNLOADED &&
+                                    isChapterDownloaded(it)
+                                ) ||
+                            (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED && !it.bookmark) ||
+                            (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_NOT_BOOKMARKED && it.bookmark)
+                    }
+                    else -> false
                 }
-                Result.failure(e)
+            }
+            if (filteredChapters.any { it.id == selectedChapter.id }) {
+                filteredChapters
+            } else {
+                filteredChapters + selectedChapter
+            }
+        } else {
+            chapters
+        }
+        val readerChapters = chaptersForReader
+            .sortedWith(getChapterSort(manga, sortDescending = false))
+            .run {
+                if (readerPreferences.skipDupe().get()) removeDuplicates(selectedChapter) else this
+            }
+            .run {
+                if (basePreferences.downloadedOnly().get()) filterDownloaded(manga, mergedManga) else this
+            }
+            .map { it.toDbChapter() }
+            .map(::ReaderChapter)
+        val selectedReaderChapter = readerChapters.firstOrNull { it.chapter.id == selectedChapter.id }
+            ?: error("Selected chapter unavailable after reader filtering")
+        val archiveDegradations = mutableListOf<ArchiveReaderDegradation>()
+        val route = ReaderRouteState(
+            generation = generation,
+            manga = manga,
+            metadata = metadata,
+            mergedManga = mergedManga,
+            unfilteredChapterList = unfilteredChapters,
+            chapterList = readerChapters,
+            loader = ChapterLoader(
+                context = Injekt.get<Application>(),
+                downloadManager = downloadManager,
+                downloadProvider = downloadProvider,
+                manga = manga,
+                source = source,
+                sourceManager = sourceManager,
+                readerPrefs = readerPreferences,
+                mergedReferences = mergedReferences,
+                mergedManga = mergedManga,
+                onArchiveDegraded = { degradation ->
+                    if (activeRoute?.generation == generation) {
+                        eventChannel.trySend(Event.ArchiveReaderDegraded(degradation))
+                    } else {
+                        archiveDegradations += degradation
+                    }
+                },
+            ),
+            incognitoMode = getIncognitoState.await(manga.source),
+            selectedChapterId = selectedChapter.id,
+            dateRelativeTime = uiPreferences.relativeTime().get(),
+            autoScrollFrequency = readerPreferences.autoscrollInterval().get(),
+            archiveDegradations = archiveDegradations,
+            restoreQueuedDownload = { downloadManager.addDownloadsToStartOfQueue(listOf(it)) },
+        )
+        try {
+            if (!isChapterNavigationBlockedBySchedule()) {
+                route.viewerChapters = prepareViewerChapters(route, selectedReaderChapter, page)
+            }
+            return route
+        } catch (e: Throwable) {
+            route.release()
+            throw e
+        }
+    }
+
+    private fun commitReaderRoute(candidate: ReaderRouteState, generation: Long) {
+        check(candidate.generation == generation)
+        check(!candidate.isReleased())
+        invalidateAlternateSourceCandidateStateForRouteChange()
+        val previousRoute = activeRoute
+        candidate.pendingDownload = candidate.viewerChapters?.currChapter?.let(::cancelQueuedDownloads)
+        activeRoute = candidate
+        chapterId = candidate.selectedChapterId
+        setTimerSessionKey(candidate.manga.id, candidate.selectedChapterId)
+        val autoScrollFrequency = candidate.autoScrollFrequency
+        mutableState.update {
+            it.copy(
+                manga = candidate.manga,
+                viewerChapters = candidate.viewerChapters,
+                bookmarked = candidate.viewerChapters?.currChapter?.chapter?.bookmark ?: false,
+                meta = candidate.metadata,
+                mergedManga = candidate.mergedManga,
+                dateRelativeTime = candidate.dateRelativeTime,
+                ehAutoscrollFreq = if (autoScrollFrequency == -1f) "" else autoScrollFrequency.toString(),
+                isAutoScrollEnabled = autoScrollFrequency != -1f,
+            )
+        }
+        candidate.archiveDegradations.forEach { eventChannel.trySend(Event.ArchiveReaderDegraded(it)) }
+        previousRoute?.release()
+    }
+
+    private suspend fun prepareViewerChapters(
+        route: ReaderRouteState,
+        chapter: ReaderChapter,
+        page: Int? = null,
+    ): ViewerChapters {
+        route.loader.loadChapter(chapter, page)
+        val chapterPosition = route.chapterList.indexOf(chapter)
+        check(chapterPosition >= 0) { "Chapter does not belong to reader route" }
+        return ViewerChapters(
+            chapter,
+            route.chapterList.getOrNull(chapterPosition - 1),
+            route.chapterList.getOrNull(chapterPosition + 1),
+        ).also(ViewerChapters::ref)
+    }
+
+    private class ReaderMangaUnavailableException : Exception()
+
+    fun openAlternateSourceChooser(
+        precedingChapterId: Long,
+        followingChapterId: Long?,
+        includeLiveSearch: Boolean = false,
+    ) {
+        if (isChapterNavigationBlockedBySchedule()) return
+        val request = currentAlternateSourceCandidateRequest(precedingChapterId, followingChapterId)
+            ?: run {
+                mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.RecoverableFailure(
+                    AlternateSourceReaderRecoveryReason.ROUTE_CHANGED,
+                    canRetry = false,
+                    invalidateTokens = true,
+                )
+                clearAlternateSourceSelectionTokens()
+                return
+            }
+        lastAlternateSourceCandidateRequest = request
+        launchAlternateSourceCandidateWork {
+            clearAlternateSourceSelectionTokens(keepRequest = true)
+            mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ChoosingSource(
+                AlternateSourceReaderLoadState.Loading,
+            )
+            val discovery = alternateSourceReaderCandidateGateway.discover(request, includeLiveSearch)
+            val rows = discovery.candidates.map { candidate ->
+                val token = newAlternateSourceToken()
+                alternateSourceMangaTokens[token] = AlternateSourceMangaSelection(request, candidate)
+                candidate.toPresentationRow(token)
+            }
+            val content = when {
+                rows.isNotEmpty() -> AlternateSourceReaderLoadState.Content(
+                    items = rows,
+                    hasPartialFailure = discovery.failedSourceCount > 0,
+                )
+                discovery.failedSourceCount > 0 -> AlternateSourceReaderLoadState.Failed(
+                    AlternateSourceReaderRecoveryReason.FAILED,
+                )
+                else -> AlternateSourceReaderLoadState.Empty
+            }
+            val originManga = getManga.await(request.primaryRoute.mangaId)
+            val preselectionMode = SameMangaPreselectionMode.resolve(
+                sourcePreferencesForRatingPrompt.sameMangaMatchPreselectionMode().get(),
+                sourcePreferencesForRatingPrompt.sameMangaMatchPreselectResults().get(),
+            )
+            selectedAlternateSourceToken = discovery.candidates
+                .firstOrNull { candidate ->
+                    originManga?.let { origin ->
+                        SameMangaPreselectionPolicy.shouldSelect(
+                            preselectionMode,
+                            origin,
+                            candidate.manga,
+                        )
+                    } == true
+                }
+                ?.let { candidate ->
+                    alternateSourceMangaTokens.entries.firstOrNull { it.value.candidate == candidate }?.key
+                }
+            mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ChoosingSource(
+                content = content,
+                selectedToken = selectedAlternateSourceToken,
+            )
+        }
+    }
+
+    fun openAlternateSourceChooserForCurrentChapter() {
+        val route = activeRoute ?: return
+        val current = route.viewerChapters?.currChapter ?: return
+        openAlternateSourceChooser(
+            precedingChapterId = current.chapter.id ?: return,
+            followingChapterId = route.chapterList
+                .getOrNull(route.chapterList.indexOf(current) + 1)
+                ?.chapter
+                ?.id,
+            // Keep the initial chooser focused on known alternatives. The explicit
+            // "Search installed sources" action owns the additional live lookup.
+            includeLiveSearch = false,
+        )
+    }
+
+    fun canOfferAlternateSourceChooser(): Boolean =
+        !isChapterNavigationBlockedBySchedule() &&
+            alternateSourceReaderState.value.phase == AlternateSourceReaderPhase.PRIMARY &&
+            alternateSourceReaderState.value.session == null &&
+            activeRoute?.viewerChapters?.currChapter?.chapter?.id != null
+
+    fun searchAlternateSourceCandidates() {
+        val request = lastAlternateSourceCandidateRequest ?: return
+        openAlternateSourceChooser(
+            request.precedingPrimaryChapterId,
+            request.followingPrimaryChapterId,
+            includeLiveSearch = true,
+        )
+    }
+
+    fun acceptAlternateSourceSearchResult(mangaId: Long) {
+        val request = lastAlternateSourceCandidateRequest ?: return
+        launchAlternateSourceCandidateWork {
+            val manga = getManga.await(mangaId)
+            val candidate = manga?.let {
+                alternateSourceReaderCandidateGateway.candidateFromSelectedManga(request, it)
+            }
+            val current = alternateSourcePresentation.value as? AlternateSourceReaderPresentation.ChoosingSource
+            if (current == null) return@launchAlternateSourceCandidateWork
+            if (candidate == null) {
+                mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.RecoverableFailure(
+                    AlternateSourceReaderRecoveryReason.FAILED,
+                    canRetry = true,
+                    invalidateTokens = false,
+                )
+                return@launchAlternateSourceCandidateWork
+            }
+            val existing = (current.content as? AlternateSourceReaderLoadState.Content)?.items.orEmpty()
+            val existingToken = alternateSourceMangaTokens.entries.firstOrNull { entry ->
+                val selection = entry.value
+                selection.candidate.manga.source == candidate.manga.source &&
+                    selection.candidate.manga.url == candidate.manga.url &&
+                    existing.any { row -> row.token == entry.key }
+            }?.key
+            if (existingToken != null) {
+                selectedAlternateSourceToken = existingToken
+                mutableAlternateSourcePresentation.value = current.copy(selectedToken = existingToken)
+                return@launchAlternateSourceCandidateWork
+            }
+            val token = newAlternateSourceToken()
+            alternateSourceMangaTokens[token] = AlternateSourceMangaSelection(request, candidate)
+            val hadPartialFailure = (current.content as? AlternateSourceReaderLoadState.Content)?.hasPartialFailure == true
+            mutableAlternateSourcePresentation.value = current.copy(
+                content = AlternateSourceReaderLoadState.Content(
+                    items = existing + candidate.toPresentationRow(token),
+                    hasPartialFailure = hadPartialFailure,
+                ),
+                selectedToken = token,
+            )
+            selectedAlternateSourceToken = token
+        }
+    }
+
+    fun toggleAlternateSourceCandidate(token: AlternateSourceReaderOpaqueToken) {
+        if (token !in alternateSourceMangaTokens) return
+        selectedAlternateSourceToken = token
+        val current = alternateSourcePresentation.value as? AlternateSourceReaderPresentation.ChoosingSource ?: return
+        mutableAlternateSourcePresentation.value = current.copy(selectedToken = token)
+    }
+
+    fun confirmAlternateSourceCandidate() {
+        val token = selectedAlternateSourceToken ?: return
+        selectAlternateSourceCandidate(token)
+    }
+
+    private fun selectAlternateSourceCandidate(token: AlternateSourceReaderOpaqueToken) {
+        val selection = alternateSourceMangaTokens[token] ?: return
+        retainedAlternateSourceMangaSelection = selection
+        launchAlternateSourceCandidateWork {
+            alternateSourceChapterTokens.clear()
+            mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ChoosingChapter(
+                sourceToken = token,
+                content = AlternateSourceReaderLoadState.Loading,
+            )
+            val discovery = alternateSourceReaderCandidateGateway.chapters(selection.candidate)
+            val content = when (discovery) {
+                is AlternateSourceReaderChapterDiscovery.Available -> {
+                    val rows = discovery.chapters.map { chapter ->
+                        val chapterToken = newAlternateSourceToken()
+                        alternateSourceChapterTokens[chapterToken] = AlternateSourceChapterSelection(
+                            request = selection.request,
+                            candidate = selection.candidate,
+                            chapterUrl = chapter.url,
+                        )
+                        AlternateSourceReaderPresentationPolicy.chapterCandidateRow(
+                            token = chapterToken,
+                            name = chapter.name,
+                            chapterNumber = chapter.chapterNumber,
+                        )
+                    }
+                    AlternateSourceReaderLoadState.Content(rows, hasPartialFailure = false)
+                }
+                AlternateSourceReaderChapterDiscovery.Empty -> AlternateSourceReaderLoadState.Empty
+                AlternateSourceReaderChapterDiscovery.SourceUnavailable -> AlternateSourceReaderLoadState.Failed(
+                    AlternateSourceReaderRecoveryReason.ROUTE_UNAVAILABLE,
+                )
+                AlternateSourceReaderChapterDiscovery.Failed -> AlternateSourceReaderLoadState.Failed(
+                    AlternateSourceReaderRecoveryReason.FAILED,
+                )
+            }
+            mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ChoosingChapter(token, content)
+        }
+    }
+
+    fun selectAlternateSourceChapter(token: AlternateSourceReaderOpaqueToken) {
+        val selection = alternateSourceChapterTokens[token] ?: return
+        retainedAlternateSourceSelection = selection
+        val current = alternateSourcePresentation.value as? AlternateSourceReaderPresentation.ChoosingChapter ?: return
+        mutableAlternateSourcePresentation.value = current.copy(selectedToken = token)
+    }
+
+    fun confirmAlternateSourceChapterSelection() {
+        retainedAlternateSourceSelection?.let(::runAlternateSourceSelection)
+    }
+
+    fun confirmAlternateSourcePairSelection() {
+        val selection = retainedAlternateSourceSelection ?: return
+        launchAlternateSourceCommand(AlternateSourceReaderResolvingPurpose.ENTRY, explicitUserCommand = true) {
+            val result = confirmAlternateSourcePair(selection.bridgeKey())
+            if (result == AlternateSourceReaderCommandResult.PairConfirmed) {
+                selectAlternateSourceChapter(selection)
+            } else {
+                result
             }
         }
     }
+
+    fun confirmProvisionalAlternateSourceSelection() {
+        val selection = retainedAlternateSourceSelection ?: return
+        launchAlternateSourceCommand(AlternateSourceReaderResolvingPurpose.ENTRY, explicitUserCommand = true) {
+            enterAlternateSourceBridge(
+                bridgeKey = selection.bridgeKey(),
+                precedingChapterId = selection.request.precedingPrimaryChapterId,
+                followingChapterId = selection.request.followingPrimaryChapterId,
+                confirmProvisional = true,
+            )
+        }
+    }
+
+    fun correctAlternateSourceMapping() {
+        launchAlternateSourceCommand(AlternateSourceReaderResolvingPurpose.CORRECTION, explicitUserCommand = true) {
+            correctAlternateSourceBridge()
+        }
+    }
+
+    fun requestSkipAlternateSourceChapter() {
+        if (!alternateSourceContextActions.value.skipChapter) return
+        mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ConfirmSkip
+    }
+
+    fun confirmSkipAlternateSourceChapter() {
+        launchAlternateSourceCommand(AlternateSourceReaderResolvingPurpose.CORRECTION, explicitUserCommand = true) {
+            skipCurrentAlternateSourceChapter()
+        }
+    }
+
+    fun requestReturnToPrimarySource() {
+        launchAlternateSourceCommand(AlternateSourceReaderResolvingPurpose.RETURN, explicitUserCommand = true) {
+            returnToPrimarySource()
+        }
+    }
+
+    fun dismissAlternateSourcePresentation() {
+        alternateSourceCandidateGeneration++
+        alternateSourceCandidateJob?.cancel()
+        alternateSourceCandidateJob = null
+        mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.Hidden
+        clearAlternateSourceSelectionTokens()
+    }
+
+    fun retryAlternateSourcePresentation() {
+        retainedAlternateSourceSelection?.let {
+            runAlternateSourceSelection(it)
+            return
+        }
+        retainedAlternateSourceMangaSelection?.let { selection ->
+            alternateSourceMangaTokens.entries
+                .firstOrNull { it.value == selection }
+                ?.key
+                ?.let {
+                    selectAlternateSourceCandidate(it)
+                    return
+                }
+        }
+        val request = lastAlternateSourceCandidateRequest ?: return
+        openAlternateSourceChooser(
+            request.precedingPrimaryChapterId,
+            request.followingPrimaryChapterId,
+            includeLiveSearch = true,
+        )
+    }
+
+    fun acknowledgeAlternateSourceUncertainAlignment() {
+        viewModelScope.launch {
+            alternateSourceReaderCoordinator.acknowledgeUncertainAlignmentNotice()
+        }
+    }
+
+    private fun runAlternateSourceSelection(selection: AlternateSourceChapterSelection) {
+        launchAlternateSourceCommand(AlternateSourceReaderResolvingPurpose.ENTRY, explicitUserCommand = true) {
+            selectAlternateSourceChapter(selection)
+        }
+    }
+
+    private suspend fun selectAlternateSourceChapter(
+        selection: AlternateSourceChapterSelection,
+    ): AlternateSourceReaderCommandResult = selectAlternateSourceChapter(
+        bridgeKey = selection.bridgeKey(),
+        precedingChapterId = selection.request.precedingPrimaryChapterId,
+        followingChapterId = selection.request.followingPrimaryChapterId,
+        alternateChapterUrl = selection.chapterUrl,
+    )
+
+    private fun launchAlternateSourceCandidateWork(block: suspend () -> Unit) {
+        val generation = ++alternateSourceCandidateGeneration
+        val previous = alternateSourceCandidateJob
+        alternateSourceCandidateJob = viewModelScope.launch {
+            previous?.cancelAndJoin()
+            if (generation != alternateSourceCandidateGeneration) return@launch
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == alternateSourceCandidateGeneration) {
+                    mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.RecoverableFailure(
+                        AlternateSourceReaderRecoveryReason.FAILED,
+                        canRetry = true,
+                        invalidateTokens = false,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun launchAlternateSourceCommand(
+        purpose: AlternateSourceReaderResolvingPurpose,
+        explicitUserCommand: Boolean,
+        block: suspend () -> AlternateSourceReaderCommandResult,
+    ) {
+        if (alternateSourceCommandJob?.isActive == true) return
+        val generation = ++alternateSourceCommandGeneration
+        alternateSourceCommandJob = viewModelScope.launch {
+            if (generation != alternateSourceCommandGeneration) return@launch
+            mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.Resolving(purpose)
+            val result = block()
+            if (generation == alternateSourceCommandGeneration) {
+                applyAlternateSourceCommandResult(result, explicitUserCommand)
+            }
+        }
+    }
+
+    private suspend fun applyAlternateSourceCommandResult(
+        result: AlternateSourceReaderCommandResult,
+        explicitUserCommand: Boolean,
+    ) {
+        when (val mapped = AlternateSourceReaderPresentationPolicy.result(result, explicitUserCommand)) {
+            AlternateSourceReaderResultPresentation.Silent -> Unit
+            is AlternateSourceReaderResultPresentation.ConfirmPair -> {
+                val token = retainedAlternateSourceSelection?.let { newAlternateSourceToken() } ?: return
+                mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ConfirmPair(token)
+            }
+            is AlternateSourceReaderResultPresentation.ConfirmProvisional -> {
+                val token = retainedAlternateSourceSelection?.let { newAlternateSourceToken() } ?: return
+                mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.ConfirmProvisional(token)
+            }
+            is AlternateSourceReaderResultPresentation.Completed -> {
+                mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.Hidden
+                mapped.notice?.let { eventChannel.send(Event.AlternateSourceNotice(it)) }
+                if (
+                    result is AlternateSourceReaderCommandResult.Entered &&
+                    alternateSourceReaderCoordinator.hasUnacknowledgedUncertainAlignment()
+                ) {
+                    eventChannel.send(Event.AlternateSourceNotice(AlternateSourceReaderNotice.UNCERTAIN_ALIGNMENT))
+                }
+                if (result !is AlternateSourceReaderCommandResult.PairConfirmed) {
+                    clearAlternateSourceSelectionTokens()
+                }
+            }
+            is AlternateSourceReaderResultPresentation.Recoverable -> {
+                if (mapped.invalidateTokens) clearAlternateSourceSelectionTokens(keepRequest = true)
+                mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.RecoverableFailure(
+                    mapped.reason,
+                    mapped.canRetry,
+                    mapped.invalidateTokens,
+                )
+            }
+        }
+    }
+
+    private fun currentAlternateSourceCandidateRequest(
+        precedingChapterId: Long,
+        followingChapterId: Long?,
+    ): AlternateSourceReaderCandidateRequest? {
+        val route = activeRoute ?: return null
+        if (route.isReleased()) return null
+        val preceding = route.chapterList.singleOrNull { it.chapter.id == precedingChapterId } ?: return null
+        val following = followingChapterId?.let { id ->
+            route.chapterList.singleOrNull { it.chapter.id == id } ?: return null
+        }
+        if (route.viewerChapters?.currChapter !== preceding) return null
+        val precedingOwner = ownerManga(route, preceding) ?: return null
+        val followingOwner = following?.let { ownerManga(route, it) } ?: precedingOwner
+        if (following != null &&
+            (
+                precedingOwner.id != followingOwner.id ||
+                    precedingOwner.source != followingOwner.source ||
+                    precedingOwner.url != followingOwner.url
+                )
+        ) {
+            return null
+        }
+        val primaryRoute = AlternateSourceReaderRoute(
+            role = AlternateSourceReaderRouteRole.PRIMARY,
+            record = tachiyomi.domain.taste.model.CrossSourceRecordKey(precedingOwner.source, precedingOwner.url),
+            mangaId = precedingOwner.id,
+            chapterUrl = preceding.chapter.url,
+            chapterId = preceding.chapter.id ?: return null,
+            pageIndex = chapterPageIndex.coerceAtLeast(0),
+        )
+        return AlternateSourceReaderCandidateRequest(primaryRoute, precedingChapterId, followingChapterId)
+    }
+
+    private fun AlternateSourceReaderMangaCandidate.toPresentationRow(
+        token: AlternateSourceReaderOpaqueToken,
+    ): AlternateSourceReaderCandidateRow = AlternateSourceReaderPresentationPolicy.mangaCandidateRow(
+        token = token,
+        title = manga.title,
+        sourceLabel = sourceLabel,
+        evaluationSourceLabel = EvaluationModeFormatter.sourceLabel(manga.source),
+        evaluationModeEnabled = sourcePreferencesForRatingPrompt.evaluationMode().get(),
+    )
+
+    private fun AlternateSourceChapterSelection.bridgeKey() = AlternateSourceBridgeKey(
+        primary = request.primaryRoute.record,
+        alternate = tachiyomi.domain.taste.model.CrossSourceRecordKey(candidate.manga.source, candidate.manga.url),
+    )
+
+    private fun newAlternateSourceToken() = AlternateSourceReaderOpaqueToken(UUID.randomUUID().toString())
+
+    private fun clearAlternateSourceSelectionTokens(keepRequest: Boolean = false) {
+        alternateSourceMangaTokens.clear()
+        alternateSourceChapterTokens.clear()
+        retainedAlternateSourceMangaSelection = null
+        retainedAlternateSourceSelection = null
+        selectedAlternateSourceToken = null
+        if (!keepRequest) lastAlternateSourceCandidateRequest = null
+    }
+
+    fun canOfferAlternateSourceGapAction(): Boolean {
+        val machineState = alternateSourceReaderState.value
+        return !isChapterNavigationBlockedBySchedule() &&
+            machineState.phase == AlternateSourceReaderPhase.PRIMARY &&
+            machineState.session == null
+    }
+
+    private fun invalidateAlternateSourceCandidateStateForRouteChange() {
+        alternateSourceCandidateGeneration++
+        alternateSourceCandidateJob?.cancel()
+        alternateSourceCandidateJob = null
+        clearAlternateSourceSelectionTokens()
+        if (mutableAlternateSourcePresentation.value !is AlternateSourceReaderPresentation.Resolving) {
+            mutableAlternateSourcePresentation.value = AlternateSourceReaderPresentation.Hidden
+        }
+    }
+
+    suspend fun enterAlternateSourceBridge(
+        bridgeKey: AlternateSourceBridgeKey,
+        precedingChapterId: Long,
+        followingChapterId: Long?,
+        confirmProvisional: Boolean = false,
+    ): AlternateSourceReaderCommandResult {
+        val request = alternateSourceEntryRequest(bridgeKey, precedingChapterId, followingChapterId)
+            ?: return AlternateSourceReaderCommandResult.Invalid
+        return alternateSourceReaderCoordinator.enter(request, confirmProvisional)
+    }
+
+    suspend fun selectAlternateSourceChapter(
+        bridgeKey: AlternateSourceBridgeKey,
+        precedingChapterId: Long,
+        followingChapterId: Long?,
+        alternateChapterUrl: String,
+    ): AlternateSourceReaderCommandResult {
+        val request = alternateSourceEntryRequest(bridgeKey, precedingChapterId, followingChapterId)
+            ?: return AlternateSourceReaderCommandResult.Invalid
+        return alternateSourceReaderCoordinator.select(request, alternateChapterUrl)
+    }
+
+    suspend fun confirmAlternateSourcePair(
+        bridgeKey: AlternateSourceBridgeKey,
+    ): AlternateSourceReaderCommandResult = alternateSourceReaderCoordinator.confirmPair(bridgeKey)
+
+    suspend fun correctAlternateSourceBridge(): AlternateSourceReaderCommandResult {
+        val route = currentAlternateSourceRoute() ?: return AlternateSourceReaderCommandResult.NoSession
+        return alternateSourceReaderCoordinator.correct(route)
+    }
+
+    suspend fun skipCurrentAlternateSourceChapter(): AlternateSourceReaderCommandResult {
+        val route = currentAlternateSourceRoute() ?: return AlternateSourceReaderCommandResult.NoSession
+        return alternateSourceReaderCoordinator.skip(route)
+    }
+
+    suspend fun returnToPrimarySource(
+        preferContinuation: Boolean = true,
+    ): AlternateSourceReaderCommandResult = alternateSourceReaderCoordinator.manualReturn(preferContinuation)
+
+    fun dismissAlternateSourceSession() = alternateSourceReaderCoordinator.dismiss()
+
+    private suspend fun restoreAlternateSourceReaderSession() {
+        val session = when (val decoded = alternateSourceReaderSessionStore.read()) {
+            is AlternateSourceReaderStateCodec.DecodeResult.Valid -> decoded.session
+            AlternateSourceReaderStateCodec.DecodeResult.Invalid -> {
+                if (alternateSourceReaderSessionStore.hasStoredState()) {
+                    alternateSourceReaderCoordinator.dismiss()
+                }
+                return
+            }
+        }
+        val route = activeRoute ?: run {
+            alternateSourceReaderCoordinator.dismiss()
+            return
+        }
+        val chapter = route.viewerChapters?.currChapter ?: run {
+            alternateSourceReaderCoordinator.dismiss()
+            return
+        }
+        val exactRoute = exactBridgeRoute(
+            route = route,
+            chapter = chapter,
+            bridgeKey = session.bridgeKey,
+            role = AlternateSourceReaderRouteRole.ALTERNATE,
+            pageIndex = chapterPageIndex.coerceAtLeast(0),
+        ) ?: run {
+            alternateSourceReaderCoordinator.dismiss()
+            return
+        }
+        alternateSourceReaderCoordinator.restore(exactRoute)
+    }
+
+    private fun alternateSourceEntryRequest(
+        bridgeKey: AlternateSourceBridgeKey,
+        precedingChapterId: Long,
+        followingChapterId: Long?,
+    ): AlternateSourceReaderEntryRequest? {
+        val route = activeRoute ?: return null
+        if (route.isReleased()) return null
+        val preceding = route.chapterList.singleOrNull { it.chapter.id == precedingChapterId } ?: return null
+        val following = followingChapterId?.let { id ->
+            route.chapterList.singleOrNull { it.chapter.id == id } ?: return null
+        }
+        if (route.viewerChapters?.currChapter !== preceding) return null
+        val primaryRoute = exactBridgeRoute(
+            route = route,
+            chapter = preceding,
+            bridgeKey = bridgeKey,
+            role = AlternateSourceReaderRouteRole.PRIMARY,
+            pageIndex = chapterPageIndex.coerceAtLeast(0),
+        ) ?: return null
+        val followingOwner = following?.let { ownerManga(route, it) }
+        if (followingOwner != null &&
+            (
+                followingOwner.source != bridgeKey.primary.source ||
+                    followingOwner.url != bridgeKey.primary.url
+                )
+        ) {
+            return null
+        }
+        return AlternateSourceReaderEntryRequest(
+            bridgeKey = bridgeKey,
+            primaryRoute = primaryRoute,
+            precedingPrimaryChapterUrl = preceding.chapter.url,
+            followingPrimaryChapterUrl = following?.chapter?.url,
+        )
+    }
+
+    private fun currentAlternateSourceRoute(): AlternateSourceReaderRoute? {
+        val session = alternateSourceReaderState.value.session ?: return null
+        val route = activeRoute ?: return null
+        val chapter = route.viewerChapters?.currChapter ?: return null
+        return exactBridgeRoute(
+            route = route,
+            chapter = chapter,
+            bridgeKey = session.bridgeKey,
+            role = AlternateSourceReaderRouteRole.ALTERNATE,
+            pageIndex = chapterPageIndex.coerceAtLeast(0),
+        )
+    }
+
+    private fun exactBridgeRoute(
+        route: ReaderRouteState,
+        chapter: ReaderChapter,
+        bridgeKey: AlternateSourceBridgeKey,
+        role: AlternateSourceReaderRouteRole,
+        pageIndex: Int,
+    ): AlternateSourceReaderRoute? {
+        val manga = ownerManga(route, chapter) ?: return null
+        val record = when (role) {
+            AlternateSourceReaderRouteRole.PRIMARY -> bridgeKey.primary
+            AlternateSourceReaderRouteRole.ALTERNATE -> bridgeKey.alternate
+        }
+        if (manga.source != record.source || manga.url != record.url) return null
+        val chapterId = chapter.chapter.id ?: return null
+        return AlternateSourceReaderRoute(
+            role = role,
+            record = record,
+            mangaId = manga.id,
+            chapterUrl = chapter.chapter.url,
+            chapterId = chapterId,
+            pageIndex = pageIndex,
+        ).takeIf { AlternateSourceReaderSession.isValidRoute(it, bridgeKey) }
+    }
+
+    private fun ownerManga(route: ReaderRouteState, chapter: ReaderChapter): Manga? =
+        route.mergedManga?.get(chapter.chapter.manga_id)
+            ?: route.manga.takeIf { it.id == chapter.chapter.manga_id }
 
     // SY -->
     fun getChapters(): List<ReaderChapterItem> {
@@ -906,43 +1871,41 @@ class ReaderViewModel @JvmOverloads constructor(
      * Callers must handle errors.
      */
     private suspend fun loadChapter(
-        loader: ChapterLoader,
+        route: ReaderRouteState,
         chapter: ReaderChapter,
         // SY -->
         page: Int? = null,
         // SY <--
-    ): ViewerChapters {
-        loader.loadChapter(chapter /* SY --> */, page/* SY <-- */)
-
-        val chapterPos = chapterList.indexOf(chapter)
-        val newChapters = ViewerChapters(
-            chapter,
-            chapterList.getOrNull(chapterPos - 1),
-            chapterList.getOrNull(chapterPos + 1),
-        )
-
-        withUIContext {
-            mutableState.update {
-                // Add new references first to avoid unnecessary recycling
-                newChapters.ref()
-                it.viewerChapters?.unref()
-
-                chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
-                it.copy(
-                    viewerChapters = newChapters,
-                    bookmarked = newChapters.currChapter.chapter.bookmark,
-                )
+    ): Boolean {
+        val newChapters = prepareViewerChapters(route, chapter, page)
+        var transferred = false
+        try {
+            return withUIContext {
+                if (activeRoute !== route || route.isReleased()) return@withUIContext false
+                val previousChapters = route.viewerChapters
+                route.viewerChapters = newChapters
+                route.pendingDownload = cancelQueuedDownloads(newChapters.currChapter)
+                mutableState.update {
+                    it.copy(
+                        viewerChapters = newChapters,
+                        bookmarked = newChapters.currChapter.chapter.bookmark,
+                    )
+                }
+                transferred = true
+                previousChapters?.unref()
+                true
             }
+        } finally {
+            if (!transferred) newChapters.unref()
         }
-        return newChapters
     }
 
     /**
      * Called when the user changed to the given [chapter] when changing pages from the viewer.
      * It's used only to set this chapter as active.
      */
-    private fun loadNewChapter(chapter: ReaderChapter) {
-        val loader = loader ?: return
+    private fun loadNewChapter(route: ReaderRouteState, chapter: ReaderChapter) {
+        if (chapter !in route.chapterList || route.isReleased()) return
 
         // KMK v0.8.7-fix1: this is the *natural* forward-paging transition (the viewer auto-advancing
         // past the last page into the next chapter) — it calls loadChapter directly, bypassing
@@ -953,18 +1916,18 @@ class ReaderViewModel @JvmOverloads constructor(
         // manual selection would be — blocksReading only becomes true once grace is actually
         // consumed, so this does not interrupt the in-progress chapter grace was granted for.
         if (isChapterNavigationBlockedBySchedule()) {
-            logcat { "Blocked natural chapter transition by reading schedule: ${chapter.chapter.url}" }
+            logcat { "Blocked natural chapter transition by reading schedule" }
             return
         }
 
         viewModelScope.launchIO {
-            logcat { "Loading ${chapter.chapter.url}" }
+            logcat { "Loading reader chapter" }
 
-            updateHistory()
+            updateHistory(route)
             restartReadTimer()
 
             try {
-                loadChapter(loader, chapter)
+                loadChapter(route, chapter)
             } catch (e: Throwable) {
                 if (e is CancellationException) {
                     throw e
@@ -976,10 +1939,11 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun loadNewChapterFromDialog(chapter: Chapter) {
         viewModelScope.launchIO {
-            val newChapter = chapterList.firstOrNull { it.chapter.id == chapter.id } ?: return@launchIO
+            val route = activeRoute ?: return@launchIO
+            val newChapter = route.chapterList.firstOrNull { it.chapter.id == chapter.id } ?: return@launchIO
             // KMK v0.8.4: manual selection must never consume the reading timer's one-extra-chapter allowance.
             pendingChapterChangeIsNatural = false
-            loadAdjacent(newChapter)
+            loadAdjacent(route, newChapter)
         }
     }
 
@@ -987,7 +1951,12 @@ class ReaderViewModel @JvmOverloads constructor(
      * Called when the user is going to load the prev/next chapter through the toolbar buttons.
      */
     private suspend fun loadAdjacent(chapter: ReaderChapter) {
-        val loader = loader ?: return
+        val route = activeRoute ?: return
+        loadAdjacent(route, chapter)
+    }
+
+    private suspend fun loadAdjacent(route: ReaderRouteState, chapter: ReaderChapter) {
+        if (activeRoute !== route || route.isReleased()) return
 
         // KMK v0.8.7-fix1: real enforcement gate, checked directly here rather than only relying on
         // the visual overlay — this is the single call site both natural forward/backward viewer
@@ -997,16 +1966,16 @@ class ReaderViewModel @JvmOverloads constructor(
         // never load a *different* chapter — this does not affect an in-progress CurrentChapterGrace
         // session finishing the chapter it is already on, since blocksReading is false during grace.
         if (isChapterNavigationBlockedBySchedule()) {
-            logcat { "Blocked adjacent chapter load by reading schedule: ${chapter.chapter.url}" }
+            logcat { "Blocked adjacent chapter load by reading schedule" }
             return
         }
 
-        logcat { "Loading adjacent ${chapter.chapter.url}" }
+        logcat { "Loading adjacent reader chapter" }
 
         mutableState.update { it.copy(isLoadingAdjacentChapter = true) }
         try {
             withIOContext {
-                loadChapter(loader, chapter)
+                loadChapter(route, chapter)
             }
         } catch (e: Throwable) {
             if (e is CancellationException) {
@@ -1023,6 +1992,8 @@ class ReaderViewModel @JvmOverloads constructor(
      * that the user doesn't have to wait too long to continue reading.
      */
     suspend fun preload(chapter: ReaderChapter) {
+        val route = activeRoute ?: return
+        if (chapter !in route.chapterList || route.isReleased()) return
         if (chapter.state is ReaderChapter.State.Loaded || chapter.state == ReaderChapter.State.Loading) {
             return
         }
@@ -1032,7 +2003,7 @@ class ReaderViewModel @JvmOverloads constructor(
          * it would set `chapter.state` to `Loading` or `Loaded` and return early already.
          */
         if (chapter.pageLoader?.isLocal == false) {
-            val manga = state.value.mergedManga?.get(chapter.chapter.manga_id) ?: manga ?: return
+            val manga = route.mergedManga?.get(chapter.chapter.manga_id) ?: route.manga
             val dbChapter = chapter.chapter
             val isDownloaded = downloadManager.isChapterDownloaded(
                 dbChapter.name,
@@ -1053,17 +2024,24 @@ class ReaderViewModel @JvmOverloads constructor(
             return
         }
 
-        val loader = loader ?: return
         try {
-            logcat { "Preloading ${chapter.chapter.url}" }
-            loader.loadChapter(chapter)
+            logcat { "Preloading reader chapter" }
+            route.loader.loadChapter(chapter)
         } catch (e: Throwable) {
             if (e is CancellationException) {
                 throw e
             }
             return
         }
-        eventChannel.trySend(Event.ReloadViewerChapters)
+        withUIContext {
+            if (activeRoute === route && !route.isReleased()) {
+                eventChannel.trySend(Event.ReloadViewerChapters)
+            } else {
+                chapter.pageLoader?.recycle()
+                chapter.pageLoader = null
+                chapter.state = ReaderChapter.State.Wait
+            }
+        }
     }
 
     fun onViewerLoaded(viewer: Viewer?) {
@@ -1083,45 +2061,64 @@ class ReaderViewModel @JvmOverloads constructor(
             return
         }
 
+        val route = activeRoute ?: return
+        val selectedChapter = page.chapter
+        if (selectedChapter !in route.chapterList || route.isReleased()) return
+        alternateSourceReaderState.value.session?.let { session ->
+            exactBridgeRoute(
+                route = route,
+                chapter = selectedChapter,
+                bridgeKey = session.bridgeKey,
+                role = AlternateSourceReaderRouteRole.ALTERNATE,
+                pageIndex = page.index,
+            )?.let { exactRoute ->
+                viewModelScope.launch {
+                    if (activeRoute === route && !route.isReleased()) {
+                        alternateSourceReaderCoordinator.continueAlternate(exactRoute)
+                    }
+                }
+            }
+        }
+
         // SY -->
         mutableState.update { it.copy(currentPageText = currentPageText) }
         // SY <--
 
-        val selectedChapter = page.chapter
         val pages = selectedChapter.pages ?: return
 
         // Save last page read and mark as read if needed
         viewModelScope.launchNonCancellable {
-            updateChapterProgress(selectedChapter, page/* SY --> */, hasExtraPage/* SY <-- */)
+            updateChapterProgress(route, selectedChapter, page/* SY --> */, hasExtraPage/* SY <-- */)
         }
 
         if (selectedChapter != getCurrentChapter()) {
-            logcat { "Setting ${selectedChapter.chapter.url} as active" }
-            loadNewChapter(selectedChapter)
+            logcat { "Setting reader chapter as active" }
+            loadNewChapter(route, selectedChapter)
         }
 
         val inDownloadRange = page.number.toDouble() / pages.size > 0.25
         if (inDownloadRange) {
-            downloadNextChapters()
+            downloadNextChapters(route)
         }
 
         eventChannel.trySend(Event.PageChanged)
     }
 
-    private fun downloadNextChapters() {
+    private fun downloadNextChapters(route: ReaderRouteState) {
         if (downloadAheadAmount == 0) return
-        val manga = manga ?: return
+        val manga = route.manga
 
         // Only download ahead if current + next chapter is already downloaded too to avoid jank
-        if (getCurrentChapter()?.pageLoader !is DownloadPageLoader) return
-        val nextChapter = state.value.viewerChapters?.nextChapter?.chapter ?: return
+        if (route.viewerChapters?.currChapter?.pageLoader !is DownloadPageLoader) return
+        val nextChapter = route.viewerChapters?.nextChapter?.chapter ?: return
 
         // KMK -->
-        val mangas = state.value.mergedManga ?: mapOf(manga.id to manga)
+        val mangas = route.mergedManga ?: mapOf(manga.id to manga)
         val nextChapterManga = mangas[nextChapter.manga_id] ?: return
         // KMK <--
 
         viewModelScope.launchIO {
+            if (activeRoute !== route || route.isReleased()) return@launchIO
             val isNextChapterDownloaded = downloadManager.isChapterDownloaded(
                 nextChapter.name,
                 nextChapter.scanlator,
@@ -1171,19 +2168,19 @@ class ReaderViewModel @JvmOverloads constructor(
      *
      * @param currentChapter current chapter, which is going to be marked as read.
      */
-    private fun deleteChapterIfNeeded(currentChapter: ReaderChapter) {
+    private fun deleteChapterIfNeeded(route: ReaderRouteState, currentChapter: ReaderChapter) {
         val removeAfterReadSlots = downloadPreferences.removeAfterReadSlots().get()
         if (removeAfterReadSlots == -1) return
 
         // Determine which chapter should be deleted and enqueue
-        val currentChapterPosition = chapterList.indexOf(currentChapter)
-        val chapterToDelete = chapterList.getOrNull(currentChapterPosition - removeAfterReadSlots)
+        val currentChapterPosition = route.chapterList.indexOf(currentChapter)
+        val chapterToDelete = route.chapterList.getOrNull(currentChapterPosition - removeAfterReadSlots)
 
         // If chapter is completely read, no need to download it
-        chapterToDownload = null
+        route.pendingDownload = null
 
         if (chapterToDelete != null) {
-            enqueueDeleteReadChapters(chapterToDelete)
+            enqueueDeleteReadChapters(route, chapterToDelete)
         }
     }
 
@@ -1197,10 +2194,10 @@ class ReaderViewModel @JvmOverloads constructor(
      * For the case where `skipDupe` = false, chapters at should be deleted normally by [deleteChapterIfNeeded]
      * based on the `removeAfterReadSlots` offset while the user is reading sequentially.
      */
-    private fun deleteDupChapterIfNeeded(chapterToDelete: ReaderChapter) {
+    private fun deleteDupChapterIfNeeded(route: ReaderRouteState, chapterToDelete: ReaderChapter) {
         val removeAfterReadSlots = downloadPreferences.removeAfterReadSlots().get()
         if (removeAfterReadSlots != 0) return
-        enqueueDeleteReadChapters(chapterToDelete)
+        enqueueDeleteReadChapters(route, chapterToDelete)
     }
     // KMK <--
 
@@ -1209,6 +2206,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * if incognito mode isn't on.
      */
     private suspend fun updateChapterProgress(
+        route: ReaderRouteState,
         readerChapter: ReaderChapter,
         page: Page,
         // SY -->
@@ -1219,21 +2217,20 @@ class ReaderViewModel @JvmOverloads constructor(
         val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
         val isSyncEnabled = syncPreferences.isSyncEnabled()
 
-        mutableState.update {
-            it.copy(currentPage = pageIndex + 1)
-        }
+        if (activeRoute !== route || route.isReleased()) return
+        mutableState.update { it.copy(currentPage = pageIndex + 1) }
         readerChapter.requestedPage = pageIndex
         chapterPageIndex = pageIndex
+        val chapterCompleted = page.status !is Page.State.Error &&
+            (
+                readerChapter.pages?.lastIndex == pageIndex ||
+                    (hasExtraPage && readerChapter.pages?.lastIndex?.minus(1) == page.index)
+                )
 
-        if (!incognitoMode && page.status !is Page.State.Error) {
+        if (!route.incognitoMode && page.status !is Page.State.Error) {
             readerChapter.chapter.last_page_read = pageIndex
 
-            val completionEntries = if (
-                readerChapter.pages?.lastIndex == pageIndex ||
-                // SY -->
-                (hasExtraPage && readerChapter.pages?.lastIndex?.minus(1) == page.index)
-                // SY <--
-            ) {
+            val completionEntries = if (chapterCompleted) {
                 exh.util.ChapterUndoRecorder.buildReadEntries(
                     sourcePreferencesForRatingPrompt,
                     listOf(readerChapter.chapter.toDomainChapter()!!),
@@ -1243,12 +2240,8 @@ class ReaderViewModel @JvmOverloads constructor(
                 emptyList()
             }
 
-            if (readerChapter.pages?.lastIndex == pageIndex ||
-                // SY -->
-                (hasExtraPage && readerChapter.pages?.lastIndex?.minus(1) == page.index)
-                // SY <--
-            ) {
-                updateChapterProgressOnComplete(readerChapter)
+            if (chapterCompleted) {
+                updateChapterProgressOnComplete(route, readerChapter)
 
                 // SY -->
                 // Check if syncing is enabled for chapter read:
@@ -1260,7 +2253,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 // KMK v0.8.8: chapter-completion rating prompt — only on genuine completion of the
                 // LATEST available chapter, using the exact same last-page check above, never a
                 // string comparison of chapter names/numbers. See maybeShowChapterCompletionRatingPrompt.
-                maybeShowChapterCompletionRatingPrompt(readerChapter, pageIndex, hasExtraPage, page.status is Page.State.Error)
+                maybeShowChapterCompletionRatingPrompt(route, readerChapter, pageIndex, hasExtraPage, page.status is Page.State.Error)
             }
 
             val updated = updateChapter.await(
@@ -1281,13 +2274,29 @@ class ReaderViewModel @JvmOverloads constructor(
             }
             // SY <--
         }
+        if (chapterCompleted && activeRoute === route && !route.isReleased()) {
+            val completedChapterUrl = readerChapter.chapter.url
+            viewModelScope.launch {
+                val result = alternateSourceReaderCoordinator.automaticReturn(completedChapterUrl)
+                applyAlternateSourceCommandResult(result, explicitUserCommand = false)
+            }
+        }
     }
 
-    private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {
+    private suspend fun updateChapterProgressOnComplete(route: ReaderRouteState, readerChapter: ReaderChapter) {
         readerChapter.chapter.read = true
+        val localProgressManga = route.mergedManga?.get(readerChapter.chapter.manga_id) ?: route.manga
+        runCatching {
+            recordLocalTrackedChapterProgress.await(
+                manga = localProgressManga,
+                chapter = readerChapter.chapter.toDomainChapter() ?: return@runCatching,
+            )
+        }.onFailure { error ->
+            logcat(LogPriority.WARN, error) { "Local tracker progress update failed" }
+        }
         // SY -->
-        if (manga?.isEhBasedManga() == true) {
-            val extraChapters = unfilteredChapterList
+        if (route.manga.isEhBasedManga()) {
+            val extraChapters = route.unfilteredChapterList
                 .filter { it.sourceOrder > readerChapter.chapter.source_order }
             val chapterUpdates = extraChapters.map { chapter ->
                 ChapterUpdate(id = chapter.id, read = true)
@@ -1303,14 +2312,14 @@ class ReaderViewModel @JvmOverloads constructor(
         }
         // SY <--
 
-        updateTrackChapterRead(readerChapter)
-        deleteChapterIfNeeded(readerChapter)
+        updateTrackChapterRead(route, readerChapter)
+        deleteChapterIfNeeded(route, readerChapter)
 
         val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
         if (!markDuplicateAsRead) return
 
-        val duplicateUnreadChapters = unfilteredChapterList
+        val duplicateUnreadChapters = route.unfilteredChapterList
             .mapNotNull { chapter ->
                 if (
                     !chapter.read &&
@@ -1318,7 +2327,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapter.chapterNumber.toFloat() == readerChapter.chapter.chapter_number
                 ) {
                     // KMK -->
-                    chapter.also { deleteDupChapterIfNeeded(ReaderChapter(it.copy(read = true))) }
+                    chapter.also { deleteDupChapterIfNeeded(route, ReaderChapter(it.copy(read = true))) }
                     // KMK <--
                 } else {
                     null
@@ -1345,8 +2354,12 @@ class ReaderViewModel @JvmOverloads constructor(
      * Saves the chapter last read history if incognito mode isn't on.
      */
     suspend fun updateHistory() {
-        getCurrentChapter()?.let { readerChapter ->
-            if (incognitoMode) return@let
+        activeRoute?.let { updateHistory(it) }
+    }
+
+    private suspend fun updateHistory(route: ReaderRouteState) {
+        route.viewerChapters?.currChapter?.let { readerChapter ->
+            if (route.incognitoMode) return@let
 
             val chapterId = readerChapter.chapter.id!!
             val endTime = Date()
@@ -1361,18 +2374,20 @@ class ReaderViewModel @JvmOverloads constructor(
      * Called from the activity to load and set the next chapter as active.
      */
     suspend fun loadNextChapter() {
-        val nextChapter = state.value.viewerChapters?.nextChapter ?: return
-        loadAdjacent(nextChapter)
+        val route = activeRoute ?: return
+        val nextChapter = route.viewerChapters?.nextChapter ?: return
+        loadAdjacent(route, nextChapter)
     }
 
     /**
      * Called from the activity to load and set the previous chapter as active.
      */
     suspend fun loadPreviousChapter() {
-        val prevChapter = state.value.viewerChapters?.prevChapter ?: return
+        val route = activeRoute ?: return
+        val prevChapter = route.viewerChapters?.prevChapter ?: return
         // KMK v0.8.4: going backward must never consume the reading timer's one-extra-chapter allowance.
         pendingChapterChangeIsNatural = false
-        loadAdjacent(prevChapter)
+        loadAdjacent(route, prevChapter)
     }
 
     /**
@@ -1637,6 +2652,34 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(dialog = Dialog.ReadingTimer) }
     }
 
+    // KMK v0.8.21-fix2: keep schedule configuration in the reader so the active chapter/session
+    // remains intact when the user returns from the editor.
+    fun openReadingScheduleDialog() {
+        mutableState.update { it.copy(dialog = Dialog.ReadingSchedule) }
+    }
+
+    // Keep the timer workflow in the same reader context when schedule editing is cancelled or
+    // saved. The reader dialog is a modal stack, not a separate navigation destination.
+    fun returnToReadingTimerDialog() {
+        mutableState.update { current ->
+            if (current.dialog is Dialog.ReadingSchedule) {
+                current.copy(dialog = Dialog.ReadingTimer)
+            } else {
+                current
+            }
+        }
+    }
+
+    fun saveReadingSchedule(mode: ReaderScheduleMode, windows: List<ReaderScheduleWindow>) {
+        ReaderSchedulePersistence.save(
+            readerPreferences = readerPreferences,
+            sourcePreferences = sourcePreferencesForRatingPrompt,
+            newMode = mode,
+            newWindows = windows,
+        )
+        evaluateSchedule()
+    }
+
     fun closeDialog() {
         mutableState.update { it.copy(dialog = null) }
     }
@@ -1688,7 +2731,8 @@ class ReaderViewModel @JvmOverloads constructor(
                     eventChannel.send(Event.SavedImage(SaveImageResult.Success(uri)))
                 }
             } catch (e: Throwable) {
-                notifier.onError(with(context) { e.formattedMessage })
+                rethrowIfFatal(e)
+                notifier.onError(context.stringResource(MR.strings.unknown_error))
                 eventChannel.send(Event.SavedImage(SaveImageResult.Error(e)))
             }
         }
@@ -1723,7 +2767,8 @@ class ReaderViewModel @JvmOverloads constructor(
                 )
                 eventChannel.send(Event.SavedImage(SaveImageResult.Success(uri)))
             } catch (e: Throwable) {
-                notifier.onError(with(context) { e.formattedMessage })
+                rethrowIfFatal(e)
+                notifier.onError(context.stringResource(MR.strings.unknown_error))
                 eventChannel.send(Event.SavedImage(SaveImageResult.Error(e)))
             }
         }
@@ -1890,11 +2935,11 @@ class ReaderViewModel @JvmOverloads constructor(
      * Starts the service that updates the last chapter read in sync services. This operation
      * will run in a background thread and errors are ignored.
      */
-    private fun updateTrackChapterRead(readerChapter: ReaderChapter) {
-        if (incognitoMode) return
+    private fun updateTrackChapterRead(route: ReaderRouteState, readerChapter: ReaderChapter) {
+        if (route.incognitoMode) return
         if (!trackPreferences.autoUpdateTrack().get()) return
 
-        val manga = manga ?: return
+        val manga = route.manga
         val context = Injekt.get<Application>()
 
         viewModelScope.launchNonCancellable {
@@ -1906,12 +2951,12 @@ class ReaderViewModel @JvmOverloads constructor(
      * Enqueues this [chapter] to be deleted when [deletePendingChapters] is called. The download
      * manager handles persisting it across process deaths.
      */
-    private fun enqueueDeleteReadChapters(chapter: ReaderChapter) {
+    private fun enqueueDeleteReadChapters(route: ReaderRouteState, chapter: ReaderChapter) {
         if (!chapter.chapter.read) return
-        val mergedManga = state.value.mergedManga
+        val mergedManga = route.mergedManga
         // SY -->
         val manga = if (mergedManga.isNullOrEmpty()) {
-            manga
+            route.manga
         } else {
             mergedManga[chapter.chapter.manga_id]
         } ?: return
@@ -1997,12 +3042,16 @@ class ReaderViewModel @JvmOverloads constructor(
 
         // KMK v0.8.4
         data object ReadingTimer : Dialog
+        data object ReadingSchedule : Dialog
 
         // KMK v0.8.8: chapter-completion rating prompt. mangaId only — never a screen or
         // match-mode object — matching this class's existing precedent (every other Dialog case is
         // either a primitive-only data class or a data object; none hold Parcelable-unsafe types
         // either, since Dialog is never routed through SavedStateHandle in this codebase).
-        data class ChapterCompletionRating(val mangaId: Long) : Dialog
+        // isProcessing fences duplicate taps: true from the moment an action is dispatched until
+        // its write resolves (success moves to the step-2 dialog; failure resets it to false so
+        // retry is still offered on the same dialog instance).
+        data class ChapterCompletionRating(val mangaId: Long, val isProcessing: Boolean = false) : Dialog
 
         // KMK v0.8.8: step 2 — offered after a rating was just committed. KMK v0.8.17-fix1: no
         // longer gated on a confirmed cross-source group already existing -- `hasConfirmedGroup`
@@ -2035,5 +3084,14 @@ class ReaderViewModel @JvmOverloads constructor(
         // markNotInterestedFromChapterCompletionPrompt's preference write fails (non-fatal,
         // non-cancellation) -- the prompt stays open rather than closing as if the action succeeded.
         data object ChapterCompletionActionFailed : Event
+
+        data class ArchiveReaderDegraded(val reason: ArchiveReaderDegradation) : Event
+        data class AlternateSourceNotice(val notice: AlternateSourceReaderNotice) : Event
+    }
+
+    fun onMemoryPressure() {
+        val chapters = state.value.viewerChapters ?: return
+        listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
+            .forEach { it.pageLoader?.onMemoryPressure() }
     }
 }

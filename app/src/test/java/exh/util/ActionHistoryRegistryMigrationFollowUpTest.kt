@@ -274,7 +274,7 @@ class ActionHistoryRegistryMigrationFollowUpTest {
     }
 
     @Test
-    fun `trigger records nothing when Evaluation Mode is off, even on a successful migration`() = runTest {
+    fun `trigger records a successful migration when Evaluation Mode is off`() = runTest {
         bindFakes()
         sourcePreferences.evaluationMode().set(false)
         val origin = manga(id = 1L, sourceId = 10L, url = "/origin")
@@ -289,8 +289,8 @@ class ActionHistoryRegistryMigrationFollowUpTest {
         val result = followUp.trigger()
 
         assertEquals(ActionHistoryFollowUpResult.Started, result, "the migration itself must still truthfully report success")
-        assertEquals(1, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.MIGRATION_COMPLETED })
-        assertEquals(1, MigrationReceiptJournal.snapshot().size)
+        assertEquals(2, NonUndoableEventJournal.snapshot().count { it.eventType == NonUndoableEventType.MIGRATION_COMPLETED })
+        assertEquals(2, MigrationReceiptJournal.snapshot().size)
     }
 
     @Test

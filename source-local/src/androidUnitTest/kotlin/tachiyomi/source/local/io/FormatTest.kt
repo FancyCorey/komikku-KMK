@@ -8,7 +8,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 4: direct coverage for
+// Direct coverage for
 // Format.valueOf(), the pure classification LocalSource uses to decide how to read a chapter entry
 // (directory of loose images, a supported archive, or an Epub) -- and, for a genuinely unsupported
 // extension, to throw Format.UnknownFormatException rather than silently misreading a chapter.

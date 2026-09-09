@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.sync
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -62,9 +63,18 @@ class SyncDataJob(private val context: Context, workerParams: WorkerParameters) 
             // lets CoroutineWorker report the run as actually cancelled instead of succeeded.
             throw e
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e)
             notifier.showSyncError(context.getString(eu.kanade.tachiyomi.R.string.sync_error))
-            Result.success() // try again next time
+            when (SyncDataJobResultPolicy.classify(runAttemptCount, MAX_RUN_ATTEMPTS)) {
+                SyncDataJobResultPolicy.Outcome.Retry -> {
+                    logcat(LogPriority.ERROR) { "Sync failed; retrying with WorkManager backoff" }
+                    Result.retry()
+                }
+
+                SyncDataJobResultPolicy.Outcome.Failure -> {
+                    logcat(LogPriority.ERROR) { "Sync failed after retry limit" }
+                    Result.failure()
+                }
+            }
         } finally {
             // KMK -->
             syncStatus.stop()
@@ -85,6 +95,9 @@ class SyncDataJob(private val context: Context, workerParams: WorkerParameters) 
     }
 
     companion object {
+        // Bounds a transient sync failure without preventing the next periodic run.
+        const val MAX_RUN_ATTEMPTS = 3
+
         private const val TAG_JOB = "SyncDataJob"
         private const val TAG_AUTO = "$TAG_JOB:auto"
         const val TAG_MANUAL = "$TAG_JOB:manual"
@@ -106,6 +119,7 @@ class SyncDataJob(private val context: Context, workerParams: WorkerParameters) 
                 )
                     .addTag(TAG_JOB)
                     .addTag(TAG_AUTO)
+                    .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.MINUTES)
                     .build()
 
                 context.workManager.enqueueUniquePeriodicWork(TAG_AUTO, ExistingPeriodicWorkPolicy.UPDATE, request)

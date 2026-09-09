@@ -2,6 +2,7 @@ package exh.recs
 
 // KMK -->
 import eu.kanade.tachiyomi.source.Source
+import java.util.Locale
 
 internal object RecommendationSourceFilter {
 
@@ -12,14 +13,14 @@ internal object RecommendationSourceFilter {
 
     /** Returns languages normalized to lowercase with blanks removed, falling back to [DefaultLanguages]. */
     fun normalizeLanguages(languages: Set<String>): Set<String> {
-        val normalized = languages.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        val normalized = languages.map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotEmpty() }.toSet()
         return normalized.ifEmpty { DefaultLanguages }
     }
 
     fun isLocalSource(source: Source): Boolean = source.id == LOCAL_SOURCE_ID
 
     fun isAllowedLanguage(source: Source, normalizedLanguages: Set<String>): Boolean =
-        source.lang.lowercase() in normalizedLanguages
+        source.lang.lowercase(Locale.ROOT) in normalizedLanguages
 
     /**
      * Returns sources from [sources] that match [languages] and are not Local Source.
@@ -44,7 +45,7 @@ internal object RecommendationSourceFilter {
     fun availableLanguages(sources: List<Source>): List<String> =
         sources
             .filter { !isLocalSource(it) }
-            .map { it.lang.lowercase() }
+            .map { it.lang.lowercase(Locale.ROOT) }
             .filter { it.isNotEmpty() }
             .distinct()
             .sorted()

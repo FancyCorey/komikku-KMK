@@ -217,7 +217,6 @@ class ExtensionApkExporterTest {
         assertEquals(listOf(missing.pkgName), summary.skippedPkgNames)
     }
 
-    // KMK_UNIFIED_REMAINING_BLOCKER_COMPLETION_PLAN_2026-08-03 C1 -->
     @Test
     fun `exportMultiple fails without opening the destination when no extension is exportable`() = runTest {
         // Every selected extension is unresolvable -- this must be reported as a failure, and the
@@ -324,7 +323,6 @@ class ExtensionApkExporterTest {
     }
     // KMK <--
 
-    // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 5 -->
     @Test
     fun `exportSingle rethrows CancellationException instead of reporting WriteFailed`() = runTest {
         val extension = installedExtensionWithFile("eu.kanade.tachiyomi.extension.en.cancelled")

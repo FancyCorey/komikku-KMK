@@ -140,7 +140,7 @@ class BackupCreateJob(private val context: Context, workerParams: WorkerParamete
             )
             val request = OneTimeWorkRequestBuilder<BackupCreateJob>()
                 .addTag(TAG_MANUAL)
-                // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-06 Finding 2: `WorkInfo` (the
+                // `WorkInfo` (the
                 // object every `getWorkInfosFor...` query returns) never exposes a job's input data --
                 // only its id, state, tags, and output/progress data survive the query boundary. The
                 // destination `uri` is therefore also added as a queryable tag (not only as input
@@ -153,7 +153,7 @@ class BackupCreateJob(private val context: Context, workerParams: WorkerParamete
             return request.id
         }
 
-        // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-06 Finding 2: closes the race where the
+        // Closes the race where the
         // app process dies after [startNow] enqueues the manual backup job but before the caller
         // persists the returned request id (`BackupCleanupRecoveryStore.attachWorkRequest`) -- without
         // this, a durable recovery record left `IN_PROGRESS` with no attached id had no way to
@@ -189,7 +189,7 @@ class BackupCreateJob(private val context: Context, workerParams: WorkerParamete
             return WorkerUtil.isPeriodicJobScheduled(context, TAG_AUTO)
         }
 
-        // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 corrective re-pass (finding #3): this
+        // This
         // project depends on `work-runtime` only, not `work-runtime-ktx` (confirmed via
         // gradle/androidx.versions.toml), so no Flow-based WorkInfo observation is available -- polls
         // the same blocking `getWorkInfoById(id).get()` API `WorkManager.isRunning` already uses

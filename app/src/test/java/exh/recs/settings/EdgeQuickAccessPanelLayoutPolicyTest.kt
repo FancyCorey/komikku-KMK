@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Pure layout-policy tests for the repaired [EdgeQuickAccessPanel]. Each audited defect from the
  * implementation ledger's finding L1-4 has a corresponding assertion here, so the repair is proven

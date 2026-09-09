@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalView
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.reader.ReaderScheduleDialog
+import eu.kanade.tachiyomi.ui.reader.schedule.ReaderSchedulePersistence
 import eu.kanade.tachiyomi.ui.reader.schedule.ReaderScheduleStore
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderBottomButton
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
@@ -699,33 +700,12 @@ object SettingsReaderScreen : SearchableSettings {
                 initialMode = mode,
                 initialWindows = windows,
                 onSave = { newMode, newWindows ->
-                    // KMK Undo Expansion Phase 1: journal the complete prior mode+window serialization
-                    // as one preference entry so Undo restores the whole schedule, not a partial edit.
-                    val sourcePreferences = Injekt.get<eu.kanade.domain.source.service.SourcePreferences>()
-                    val windowsPref = readerPreferences.readingScheduleWindows()
-                    val modePref = readerPreferences.readingScheduleMode()
-                    val previousSerialized = modePref.get() to windowsPref.get()
-                    val newSerialized = ReaderScheduleStore.serializeMode(newMode) to ReaderScheduleStore.serializeWindows(newWindows)
-                    val undoEntry = if (sourcePreferences.evaluationMode().get() && previousSerialized != newSerialized) {
-                        exh.util.PreferenceUndoEntry(
-                            id = exh.util.PreferenceUndoEntry.newId(),
-                            timestamp = System.currentTimeMillis(),
-                            actionType = exh.util.PreferenceJournalActionType.READING_SCHEDULE,
-                            identityKey = "readingSchedule",
-                            previousValue = previousSerialized,
-                            expectedPostValue = newSerialized,
-                            readCurrent = { modePref.get() to windowsPref.get() },
-                            restore = { (mode, windows) ->
-                                modePref.set(mode)
-                                windowsPref.set(windows)
-                            },
-                        )
-                    } else {
-                        null
-                    }
-                    readerPreferences.readingScheduleMode().set(newSerialized.first)
-                    readerPreferences.readingScheduleWindows().set(newSerialized.second)
-                    undoEntry?.let { exh.util.PreferenceUndoJournal.record(it) }
+                    ReaderSchedulePersistence.save(
+                        readerPreferences = readerPreferences,
+                        sourcePreferences = Injekt.get(),
+                        newMode = newMode,
+                        newWindows = newWindows,
+                    )
                 },
             )
         }
@@ -741,7 +721,11 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(KMR.strings.reading_schedule_configure),
                     subtitle = if (windows.isNotEmpty()) {
-                        stringResource(KMR.strings.reading_schedule_window_count, windows.size)
+                        pluralStringResource(
+                            KMR.plurals.reading_schedule_window_count,
+                            count = windows.size,
+                            windows.size,
+                        )
                     } else {
                         stringResource(KMR.strings.reading_schedule_not_configured)
                     },

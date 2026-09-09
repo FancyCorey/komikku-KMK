@@ -31,7 +31,7 @@ kotlin {
                 implementation(kotlinx.bundles.serialization)
             }
         }
-        // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 4: this module
+        // This module
         // had no test source set at all before this pass. androidUnitTest is the standard Kotlin
         // Multiplatform Android-target unit test source set name; `mihon.library`'s configureTest()
         // (buildSrc/src/main/kotlin/mihon/buildlogic/ProjectExtensions.kt) already wires
@@ -63,7 +63,7 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
 
-    // KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 4: com.hippo.unifile's
+    // The com.hippo.unifile library's
     // RawFile (the java.io.File-backed UniFile implementation these new JVM unit tests exercise via
     // UniFile.fromFile) calls android.text.TextUtils.isEmpty(...) internally, which the default
     // Android JAR stub throws on ("not mocked") rather than executing. Every name this test suite

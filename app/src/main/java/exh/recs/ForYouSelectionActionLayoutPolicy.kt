@@ -3,10 +3,9 @@ package exh.recs
 // KMK v0.8.16-fix1 -->
 /**
  * Pure decision for how [BrowsePersonalRecommendationsTab]'s selection bottom bar lays out its
- * actions at a given width. The v0.8.16 ADB tablet audit found six always-visible text buttons
- * (Love/Like/Dislike/Not interested/Find best version/Open) fit tablet landscape but are too
- * crowded for phone portrait -- see `UI_AUDIT_NOTES.md`. This does not remove any action: on wide
- * layouts every action stays directly visible; on compact layouts the less-common actions move into
+ * actions at a given width. Six always-visible text buttons (Love/Like/Dislike/Not interested/Find
+ * best version/Open) fit wide layouts but crowd compact portrait layouts. This does not remove any
+ * action: on wide layouts every action stays directly visible; on compact layouts less-common actions move into
  * a "More" overflow, never disappearing.
  */
 object ForYouSelectionActionLayoutPolicy {

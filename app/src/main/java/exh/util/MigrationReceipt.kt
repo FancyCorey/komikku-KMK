@@ -59,6 +59,10 @@ object MigrationReceiptJournal {
     /** The receipt sharing [id] with a rendered [NonUndoableEvent], if still retained. */
     fun forId(id: String): MigrationReceipt? = synchronized(lock) { entries.find { it.id == id } }
 
+    fun removeById(id: String) {
+        synchronized(lock) { entries.removeAll { it.id == id } }
+    }
+
     fun clear() {
         synchronized(lock) { entries.clear() }
     }

@@ -12,16 +12,21 @@ import exh.util.FakePreferenceStore
 import exh.util.NonUndoableEvent
 import exh.util.NonUndoableEventJournal
 import exh.util.PackageOperationJournal
+import exh.util.PreferenceJournalActionType
 import exh.util.PreferenceUndoJournal
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -57,6 +62,13 @@ import tachiyomi.domain.taste.interactor.SetTagTaste
  * get/set/changes() semantics rather than needing dozens of individual property mocks.
  */
 class RecommendationsSettingsScreenModelSourcesToTryTest {
+
+    @Test
+    fun `only the active individual install may clear its lifecycle state`() {
+        assertTrue(shouldClearSuggestionInstallState(activeOperationId = 7L, operationId = 7L))
+        assertFalse(shouldClearSuggestionInstallState(activeOperationId = 8L, operationId = 7L))
+        assertFalse(shouldClearSuggestionInstallState(activeOperationId = null, operationId = 7L))
+    }
 
     @BeforeEach
     fun setUp() {
@@ -110,7 +122,8 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
     private fun buildModel(
         extensionManager: ExtensionManager,
         sourcePreferences: SourcePreferences = SourcePreferences(FakePreferenceStore()),
-        // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09: injectable so the clear-exposure-history
+        suggestionsFlow: Flow<List<NonInstalledSourceSuggestion>> = flowOf(emptyList()),
+        // Injectable so the clear-exposure-history
         // action's success/failure/cancellation paths can be driven directly.
         clearRecommendationExposure: tachiyomi.domain.taste.interactor.ClearRecommendationExposure =
             mockk(relaxed = true),
@@ -128,7 +141,7 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
         every { getSourceEvaluations.subscribeAll() } returns flowOf(emptyList())
 
         val getNonInstalledSourceSuggestions = mockk<GetNonInstalledSourceSuggestions>(relaxed = true)
-        every { getNonInstalledSourceSuggestions.subscribe() } returns flowOf(emptyList())
+        every { getNonInstalledSourceSuggestions.subscribe() } returns suggestionsFlow
 
         return RecommendationsSettingsScreenModel(
             getTagTaste = getTagTaste,
@@ -145,7 +158,6 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
             getTasteSuggestions = mockk<GetTasteSuggestions>(relaxed = true),
             getTasteDiagnostics = mockk<GetTasteDiagnostics>(relaxed = true),
             getSourceEvaluations = getSourceEvaluations,
-            // KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08
             clearRecommendationExposure = clearRecommendationExposure,
         )
     }
@@ -199,6 +211,122 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
         assertFalse(s.dismissalKey in model.state.value.installingSuggestionKeys)
         assertTrue(NonUndoableEventJournal.snapshot().isEmpty(), "a failed install must never record a visibility event")
         assertTrue(PackageOperationJournal.snapshot().isEmpty(), "a failed install must never record a package receipt")
+        assertTrue(model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Failed)
+    }
+
+    @Test
+    fun `installSuggestion classifies Idle as failure and offers a retryable terminal result`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returns flowOf(InstallStep.Idle)
+        val model = buildModel(extensionManager)
+
+        model.installSuggestion(suggestion(ext.pkgName))
+        advanceUntilIdle()
+
+        assertTrue(model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Failed)
+        assertTrue(NonUndoableEventJournal.snapshot().isEmpty())
+        assertTrue(PackageOperationJournal.snapshot().isEmpty())
+    }
+
+    @Test
+    fun `installSuggestion classifies a completed flow without a terminal step as failure`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returns flowOf(InstallStep.Pending)
+        val model = buildModel(extensionManager)
+
+        model.installSuggestion(suggestion(ext.pkgName))
+        advanceUntilIdle()
+
+        assertTrue(model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Failed)
+        assertFalse(model.state.value.installingSuggestionKeys.isNotEmpty())
+    }
+
+    @Test
+    fun `installSuggestion times out stalled installer and releases the extension operation`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returns flow { awaitCancellation() }
+        val model = buildModel(extensionManager)
+
+        model.installSuggestion(suggestion(ext.pkgName))
+        advanceTimeBy(SOURCES_TO_TRY_INSTALL_TIMEOUT_MS + 1)
+        advanceUntilIdle()
+
+        assertTrue(model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Failed)
+        assertTrue(NonUndoableEventJournal.snapshot().isEmpty())
+        assertTrue(PackageOperationJournal.snapshot().isEmpty())
+        verify(exactly = 1) { extensionManager.cancelInstallUpdateExtension(ext) }
+    }
+
+    @Test
+    fun `explicit individual cancellation cancels the real installer and exposes a retry snapshot`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returns flow {
+            emit(InstallStep.Downloading)
+            awaitCancellation()
+        }
+        val s = suggestion(ext.pkgName)
+        val model = buildModel(extensionManager, suggestionsFlow = flowOf(listOf(s)))
+
+        model.installSuggestion(s)
+        model.cancelSuggestionInstall(s)
+        advanceUntilIdle()
+
+        verify(exactly = 1) { extensionManager.cancelInstallUpdateExtension(ext) }
+        assertTrue(model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Cancelled)
+        assertTrue(model.state.value.installingSuggestionKeys.isEmpty())
+        model.retrySuggestionInstallFailures()
+        advanceUntilIdle()
+        verify(exactly = 2) { extensionManager.installExtension(ext) }
+        model.cancelSuggestionInstall(s)
+    }
+
+    @Test
+    fun `retry installs only the retained failed suggestion and replaces failure with success`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returnsMany listOf(
+            flowOf(InstallStep.Error),
+            flowOf(InstallStep.Installed),
+        )
+        val s = suggestion(ext.pkgName)
+        val model = buildModel(extensionManager, suggestionsFlow = flowOf(listOf(s)))
+
+        model.installSuggestion(s)
+        advanceUntilIdle()
+        val failedId = model.state.value.suggestionInstallFeedback!!.operationId
+        model.retrySuggestionInstallFailures()
+        advanceUntilIdle()
+
+        val feedback = model.state.value.suggestionInstallFeedback
+        assertTrue(feedback is SourcesToTryInstallFeedback.Installed)
+        assertTrue(feedback!!.operationId > failedId)
+        coVerify(exactly = 2) { extensionManager.installExtension(ext) }
+    }
+
+    @Test
+    fun `retry snapshot is pruned when the failed suggestion leaves the live list`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returns flowOf(InstallStep.Error)
+        val s = suggestion(ext.pkgName)
+        val suggestions = MutableStateFlow(listOf(s))
+        val model = buildModel(extensionManager, suggestionsFlow = suggestions)
+
+        model.installSuggestion(s)
+        advanceUntilIdle()
+        assertEquals(1, model.state.value.retryableSuggestionInstallFailureCount)
+
+        suggestions.value = emptyList()
+        advanceUntilIdle()
+        model.retrySuggestionInstallFailures()
+        advanceUntilIdle()
+
+        assertEquals(0, model.state.value.retryableSuggestionInstallFailureCount)
+        coVerify(exactly = 1) { extensionManager.installExtension(ext) }
     }
 
     @Test
@@ -219,6 +347,26 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
         assertFalse(s.dismissalKey in model.state.value.installingSuggestionKeys)
         assertTrue(NonUndoableEventJournal.snapshot().isEmpty(), "a cancelled install must never record a visibility event")
         assertTrue(PackageOperationJournal.snapshot().isEmpty(), "a cancelled install must never record a package receipt")
+    }
+
+    @Test
+    fun `cancelled install keeps the suggestion visible and retryable while extension state catches up`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        val s = suggestion(ext.pkgName)
+        every { extensionManager.installExtension(ext) } returns flow { throw CancellationException("package installer cancelled") }
+        val model = buildModel(extensionManager, suggestionsFlow = flowOf(listOf(s)))
+
+        advanceUntilIdle()
+        model.installSuggestion(s)
+        advanceUntilIdle()
+
+        assertEquals(listOf(s), model.state.value.nonInstalledSuggestions)
+        assertEquals(1, model.state.value.retryableSuggestionInstallFailureCount)
+        assertTrue(
+            model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Cancelled ||
+                model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Failed,
+        )
     }
 
     // --- installSuggestions: bulk partial success + cancellation ---
@@ -246,6 +394,64 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
         assertEquals(1, events.size, "only the succeeding extension records a visibility event")
         assertEquals(1, receipts.size, "only the succeeding extension records a package receipt")
         assertEquals(ok.pkgName, receipts.single().packageName, "the recorded receipt must belong to the succeeding extension, not the failed one")
+        val feedback = model.state.value.suggestionInstallFeedback as SourcesToTryInstallFeedback.BulkPartial
+        assertEquals(1, feedback.installedCount)
+        assertEquals(1, feedback.failedCount)
+    }
+
+    @Test
+    fun `explicit bulk cancellation cancels the active installer and clears every running flag`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val ext = availableExtension()
+        every { extensionManager.installExtension(ext) } returns flow {
+            emit(InstallStep.Downloading)
+            awaitCancellation()
+        }
+        val model = buildModel(extensionManager)
+        val s = suggestion(ext.pkgName)
+
+        model.installSuggestions(listOf(s))
+        model.cancelBulkSuggestionInstall()
+        advanceUntilIdle()
+
+        verify(exactly = 1) { extensionManager.cancelInstallUpdateExtension(ext) }
+        assertTrue(model.state.value.suggestionInstallFeedback is SourcesToTryInstallFeedback.Cancelled)
+        assertFalse(model.state.value.isBulkInstallingSuggestions)
+        assertTrue(model.state.value.installingSuggestionKeys.isEmpty())
+    }
+
+    @Test
+    fun `bulk all-failed result reports the exact bounded failure count`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val one = availableExtension(pkgName = "eu.kanade.tachiyomi.extension.en.one", signatureHash = "sig-one")
+        val two = availableExtension(pkgName = "eu.kanade.tachiyomi.extension.en.two", signatureHash = "sig-two")
+        every { extensionManager.installExtension(one) } returns flowOf(InstallStep.Error)
+        every { extensionManager.installExtension(two) } returns flowOf(InstallStep.Idle)
+        val model = buildModel(extensionManager)
+
+        model.installSuggestions(listOf(suggestion(one.pkgName, one.signatureHash), suggestion(two.pkgName, two.signatureHash)))
+        advanceUntilIdle()
+
+        val feedback = model.state.value.suggestionInstallFeedback as SourcesToTryInstallFeedback.BulkFailed
+        assertEquals(2, feedback.failedCount)
+        assertTrue(PackageOperationJournal.snapshot().isEmpty())
+    }
+
+    @Test
+    fun `install feedback types cannot retain extension identity or exception text`() {
+        val feedbackTypes = listOf(
+            SourcesToTryInstallFeedback.Installed::class.java,
+            SourcesToTryInstallFeedback.Failed::class.java,
+            SourcesToTryInstallFeedback.BulkInstalled::class.java,
+            SourcesToTryInstallFeedback.BulkPartial::class.java,
+            SourcesToTryInstallFeedback.BulkFailed::class.java,
+            SourcesToTryInstallFeedback.Cancelled::class.java,
+        )
+
+        feedbackTypes.forEach { type ->
+            val fields = type.declaredFields.filterNot { it.isSynthetic }
+            assertFalse(fields.any { it.type == String::class.java }, "$type must not retain identity or message text")
+        }
     }
 
     @Test
@@ -319,7 +525,7 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
     }
 
     @Test
-    fun `dismissSuggestion does not journal when Evaluation Mode is off`() = runTest {
+    fun `dismissSuggestion journals when Evaluation Mode is off`() = runTest {
         val extensionManager = fakeExtensionManager()
         val sourcePreferences = SourcePreferences(FakePreferenceStore())
         sourcePreferences.evaluationMode().set(false)
@@ -327,7 +533,8 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
 
         model.dismissSuggestion(suggestion("eu.kanade.tachiyomi.extension.en.a"))
 
-        assertTrue(PreferenceUndoJournal.snapshot().isEmpty())
+        val entry = PreferenceUndoJournal.snapshot().single()
+        assertEquals(PreferenceJournalActionType.SUGGESTION_DISMISSAL, entry.actionType)
     }
 
     @Test
@@ -448,6 +655,33 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
     }
 
     @Test
+    fun `source quality mark is journaled when Evaluation Mode is off`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val sourcePreferences = SourcePreferences(FakePreferenceStore())
+        sourcePreferences.evaluationMode().set(false)
+        val model = buildModel(extensionManager, sourcePreferences)
+
+        model.markAvailableSourceQualityPoor(suggestion("eu.kanade.tachiyomi.extension.en.off"))
+
+        val entry = PreferenceUndoJournal.snapshot().single()
+        assertEquals(PreferenceJournalActionType.SOURCE_QUALITY_MARK, entry.actionType)
+    }
+
+    @Test
+    fun `source preference change is journaled when Evaluation Mode is off`() = runTest {
+        val extensionManager = fakeExtensionManager()
+        val sourcePreferences = SourcePreferences(FakePreferenceStore())
+        sourcePreferences.evaluationMode().set(false)
+        val model = buildModel(extensionManager, sourcePreferences)
+        val sourceId = 42L
+
+        model.setInstalledSourcePreference(sourceId, exh.recs.sourceprefs.RecommendationSourcePreference.LIKE)
+
+        val entry = PreferenceUndoJournal.snapshot().single()
+        assertEquals(PreferenceJournalActionType.SOURCE_PREFERENCE, entry.actionType)
+    }
+
+    @Test
     fun `undoing a poor-to-explicit transition atomically restores both the disliked and explicit sets`() = runTest {
         // A transition (poor -> explicit) touches two of the three composite sets in one write
         // (SourceQualityMarkPolicy.markExplicit removes the key from disliked and adds it to
@@ -541,7 +775,6 @@ class RecommendationsSettingsScreenModelSourcesToTryTest {
         assertFalse("sourceName" in receiptFieldNames)
     }
 
-    // KMK_CLAUDE_LATEST_STRUCTURAL_REPAIR_2026-08-09 -->
     // Domain B: the user-facing "Clear repeat history" action. Success, failure, cancellation, and
     // the blast-radius guarantee (it calls exactly one interactor and touches nothing else).
 

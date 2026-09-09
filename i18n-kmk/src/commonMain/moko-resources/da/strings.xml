@@ -125,7 +125,7 @@
     <string name="pref_discord_rpc">Discord Rig Tilstedeværelse</string>
     <string name="pref_category_connections">Forbindelser</string>
     <string name="pref_connections_summary">Discord, mere at komme.</string>
-    <string name="connections_discord_info">Denne Discord Service virker gennem token logning. Bruges på egen risiko. Dit token gemmes lokalt, og Anikku deler det ikke andre steder</string>
+    <string name="connections_discord_info">Denne Discord Service virker gennem token logning. Bruges på egen risiko. Dit token gemmes lokalt, og %s deler det ikke andre steder</string>
     <string name="pref_enable_discord_rpc">Aktiver Discord Rig Tilstedeværelse</string>
     <string name="pref_discord_online">🟢 Online</string>
     <string name="pref_discord_show_download_button_summary">Viser en knap til download af appen</string>

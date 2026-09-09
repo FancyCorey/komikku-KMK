@@ -1,0 +1,16 @@
+ALTER TABLE local_tracked_work_source ADD COLUMN inheritance_opted_out INTEGER NOT NULL DEFAULT 0 CHECK(inheritance_opted_out IN (0, 1));
+
+CREATE TABLE local_tracked_work_source_progress (
+    work_id TEXT NOT NULL,
+    source INTEGER NOT NULL CHECK(source > 0),
+    url TEXT NOT NULL CHECK(length(url) BETWEEN 1 AND 4096),
+    chapter_number REAL CHECK(chapter_number IS NULL OR chapter_number = chapter_number),
+    chapter_url TEXT NOT NULL CHECK(length(chapter_url) BETWEEN 1 AND 4096),
+    chapter_label TEXT NOT NULL CHECK(length(chapter_label) BETWEEN 1 AND 4096),
+    progress_at INTEGER NOT NULL CHECK(progress_at > 0),
+    inherited_from_source INTEGER CHECK(inherited_from_source IS NULL OR inherited_from_source > 0),
+    inherited_from_url TEXT CHECK(inherited_from_url IS NULL OR length(inherited_from_url) BETWEEN 1 AND 4096),
+    updated_at INTEGER NOT NULL CHECK(updated_at > 0),
+    PRIMARY KEY(work_id, source, url),
+    FOREIGN KEY(work_id) REFERENCES local_tracked_work(id) ON DELETE CASCADE
+);

@@ -15,7 +15,7 @@ import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 import java.util.concurrent.atomic.AtomicLong
 
 // KMK -->
-// KMK_CLAUDE_REMAINING_FIXTURE_BLOCKER_IMPLEMENTATION_PLAN_2026-08-03 Phase 1: named modes for the
+// Named modes for the
 // Source Evaluation debug-only fixture, matching the deterministic terminal states already declared
 // in the isolated source-evaluation fixture contract. "Off" is the
 // default/production value and must never activate the fixture path -- see

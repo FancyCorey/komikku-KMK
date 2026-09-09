@@ -8,17 +8,17 @@ import java.io.File
 class SourceEvaluationHistoryPolicyTest {
     @Test
     fun `successful management action in Evaluation Mode records visibility event`() {
-        assertTrue(SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(true, true))
+        assertTrue(SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(true))
     }
 
     @Test
     fun `ordinary failure does not record visibility event`() {
-        assertFalse(SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(false, true))
+        assertFalse(SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(false))
     }
 
     @Test
-    fun `Evaluation Mode disabled does not record visibility event`() {
-        assertFalse(SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(true, false))
+    fun `Evaluation Mode disabled still records a successful visibility event`() {
+        assertTrue(SourceEvaluationHistoryPolicy.shouldRecordDataClearedEvent(true))
     }
 
     @Test

@@ -1,6 +1,5 @@
 -- KMK --> v0.7.47: Source Evaluation tag enrichment and scoring fix. Bounded getMangaDetails()
--- catalogue enrichment plus split positive/negative/blocked/adult/metadata evidence counters
--- (see docs/recommendations/KMK_SOURCE_EVALUATION_TAG_ENRICHMENT_AND_SCORING_FIX_PLAN.md). All
+-- catalogue enrichment plus split positive/negative/blocked/adult/metadata evidence counters. All
 -- columns are additive with safe defaults; existing rows read back as zero-evidence, which is
 -- correct because SourceEvaluationKeys.CURRENT_VERSION bumped 2 -> 3 in the same release, so every
 -- existing row is already treated as stale/outdated regardless of these new counts.

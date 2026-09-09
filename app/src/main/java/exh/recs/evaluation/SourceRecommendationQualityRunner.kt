@@ -28,6 +28,7 @@ import tachiyomi.domain.taste.model.SourceRecommendationFit
 import tachiyomi.domain.taste.model.TasteProfile
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
 
 // KMK v0.7.44: bounded wait for availableExtensionsFlow to warm up — see loadAvailableExtensions()
 private const val AVAILABLE_EXTENSIONS_WAIT_MS = 5_000L
@@ -289,7 +290,7 @@ class SourceRecommendationQualityRunner(
     ): SourceRecommendationFit {
         val qualityScore = SourceRecommendationFitScorer.score(outcome.toScorerOutcome())
         val label = outcome.label()
-        val verdict = RecommendationQualityVerdict.fromSerialized(label.name.lowercase())
+        val verdict = RecommendationQualityVerdict.fromSerialized(label.name.lowercase(Locale.ROOT))
         val probeErrorMessage = when (label) {
             RecommendationQualityLabel.ERROR -> {
                 if (outcome.reasons.isNotEmpty()) outcome.reasons.take(2).joinToString("; ").take(200) else null

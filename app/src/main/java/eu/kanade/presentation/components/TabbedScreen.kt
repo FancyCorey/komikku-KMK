@@ -15,6 +15,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -47,6 +48,13 @@ fun TabbedScreen(
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val selectedPage = clampTabbedScreenPage(state.currentPage, tabs.size)
+
+    LaunchedEffect(tabs.size) {
+        if (state.currentPage != selectedPage) {
+            state.scrollToPage(selectedPage)
+        }
+    }
 
     // KMK -->
     val feedState by feedScreenModel.state.collectAsState()
@@ -55,7 +63,7 @@ fun TabbedScreen(
 
     Scaffold(
         topBar = {
-            val tab = tabs[state.currentPage]
+            val tab = tabs[selectedPage]
             val searchEnabled = tab.searchEnabled
             // KMK -->
             if (bulkFavoriteState.selectionMode) {
@@ -100,12 +108,12 @@ fun TabbedScreen(
             ),
         ) {
             PrimaryTabRow(
-                selectedTabIndex = state.currentPage,
+                selectedTabIndex = selectedPage,
                 modifier = Modifier.zIndex(1f),
             ) {
                 tabs.forEachIndexed { index, tab ->
                     Tab(
-                        selected = state.currentPage == index,
+                        selected = selectedPage == index,
                         onClick = { scope.launch { state.animateScrollToPage(index) } },
                         text = { TabText(text = stringResource(tab.titleRes), badgeCount = tab.badgeNumber) },
                         unselectedContentColor = MaterialTheme.colorScheme.onSurface,
@@ -118,7 +126,7 @@ fun TabbedScreen(
                 state = state,
                 verticalAlignment = Alignment.Top,
             ) { page ->
-                tabs[page].content(
+                tabs.getOrNull(page)?.content(
                     PaddingValues(bottom = contentPadding.calculateBottomPadding()),
                     snackbarHostState,
                 )
@@ -126,6 +134,9 @@ fun TabbedScreen(
         }
     }
 }
+
+internal fun clampTabbedScreenPage(currentPage: Int, tabCount: Int): Int =
+    currentPage.coerceIn(0, (tabCount - 1).coerceAtLeast(0))
 
 data class TabContent(
     val titleRes: StringResource,

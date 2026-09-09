@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Pure, I/O-free policy for the bounded Latest-catalogue exploration lane.
  *

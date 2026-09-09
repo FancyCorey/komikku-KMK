@@ -1,6 +1,7 @@
 package exh.recs.share
 
 import eu.kanade.tachiyomi.extension.model.Extension
+import java.util.Locale
 
 // KMK -->
 
@@ -101,10 +102,10 @@ object RecommendationBundleSourceResolver {
     ): Boolean {
         if (normalizeTitle(item.title) != normalizeTitle(localTitle)) return false
 
-        val itemAuthor = item.author?.trim()?.lowercase()
-        val itemArtist = item.artist?.trim()?.lowercase()
-        val localAuth = localAuthor?.trim()?.lowercase()
-        val localArt = localArtist?.trim()?.lowercase()
+        val itemAuthor = item.author?.trim()?.lowercase(Locale.ROOT)
+        val itemArtist = item.artist?.trim()?.lowercase(Locale.ROOT)
+        val localAuth = localAuthor?.trim()?.lowercase(Locale.ROOT)
+        val localArt = localArtist?.trim()?.lowercase(Locale.ROOT)
 
         if (!itemAuthor.isNullOrBlank() && !localAuth.isNullOrBlank() && itemAuthor == localAuth) return true
         if (!itemArtist.isNullOrBlank() && !localArt.isNullOrBlank() && itemArtist == localArt) return true
@@ -113,7 +114,7 @@ object RecommendationBundleSourceResolver {
     }
 
     fun normalizeTitle(title: String): String = title
-        .lowercase()
+        .lowercase(Locale.ROOT)
         .replace(Regex("""\([^)]*\)|\[[^\]]*\]"""), "")
         .replace(Regex("[^a-z0-9]"), " ")
         .trim()

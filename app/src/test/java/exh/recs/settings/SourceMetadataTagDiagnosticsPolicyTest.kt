@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.taste.model.SourceEvaluation
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
 import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 
 class SourceMetadataTagDiagnosticsPolicyTest {
@@ -163,4 +164,74 @@ class SourceMetadataTagDiagnosticsPolicyTest {
         }
     }
     // KMK <--
+
+    @Test
+    fun `query matches structured sampled titles and tags and sorts deterministically`() {
+        val rows = SourceMetadataTagDiagnosticsPolicy.queryRows(
+            evaluations = listOf(
+                evaluation("alpha", 1L, "Alpha", 20L).copy(sampledTitlesJson = "[\"Moon\"]"),
+                evaluation("beta", 2L, "Beta", 10L).copy(sampledTagsJson = "[\"Adventure\"]"),
+            ),
+            query = SourceMetadataTagDiagnosticsPolicy.Query(text = "adventure"),
+            evaluationModeEnabled = false,
+            now = 30L,
+        )
+
+        assertEquals(listOf("beta"), rows.map { it.evaluation.evaluationKey })
+    }
+
+    @Test
+    fun `query status filter separates outdated and current rows`() {
+        val rows = SourceMetadataTagDiagnosticsPolicy.queryRows(
+            evaluations = listOf(
+                evaluation("old", 1L, "Old", 10L).copy(evaluationVersion = 1),
+                evaluation("current", 2L, "Current", 20L).copy(evaluationVersion = 3),
+            ),
+            query = SourceMetadataTagDiagnosticsPolicy.Query(
+                status = SourceMetadataTagDiagnosticsPolicy.StatusFilter.OUTDATED,
+            ),
+            evaluationModeEnabled = false,
+            now = 30L,
+        )
+
+        assertEquals(listOf("old"), rows.map { it.evaluation.evaluationKey })
+    }
+
+    @Test
+    fun `malformed structured payload is ignored without losing the row`() {
+        val row = SourceMetadataTagDiagnosticsPolicy.queryRows(
+            evaluations = listOf(
+                evaluation("broken", 1L, "Broken", 10L).copy(sampledTagsJson = "not-json"),
+            ),
+            query = SourceMetadataTagDiagnosticsPolicy.Query(text = "broken"),
+            evaluationModeEnabled = false,
+            now = 30L,
+        )
+
+        assertEquals(listOf("broken"), row.map { it.evaluation.evaluationKey })
+    }
+
+    @Test
+    fun `evaluation mode excludes raw sampled payload from matching`() {
+        val rows = SourceMetadataTagDiagnosticsPolicy.queryRows(
+            evaluations = listOf(
+                evaluation("ext-1", 1L, "Private Source", 10L).copy(
+                    sampledTitlesJson = "[\"Sensitive title\"]",
+                    catalogueMetadataConfidence = SourceEvaluationMetadataConfidence.HIGH,
+                ),
+            ),
+            query = SourceMetadataTagDiagnosticsPolicy.Query(text = "sensitive title"),
+            evaluationModeEnabled = true,
+            now = 30L,
+        )
+
+        assertTrue(rows.isEmpty())
+    }
+
+    // KMK v0.8.21-fix2: the old "every diagnostics row exposes only the existing review route"
+    // test asserted Action.REVIEW_SOURCE_EVALUATION/availableActions(), which is removed --
+    // availableActions() always returned the same single action regardless of the row (a confirmed
+    // usability defect: a repeated, identical, full-row "Open source evaluation" action on every
+    // source, navigating to the same generic destination with no source-specific context). See
+    // SourceMetadataTagDiagnostics.kt's removal note and Plan A's AUG-03/AUG-12 reopening section.
 }

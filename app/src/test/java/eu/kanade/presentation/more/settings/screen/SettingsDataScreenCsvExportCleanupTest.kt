@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 // KMK -->
-// KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 2: direct coverage for
+// Direct coverage for
 // the CSV export route's SafExportCoordinator usage, now owned by SettingsDataScreenModel
 // (screenModelScope-scoped) instead of a Composable-remember-owned instance. Mirrors
 // ExtensionDetailsScreenExportCleanupTest.kt / ExtensionsTabBulkExportCleanupTest.kt: the picker Uri

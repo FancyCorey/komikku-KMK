@@ -2969,7 +2969,7 @@ Plan and implementation report:
 - `docs/community/KMK_RECS_V0_8_15_SOURCE_EVALUATION_REASSESSMENT_AND_UNIVERSAL_UI_PLAN.md`
 - `docs/community/KMK_RECS_V0_8_15_SOURCE_EVALUATION_REASSESSMENT_AND_UNIVERSAL_UI_IMPLEMENTATION.md`
 
-Live ADB evidence (device `R5GL201CAQX`, package `app.komikku.dev`) confirmed a false-completion bug:
+Live ADB evidence (device `<test-tablet>`, package `app.komikku.dev`) confirmed a false-completion bug:
 tapping `Reassess outdated (25)` finished in under a second, showed `Evaluation completed`, but a
 before/after database comparison showed zero source_evaluation changes, and 44 of the 48 stale rows
 had a non-null `source_id`. Root cause, confirmed by code inspection: `SourceEvaluationRunner
@@ -3368,6 +3368,20 @@ APK handoff name:
 ```text
 Komikku-v1.14.1-kmk.8.17-debug.apk
 ```
+
+### KMK-Recs v0.8.20-fix4 (2026-08-01)
+
+Corrective follow-up for the Universal Action History Recovery Plan:
+
+- tracker status, score, and chapter-progress writes now have Evaluation-Mode-only visibility
+  records and guarded compensating-sync follow-ups;
+- tracker remote failures preserve the existing user feedback while propagating failure so an
+  unsuccessful write cannot be recorded as successful;
+- embedded WebView navigation accepts only parsed `http` and `https` URLs;
+- receipt privacy and confirmed-download-deletion boundaries received structural regression tests.
+
+The Android app version remains `1.14.1`/`90`; this is a KMK feature-version marker only.
+APK handoff identity: `Komikku-KMK-Recs-v0.8.20-fix4-<short-description>-debug.apk`.
 
 ## APK Naming Recommendation
 

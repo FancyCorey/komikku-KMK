@@ -23,6 +23,7 @@ internal class DownloadPageLoader(
     private val source: Source,
     private val downloadManager: DownloadManager,
     private val downloadProvider: DownloadProvider,
+    private val onArchiveDegraded: (ArchiveReaderDegradation) -> Unit = {},
 ) : PageLoader() {
 
     private val context: Application by injectLazy()
@@ -54,8 +55,12 @@ internal class DownloadPageLoader(
         archivePageLoader?.recycle()
     }
 
+    override fun onMemoryPressure() {
+        archivePageLoader?.onMemoryPressure()
+    }
+
     private suspend fun getPagesFromArchive(file: UniFile): List<ReaderPage> {
-        val loader = ArchivePageLoader(file.archiveReader(context)).also { archivePageLoader = it }
+        val loader = ArchivePageLoader(file.archiveReader(context), onArchiveDegraded).also { archivePageLoader = it }
         return loader.getPages()
     }
 

@@ -2,6 +2,7 @@ package exh.recs
 
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.source.Source
+import java.util.Locale
 
 // KMK v0.8.12 -->
 /**
@@ -38,22 +39,22 @@ object RecommendationLanguageAvailabilityPolicy {
         val languages = sortedSetOf<String>()
 
         selectedLanguages.forEach { lang ->
-            val normalized = lang.trim().lowercase()
+            val normalized = lang.trim().lowercase(Locale.ROOT)
             if (normalized.isNotEmpty()) languages += normalized
         }
 
         installedVisibleSources
             .filterNot(::isLocalSource)
             .forEach { source ->
-                val normalized = source.lang.trim().lowercase()
+                val normalized = source.lang.trim().lowercase(Locale.ROOT)
                 if (normalized.isNotEmpty()) languages += normalized
             }
 
         availableExtensions.forEach { ext ->
-            val extLang = ext.lang.trim().lowercase()
+            val extLang = ext.lang.trim().lowercase(Locale.ROOT)
             if (extLang.isNotEmpty()) languages += extLang
             ext.sources.forEach { source ->
-                val normalized = source.lang.trim().lowercase()
+                val normalized = source.lang.trim().lowercase(Locale.ROOT)
                 if (normalized.isNotEmpty()) languages += normalized
             }
         }

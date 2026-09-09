@@ -150,7 +150,7 @@ class ExtensionDetailsScreenModelUninstallTest {
     }
 
     @Test
-    fun `Evaluation Mode off records neither event nor receipt even for a verified removal`() = runTest {
+    fun `normal Action History records an event and receipt for a verified removal`() = runTest {
         val extension = installedExtension("eu.kanade.tachiyomi.extension.en.b")
         val preferences = SourcePreferences(FakePreferenceStore())
         preferences.evaluationMode().set(false)
@@ -166,8 +166,10 @@ class ExtensionDetailsScreenModelUninstallTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { extensionManager.uninstallExtension(extension) }
-        assertTrue(NonUndoableEventJournal.isEmpty(), "Evaluation Mode is off -- no event may be recorded")
-        assertTrue(PackageOperationJournal.isEmpty(), "Evaluation Mode is off -- no receipt may be recorded")
+        assertEquals(1, NonUndoableEventJournal.snapshot().size)
+        assertEquals(NonUndoableEventType.EXTENSION_UNINSTALLED, NonUndoableEventJournal.snapshot().first().eventType)
+        assertEquals(1, PackageOperationJournal.snapshot().size)
+        assertEquals(extension.pkgName, PackageOperationJournal.snapshot().first().packageName)
     }
 }
 // KMK <--

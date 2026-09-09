@@ -3,6 +3,9 @@ package exh.util
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import tachiyomi.domain.taste.model.CrossSourceGroupPrimary
+import tachiyomi.domain.taste.model.CrossSourceIdentityDecision
+import tachiyomi.domain.taste.model.CrossSourceIdentityDecisionPolicy
+import tachiyomi.domain.taste.model.CrossSourceIdentityPair
 import tachiyomi.domain.taste.model.CrossSourceMangaLink
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.taste.model.TagAlias
@@ -22,16 +25,25 @@ import tachiyomi.domain.taste.repository.TasteRepository
  */
 class FakeTasteRepository : TasteRepository {
 
+    var tasteReadFailure: Throwable? = null
+    var tasteWriteFailure: Throwable? = null
+
     private val byMangaId = mutableMapOf<Long, MangaTaste>()
     private val tastesFlow = MutableStateFlow<List<MangaTaste>>(emptyList())
 
     private fun key(source: Long, url: String) = byMangaId.values.find { it.source == source && it.url == url }
 
-    override suspend fun getMangaTaste(mangaId: Long): MangaTaste? = byMangaId[mangaId]
+    override suspend fun getMangaTaste(mangaId: Long): MangaTaste? {
+        tasteReadFailure?.let { throw it }
+        return byMangaId[mangaId]
+    }
 
     override fun getMangaTasteAsFlow(mangaId: Long): Flow<MangaTaste?> = throw NotImplementedError()
 
-    override suspend fun getMangaTaste(source: Long, url: String): MangaTaste? = key(source, url)
+    override suspend fun getMangaTaste(source: Long, url: String): MangaTaste? {
+        tasteReadFailure?.let { throw it }
+        return key(source, url)
+    }
 
     override fun getMangaTasteAsFlow(source: Long, url: String): Flow<MangaTaste?> = throw NotImplementedError()
 
@@ -40,16 +52,19 @@ class FakeTasteRepository : TasteRepository {
     override fun getAllMangaTastesAsFlow(): Flow<List<MangaTaste>> = tastesFlow
 
     override suspend fun upsertMangaTaste(taste: MangaTaste) {
+        tasteWriteFailure?.let { throw it }
         byMangaId[taste.mangaId] = taste
         tastesFlow.value = byMangaId.values.toList()
     }
 
     override suspend fun deleteMangaTaste(mangaId: Long) {
+        tasteWriteFailure?.let { throw it }
         byMangaId.remove(mangaId)
         tastesFlow.value = byMangaId.values.toList()
     }
 
     override suspend fun deleteMangaTaste(source: Long, url: String) {
+        tasteWriteFailure?.let { throw it }
         val existing = key(source, url) ?: return
         byMangaId.remove(existing.mangaId)
         tastesFlow.value = byMangaId.values.toList()
@@ -75,6 +90,7 @@ class FakeTasteRepository : TasteRepository {
     // GroupUndoServiceRestoreTest can exercise real merge/remove/ungroup/restore interactor chains.
     private val links = mutableMapOf<Pair<Long, String>, CrossSourceMangaLink>()
     private val primaries = mutableMapOf<String, CrossSourceGroupPrimary>()
+    private val identityDecisions = mutableMapOf<CrossSourceIdentityPair, CrossSourceIdentityDecision>()
 
     /**
      * Test hook simulating a mid-transaction failure: when non-null, [restoreCrossSourceGroupState]
@@ -137,6 +153,55 @@ class FakeTasteRepository : TasteRepository {
     }
     override suspend fun deleteAllCrossSourceGroupPrimaries() {
         primaries.clear()
+    }
+
+    override suspend fun getCrossSourceIdentityDecision(pair: CrossSourceIdentityPair): CrossSourceIdentityDecision? =
+        identityDecisions[CrossSourceIdentityDecisionPolicy.canonicalPair(pair.left, pair.right)]
+
+    override suspend fun getAllCrossSourceIdentityDecisions(): List<CrossSourceIdentityDecision> =
+        identityDecisions.values.toList()
+
+    override suspend fun upsertCrossSourceIdentityDecisions(decisions: List<CrossSourceIdentityDecision>) {
+        decisions.map(CrossSourceIdentityDecisionPolicy::canonicalize).forEach { identityDecisions[it.pair] = it }
+    }
+
+    override suspend fun replaceCrossSourceIdentityDecision(
+        expected: CrossSourceIdentityDecision?,
+        replacement: CrossSourceIdentityDecision?,
+    ): Boolean {
+        transactionFailure?.let { throw it }
+        val pair = replacement?.pair ?: expected?.pair ?: return false
+        val canonicalPair = CrossSourceIdentityDecisionPolicy.canonicalPair(pair.left, pair.right)
+        if (identityDecisions[canonicalPair] != expected?.let(CrossSourceIdentityDecisionPolicy::canonicalize)) return false
+        if (replacement == null) identityDecisions.remove(canonicalPair) else identityDecisions[canonicalPair] = CrossSourceIdentityDecisionPolicy.canonicalize(replacement)
+        return true
+    }
+
+    override suspend fun replaceCrossSourceIdentityDecisions(
+        replacements: List<tachiyomi.domain.taste.model.CrossSourceIdentityReplacement>,
+    ): Boolean {
+        transactionFailure?.let { throw it }
+        if (replacements.isEmpty()) return false
+        val canonical = replacements.map { change ->
+            val pair = change.replacement?.pair ?: change.expected?.pair ?: return false
+            Triple(
+                CrossSourceIdentityDecisionPolicy.canonicalPair(pair.left, pair.right),
+                change.expected?.let(CrossSourceIdentityDecisionPolicy::canonicalize),
+                change.replacement?.let(CrossSourceIdentityDecisionPolicy::canonicalize),
+            )
+        }
+        if (canonical.map { it.first }.distinct().size != canonical.size) return false
+        if (canonical.any { (pair, expected, _) -> identityDecisions[pair] != expected }) return false
+        canonical.forEach { (pair, _, replacement) ->
+            if (replacement == null) identityDecisions.remove(pair) else identityDecisions[pair] = replacement
+        }
+        return true
+    }
+
+    override suspend fun tombstoneAllCrossSourceIdentityDecisions(updatedAt: Long) {
+        identityDecisions.replaceAll { _, row ->
+            if (row.deletedAt == null && row.updatedAt <= updatedAt) CrossSourceIdentityDecisionPolicy.tombstone(row, updatedAt) else row
+        }
     }
 
     override suspend fun getAllDisabledSourceIds(): List<Long> = throw NotImplementedError()

@@ -1,6 +1,7 @@
 package exh.recs.settings
 
 import cafe.adriel.voyager.core.screen.Screen
+import java.util.Locale
 
 // KMK v0.8.9 -->
 /**
@@ -97,7 +98,7 @@ object RecommendationSettingsSearchIndex {
 
     /** Lowercase, replace punctuation with spaces, and collapse whitespace so "Source-Priority", "source priority", and "SOURCE  PRIORITY" all match identically. */
     fun normalize(s: String): String = s
-        .lowercase()
+        .lowercase(Locale.ROOT)
         .replace(Regex("[^a-z0-9 ]"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()

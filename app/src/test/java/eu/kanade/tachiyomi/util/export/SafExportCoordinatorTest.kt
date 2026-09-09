@@ -34,7 +34,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 // KMK -->
-// KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05: real boundary tests for the reworked,
+// Real boundary tests for the reworked,
 // operation-keyed, atomic SafExportCoordinator contract (beginOperation/registerUri/performWrite/
 // clear, all keyed by an opaque operationId; IN_PROGRESS as a real non-terminal state).
 class SafExportCoordinatorTest {
@@ -109,7 +109,7 @@ class SafExportCoordinatorTest {
 
     @Test
     fun `two simultaneous beginOperation calls -- the second is rejected while the first is pending`() {
-        // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 4: in practice a
+        // In practice a
         // second beginOperation call cannot happen through the UI while an offer is pending (see this
         // class's KDoc for why: SafArtifactCleanupDialog is modal and blocks the trigger control).
         // This test proves the coordinator itself also refuses a second concurrent reservation if
@@ -283,7 +283,7 @@ class SafExportCoordinatorTest {
 
     @Test
     fun `concurrent beginOperation calls under contention -- exactly one wins`() {
-        // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 3: beginOperation is guarded
+        // BeginOperation is guarded
         // by a `synchronized` critical section, not a `MutableStateFlow.update{}` lambda whose body
         // can run more than once under contention with a local-variable side effect disagreeing with
         // the committed state. Drive real concurrent threads at it and assert the invariant holds.
@@ -434,7 +434,7 @@ class SafExportCoordinatorTest {
         assertEquals(SafArtifactOutcome.SUCCESS, coordinator.cleanupOffer.value?.outcome)
     }
 
-    // --- adoptUnregisterableUri (KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-06 Finding 1) ---
+    // --- adoptUnregisterableUri ---
 
     @Test
     fun `adoptUnregisterableUri creates a terminal PARTIAL_OR_EMPTY offer when the coordinator is idle`() {

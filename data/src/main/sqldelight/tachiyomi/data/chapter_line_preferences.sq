@@ -1,0 +1,39 @@
+CREATE TABLE chapter_line_preferences(
+    manga_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL CHECK(source_id != 0),
+    preferred_scanlator TEXT CHECK(preferred_scanlator IS NULL OR length(preferred_scanlator) BETWEEN 1 AND 4096),
+    anchor_chapter_url TEXT NOT NULL CHECK(length(anchor_chapter_url) BETWEEN 1 AND 4096),
+    anchor_chapter_number REAL CHECK(anchor_chapter_number IS NULL OR anchor_chapter_number = anchor_chapter_number),
+    confirmed_at INTEGER NOT NULL CHECK(confirmed_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= confirmed_at),
+    PRIMARY KEY(manga_id, source_id),
+    FOREIGN KEY(manga_id) REFERENCES mangas (_id) ON DELETE CASCADE
+);
+
+get:
+SELECT * FROM chapter_line_preferences
+WHERE manga_id = :mangaId AND source_id = :sourceId;
+
+getAll:
+SELECT * FROM chapter_line_preferences
+ORDER BY manga_id ASC, source_id ASC;
+
+upsert:
+INSERT INTO chapter_line_preferences(
+    manga_id, source_id, preferred_scanlator, anchor_chapter_url,
+    anchor_chapter_number, confirmed_at, updated_at
+)
+VALUES(
+    :mangaId, :sourceId, :preferredScanlator, :anchorChapterUrl,
+    :anchorChapterNumber, :confirmedAt, :updatedAt
+)
+ON CONFLICT(manga_id, source_id) DO UPDATE SET
+    preferred_scanlator = :preferredScanlator,
+    anchor_chapter_url = :anchorChapterUrl,
+    anchor_chapter_number = :anchorChapterNumber,
+    confirmed_at = :confirmedAt,
+    updated_at = :updatedAt;
+
+delete:
+DELETE FROM chapter_line_preferences
+WHERE manga_id = :mangaId AND source_id = :sourceId;

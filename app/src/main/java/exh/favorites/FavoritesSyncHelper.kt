@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.online.all.EHentai
 import eu.kanade.tachiyomi.util.system.toast
 import exh.GalleryAddEvent
+import exh.GalleryAddFailureKind
 import exh.GalleryAdder
 import exh.eh.EHentaiUpdateWorker
 import exh.log.ResettableLogger
@@ -386,17 +387,13 @@ class FavoritesSyncHelper(val context: Context) {
             )
 
             if (result is GalleryAddEvent.Fail) {
-                if (result is GalleryAddEvent.Fail.NotFound) {
+                if (result.reason == GalleryAddFailureKind.NOT_FOUND) {
                     logger()?.e(context.stringResource(SYMR.strings.favorites_sync_remote_not_exist, it.getUrl()))
                     // Skip this gallery, it no longer exists
                     return@forEachIndexed
                 }
 
-                val error = when (result) {
-                    is GalleryAddEvent.Fail.Error -> FavoritesSyncStatus.SyncError.GallerySyncError.GalleryAddFail(it.title, result.logMessage)
-                    is GalleryAddEvent.Fail.UnknownType -> FavoritesSyncStatus.SyncError.GallerySyncError.InvalidGalleryFail(it.title, result.galleryUrl)
-                    is GalleryAddEvent.Fail.UnknownSource -> FavoritesSyncStatus.SyncError.GallerySyncError.InvalidGalleryFail(it.title, result.galleryUrl)
-                }
+                val error = FavoritesSyncStatus.SyncError.GallerySyncError.LocalAddFailure(it.title, result.reason)
 
                 if (exhPreferences.exhLenientSync().get()) {
                     errorList += error
@@ -447,10 +444,7 @@ sealed class FavoritesSyncStatus {
             data object UnableToDeleteFromRemote : GallerySyncError()
 
             @Serializable
-            data class GalleryAddFail(val title: String, val reason: String) : GallerySyncError()
-
-            @Serializable
-            data class InvalidGalleryFail(val title: String, val url: String) : GallerySyncError()
+            data class LocalAddFailure(val title: String, val reason: GalleryAddFailureKind) : GallerySyncError()
         }
     }
 

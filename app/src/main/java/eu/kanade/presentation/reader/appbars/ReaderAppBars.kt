@@ -59,6 +59,9 @@ fun ReaderAppBars(
     onOpenInWebView: (() -> Unit)?,
     onOpenInBrowser: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    onReturnToPrimarySource: (() -> Unit)?,
+    onCorrectAlternateSourceMapping: (() -> Unit)?,
+    onSkipAlternateSourceChapter: (() -> Unit)?,
 
     viewer: Viewer?,
     onNextChapter: () -> Unit,
@@ -96,6 +99,7 @@ fun ReaderAppBars(
     dualPageSplitEnabled: Boolean,
     doublePages: Boolean,
     onClickChapterList: () -> Unit,
+    onClickAlternateSource: (() -> Unit)?,
     onClickPageLayout: () -> Unit,
     onClickShiftPage: () -> Unit,
     // SY <--
@@ -132,6 +136,9 @@ fun ReaderAppBars(
                     onOpenInBrowser = null, // onOpenInBrowser,
                     onShare = null, // onShare,
                     // SY <--
+                    onReturnToPrimarySource = onReturnToPrimarySource,
+                    onCorrectAlternateSourceMapping = onCorrectAlternateSourceMapping,
+                    onSkipAlternateSourceChapter = onSkipAlternateSourceChapter,
                 )
                 // SY -->
                 ExhUtils(
@@ -271,6 +278,7 @@ fun ReaderAppBars(
                     dualPageSplitEnabled = dualPageSplitEnabled,
                     doublePages = doublePages,
                     onClickChapterList = onClickChapterList,
+                    onClickAlternateSource = onClickAlternateSource,
                     onClickWebView = onOpenInWebView,
                     onClickBrowser = onOpenInBrowser,
                     onClickShare = onShare,

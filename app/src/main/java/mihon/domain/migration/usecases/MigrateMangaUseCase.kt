@@ -23,6 +23,12 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.tracker.model.LocalTrackedSourceProgressPolicy
+import tachiyomi.domain.tracker.model.LocalTrackedWork
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSource
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSourceConfirmation
+import tachiyomi.domain.tracker.model.LocalTrackedWorkSourceProgress
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import java.time.Instant
 
 // KMK Confirmed Blocker Remediation Phase 4 2026-07-29 -->
@@ -66,6 +72,8 @@ class MigrateMangaUseCase(
     // KMK -->
     private val getHistory: GetHistory,
     private val upsertHistory: UpsertHistory,
+    // KMK v0.8.21-fix2: explicit manga migration must carry local tracking's source relationship.
+    private val localTrackerRepository: LocalTrackerRepository,
     // KMK <--
 ) {
     private val enhancedServices by lazy { trackerManager.trackers.filterIsInstance<EnhancedTracker>() }
@@ -179,6 +187,94 @@ class MigrateMangaUseCase(
             if (MigrationFlag.TRACK in flags) {
                 currentStep = MigrationFlag.TRACK
                 // SY <--
+                // Local tracking is keyed by concrete source identity rather than manga id. An
+                // explicit migration authorizes adding the target source to the same local work,
+                // while a different existing owner is a real conflict and must not be merged.
+                // Keep the old source relationship and its progress so local history is never lost.
+                val localWorkId = localTrackerRepository.getWorkIdBySourceUrl(current.source, current.url)
+                if (localWorkId != null) {
+                    val targetLocalWorkId = localTrackerRepository.getWorkIdBySourceUrl(target.source, target.url)
+                    if (targetLocalWorkId != null && targetLocalWorkId != localWorkId) {
+                        error("Local tracker target source is already owned by another work")
+                    }
+                    val localWork = localTrackerRepository.getWork(localWorkId)
+                        ?: error("Local tracker work is missing for the current source")
+                    val currentLocalSource = localTrackerRepository.getSources(localWorkId)
+                        .firstOrNull { it.source == current.source && it.url == current.url }
+                        ?: error("Local tracker source relationship is missing for the current source")
+                    val now = System.currentTimeMillis()
+                    val targetSource = if (targetLocalWorkId == null) {
+                        LocalTrackedWorkSource(
+                            workId = localWork.id,
+                            source = target.source,
+                            url = target.url,
+                            title = target.title,
+                            confidence = 100,
+                            confirmation = LocalTrackedWorkSourceConfirmation.USER_CONFIRMED,
+                            inheritanceOptedOut = currentLocalSource.inheritanceOptedOut,
+                            createdAt = now,
+                            updatedAt = now,
+                        )
+                    } else {
+                        localTrackerRepository.getSources(localWorkId)
+                            .firstOrNull { it.source == target.source && it.url == target.url }
+                            ?: error("Local tracker target source relationship is missing")
+                    }
+
+                    // Carry the source-specific progress as well as the relationship. The shared
+                    // work row alone is not enough: the local tracker screen resolves chapter
+                    // context per concrete source, and a migrated target would otherwise appear
+                    // tracked while still showing no progress. Only copy an exact recognized
+                    // chapter number; source-specific labels and offsets are not safe to infer in
+                    // the migration path.
+                    val currentProgress = localTrackerRepository.getSourceProgress(
+                        workId = localWorkId,
+                        source = current.source,
+                        url = current.url,
+                    )
+                    val targetChapter = LocalTrackerMigrationProgressPolicy.exactTargetChapter(
+                        progress = currentProgress,
+                        targetChapters = getChaptersByMangaId.await(target.id),
+                    )
+                    var updatedWork: LocalTrackedWork? = null
+                    val targetProgress = if (currentProgress != null && targetChapter != null) {
+                        val targetProgress = LocalTrackedWorkSourceProgress(
+                            workId = localWorkId,
+                            source = target.source,
+                            url = target.url,
+                            chapterNumber = targetChapter.chapterNumber,
+                            chapterUrl = targetChapter.url,
+                            chapterLabel = targetChapter.name,
+                            progressAt = currentProgress.progressAt,
+                            inheritedFromSource = current.source,
+                            inheritedFromUrl = current.url,
+                            updatedAt = currentProgress.updatedAt,
+                        )
+                        val existingTargetProgress = localTrackerRepository.getSourceProgress(
+                            workId = localWorkId,
+                            source = target.source,
+                            url = target.url,
+                        )
+                        if (LocalTrackedSourceProgressPolicy.accepts(existingTargetProgress, targetProgress)) {
+                            updatedWork = localWork.copy(
+                                title = target.title,
+                                normalizedTitle = target.title.trim().lowercase(),
+                                lastChapterSource = target.source,
+                                lastChapterNumber = targetChapter.chapterNumber,
+                                lastChapterUrl = targetChapter.url,
+                                lastChapterLabel = targetChapter.name,
+                                lastProgressAt = currentProgress.progressAt,
+                                updatedAt = maxOf(localWork.updatedAt, currentProgress.updatedAt),
+                            )
+                            targetProgress
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                    localTrackerRepository.migrateSourceRelationship(targetSource, targetProgress, updatedWork)
+                }
                 getTracks.await(current.id).mapNotNull { track ->
                     val updatedTrack = track.copy(mangaId = target.id)
 

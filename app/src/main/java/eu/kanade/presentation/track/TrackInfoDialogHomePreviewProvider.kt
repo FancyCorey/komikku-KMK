@@ -3,6 +3,7 @@ package eu.kanade.presentation.track
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import eu.kanade.tachiyomi.ui.manga.track.TrackItem
+import eu.kanade.tachiyomi.ui.manga.track.TrackerEntry
 import eu.kanade.test.DummyTracker
 import tachiyomi.domain.track.model.Track
 import java.time.format.DateTimeFormatter
@@ -52,9 +53,10 @@ internal class TrackInfoDialogHomePreviewProvider :
 
     private val trackersWithAndWithoutTrack = @Composable {
         TrackInfoDialogHome(
-            trackItems = listOf(
-                trackItemWithoutTrack,
-                trackItemWithTrack,
+            entries = listOf(
+                TrackerEntry.External(trackItemWithoutTrack),
+                TrackerEntry.External(trackItemWithTrack),
+                TrackerEntry.Local(work = null),
             ),
             dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM),
             onStatusClick = {},
@@ -67,12 +69,13 @@ internal class TrackInfoDialogHomePreviewProvider :
             onRemoved = {},
             onCopyLink = {},
             onTogglePrivate = {},
+            onLocalClick = {},
         )
     }
 
     private val noTrackers = @Composable {
         TrackInfoDialogHome(
-            trackItems = listOf(),
+            entries = listOf(TrackerEntry.Local(work = null)),
             dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM),
             onStatusClick = {},
             onChapterClick = {},
@@ -84,12 +87,16 @@ internal class TrackInfoDialogHomePreviewProvider :
             onRemoved = {},
             onCopyLink = {},
             onTogglePrivate = {},
+            onLocalClick = {},
         )
     }
 
     private val trackerWithPrivateTracking = @Composable {
         TrackInfoDialogHome(
-            trackItems = listOf(trackItemWithPrivateTrack),
+            entries = listOf(
+                TrackerEntry.External(trackItemWithPrivateTrack),
+                TrackerEntry.Local(work = null),
+            ),
             dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM),
             onStatusClick = {},
             onChapterClick = {},
@@ -101,6 +108,7 @@ internal class TrackInfoDialogHomePreviewProvider :
             onRemoved = {},
             onCopyLink = {},
             onTogglePrivate = {},
+            onLocalClick = {},
         )
     }
 

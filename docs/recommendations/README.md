@@ -33,6 +33,9 @@ This folder is the stable starting point for Codex, Claude Code, or a human revi
 
 ## Active Planning Files
 
+| `KMK_RECS_FUTURE_LATEST_CATALOGUE_QUALITY_AND_NOVELTY_PLAN_2026-08-08.md` | Owning proposal for the bounded Latest-catalogue discovery lane and novelty-aware For You quality work. **Implemented 2026-08-08 (batch L1 + batch L2):** the Latest lane (now genuinely additive, not fallback-only), minimum-chapter conformance repair with pipeline-level test proof, exposure persistence + bounded soft reranking, and quick-access panel layout repair all shipped. **Open:** rendered/visual validation of the quick-access panel (Domain D, `BLOCKED_EXTERNAL` — no Compose UI/screenshot test infra exists in this repo). |
+| `KMK_RECS_FUTURE_LATEST_CATALOGUE_QUALITY_IMPLEMENTATION_PACKET_2026-08-08.md` | Repository-specific packet with exact symbols, storage, migration, reranking, visual workstream, tests, privacy, and rollback requirements. **Steps 1, 2, 3, 4, 5, 5A, 6 are all implemented** (batch L2 closed Steps 2 and 4, the exposure persistence + capture/reranking integration that batch L1 left open). See `private/docs/audits-and-reports/KMK_LATEST_CATALOGUE_AND_EXPOSURE_IMPLEMENTATION_LEDGER_2026-08-08.md`'s Domain A-E status table for the exact file/test/validation record and the one remaining open item (Domain D rendered validation). |
+
 v0.8.18 is complete -- see `CURRENT_STATE.md`. The v0.8.17-fix2 Best Version plan was never implemented
 standalone; its contents were carried forward into and superseded by v0.8.18.
 

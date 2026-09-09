@@ -56,6 +56,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.mdlist.MdList
+import eu.kanade.tachiyomi.library.LibraryUpdateErrorMessageKey
 import eu.kanade.tachiyomi.source.PagePreviewSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
@@ -79,6 +80,9 @@ import exh.log.xLogE
 import exh.md.utils.FollowStatus
 import exh.metadata.metadata.RaisedSearchMetadata
 import exh.metadata.metadata.base.FlatMetadata
+import exh.recs.matching.ConfirmedGroupLocalTrackingPropagator
+import exh.recs.matching.ConfirmedMangaGroupTargets
+import exh.recs.matching.ConfirmedTrackedMangaTasteTargets
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
 import exh.source.isEhBasedManga
@@ -126,8 +130,10 @@ import tachiyomi.domain.chapter.interactor.GetMergedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterLinePreference
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.model.NoChaptersException
+import tachiyomi.domain.chapter.repository.ChapterLinePreferenceRepository
 import tachiyomi.domain.chapter.service.calculateChapterGap
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.download.service.DownloadPreferences
@@ -162,12 +168,13 @@ import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.taste.interactor.ClearMangaTaste
 import tachiyomi.domain.taste.interactor.GetMangaTaste
-import tachiyomi.domain.taste.interactor.SetMangaTaste
+import tachiyomi.domain.taste.interactor.SetMangaTasteBatch
 import tachiyomi.domain.taste.model.MangaRating
 import tachiyomi.domain.taste.model.MangaTaste
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.tracker.repository.LocalTrackerRepository
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.source.local.LocalSource
@@ -189,7 +196,7 @@ class MangaScreenModel(
     // SY <--
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val trackPreferences: TrackPreferences = Injekt.get(),
-    readerPreferences: ReaderPreferences = Injekt.get(),
+    private val readerPreferences: ReaderPreferences = Injekt.get(),
     private val uiPreferences: UiPreferences = Injekt.get(),
     // KMK -->
     private val sourcePreferences: SourcePreferences = Injekt.get(),
@@ -230,6 +237,7 @@ class MangaScreenModel(
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
+    private val localTrackerRepository: LocalTrackerRepository = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
@@ -241,8 +249,13 @@ class MangaScreenModel(
     private val insertLibraryUpdateErrorMessages: InsertLibraryUpdateErrorMessages = Injekt.get(),
     private val deleteChaptersFromDb: DeleteChapters = Injekt.get(),
     private val getMangaTaste: GetMangaTaste = Injekt.get(),
-    private val setMangaTasteInteractor: SetMangaTaste = Injekt.get(),
+    private val setMangaTasteBatch: SetMangaTasteBatch = Injekt.get(),
+    private val confirmedTrackedMangaTasteTargets: ConfirmedTrackedMangaTasteTargets = Injekt.get(),
+    private val confirmedMangaGroupTargets: ConfirmedMangaGroupTargets = Injekt.get(),
+    private val confirmedGroupLocalTrackingPropagator: ConfirmedGroupLocalTrackingPropagator =
+        ConfirmedGroupLocalTrackingPropagator(localTrackerRepository),
     private val clearMangaTasteInteractor: ClearMangaTaste = Injekt.get(),
+    private val chapterLinePreferenceRepository: ChapterLinePreferenceRepository = Injekt.get(),
     // KMK <--
 ) : StateScreenModel<MangaScreenModel.State>(State.Loading) {
 
@@ -417,6 +430,24 @@ class MangaScreenModel(
         }
 
         screenModelScope.launchIO {
+            state
+                .map { (it as? State.Success)?.manga }
+                .distinctUntilChangedBy { it?.source }
+                .flatMapConcat { manga ->
+                    if (manga == null || manga.source == MERGED_SOURCE_ID) {
+                        flowOf(null)
+                    } else {
+                        chapterLinePreferenceRepository.get(manga.id, manga.source)
+                    }
+                }
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { preference ->
+                    updateSuccessState { it.copy(chapterLinePreference = preference) }
+                }
+        }
+
+        screenModelScope.launchIO {
             getAvailableScanlators.subscribe(mangaId)
                 .flowWithLifecycle(lifecycle)
                 .distinctUntilChanged()
@@ -472,12 +503,10 @@ class MangaScreenModel(
             val needRefreshChapter = chapters.isEmpty()
             // KMK -->
             // Read by stable source+url identity — survives cross-device restore and different navigation paths
+            // KMK v0.8.21-fix2: AUG-02 redesign -- Not Interested is now a real MangaRating.NOT_INTERESTED
+            // value on this same taste row, not a separate seenRecommendationMangaKeys lookup. See
+            // NotInterestedRatingMigration and State.Success.isNotInterested's computed-property doc.
             val initialMangaTaste = getMangaTaste.await(manga.source, manga.url)
-            // KMK --> v0.6.20: load seen state from preferences
-            val seenKeys = exh.recs.SeenRecommendationMangaStore.parse(
-                sourcePreferences.seenRecommendationMangaKeys().get(),
-            )
-            val initialIsNotInterested = exh.recs.SeenMangaKey(manga.source, manga.url) in seenKeys
             // KMK <--
             // KMK <--
 
@@ -520,8 +549,11 @@ class MangaScreenModel(
                     // SY <--
                     // KMK -->
                     mangaTaste = initialMangaTaste,
-                    // KMK --> v0.6.20
-                    isNotInterested = initialIsNotInterested,
+                    chapterLinePreference = if (manga.source == MERGED_SOURCE_ID) {
+                        null
+                    } else {
+                        chapterLinePreferenceRepository.getOnce(manga.id, manga.source)
+                    },
                     // KMK <--
                     // KMK <--
                 )
@@ -683,7 +715,7 @@ class MangaScreenModel(
                 snackbarHostState.showSnackbar(message = message)
             }
             // KMK -->
-            writeErrorToDB(state.manga to with(context) { e.formattedMessage })
+            writeErrorToDB(state.manga to LibraryUpdateErrorMessageKey.Unknown)
             // KMK <--
         }
     }
@@ -695,10 +727,9 @@ class MangaScreenModel(
         deleteLibraryUpdateErrors.deleteMangaError(mangaIds = listOf(mangaId))
     }
 
-    private suspend fun writeErrorToDB(error: Pair<Manga, String?>) {
-        val errorMessage = error.second ?: context.stringResource(MR.strings.unknown_error)
+    private suspend fun writeErrorToDB(error: Pair<Manga, LibraryUpdateErrorMessageKey>) {
         val errorMessageId = insertLibraryUpdateErrorMessages.insert(
-            libraryUpdateErrorMessage = LibraryUpdateErrorMessage(-1L, errorMessage),
+            libraryUpdateErrorMessage = LibraryUpdateErrorMessage(-1L, error.second.storageValue),
         )
 
         insertLibraryUpdateErrors.upsert(
@@ -1311,10 +1342,13 @@ class MangaScreenModel(
      */
     fun getNextUnreadChapter(): Chapter? {
         val successState = successState ?: return null
-        return successState.chapters.getNextUnread(successState.manga)
+        return successState.chapters.getNextUnread(
+            manga = successState.manga,
+            skipDuplicateChapterNumbers = readerPreferences.skipDupe().get(),
+            linePreference = successState.chapterLinePreference,
+        )
     }
 
-    // KMK_CLAUDE_JUMP_TO_LAST_READ_2026-08-09 -->
     /**
      * Resolves where "Jump to last read" should scroll, or `null` when nothing has been read yet (in
      * which case the caller must not offer the action).
@@ -1675,65 +1709,65 @@ class MangaScreenModel(
         }
     }
 
-    // KMK v0.8.20-fix1: journal-record this write for Evaluation Mode's Action History, same
+    // KMK v0.8.20-fix1: journal-record this write for the local Action History, same
     // build-before-write/commit-after-success contract as the For You/Loved/Liked/Disliked routes
     // (exh.recs.BrowsePersonalRecommendationsScreenModel.rateSelected/clearSelectedRatings) -- see
-    // exh.util.EvaluationModeJournalRecorder's own doc comment: it is a no-op when Evaluation Mode is
-    // disabled, so this adds no extra work for ordinary users.
-    // KMK_CLAUDE_NOT_INTERESTED_STRUCTURAL_PEER_PLAN_2026-08-07: implements the "Not Interested ->
+    // exh.util.EvaluationModeJournalRecorder's shared ordinary-user contract. Developer-only
+    // diagnostic details remain separately gated.
+    // implements the "Not Interested ->
     // Love/Like/Dislike" transition -- selecting a rating while Not Interested is active clears the
     // Not Interested key atomically with the rating write, using a single journal entry so undo
     // restores both facts. See the private ledger's Batch E2 entry for the write-ordering decision
     // (Not Interested cleared first, since a real cross-store transaction is not achievable here).
+    /**
+     * Fences setMangaTaste/clearMangaTaste/markSeen/clearSeen against duplicate taps -- AUG-06:
+     * these four rating-family actions share one detail-page surface with no dialog to scope a
+     * per-action gate against (unlike the reader completion prompt's
+     * ChapterCompletionRatingActionGate), so a single in-flight flag on [State.Success] is the
+     * applicable pattern here.
+     */
+    private fun runTasteAction(block: suspend () -> Unit) {
+        if (successState?.isTasteActionInProgress == true) return
+        updateSuccessState { it.copy(isTasteActionInProgress = true) }
+        screenModelScope.launchNonCancellable {
+            try {
+                block()
+            } finally {
+                updateSuccessState { it.copy(isTasteActionInProgress = false) }
+            }
+        }
+    }
+
+    // KMK v0.8.21-fix3: R1 correction -- Not Interested is a real MangaRating value now, so
+    // setMangaTaste/clearMangaTaste are the ONLY taste-mutation entry points on this screen model.
+    // The prior version dual-wrote a legacy seenRecommendationMangaKeys preference alongside
+    // MangaTaste and special-cased the Not-Interested-to-rating transition; both are gone. There is
+    // one row, one write, one owner -- a failed second write can no longer leave contradictory
+    // state because there is no second write.
     fun setMangaTaste(rating: MangaRating) {
         val manga = successState?.manga ?: return
-        val wasNotInterested = successState?.isNotInterested == true
-        screenModelScope.launchNonCancellable {
+        runTasteAction {
             try {
                 val journalActionType = when (rating) {
                     MangaRating.LOVE -> exh.util.EvaluationJournalActionType.RATE_LOVE
                     MangaRating.LIKE -> exh.util.EvaluationJournalActionType.RATE_LIKE
                     MangaRating.DISLIKE -> exh.util.EvaluationJournalActionType.RATE_DISLIKE
+                    MangaRating.NOT_INTERESTED -> exh.util.EvaluationJournalActionType.NOT_INTERESTED
                 }
-                val journalEntries = if (wasNotInterested) {
-                    exh.util.EvaluationModeJournalRecorder.buildRatingChangeReplacingNotInterested(
-                        sourcePreferences,
-                        getMangaTaste,
-                        listOf(manga),
-                        rating.value,
-                        journalActionType,
-                    )
+                val targetMangas = if (sourcePreferences.confirmedTrackedVersionRatingPropagationEnabled().get()) {
+                    confirmedTrackedMangaTasteTargets.await(manga)
                 } else {
-                    exh.util.EvaluationModeJournalRecorder.buildRatingChange(
-                        sourcePreferences,
-                        getMangaTaste,
-                        listOf(manga),
-                        rating.value,
-                        journalActionType,
-                    )
+                    listOf(manga)
                 }
-                if (wasNotInterested) {
-                    val key = exh.recs.SeenMangaKey(manga.source, manga.url)
-                    val current = exh.recs.SeenRecommendationMangaStore.parse(
-                        sourcePreferences.seenRecommendationMangaKeys().get(),
-                    )
-                    sourcePreferences.seenRecommendationMangaKeys().set(
-                        exh.recs.SeenRecommendationMangaStore.serialize(
-                            exh.recs.SeenRecommendationMangaStore.remove(current, key),
-                        ),
-                    )
-                }
-                setMangaTasteInteractor.await(
-                    mangaId = manga.id,
-                    source = manga.source,
-                    url = manga.url,
-                    title = manga.title,
-                    rating = rating,
+                val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
+                    getMangaTaste,
+                    targetMangas,
+                    rating.value,
+                    journalActionType,
                 )
+                setMangaTasteBatch.await(targetMangas, rating)
                 exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
-                if (wasNotInterested) {
-                    updateSuccessState { it.copy(isNotInterested = false) }
-                }
+                propagateConfirmedLocalTracking(manga)
             } catch (e: Throwable) {
                 eu.kanade.tachiyomi.source.rethrowIfFatal(e)
                 snackbarHostState.showSnackbar(message = context.stringResource(MR.strings.unknown_error))
@@ -1741,79 +1775,34 @@ class MangaScreenModel(
         }
     }
 
+    /** Clears any of the four rating-family states (Love/Like/Dislike/Not Interested) through the same owner. */
     fun clearMangaTaste() {
         val manga = successState?.manga ?: return
-        screenModelScope.launchNonCancellable {
+        runTasteAction {
+            val targetMangas = if (sourcePreferences.confirmedTrackedVersionRatingPropagationEnabled().get()) {
+                confirmedTrackedMangaTasteTargets.await(manga)
+            } else {
+                listOf(manga)
+            }
             val journalEntries = exh.util.EvaluationModeJournalRecorder.buildRatingChange(
-                sourcePreferences,
                 getMangaTaste,
-                listOf(manga),
+                targetMangas,
                 null,
                 exh.util.EvaluationJournalActionType.CLEAR_RATING,
             )
-            clearMangaTasteInteractor.await(manga.source, manga.url)
+            targetMangas.forEach { target ->
+                clearMangaTasteInteractor.await(target.source, target.url)
+            }
             exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
+            propagateConfirmedLocalTracking(manga)
         }
     }
 
-    // KMK --> v0.6.20: seen/already-read marker
-    // KMK_CLAUDE_POST_SCREENSHOT_UI_PLAN_2026-08-07 Patch 5: build-before-write/commit-after-success
-    // journaling, matching ReaderViewModel.markNotInterestedFromChapterCompletionPrompt and
-    // NotInterestedMangaScreenModel.remove -- this was the only Not Interested writer bypassing the
-    // journal (see the private ledger's Batch A Finding 1). A failed or cancelled write must not
-    // update the success state or create a journal entry; eu.kanade.tachiyomi.source.rethrowIfFatal
-    // rethrows CancellationException and genuine fatal VM errors, and the existing snackbarHostState
-    // channel (already used elsewhere in this class) reports a recoverable failure truthfully.
-    fun markSeen() {
-        val manga = successState?.manga ?: return
-        screenModelScope.launchNonCancellable {
-            try {
-                val journalEntries = exh.util.EvaluationModeJournalRecorder.buildNotInterested(
-                    sourcePreferences,
-                    getMangaTaste,
-                    listOf(manga),
-                )
-                val key = exh.recs.SeenMangaKey(manga.source, manga.url)
-                val current = exh.recs.SeenRecommendationMangaStore.parse(
-                    sourcePreferences.seenRecommendationMangaKeys().get(),
-                )
-                val updated = exh.recs.SeenRecommendationMangaStore.add(current, key)
-                sourcePreferences.seenRecommendationMangaKeys().set(
-                    exh.recs.SeenRecommendationMangaStore.serialize(updated),
-                )
-                exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
-                updateSuccessState { it.copy(isNotInterested = true) }
-            } catch (e: Throwable) {
-                eu.kanade.tachiyomi.source.rethrowIfFatal(e)
-                snackbarHostState.showSnackbar(message = context.stringResource(MR.strings.unknown_error))
-            }
-        }
-    }
-
-    fun clearSeen() {
-        val manga = successState?.manga ?: return
-        screenModelScope.launchNonCancellable {
-            try {
-                val journalEntries = exh.util.EvaluationModeJournalRecorder.buildNotInterestedRemoval(
-                    sourcePreferences,
-                    getMangaTaste,
-                    listOf(manga),
-                )
-                val key = exh.recs.SeenMangaKey(manga.source, manga.url)
-                val current = exh.recs.SeenRecommendationMangaStore.parse(
-                    sourcePreferences.seenRecommendationMangaKeys().get(),
-                )
-                val updated = exh.recs.SeenRecommendationMangaStore.remove(current, key)
-                sourcePreferences.seenRecommendationMangaKeys().set(
-                    exh.recs.SeenRecommendationMangaStore.serialize(updated),
-                )
-                exh.util.EvaluationModeJournalRecorder.commit(journalEntries)
-                updateSuccessState { it.copy(isNotInterested = false) }
-            } catch (e: Throwable) {
-                eu.kanade.tachiyomi.source.rethrowIfFatal(e)
-                snackbarHostState.showSnackbar(message = context.stringResource(MR.strings.unknown_error))
-            }
-        }
+    private suspend fun propagateConfirmedLocalTracking(manga: Manga) {
+        if (!sourcePreferences.confirmedTrackedVersionLocalTrackingPropagationEnabled().get()) return
+        confirmedGroupLocalTrackingPropagator.propagateIfAnyTracked(
+            confirmedMangaGroupTargets.await(manga),
+        )
     }
     // KMK <--
     // KMK <--
@@ -2024,7 +2013,8 @@ class MangaScreenModel(
             combine(
                 getTracks.subscribe(manga.id).catch { logcat(LogPriority.ERROR) { "Manga tracker stream failed" } },
                 trackerManager.loggedInTrackersFlow(),
-            ) { mangaTracks, loggedInTrackers ->
+                localTrackerRepository.observeWorkIdBySourceUrl(manga.source, manga.url),
+            ) { mangaTracks, loggedInTrackers, localWorkId ->
                 // Show only if the service supports this manga's source
                 // KMK -->
                 val supportedTrackers = source?.let { source ->
@@ -2038,10 +2028,10 @@ class MangaScreenModel(
                 // KMK <--
                 val supportedTrackerIds = supportedTrackers.map { it.id }.toHashSet()
                 val supportedTrackerTracks = mangaTracks.filter { it.trackerId in supportedTrackerIds }
-                supportedTrackerTracks to supportedTrackers
+                Triple(supportedTrackerTracks, supportedTrackers, localWorkId)
             }
                 // SY -->
-                .map { (tracks, supportedTrackers) ->
+                .map { (tracks, supportedTrackers, localWorkId) ->
                     val supportedTrackerTracks = if (manga.source in mangaDexSourceIds ||
                         state.mergedData?.manga?.values.orEmpty().any {
                             it.source in mangaDexSourceIds
@@ -2061,12 +2051,15 @@ class MangaScreenModel(
                     } else {
                         tracks
                     }
-                    supportedTrackerTracks
-                        .filter {
-                            it.trackerId != trackerManager.mdList.id ||
-                                it.status != FollowStatus.UNFOLLOWED.long
-                        }
-                        .size to supportedTrackers.isNotEmpty()
+                    Pair(
+                        supportedTrackerTracks
+                            .filter {
+                                it.trackerId != trackerManager.mdList.id ||
+                                    it.status != FollowStatus.UNFOLLOWED.long
+                            }
+                            .size + if (localWorkId != null) 1 else 0,
+                        supportedTrackers.isNotEmpty() || localWorkId != null,
+                    )
                 }
                 // SY <--
                 .flowWithLifecycle(lifecycle)
@@ -2166,6 +2159,32 @@ class MangaScreenModel(
         }
     }
 
+    fun setChapterLinePreference(chapter: Chapter) {
+        val manga = successState?.manga ?: return
+        if (manga.source == MERGED_SOURCE_ID || chapter.mangaId != manga.id) return
+        screenModelScope.launchIO {
+            chapterLinePreferenceRepository.save(
+                ChapterLinePreference(
+                    mangaId = manga.id,
+                    sourceId = manga.source,
+                    preferredScanlator = chapter.scanlator,
+                    anchorChapterUrl = chapter.url,
+                    anchorChapterNumber = chapter.chapterNumber.takeIf { it.isFinite() },
+                    confirmedAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    fun resetChapterLinePreference() {
+        val manga = successState?.manga ?: return
+        if (manga.source == MERGED_SOURCE_ID) return
+        screenModelScope.launchIO {
+            chapterLinePreferenceRepository.clear(manga.id, manga.source)
+        }
+    }
+
     // SY -->
     fun showEditMangaInfoDialog() {
         mutableState.update { state ->
@@ -2195,6 +2214,11 @@ class MangaScreenModel(
     fun showClearMangaDialog() {
         updateSuccessState { it.copy(dialog = Dialog.ClearManga) }
     }
+
+    // KMK v0.8.21-fix2: local-tracking action ownership moved to
+    // eu.kanade.tachiyomi.ui.manga.track.TrackInfoDialog.kt's own screen model -- Local is now a
+    // peer entry inside the Tracking dialog itself, not a separate manga-detail action, so this
+    // screen model no longer needs to own local-tracking state or writes. See TrackerEntry's doc.
     // KMK <--
 
     sealed interface State {
@@ -2240,12 +2264,19 @@ class MangaScreenModel(
             val relatedMangaCollection: List<RelatedManga>? = null,
             val seedColor: Color? = manga.asMangaCover().vibrantCoverColor?.let { Color(it) },
             val mangaTaste: MangaTaste? = null,
-            // KMK --> v0.6.20: seen/already-read marker
-            val isNotInterested: Boolean = false,
+            /** Fences duplicate taps across setMangaTaste/clearMangaTaste -- see AUG-06. */
+            val isTasteActionInProgress: Boolean = false,
+            val chapterLinePreference: ChapterLinePreference? = null,
             // KMK <--
             // KMK <--
         ) : State {
             // KMK -->
+            // KMK v0.8.21-fix2: AUG-02 redesign -- computed from the same reactive mangaTaste row
+            // (getMangaTaste.subscribe(...) keeps it live) instead of a separately-tracked boolean
+            // sourced from seenRecommendationMangaKeys. There is exactly one rating-family state per
+            // manga now, so this can never disagree with mangaTaste.
+            val isNotInterested: Boolean
+                get() = mangaTaste?.rating == tachiyomi.domain.taste.model.MangaRating.NOT_INTERESTED.value
             /**
              * a value of null will be treated as still loading, so if all searching were failed and won't update
              * 'relatedMangaCollection` then we should return empty list

@@ -65,7 +65,6 @@ class ExtensionDetailsScreenModel(
     private val _events: Channel<ExtensionDetailsEvent> = Channel()
     val events: Flow<ExtensionDetailsEvent> = _events.receiveAsFlow()
 
-    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass (finding #2):
     // screenModelScope-owned, not Composable-`remember`-owned -- survives recomposition/navigation
     // for as long as this screen model stays alive on the back stack.
     // A successful export is removable only in the debug fixture build. Release-derived builds

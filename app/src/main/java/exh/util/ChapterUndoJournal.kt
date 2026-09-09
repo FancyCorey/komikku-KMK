@@ -55,6 +55,15 @@ object ChapterUndoJournal {
                 }
             }
         }
+        ActionHistoryDiagnosticTrace.recordCommitted(
+            rowKey = entry.id,
+            family = "chapter",
+            operation = entry.actionType.name,
+            readCount = 1,
+            writeCount = 1,
+            affectedCount = 1,
+            timestamp = entry.timestamp,
+        )
     }
 
     fun snapshot(): List<ChapterJournalEntry> = synchronized(lock) { entries.toList().asReversed() }

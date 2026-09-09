@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.setting.track
 import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
+import eu.kanade.tachiyomi.data.sync.service.GoogleDriveAuthorizationCallbackPolicy
+import eu.kanade.tachiyomi.data.sync.service.GoogleDriveAuthorizationCallbackState
 import eu.kanade.tachiyomi.data.sync.service.GoogleDriveService
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
@@ -13,12 +15,20 @@ import uy.kohesive.injekt.api.get
 class GoogleDriveLoginActivity : BaseOAuthLoginActivity() {
     private val googleDriveService = Injekt.get<GoogleDriveService>()
     override fun handleResult(uri: Uri) {
-        val code = uri.getQueryParameter("code")
-        val error = uri.getQueryParameter("error")
-        if (code != null) {
-            lifecycleScope.launchIO {
+        val code = uri.getQueryParameter("code")?.takeIf(String::isNotBlank)
+        val providerError = uri.getQueryParameter("error")?.takeIf(String::isNotBlank)
+        when (
+            GoogleDriveAuthorizationCallbackPolicy.classify(
+                scheme = uri.scheme,
+                host = uri.host,
+                path = uri.path,
+                codePresent = code != null,
+                errorPresent = providerError != null,
+            )
+        ) {
+            GoogleDriveAuthorizationCallbackState.SUCCESS -> lifecycleScope.launchIO {
                 googleDriveService.handleAuthorizationCode(
-                    code,
+                    code!!,
                     this@GoogleDriveLoginActivity,
                     onSuccess = {
                         Toast.makeText(
@@ -39,16 +49,33 @@ class GoogleDriveLoginActivity : BaseOAuthLoginActivity() {
                     },
                 )
             }
-        } else if (error != null) {
-            Toast.makeText(
-                this@GoogleDriveLoginActivity,
-                stringResource(SYMR.strings.google_drive_login_failed, error),
-                Toast.LENGTH_LONG,
-            ).show()
 
-            returnToSettings()
-        } else {
-            returnToSettings()
+            GoogleDriveAuthorizationCallbackState.PROVIDER_ERROR -> {
+                Toast.makeText(
+                    this@GoogleDriveLoginActivity,
+                    stringResource(
+                        SYMR.strings.google_drive_login_failed,
+                        stringResource(SYMR.strings.google_drive_not_signed_in),
+                    ),
+                    Toast.LENGTH_LONG,
+                ).show()
+                returnToSettings()
+            }
+
+            GoogleDriveAuthorizationCallbackState.NO_RESULT -> returnToSettings()
+            GoogleDriveAuthorizationCallbackState.UNSUPPORTED_ROUTE,
+            GoogleDriveAuthorizationCallbackState.MALFORMED,
+            -> {
+                Toast.makeText(
+                    this@GoogleDriveLoginActivity,
+                    stringResource(
+                        SYMR.strings.google_drive_login_failed,
+                        stringResource(SYMR.strings.google_drive_not_signed_in),
+                    ),
+                    Toast.LENGTH_LONG,
+                ).show()
+                returnToSettings()
+            }
         }
     }
 }

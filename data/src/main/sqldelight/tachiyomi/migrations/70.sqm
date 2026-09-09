@@ -1,0 +1,12 @@
+-- KMK B08.3: explicit local chapter-line preference. Existing installs start with no preference.
+CREATE TABLE chapter_line_preferences(
+    manga_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL CHECK(source_id != 0),
+    preferred_scanlator TEXT CHECK(preferred_scanlator IS NULL OR length(preferred_scanlator) BETWEEN 1 AND 4096),
+    anchor_chapter_url TEXT NOT NULL CHECK(length(anchor_chapter_url) BETWEEN 1 AND 4096),
+    anchor_chapter_number REAL CHECK(anchor_chapter_number IS NULL OR anchor_chapter_number = anchor_chapter_number),
+    confirmed_at INTEGER NOT NULL CHECK(confirmed_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= confirmed_at),
+    PRIMARY KEY(manga_id, source_id),
+    FOREIGN KEY(manga_id) REFERENCES mangas (_id) ON DELETE CASCADE
+);

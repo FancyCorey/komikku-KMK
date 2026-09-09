@@ -34,6 +34,7 @@ import exh.util.rememberEvaluationModeEnabled
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
@@ -50,14 +51,13 @@ fun extensionsTab(
     // KMK v0.8.18: manual extension APK export -- bulk export of the current selection as one zip
     // (raw APK/archive bytes + non-sensitive manifest.json). Never repackages/re-signs anything.
     var showBulkExportConfirmDialog by remember { mutableStateOf(false) }
-    // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass (finding #1 and #2):
     // retrofitted onto the shared SafExportCoordinator, owned by ExtensionsScreenModel
     // (screenModelScope-scoped, not this Composable's `remember`), and rendered via the shared
     // SafArtifactCleanupDialog -- which only clears the retained offer on a *successful* deletion,
     // fixing the previous bug where a failed Remove still cleared `bulkExportCleanupUri` and silently
     // lost the only handle on the still-orphaned document.
     val bulkExportCleanupOffer by extensionsScreenModel.bulkExportCoordinator.cleanupOffer.collectAsState()
-    // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04 Phase 1: the selection must
+    // The selection must
     // be captured at the same user-confirmation boundary that starts the picker, not reconstructed
     // from live `state` inside the launcher callback -- `ActivityResultContracts.CreateDocument` is an
     // external lifecycle boundary (the system picker UI, possibly a cross-process/cross-activity trip)
@@ -66,7 +66,7 @@ fun extensionsTab(
     // null Uri (cancelled), successful handoff to the model, and never left stale across dialog
     // reopens.
     var selectedExtensionsForExport by remember { mutableStateOf<List<Extension.Installed>>(emptyList()) }
-    // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2: the operation is reserved at
+    // The operation is reserved at
     // the confirm-click, before the picker launches -- see the confirm dialog's onClick below.
     var bulkExportPendingOperationId by remember { mutableStateOf<String?>(null) }
     val bulkExportLauncher = rememberLauncherForActivityResult(
@@ -220,14 +220,12 @@ fun extensionsTab(
                         TextButton(
                             onClick = {
                                 showBulkExportConfirmDialog = false
-                                // KMK_CLAUDE_SAF_EXPORT_LIFECYCLE_CORRECTIONS_2026-08-05 Finding 2:
                                 // reserve the operation before the picker launches; if another
                                 // operation is already pending, do not launch a second picker.
                                 val operationId = extensionsScreenModel.bulkExportCoordinator.beginOperation()
                                 if (operationId == null) {
                                     context.toast(KMR.strings.saf_export_operation_pending)
                                 } else {
-                                    // KMK_CLAUDE_FINAL_SAF_ACTION_HISTORY_RECONCILIATION_PLAN_2026-08-04
                                     // Phase 1: snapshot the selection here, at the confirm click -- the
                                     // last point before the external picker boundary -- not inside the
                                     // launcher callback after the picker returns.
@@ -250,7 +248,7 @@ fun extensionsTab(
                     },
                 )
             }
-            // KMK_CLAUDE_CORRECTIVE_COMPLETION_PLAN_2026-08-03 second corrective re-pass: cleanup is
+            // Cleanup is
             // offered for the exact SAF `Uri` the system picker returned, for ANY outcome that leaves
             // a real document behind -- never automatic. No extension/package/repository name or
             // filesystem path is ever shown; the dialog is fully generic.
@@ -288,7 +286,7 @@ private fun ExtensionBulkUninstallConfirmation(
             Text(text = stringResource(KMR.strings.extension_uninstall_selected_title))
         },
         text = {
-            Text(text = stringResource(KMR.strings.extension_uninstall_selected_message, count))
+            Text(text = pluralStringResource(KMR.plurals.extension_uninstall_selected_message, count = count, count))
         },
         confirmButton = {
             TextButton(onClick = onClickConfirm) {

@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.taste.model.SourceEvaluation
+import tachiyomi.domain.taste.model.SourceEvaluationMetadataConfidence
+import tachiyomi.domain.taste.model.SourceEvaluationVerdict
 
 // KMK -->
 class NonInstalledSourceSuggestionScorerTest {
@@ -74,6 +77,55 @@ class NonInstalledSourceSuggestionScorerTest {
     private val recLanguages = setOf("en")
     private val nsfwEnabled = true
     private val noDismissed = emptySet<String>()
+
+    private fun evaluation(
+        ext: Extension.Available,
+        sourceId: Long,
+        verdict: SourceEvaluationVerdict = SourceEvaluationVerdict.STRONG_FIT,
+        sampleCount: Int = 10,
+        popularCount: Int = sampleCount,
+        latestCount: Int = 0,
+        qualityScore: Double = 0.9,
+        fitScore: Double = 0.8,
+        confidence: SourceEvaluationMetadataConfidence = SourceEvaluationMetadataConfidence.HIGH,
+        sampledTitles: String? = (1..sampleCount).joinToString("|") { "Title $it" },
+    ) = SourceEvaluation(
+        evaluationKey = buildDismissalKey(ext.signatureHash, ext.pkgName, sourceId),
+        sourceId = sourceId,
+        extensionPkgName = ext.pkgName,
+        signatureHash = ext.signatureHash,
+        extensionName = ext.name,
+        sourceName = ext.sources.single().name,
+        lang = "en",
+        baseUrl = ext.sources.single().baseUrl,
+        repoName = ext.storeName,
+        sourceCount = 1,
+        isNsfw = ext.isNsfw,
+        evaluationVersion = 3,
+        evaluatedAt = 1L,
+        expiresAt = null,
+        sampleCount = sampleCount,
+        popularCount = popularCount,
+        latestCount = latestCount,
+        searchCount = 0,
+        searchSuccessCount = 0,
+        likedTitleMatchCount = 0,
+        preferredTagMatchCount = 0,
+        blockedTagMatchCount = 0,
+        explicitSignalCount = 0,
+        ecchiSignalCount = 0,
+        errorCount = 0,
+        qualityScore = qualityScore,
+        recommendationFitScore = fitScore,
+        searchReliabilityScore = 0.0,
+        explicitScore = 0.0,
+        ecchiScore = 0.0,
+        verdict = verdict,
+        sampledTitlesJson = sampledTitles,
+        sampledTagsJson = null,
+        errorMessage = null,
+        catalogueMetadataConfidence = confidence,
+    )
 
     // --- Eligibility filter tests ---
 
@@ -297,6 +349,100 @@ class NonInstalledSourceSuggestionScorerTest {
         // extA has exact match (0.60) > extB token match (0.50)
         assertEquals("Mangafire EN", result[0].displayName)
         assertEquals("Asura Scans Plus", result[1].displayName)
+    }
+
+    @Test
+    fun `evaluated ranking favors useful novel catalog over tiny metadata fit`() {
+        val tiny = availableExt(
+            name = "Tiny Source",
+            pkgName = "eu.tiny",
+            signatureHash = "sig_tiny",
+            sources = listOf(availableSource(11L, "Tiny Source")),
+        )
+        val useful = availableExt(
+            name = "Useful Source",
+            pkgName = "eu.useful",
+            signatureHash = "sig_useful",
+            sources = listOf(availableSource(12L, "Useful Source")),
+        )
+
+        val result = NonInstalledSourceSuggestionScorer.scoreAndFilter(
+            available = listOf(tiny, useful),
+            installedHints = emptyList(),
+            untrusted = emptyList(),
+            recLanguages = recLanguages,
+            nsfwEnabled = nsfwEnabled,
+            dismissed = noDismissed,
+            evaluations = mapOf(
+                buildDismissalKey(tiny.signatureHash, tiny.pkgName, 11L) to evaluation(
+                    ext = tiny,
+                    sourceId = 11L,
+                    sampleCount = 1,
+                    popularCount = 1,
+                    qualityScore = 0.3,
+                    fitScore = 0.95,
+                ),
+                buildDismissalKey(useful.signatureHash, useful.pkgName, 12L) to evaluation(
+                    ext = useful,
+                    sourceId = 12L,
+                    sampleCount = 15,
+                    popularCount = 15,
+                    qualityScore = 0.9,
+                    fitScore = 0.7,
+                ),
+            ),
+        )
+
+        assertEquals("Useful Source", result.first().displayName)
+        assertTrue(result.first().score > result.last().score)
+    }
+
+    @Test
+    fun `duplicate catalogue coverage and metadata confidence reduce evaluated score`() {
+        val redundant = availableExt(
+            name = "Redundant Source",
+            pkgName = "eu.redundant",
+            signatureHash = "sig_redundant",
+            sources = listOf(availableSource(21L, "Redundant Source")),
+        )
+        val trustworthy = availableExt(
+            name = "Trustworthy Source",
+            pkgName = "eu.trustworthy",
+            signatureHash = "sig_trustworthy",
+            sources = listOf(availableSource(22L, "Trustworthy Source")),
+        )
+
+        val result = NonInstalledSourceSuggestionScorer.scoreAndFilter(
+            available = listOf(redundant, trustworthy),
+            installedHints = emptyList(),
+            untrusted = emptyList(),
+            recLanguages = recLanguages,
+            nsfwEnabled = nsfwEnabled,
+            dismissed = noDismissed,
+            evaluations = mapOf(
+                buildDismissalKey(redundant.signatureHash, redundant.pkgName, 21L) to evaluation(
+                    ext = redundant,
+                    sourceId = 21L,
+                    sampleCount = 4,
+                    popularCount = 8,
+                    latestCount = 8,
+                    sampledTitles = "Same|Same|Same|Same",
+                    confidence = SourceEvaluationMetadataConfidence.LOW,
+                ),
+                buildDismissalKey(trustworthy.signatureHash, trustworthy.pkgName, 22L) to evaluation(
+                    ext = trustworthy,
+                    sourceId = 22L,
+                    sampleCount = 8,
+                    popularCount = 8,
+                    latestCount = 8,
+                    sampledTitles = "A|B|C|D|E|F|G|H",
+                    confidence = SourceEvaluationMetadataConfidence.HIGH,
+                ),
+            ),
+        )
+
+        assertEquals("Trustworthy Source", result.first().displayName)
+        assertEquals(SuggestionConfidence.LOW, result.last().confidence)
     }
 
     @Test

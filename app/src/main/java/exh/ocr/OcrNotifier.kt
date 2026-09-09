@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import tachiyomi.core.common.Constants
+import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.kmk.KMR
 
@@ -45,8 +46,9 @@ class OcrNotifier(private val context: Context) : OcrIndexWorkerNotifier {
 
     fun buildProgressNotification(progress: OcrIndexProgress): NotificationCompat.Builder {
         val text = if (progress.totalPages > 0) {
-            context.stringResource(
-                KMR.strings.ocr_indexing_progress_v2,
+            context.pluralStringResource(
+                KMR.plurals.ocr_indexing_progress_v2,
+                count = progress.totalPages,
                 progress.completedPages,
                 progress.totalPages,
                 progress.recognizedPages,

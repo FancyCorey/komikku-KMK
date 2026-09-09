@@ -192,7 +192,7 @@ class AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(KMR.strings.kmk_recs_whats_new),
-                        subtitle = KmkRecsReleaseNotes.VERSION_NAME,
+                        subtitle = KmkRecsReleaseNotes.DISPLAY_VERSION_NAME,
                         onPreferenceClick = { navigator.push(KmkRecsWhatsNewScreen()) },
                     )
                 }

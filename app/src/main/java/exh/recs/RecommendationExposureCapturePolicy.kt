@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK_CLAUDE_LATEST_EXPLORATION_STRUCTURAL_COMPLETION_2026-08-08 -->
 /**
  * Pure gate for [BrowsePersonalRecommendationsScreenModel.recordVisibleExposure], extracted so the
  * "only a loaded, non-empty, fully-settled, not-already-recorded generation" contract is directly

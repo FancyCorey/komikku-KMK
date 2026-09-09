@@ -12,7 +12,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.DialogProperties
+import exh.GalleryAddPresentationPolicy
 import exh.favorites.FavoritesSyncStatus
+import exh.galleryAddFailureMessage
+import exh.util.rememberEvaluationModeEnabled
 import kotlinx.coroutines.delay
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
@@ -35,18 +38,23 @@ fun SyncFavoritesProgressDialog(
     openManga: (Long) -> Unit,
 ) {
     val context = LocalContext.current
-    val properties by produceState<SyncFavoritesProgressProperties?>(initialValue = null, status) {
+    val evaluationModeEnabled = rememberEvaluationModeEnabled()
+    val properties by produceState<SyncFavoritesProgressProperties?>(initialValue = null, status, evaluationModeEnabled) {
         when (status) {
             is FavoritesSyncStatus.BadLibraryState.MangaInMultipleCategories -> value = SyncFavoritesProgressProperties(
                 title = context.stringResource(SYMR.strings.favorites_sync_error),
-                text = context.stringResource(
-                    SYMR.strings.favorites_sync_bad_library_state,
+                text = if (evaluationModeEnabled) {
+                    context.stringResource(SYMR.strings.favorites_sync_bad_library_state_safe)
+                } else {
                     context.stringResource(
-                        SYMR.strings.favorites_sync_gallery_in_multiple_categories,
-                        status.mangaTitle,
-                        status.categories.joinToString(),
-                    ),
-                ),
+                        SYMR.strings.favorites_sync_bad_library_state,
+                        context.stringResource(
+                            SYMR.strings.favorites_sync_gallery_in_multiple_categories,
+                            status.mangaTitle,
+                            status.categories.joinToString(),
+                        ),
+                    )
+                },
                 positiveButtonText = context.stringResource(SYMR.strings.show_gallery),
                 positiveButton = {
                     openManga(status.mangaId)
@@ -61,14 +69,14 @@ fun SyncFavoritesProgressDialog(
                     SYMR.strings.favorites_sync_done_errors_message,
                     status.messages.joinToString(separator = "\n") {
                         when (it) {
-                            is FavoritesSyncStatus.SyncError.GallerySyncError.GalleryAddFail ->
-                                context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local) +
-                                    context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local_error, it.title, it.reason)
-                            is FavoritesSyncStatus.SyncError.GallerySyncError.InvalidGalleryFail ->
-                                context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local) +
-                                    context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local_unknown_type, it.title, it.url)
+                            is FavoritesSyncStatus.SyncError.GallerySyncError.LocalAddFailure ->
+                                context.localAddFailureText(it, evaluationModeEnabled)
                             is FavoritesSyncStatus.SyncError.GallerySyncError.UnableToAddGalleryToRemote ->
-                                context.stringResource(SYMR.strings.favorites_sync_unable_to_add_to_remote, it.title, it.gid)
+                                if (evaluationModeEnabled) {
+                                    context.stringResource(SYMR.strings.favorites_sync_unable_to_add_to_remote_safe)
+                                } else {
+                                    context.stringResource(SYMR.strings.favorites_sync_unable_to_add_to_remote, it.title, it.gid)
+                                }
                             FavoritesSyncStatus.SyncError.GallerySyncError.UnableToDeleteFromRemote ->
                                 context.stringResource(SYMR.strings.favorites_sync_unable_to_delete)
                         }
@@ -95,14 +103,14 @@ fun SyncFavoritesProgressDialog(
                             context.stringResource(SYMR.strings.favorites_sync_failed_to_featch)
                         is FavoritesSyncStatus.SyncError.UnknownSyncError ->
                             context.stringResource(SYMR.strings.favorites_sync_unknown_error, status.message)
-                        is FavoritesSyncStatus.SyncError.GallerySyncError.GalleryAddFail ->
-                            context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local) +
-                                context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local_error, status.title, status.reason)
-                        is FavoritesSyncStatus.SyncError.GallerySyncError.InvalidGalleryFail ->
-                            context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local) +
-                                context.stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local_unknown_type, status.title, status.url)
+                        is FavoritesSyncStatus.SyncError.GallerySyncError.LocalAddFailure ->
+                            context.localAddFailureText(status, evaluationModeEnabled)
                         is FavoritesSyncStatus.SyncError.GallerySyncError.UnableToAddGalleryToRemote ->
-                            context.stringResource(SYMR.strings.favorites_sync_unable_to_add_to_remote, status.title, status.gid)
+                            if (evaluationModeEnabled) {
+                                context.stringResource(SYMR.strings.favorites_sync_unable_to_add_to_remote_safe)
+                            } else {
+                                context.stringResource(SYMR.strings.favorites_sync_unable_to_add_to_remote, status.title, status.gid)
+                            }
                         FavoritesSyncStatus.SyncError.GallerySyncError.UnableToDeleteFromRemote ->
                             context.stringResource(SYMR.strings.favorites_sync_unable_to_delete)
                     },
@@ -160,9 +168,9 @@ fun SyncFavoritesProgressDialog(
                     value = properties.copy(
                         text = when (status) {
                             is FavoritesSyncStatus.Processing.AddingGalleryToRemote ->
-                                properties.text + "\n\n" + status.title
+                                properties.text + statusTitleSuffix(status.title, evaluationModeEnabled)
                             is FavoritesSyncStatus.Processing.AddingGalleryToLocal ->
-                                properties.text + "\n\n" + status.title
+                                properties.text + statusTitleSuffix(status.title, evaluationModeEnabled)
                             else -> properties.text
                         },
                     )
@@ -205,3 +213,22 @@ fun SyncFavoritesProgressDialog(
         )
     }
 }
+
+private fun android.content.Context.localAddFailureText(
+    failure: FavoritesSyncStatus.SyncError.GallerySyncError.LocalAddFailure,
+    evaluationModeEnabled: Boolean,
+): String {
+    val title = GalleryAddPresentationPolicy.safeTitle(failure.title, evaluationModeEnabled)
+    return if (title == null) {
+        stringResource(SYMR.strings.favorites_sync_failed_to_add_to_local_safe, galleryAddFailureMessage(failure.reason))
+    } else {
+        stringResource(
+            SYMR.strings.favorites_sync_failed_to_add_to_local_named_safe,
+            title,
+            galleryAddFailureMessage(failure.reason),
+        )
+    }
+}
+
+private fun statusTitleSuffix(title: String, evaluationModeEnabled: Boolean): String =
+    GalleryAddPresentationPolicy.safeTitle(title, evaluationModeEnabled)?.let { "\n\n$it" }.orEmpty()

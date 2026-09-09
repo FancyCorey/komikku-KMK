@@ -23,10 +23,10 @@ class GlobalExceptionHandler private constructor(
             PrimitiveSerialDescriptor("Throwable", PrimitiveKind.STRING)
 
         override fun deserialize(decoder: Decoder): Throwable =
-            Throwable(message = decoder.decodeString())
+            Throwable(message = CrashPayloadPolicy.acceptDecodedDetails(decoder.decodeString()))
 
         override fun serialize(encoder: Encoder, value: Throwable) =
-            encoder.encodeString(value.stackTraceToString())
+            encoder.encodeString(CrashPayloadPolicy.detailsForTransport(value))
     }
 
     override fun uncaughtException(thread: Thread, exception: Throwable) {
@@ -65,7 +65,9 @@ class GlobalExceptionHandler private constructor(
 
         fun getThrowableFromIntent(intent: Intent): Throwable? {
             return try {
-                Json.decodeFromString(ThrowableSerializer, intent.getStringExtra(INTENT_EXTRA)!!)
+                val payload = CrashPayloadPolicy.acceptEncodedPayload(intent.getStringExtra(INTENT_EXTRA))
+                    ?: return null
+                Json.decodeFromString(ThrowableSerializer, payload).takeIf { !it.message.isNullOrBlank() }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Wasn't able to retrieve throwable from intent" }
                 null

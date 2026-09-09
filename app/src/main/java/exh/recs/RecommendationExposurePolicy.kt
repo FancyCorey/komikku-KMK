@@ -1,6 +1,5 @@
 package exh.recs
 
-// KMK_CLAUDE_LATEST_CATALOGUE_AND_EXPOSURE_PLAN_2026-08-08 -->
 /**
  * Pure, I/O-free policy for local exposure history and the bounded soft ordering penalty derived
  * from it.
@@ -29,8 +28,11 @@ package exh.recs
  */
 object RecommendationExposurePolicy {
 
-    /** Exposure windows the picker offers, in days. */
-    val SUPPORTED_WINDOW_DAYS = listOf(7, 14, 30)
+    const val MIN_WINDOW_DAYS = 1
+    const val MAX_WINDOW_DAYS = 100
+
+    /** Exposure windows accepted by the numeric control, in days. */
+    val SUPPORTED_WINDOW_DAYS = (MIN_WINDOW_DAYS..MAX_WINDOW_DAYS).toList()
 
     /** Product decision recorded 2026-08-08: 14 days. */
     const val DEFAULT_WINDOW_DAYS = 14
@@ -52,7 +54,7 @@ object RecommendationExposurePolicy {
 
     /** Validates a stored/raw window preference value, falling back to [DEFAULT_WINDOW_DAYS]. */
     fun validateWindowDays(configuredDays: Int): Int =
-        if (configuredDays in SUPPORTED_WINDOW_DAYS) configuredDays else DEFAULT_WINDOW_DAYS
+        configuredDays.takeIf { it in MIN_WINDOW_DAYS..MAX_WINDOW_DAYS } ?: DEFAULT_WINDOW_DAYS
 
     /**
      * Whether the current UI state represents a real, visible exposure event.
@@ -109,6 +111,18 @@ object RecommendationExposurePolicy {
         windowDays: Int,
         isUntouched: Boolean,
     ): Double {
+        return softPenalty(true, now, lastExposedAt, exposureCount, windowDays, isUntouched)
+    }
+
+    fun softPenalty(
+        enabled: Boolean,
+        now: Long,
+        lastExposedAt: Long,
+        exposureCount: Int,
+        windowDays: Int,
+        isUntouched: Boolean,
+    ): Double {
+        if (!enabled) return 0.0
         if (!isUntouched) return 0.0
         if (exposureCount <= 1) return 0.0
         if (!isWithinWindow(now, lastExposedAt, windowDays)) return 0.0

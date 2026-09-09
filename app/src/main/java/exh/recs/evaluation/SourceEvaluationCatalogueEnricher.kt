@@ -12,9 +12,8 @@ import tachiyomi.domain.manga.model.Manga
 /**
  * Bounded catalogue-sample enrichment for Source Evaluation.
  *
- * Popular/Latest list entries frequently omit genre/tags until the manga detail page is fetched
- * (see `docs/recommendations/KMK_SOURCE_EVALUATION_COMPLETE_AUDIT_2026_07_12.md`). Scoring those
- * list entries directly measures "does the list page expose tags?" instead of "does this source
+ * Popular/Latest list entries frequently omit genre/tags until the manga detail page is fetched.
+ * Scoring those list entries directly measures "does the list page expose tags?" instead of "does this source
  * contain manga matching my taste?". This helper calls [Source.getMangaDetails] for a
  * bounded number of samples that lack genre metadata, mirroring the same bounded-enrichment pattern
  * already used by `RecommendationCandidateEnricher` and `SourceRecommendationFitProbe`.

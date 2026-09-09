@@ -1,3 +1,487 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <plurals name="rec_suggestion_install_success_count">
+        <item quantity="one">%1$d source installed.</item>
+        <item quantity="other">%1$d sources installed.</item>
+    </plurals>
+    <plurals name="rec_suggestion_install_failed_count">
+        <item quantity="one">%1$d source couldn’t be installed.</item>
+        <item quantity="other">%1$d sources couldn’t be installed.</item>
+    </plurals>
+    <plurals name="taste_settings_tag_group_show_n_more">
+            <item quantity="one">Show %1$d more</item>
+            <item quantity="other">Show %1$d more</item>
+        </plurals>
+    <plurals name="rec_source_status_shown">
+            <item quantity="one">Shown: %1$d match</item>
+            <item quantity="other">Shown: %1$d matches</item>
+        </plurals>
+    <plurals name="rec_match_apply_love">
+            <item quantity="one">Apply Love to %1$d version</item>
+            <item quantity="other">Apply Love to %1$d versions</item>
+        </plurals>
+    <plurals name="rec_match_apply_like">
+            <item quantity="one">Apply Like to %1$d version</item>
+            <item quantity="other">Apply Like to %1$d versions</item>
+        </plurals>
+    <plurals name="rec_match_apply_dislike">
+            <item quantity="one">Apply Dislike to %1$d version</item>
+            <item quantity="other">Apply Dislike to %1$d versions</item>
+        </plurals>
+    <plurals name="extension_uninstall_selected_message">
+            <item quantity="one">This will uninstall %1$d extension. Android may ask you to confirm the uninstall.</item>
+            <item quantity="other">This will uninstall %1$d extensions. Android may ask you to confirm each uninstall.</item>
+        </plurals>
+    <plurals name="source_evaluation_start">
+            <item quantity="one">Start evaluation (%1$d source)</item>
+            <item quantity="other">Start evaluation (%1$d sources)</item>
+        </plurals>
+    <plurals name="source_evaluation_strong_fit_count">
+            <item quantity="one">%1$d strong-fit source found</item>
+            <item quantity="other">%1$d strong-fit sources found</item>
+        </plurals>
+    <plurals name="source_evaluation_worth_trying_count">
+            <item quantity="one">%1$d worth-trying source found</item>
+            <item quantity="other">%1$d worth-trying sources found</item>
+        </plurals>
+    <plurals name="source_evaluation_explicit_count">
+            <item quantity="one">%1$d explicit-heavy source identified</item>
+            <item quantity="other">%1$d explicit-heavy sources identified</item>
+        </plurals>
+    <plurals name="source_evaluation_ecchi_count">
+            <item quantity="one">%1$d ecchi-heavy source identified</item>
+            <item quantity="other">%1$d ecchi-heavy sources identified</item>
+        </plurals>
+    <plurals name="taste_suggestions_evidence_count">
+            <item quantity="one">Based on %1$d of your rated manga</item>
+            <item quantity="other">Based on %1$d of your rated manga</item>
+        </plurals>
+    <plurals name="taste_diagnostics_preferred_tags_header">
+            <item quantity="one">Preferred tag (%1$d)</item>
+            <item quantity="other">Preferred tags (%1$d)</item>
+        </plurals>
+    <plurals name="taste_diagnostics_blocked_tags_header">
+            <item quantity="one">Blocked tag (%1$d)</item>
+            <item quantity="other">Blocked tags (%1$d)</item>
+        </plurals>
+    <plurals name="taste_diagnostics_tag_evidence_row">
+            <item quantity="one">%1$s — %2$d rated manga</item>
+            <item quantity="other">%1$s — %2$d rated manga</item>
+        </plurals>
+    <plurals name="source_evaluation_candidates_available">
+            <item quantity="one">%1$d extension ready to test</item>
+            <item quantity="other">%1$d extensions ready to test</item>
+        </plurals>
+    <plurals name="source_evaluation_candidates_evaluated_hidden">
+            <item quantity="one">%1$d already-evaluated candidate hidden</item>
+            <item quantity="other">%1$d already-evaluated candidates hidden</item>
+        </plurals>
+    <plurals name="source_evaluation_candidates_explicit_hidden">
+            <item quantity="one">%1$d explicit candidate hidden</item>
+            <item quantity="other">%1$d explicit candidates hidden</item>
+        </plurals>
+    <plurals name="source_evaluation_unsafe_sources_count">
+            <item quantity="one">%1$d quarantined extension hidden</item>
+            <item quantity="other">%1$d quarantined extensions hidden</item>
+        </plurals>
+    <plurals name="source_evaluation_candidates_unsafe_hidden">
+            <item quantity="one">%1$d quarantined candidate hidden</item>
+            <item quantity="other">%1$d quarantined candidates hidden</item>
+        </plurals>
+    <plurals name="source_evaluation_blocked_packages_count">
+            <item quantity="one">%1$d extension blocked from loading</item>
+            <item quantity="other">%1$d extensions blocked from loading</item>
+        </plurals>
+    <plurals name="source_evaluation_candidates_unassessed_remaining">
+            <item quantity="one">%1$d unassessed extension remaining</item>
+            <item quantity="other">%1$d unassessed extensions remaining</item>
+        </plurals>
+    <plurals name="rec_bulk_action_rated_success">
+            <item quantity="one">%1$d manga rated %2$s</item>
+            <item quantity="other">%1$d manga rated %2$s</item>
+        </plurals>
+    <plurals name="rec_bulk_action_rated_all_failed">
+            <item quantity="one">Failed to rate %1$d manga %2$s</item>
+            <item quantity="other">Failed to rate %1$d manga %2$s</item>
+        </plurals>
+    <plurals name="rec_bulk_action_not_interested_success">
+            <item quantity="one">%1$d manga marked as Not Interested</item>
+            <item quantity="other">%1$d manga marked as Not Interested</item>
+        </plurals>
+    <plurals name="rec_bulk_action_not_interested_all_failed">
+            <item quantity="one">Failed to mark %1$d manga as Not Interested</item>
+            <item quantity="other">Failed to mark %1$d manga as Not Interested</item>
+        </plurals>
+    <plurals name="rec_bulk_action_clear_rating_success">
+            <item quantity="one">%1$d manga rating cleared</item>
+            <item quantity="other">%1$d manga ratings cleared</item>
+        </plurals>
+    <plurals name="rec_bulk_action_clear_rating_all_failed">
+            <item quantity="one">Failed to clear rating for %1$d manga</item>
+            <item quantity="other">Failed to clear ratings for %1$d manga</item>
+        </plurals>
+    <plurals name="eval_undo_summary_rated">
+            <item quantity="one">%1$d manga rated %2$s</item>
+            <item quantity="other">%1$d manga rated %2$s</item>
+        </plurals>
+    <plurals name="eval_undo_summary_cleared">
+            <item quantity="one">%1$d manga rating cleared</item>
+            <item quantity="other">%1$d manga ratings cleared</item>
+        </plurals>
+    <plurals name="eval_undo_summary_not_interested">
+            <item quantity="one">%1$d manga marked Not Interested</item>
+            <item quantity="other">%1$d manga marked Not Interested</item>
+        </plurals>
+    <plurals name="eval_undo_restored_group">
+            <item quantity="one">%1$d manga restored from this group</item>
+            <item quantity="other">%1$d manga restored from this group</item>
+        </plurals>
+    <plurals name="eval_undo_restored_partial_single">
+            <item quantity="one">Manga restored; %1$d related item could not be fully restored</item>
+            <item quantity="other">Manga restored; %1$d related items could not be fully restored</item>
+        </plurals>
+    <plurals name="eval_undo_conflict_group">
+            <item quantity="one">%1$d manga from this group could not be fully restored</item>
+            <item quantity="other">%1$d manga from this group could not be fully restored</item>
+        </plurals>
+    <plurals name="eval_undo_summary_group_merge">
+            <item quantity="one">%1$d version merged into a group</item>
+            <item quantity="other">%1$d versions merged into a group</item>
+        </plurals>
+    <plurals name="eval_undo_summary_group_remove">
+            <item quantity="one">%1$d version removed from a group</item>
+            <item quantity="other">%1$d versions removed from a group</item>
+        </plurals>
+    <plurals name="eval_undo_summary_group_ungroup">
+            <item quantity="one">%1$d version ungrouped</item>
+            <item quantity="other">%1$d versions ungrouped</item>
+        </plurals>
+    <plurals name="eval_undo_summary_library_favorite">
+            <item quantity="one">%1$d manga added to library</item>
+            <item quantity="other">%1$d manga added to library</item>
+        </plurals>
+    <plurals name="eval_undo_summary_library_unfavorite">
+            <item quantity="one">%1$d manga removed from library</item>
+            <item quantity="other">%1$d manga removed from library</item>
+        </plurals>
+    <plurals name="eval_undo_summary_library_categories">
+            <item quantity="one">%1$d manga category changed</item>
+            <item quantity="other">Categories changed for %1$d manga</item>
+        </plurals>
+    <plurals name="rec_match_apply_seen">
+            <item quantity="one">Mark %1$d version as not interested</item>
+            <item quantity="other">Mark %1$d versions as not interested</item>
+        </plurals>
+    <plurals name="source_evaluation_reassessment_recommended">
+            <item quantity="one">%1$d new rating since last source evaluation. Reassessment is recommended.</item>
+            <item quantity="other">%1$d new ratings since last source evaluation. Reassessment is recommended.</item>
+        </plurals>
+    <plurals name="source_evaluation_last_evaluated_days">
+            <item quantity="one">Last evaluated %1$d day ago</item>
+            <item quantity="other">Last evaluated %1$d days ago</item>
+        </plurals>
+    <plurals name="rec_match_apply_favorite">
+            <item quantity="one">Favorite %1$d manga</item>
+            <item quantity="other">Favorite %1$d manga</item>
+        </plurals>
+    <plurals name="local_tracking_apply_other_versions">
+            <item quantity="one">Track %1$d other version</item>
+            <item quantity="other">Track %1$d other versions</item>
+        </plurals>
+    <plurals name="source_evaluation_updated_extensions_notice">
+            <item quantity="one">%1$d evaluated extension has an update. You can reassess it to refresh its source quality score.</item>
+            <item quantity="other">%1$d evaluated extensions have updates. You can reassess them to refresh their source quality scores.</item>
+        </plurals>
+    <plurals name="rec_bundle_load_error_too_many_items">
+            <item quantity="one">Bundle has too many items (max %1$d item)</item>
+            <item quantity="other">Bundle has too many items (max %1$d items)</item>
+        </plurals>
+    <plurals name="rec_bundle_load_error_too_many_sources">
+            <item quantity="one">Bundle has too many sources (max %1$d source)</item>
+            <item quantity="other">Bundle has too many sources (max %1$d sources)</item>
+        </plurals>
+    <plurals name="source_evaluation_continue_next_batch">
+            <item quantity="one">Continue next batch (%1$d source remaining)</item>
+            <item quantity="other">Continue next batch (%1$d sources remaining)</item>
+        </plurals>
+    <plurals name="source_evaluation_stale_reassess_start">
+            <item quantity="one">Reassess outdated (%1$d source)</item>
+            <item quantity="other">Reassess outdated (%1$d sources)</item>
+        </plurals>
+    <plurals name="source_evaluation_stale_reassess_continue">
+            <item quantity="one">Continue reassessing outdated (%1$d source remaining)</item>
+            <item quantity="other">Continue reassessing outdated (%1$d sources remaining)</item>
+        </plurals>
+    <plurals name="source_evaluation_stale_reassess_complete_partial">
+            <item quantity="one">Finished reassessing the outdated sources that could be checked. %1$d source was skipped this run.</item>
+            <item quantity="other">Finished reassessing the outdated sources that could be checked. %1$d sources were skipped this run.</item>
+        </plurals>
+    <plurals name="rec_suggestions_show_more">
+            <item quantity="one">Show %1$d more</item>
+            <item quantity="other">Show %1$d more</item>
+        </plurals>
+    <plurals name="source_evaluation_rec_quality_missing">
+            <item quantity="one">%1$d promising source not yet checked</item>
+            <item quantity="other">%1$d promising sources not yet checked</item>
+        </plurals>
+    <plurals name="source_evaluation_rec_quality_outdated_count">
+            <item quantity="one">%1$d source has outdated results</item>
+            <item quantity="other">%1$d sources have outdated results</item>
+        </plurals>
+    <plurals name="source_evaluation_cleanup_prompt_required_warning">
+            <item quantity="one">%1$d extension requires a manual uninstall prompt. Open Browse &gt; Extensions to complete cleanup.</item>
+            <item quantity="other">%1$d extensions require a manual uninstall prompt. Open Browse &gt; Extensions to complete cleanup.</item>
+        </plurals>
+    <plurals name="source_evaluation_cleanup_failed_warning">
+            <item quantity="one">%1$d extension cleanup failed. Check Browse &gt; Extensions.</item>
+            <item quantity="other">%1$d extension cleanups failed. Check Browse &gt; Extensions.</item>
+        </plurals>
+    <plurals name="source_evaluation_error_count">
+            <item quantity="one">%1$d source encountered an error.</item>
+            <item quantity="other">%1$d sources encountered an error.</item>
+        </plurals>
+    <plurals name="source_evaluation_reconciliation_failed_warning">
+            <item quantity="one">%1$d source could not be fully updated and remains outdated. It will be retried next time.</item>
+            <item quantity="other">%1$d sources could not be fully updated and remain outdated. They will be retried next time.</item>
+        </plurals>
+    <plurals name="source_evaluation_complete_cleanup">
+            <item quantity="one">Uninstall %1$d left-behind extension</item>
+            <item quantity="other">Uninstall %1$d left-behind extensions</item>
+        </plurals>
+    <plurals name="best_version_pages_loaded">
+            <item quantity="one">Prepared %1$d of %2$d preview sample</item>
+            <item quantity="other">Prepared %1$d of %2$d preview samples</item>
+        </plurals>
+    <plurals name="source_evaluation_detail_enriched_count">
+            <item quantity="one">Enriched %1$d of %2$d sample</item>
+            <item quantity="other">Enriched %1$d of %2$d samples</item>
+        </plurals>
+    <plurals name="source_evaluation_detail_enrichment_failed_count">
+            <item quantity="one">%1$d enrichment call failed or timed out</item>
+            <item quantity="other">%1$d enrichment calls failed or timed out</item>
+        </plurals>
+    <plurals name="source_evaluation_clear_dismissed_suggestions">
+            <item quantity="one">Clear %1$d dismissed suggestion</item>
+            <item quantity="other">Clear %1$d dismissed suggestions</item>
+        </plurals>
+    <plurals name="source_evaluation_clear_disliked_suggestion_sources">
+            <item quantity="one">Clear %1$d disliked suggestion source</item>
+            <item quantity="other">Clear %1$d disliked suggestion sources</item>
+        </plurals>
+    <plurals name="rec_exposure_window_days">
+            <item quantity="one">%1$d day</item>
+            <item quantity="other">%1$d days</item>
+        </plurals>
+    <plurals name="source_evaluation_rec_quality_private_required_message">
+            <item quantity="one">%1$d source was skipped — checking a non-installed source requires the Private installer. Switch Source Evaluation to Private mode, or check only already-installed sources.</item>
+            <item quantity="other">%1$d sources were skipped — checking non-installed sources requires the Private installer. Switch Source Evaluation to Private mode, or check only already-installed sources.</item>
+        </plurals>
+    <plurals name="rated_manga_confirm_clear_rating">
+            <item quantity="one">Clear rating for %1$d manga? This does not delete the manga, favorites, history, or version links.</item>
+            <item quantity="other">Clear ratings for %1$d manga? This does not delete the manga, favorites, history, or version links.</item>
+        </plurals>
+    <plurals name="rated_manga_confirm_remove_from_group">
+            <item quantity="one">Remove %1$d version from its group? Ratings are not affected.</item>
+            <item quantity="other">Remove %1$d versions from their groups? Ratings are not affected.</item>
+        </plurals>
+    <plurals name="rated_manga_confirm_merge">
+            <item quantity="one">Merge %1$d selected version into one group?</item>
+            <item quantity="other">Merge %1$d selected versions into one group?</item>
+        </plurals>
+    <plurals name="rated_manga_merge_success">
+            <item quantity="one">Grouped %1$d selected version</item>
+            <item quantity="other">Grouped %1$d selected versions</item>
+        </plurals>
+    <plurals name="rated_manga_remove_from_group_success">
+            <item quantity="one">Removed %1$d version from its group</item>
+            <item quantity="other">Removed %1$d versions from their groups</item>
+        </plurals>
+    <plurals name="rated_manga_confirm_not_interested">
+            <item quantity="one">Mark %1$d manga as not interested? This is a mild signal, not as strong as Dislike.</item>
+            <item quantity="other">Mark %1$d manga as not interested? This is a mild signal, not as strong as Dislike.</item>
+        </plurals>
+    <plurals name="source_evaluation_metadata_sample_count">
+            <item quantity="one">%1$d of %2$d sample had metadata</item>
+            <item quantity="other">%1$d of %2$d samples had metadata</item>
+        </plurals>
+    <plurals name="rec_settings_summary_languages">
+            <item quantity="one">%1$d language selected</item>
+            <item quantity="other">%1$d languages selected</item>
+        </plurals>
+    <plurals name="rec_settings_summary_ratings_known_manga">
+            <item quantity="one">%1$s, min %2$d chapter</item>
+            <item quantity="other">%1$s, min %2$d chapters</item>
+        </plurals>
+    <plurals name="rec_settings_summary_sources_to_try">
+            <item quantity="one">%1$d suggestion</item>
+            <item quantity="other">%1$d suggestions</item>
+        </plurals>
+    <plurals name="source_evaluation_runtime_health_count">
+            <item quantity="one">%1$d time, last failure %2$s ago</item>
+            <item quantity="other">%1$d times, last failure %2$s ago</item>
+        </plurals>
+    <plurals name="extension_export_multi_success">
+            <item quantity="one">Exported %1$d extension</item>
+            <item quantity="other">Exported %1$d extensions</item>
+        </plurals>
+    <plurals name="rec_source_metadata_tag_diagnostics_summary">
+            <item quantity="one">Details from the latest evaluation for %1$d source.</item>
+            <item quantity="other">Details from the latest evaluation for %1$d sources.</item>
+        </plurals>
+    <plurals name="rec_source_metadata_tag_diagnostics_metadata">
+            <item quantity="one">Metadata: %1$d of %2$d sample; confidence %3$s</item>
+            <item quantity="other">Metadata: %1$d of %2$d samples; confidence %3$s</item>
+        </plurals>
+    <plurals name="rec_source_metadata_tag_diagnostics_enrichment">
+            <item quantity="one">Details loaded: %1$d of %2$d attempt</item>
+            <item quantity="other">Details loaded: %1$d of %2$d attempts</item>
+        </plurals>
+    <plurals name="eval_undo_restored_manga_fragment">
+            <item quantity="one">%1$d manga restored from this group</item>
+            <item quantity="other">%1$d manga restored from this group</item>
+        </plurals>
+    <plurals name="eval_undo_unresolved_item_fragment">
+            <item quantity="one">%1$d item could not be fully restored</item>
+            <item quantity="other">%1$d items could not be fully restored</item>
+        </plurals>
+    <plurals name="extension_export_exported_extension_fragment">
+            <item quantity="one">%1$d extension exported</item>
+            <item quantity="other">%1$d extensions exported</item>
+        </plurals>
+    <plurals name="extension_export_missing_file_fragment">
+            <item quantity="one">%1$d extension skipped (file not found)</item>
+            <item quantity="other">%1$d extensions skipped (files not found)</item>
+        </plurals>
+    <plurals name="rec_bulk_action_rated_manga_fragment">
+            <item quantity="one">%1$d manga rated</item>
+            <item quantity="other">%1$d manga rated</item>
+        </plurals>
+    <plurals name="rec_bulk_action_not_interested_manga_fragment">
+            <item quantity="one">%1$d manga marked as Not Interested</item>
+            <item quantity="other">%1$d manga marked as Not Interested</item>
+        </plurals>
+    <plurals name="rec_bulk_action_cleared_rating_fragment">
+            <item quantity="one">%1$d manga rating cleared</item>
+            <item quantity="other">%1$d manga ratings cleared</item>
+        </plurals>
+    <plurals name="rec_bulk_action_failed_item_fragment">
+            <item quantity="one">%1$d item failed</item>
+            <item quantity="other">%1$d items failed</item>
+        </plurals>
+    <plurals name="rec_bundle_item_fragment">
+            <item quantity="one">%1$d item</item>
+            <item quantity="other">%1$d items</item>
+        </plurals>
+    <plurals name="rec_bundle_source_fragment">
+            <item quantity="one">%1$d source</item>
+            <item quantity="other">%1$d sources</item>
+        </plurals>
+    <plurals name="rec_settings_preferred_tag_fragment">
+            <item quantity="one">%1$d preferred tag</item>
+            <item quantity="other">%1$d preferred tags</item>
+        </plurals>
+    <plurals name="rec_settings_blocked_tag_fragment">
+            <item quantity="one">%1$d blocked tag</item>
+            <item quantity="other">%1$d blocked tags</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_sample_fragment">
+            <item quantity="one">%1$d sample</item>
+            <item quantity="other">%1$d samples</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_metadata_fragment">
+            <item quantity="one">%1$d with metadata</item>
+            <item quantity="other">%1$d with metadata</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_positive_match_fragment">
+            <item quantity="one">%1$d positive match</item>
+            <item quantity="other">%1$d positive matches</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_blocked_candidate_fragment">
+            <item quantity="one">%1$d blocked candidate</item>
+            <item quantity="other">%1$d blocked candidates</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_preferred_match_fragment">
+            <item quantity="one">%1$d preferred match</item>
+            <item quantity="other">%1$d preferred matches</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_blocked_match_fragment">
+            <item quantity="one">%1$d blocked match</item>
+            <item quantity="other">%1$d blocked matches</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_positive_candidate_fragment">
+            <item quantity="one">%1$d positive candidate</item>
+            <item quantity="other">%1$d positive candidates</item>
+        </plurals>
+    <plurals name="rec_source_diagnostics_negative_candidate_fragment">
+            <item quantity="one">%1$d negative candidate</item>
+            <item quantity="other">%1$d negative candidates</item>
+        </plurals>
+    <plurals name="source_evaluation_liked_source_fragment">
+            <item quantity="one">%1$d liked source</item>
+            <item quantity="other">%1$d liked sources</item>
+        </plurals>
+    <plurals name="source_evaluation_disliked_source_fragment">
+            <item quantity="one">%1$d disliked source</item>
+            <item quantity="other">%1$d disliked sources</item>
+        </plurals>
+    <plurals name="source_evaluation_blocked_source_fragment">
+            <item quantity="one">%1$d blocked source</item>
+            <item quantity="other">%1$d blocked sources</item>
+        </plurals>
+    <plurals name="source_evaluation_adult_risk_source_fragment">
+            <item quantity="one">%1$d adult-risk source</item>
+            <item quantity="other">%1$d adult-risk sources</item>
+        </plurals>
+    <plurals name="taste_diagnostics_positive_signal_fragment">
+            <item quantity="one">%1$d positive signal</item>
+            <item quantity="other">%1$d positive signals</item>
+        </plurals>
+    <plurals name="taste_diagnostics_negative_signal_fragment">
+            <item quantity="one">%1$d negative signal</item>
+            <item quantity="other">%1$d negative signals</item>
+        </plurals>
+    <plurals name="source_recommendation_quality_job_checked_count">
+            <item quantity="one">%1$d source checked</item>
+            <item quantity="other">%1$d sources checked</item>
+        </plurals>
+    <plurals name="ocr_indexing_progress_v2">
+            <item quantity="one">Indexing… %1$d/%2$d page (%3$d with text)</item>
+            <item quantity="other">Indexing… %1$d/%2$d pages (%3$d with text)</item>
+        </plurals>
+    <plurals name="ocr_index_status_v2">
+            <item quantity="one">%1$d recognized / %2$d processed · %3$d manga · %4$d chapter · ~%5$s</item>
+            <item quantity="other">%1$d recognized / %2$d processed · %3$d manga · %4$d chapters · ~%5$s</item>
+        </plurals>
+    <plurals name="ocr_index_status_old_rows">
+            <item quantity="one">%1$d old-version row (clear to reclaim space)</item>
+            <item quantity="other">%1$d old-version rows (clear to reclaim space)</item>
+        </plurals>
+    <plurals name="ocr_match_partial">
+            <item quantity="one">Partial: %1$d of %2$d word</item>
+            <item quantity="other">Partial: %1$d of %2$d words</item>
+        </plurals>
+    <plurals name="link_group_management_source_count">
+            <item quantity="one">%1$d version</item>
+            <item quantity="other">%1$d versions</item>
+        </plurals>
+    <plurals name="source_quality_hidden_mark_count">
+            <item quantity="one">%1$d hidden source-quality mark</item>
+            <item quantity="other">%1$d hidden source-quality marks</item>
+        </plurals>
+    <plurals name="reading_timer_warning_minutes_option">
+            <item quantity="one">%1$d minute remaining</item>
+            <item quantity="other">%1$d minutes remaining</item>
+        </plurals>
+    <plurals name="reading_timer_warning_toast">
+            <item quantity="one">%1$d minute remaining on your reading timer</item>
+            <item quantity="other">%1$d minutes remaining on your reading timer</item>
+        </plurals>
+    <plurals name="reading_schedule_window_count">
+            <item quantity="one">%1$d window configured</item>
+            <item quantity="other">%1$d windows configured</item>
+        </plurals>
+    <plurals name="loved_manga_versions">
+            <item quantity="one">%1$d version</item>
+            <item quantity="other">%1$d versions</item>
+        </plurals>
 </resources>

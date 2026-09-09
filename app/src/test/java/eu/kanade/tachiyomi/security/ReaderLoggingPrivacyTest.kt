@@ -28,4 +28,33 @@ class ReaderLoggingPrivacyTest {
             assertTrue(source.contains(marker), "Expected reader marker is missing: $marker")
         }
     }
+
+    @Test
+    fun `reader navigation diagnostics do not expose chapter URLs`() {
+        val source = File(
+            "src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+        ).readText()
+
+        listOf(
+            "Blocked natural chapter transition by reading schedule:",
+            "Loading ${'$'}{chapter.chapter.url}",
+            "Blocked adjacent chapter load by reading schedule:",
+            "Loading adjacent ${'$'}{chapter.chapter.url}",
+            "Preloading ${'$'}{chapter.chapter.url}",
+            "Setting ${'$'}{selectedChapter.chapter.url} as active",
+        ).forEach { fragment ->
+            assertFalse(source.contains(fragment), "Raw chapter URL diagnostic remains: $fragment")
+        }
+
+        listOf(
+            "Blocked natural chapter transition by reading schedule",
+            "Loading reader chapter",
+            "Blocked adjacent chapter load by reading schedule",
+            "Loading adjacent reader chapter",
+            "Preloading reader chapter",
+            "Setting reader chapter as active",
+        ).forEach { marker ->
+            assertTrue(source.contains(marker), "Stable reader marker is missing: $marker")
+        }
+    }
 }

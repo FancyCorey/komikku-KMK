@@ -1,0 +1,65 @@
+import kotlin.Boolean;
+
+CREATE TABLE alternate_source_bridge (
+    primary_source INTEGER NOT NULL CHECK(primary_source > 0),
+    primary_url TEXT NOT NULL CHECK(length(primary_url) BETWEEN 1 AND 4096),
+    alternate_source INTEGER NOT NULL CHECK(alternate_source > 0),
+    alternate_url TEXT NOT NULL CHECK(length(alternate_url) BETWEEN 1 AND 4096),
+    version INTEGER NOT NULL CHECK(version IN (1, 2)),
+    offset_milli INTEGER CHECK(offset_milli BETWEEN -1000000 AND 1000000),
+    offset_state TEXT CHECK(offset_state IS NULL OR offset_state IN ('PROVISIONAL', 'CONFIRMED', 'CONFLICT')),
+    continuation_primary_chapter_url TEXT CHECK(continuation_primary_chapter_url IS NULL OR length(continuation_primary_chapter_url) BETWEEN 1 AND 4096),
+    return_after_alternate_chapter_url TEXT CHECK(return_after_alternate_chapter_url IS NULL OR length(return_after_alternate_chapter_url) BETWEEN 1 AND 4096),
+    automatic_return INTEGER AS Boolean NOT NULL DEFAULT 0,
+    review_state TEXT NOT NULL CHECK(review_state IN ('CURRENT', 'CONFLICT')),
+    created_at INTEGER NOT NULL CHECK(created_at > 0),
+    updated_at INTEGER NOT NULL CHECK(updated_at >= created_at),
+    deleted_at INTEGER CHECK(deleted_at IS NULL OR (deleted_at >= created_at AND deleted_at <= updated_at)),
+    PRIMARY KEY (primary_source, primary_url, alternate_source, alternate_url),
+    CHECK(primary_source != alternate_source OR primary_url != alternate_url),
+    CHECK((offset_milli IS NULL) = (offset_state IS NULL)),
+    CHECK(version != 1 OR (return_after_alternate_chapter_url IS NULL AND automatic_return = 0)),
+    CHECK(automatic_return = 0 OR (continuation_primary_chapter_url IS NOT NULL AND return_after_alternate_chapter_url IS NOT NULL)),
+    CHECK(review_state != 'CONFLICT' OR automatic_return = 0)
+);
+
+CREATE INDEX alternate_source_bridge_updated_index ON alternate_source_bridge(updated_at);
+
+getByKey:
+SELECT * FROM alternate_source_bridge
+WHERE primary_source = :primarySource AND primary_url = :primaryUrl
+AND alternate_source = :alternateSource AND alternate_url = :alternateUrl;
+
+getAll:
+SELECT * FROM alternate_source_bridge;
+
+upsert:
+INSERT INTO alternate_source_bridge(
+    primary_source, primary_url, alternate_source, alternate_url, version, offset_milli, offset_state,
+    continuation_primary_chapter_url, return_after_alternate_chapter_url, automatic_return, review_state, created_at, updated_at, deleted_at
+)
+VALUES (
+    :primarySource, :primaryUrl, :alternateSource, :alternateUrl, :version, :offsetMilli, :offsetState,
+    :continuationPrimaryChapterUrl, :returnAfterAlternateChapterUrl, :automaticReturn, :reviewState, :createdAt, :updatedAt, :deletedAt
+)
+ON CONFLICT(primary_source, primary_url, alternate_source, alternate_url) DO UPDATE SET
+    version = :version,
+    offset_milli = :offsetMilli,
+    offset_state = :offsetState,
+    continuation_primary_chapter_url = :continuationPrimaryChapterUrl,
+    return_after_alternate_chapter_url = :returnAfterAlternateChapterUrl,
+    automatic_return = :automaticReturn,
+    review_state = :reviewState,
+    created_at = :createdAt,
+    updated_at = :updatedAt,
+    deleted_at = :deletedAt;
+
+deleteByKey:
+DELETE FROM alternate_source_bridge
+WHERE primary_source = :primarySource AND primary_url = :primaryUrl
+AND alternate_source = :alternateSource AND alternate_url = :alternateUrl;
+
+tombstoneAll:
+UPDATE alternate_source_bridge
+SET updated_at = :updatedAt, deleted_at = :updatedAt, automatic_return = 0
+WHERE deleted_at IS NULL AND updated_at <= :updatedAt;
