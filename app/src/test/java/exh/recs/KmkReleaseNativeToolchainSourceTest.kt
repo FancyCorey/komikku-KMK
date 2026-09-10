@@ -1,9 +1,9 @@
 package exh.recs
 
-import java.io.File
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 
 class KmkReleaseNativeToolchainSourceTest {
 
