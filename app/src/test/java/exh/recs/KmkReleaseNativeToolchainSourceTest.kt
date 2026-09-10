@@ -63,4 +63,13 @@ class KmkReleaseNativeToolchainSourceTest {
         assertTrue(debugBlock.contains("buildConfigField(\"boolean\", \"UPDATER_ENABLED\", \"false\")"))
         assertTrue(debugBlock.contains("buildConfigField(\"boolean\", \"GOOGLE_DRIVE_SYNC_ENABLED\", \"false\")"))
     }
+
+    @Test
+    fun `locale configuration is generated during task execution`() {
+        val generator = File("../buildSrc/src/main/kotlin/mihon/buildlogic/tasks/LocalesConfigTask.kt").readText()
+
+        assertTrue(generator.contains("inputs.files(localeResources)"))
+        assertTrue(generator.contains("outputs.file(outputFile)"))
+        assertTrue(generator.contains("doLast {"))
+    }
 }
