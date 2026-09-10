@@ -66,7 +66,7 @@ class KmkRtlScalingInternationalSourceTest {
         val preview = bestVersion.readText()
 
         assertTrue(settings.contains("RecommendationSettingsQuickAccessRow"))
-        assertTrue(settings.contains("horizontalScroll(rememberScrollState())"))
+        assertTrue(settings.contains(".horizontalScroll(scrollState)"))
         assertTrue(preview.contains("items(previewState.pages"))
         assertFalse(readerSchedule.readText().contains("horizontalScroll"))
     }

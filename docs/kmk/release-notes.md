@@ -33,4 +33,3 @@ Komikku KMK is an independent fork. It keeps the original Komikku artwork, uses 
 ## Known limitation
 
 Bulk preference actions made directly from For You are recorded in Action History, but the immediate completion message does not provide an inline **Undo** action. Reversal remains available through Action History when its conflict checks allow it.
-

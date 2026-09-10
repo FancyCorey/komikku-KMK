@@ -2,4 +2,3 @@
 ALTER TABLE source_recommendation_fit ADD COLUMN evaluation_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE source_recommendation_fit ADD COLUMN expires_at INTEGER;
 -- KMK <--
-

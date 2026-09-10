@@ -218,4 +218,3 @@ jobs:
             RELEASE_MANIFEST.json
           draft: true
           prerelease: false
-

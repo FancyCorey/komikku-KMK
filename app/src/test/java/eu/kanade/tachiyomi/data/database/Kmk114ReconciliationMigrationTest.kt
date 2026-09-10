@@ -11,9 +11,9 @@ import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
 
 /**
- * Verifies the append-only migration bridge (migration 63) that ports the two remaining
- * official Komikku 1.14.0 schema changes into the KMK schema (KMK occupies 45-62; this is
- * appended after that ceiling and never renumbers or overwrites KMK's own migrations):
+ * Verifies the upstream migration 46 bridge that ports the two remaining official Komikku
+ * 1.14.0 schema changes into the KMK schema. KMK migrations begin at 47 and remain append-only;
+ * this test keeps the upstream bridge separate from KMK-owned migrations:
  *
  * - extension_repos -> extension_store conversion
  * - mangas.memo / chapters.memo columns
@@ -29,8 +29,8 @@ import kotlin.io.path.deleteIfExists
  * touch the pre-existing `mangas`/`chapters`/`extension_repos` tables directly. Migration 63
  * does (ALTER TABLE mangas/chapters, and a real extension_repos -> extension_store conversion),
  * so these tests seed a realistic pre-migration-63 baseline by hand -- the `mangas`/`chapters`
- * schema exactly as of migration 62 (i.e. the current .sq definition minus the `memo` column
- * migration 63 adds) plus the official `extension_repos` table -- rather than attempting an
+ * schema exactly as of migration 45 (i.e. the current .sq definition minus the `memo` column
+ * migration 46 adds) plus the official `extension_repos` table -- rather than attempting an
  * unsound "replay from an empty database" that no real installation, and no other test in this
  * suite, actually performs.
  *
@@ -56,11 +56,11 @@ class Kmk114ReconciliationMigrationTest {
             // against a JDBC driver, bypassing SQLDelight's own codegen/execution layer.
             .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
             .joinToString("\n")
-            // Strip the two SQLDelight Kotlin-type-mapping annotations migration 63 introduces
-            // to this test suite (KMK's own 46-62 migrations never used them). This is a
+            // Strip the two SQLDelight Kotlin-type-mapping annotations migration 46 introduces
+            // to this test suite (KMK's own 47-65 migrations never used them). This is a
             // narrow, known-content substitution, not a general SQLDelight-dialect translator --
             // it must not touch a real SQL "AS" alias (e.g. in a SELECT list), so it only
-            // matches immediately after the two raw SQLite storage-class keywords migration 63
+            // matches immediately after the two raw SQLite storage-class keywords migration 46
             // actually uses this annotation on.
             .replace(Regex("""\bINTEGER AS Boolean\b"""), "INTEGER")
             .replace(Regex("""\bBLOB AS JsonObject\b"""), "BLOB")
@@ -71,11 +71,11 @@ class Kmk114ReconciliationMigrationTest {
     }
 
     /**
-     * Hand-seeded baseline: `mangas`/`chapters` exactly as of migration 62 (current .sq shape
-     * minus the `memo` column migration 63 adds), plus the official `extension_repos` table.
-     * This is the real starting point migration 63 is written against.
+     * Hand-seeded baseline: `mangas`/`chapters` exactly as of migration 45 (current .sq shape
+     * minus the `memo` column migration 46 adds), plus the official `extension_repos` table.
+     * This is the real starting point migration 46 is written against.
      */
-    private fun JdbcSqliteDriver.seedPreMigration63Baseline() {
+    private fun JdbcSqliteDriver.seedPreMigration46Baseline() {
         executeSqlScript(
             """
             CREATE TABLE mangas(
@@ -198,13 +198,14 @@ class Kmk114ReconciliationMigrationTest {
         return result
     }
 
-    // ---- Fixture 1: fresh install equivalent -- baseline + KMK's own 46-62 history + 63 ----
+    // ---- Fixture 1: fresh install equivalent -- baseline + upstream 46 + KMK's 47-63 history ----
 
     @Test
     fun `fresh KMK install schema (baseline plus 46-62 plus 63) has extension_store and memo columns`() {
         val driver = openDriver()
-        driver.seedPreMigration63Baseline()
-        for (n in 46..63) driver.executeMigration(n)
+        driver.seedPreMigration46Baseline()
+        driver.executeMigration(46)
+        for (n in 47..63) driver.executeMigration(n)
 
         val tables = driver.tableNames()
         assertTrue(tables.contains("extension_store")) { "extension_store missing after fresh install" }
@@ -217,10 +218,10 @@ class Kmk114ReconciliationMigrationTest {
     }
 
     @Test
-    fun `extension_store has the official column set after migration 63`() {
+    fun `extension_store has the official column set after migration 46`() {
         val driver = openDriver()
-        driver.seedPreMigration63Baseline()
-        driver.executeMigration(63)
+        driver.seedPreMigration46Baseline()
+        driver.executeMigration(46)
         val cols = driver.columnNames("extension_store")
         for (col in listOf(
             "index_url",
@@ -237,12 +238,12 @@ class Kmk114ReconciliationMigrationTest {
     }
 
     // ---- Fixture 2: a database at the official 1.13.6 baseline (extension_repos populated,
-    // no KMK tables at all -- migration 63 must not depend on any KMK-specific state) ----
+    // no KMK tables at all -- migration 46 must not depend on any KMK-specific state) ----
 
     @Test
-    fun `official 1_13_6-shaped database (no KMK tables) upgrades cleanly through migration 63`() {
+    fun `official 1_13_6-shaped database (no KMK tables) upgrades cleanly through migration 46`() {
         val driver = openDriver()
-        driver.seedPreMigration63Baseline()
+        driver.seedPreMigration46Baseline()
 
         val baselineTables = driver.tableNames()
         assertTrue(baselineTables.contains("extension_repos")) { "extension_repos should exist in the seeded baseline" }
@@ -259,11 +260,11 @@ class Kmk114ReconciliationMigrationTest {
             0,
         )
 
-        driver.executeMigration(63)
+        driver.executeMigration(46)
 
         val upgradedTables = driver.tableNames()
-        assertFalse(upgradedTables.contains("extension_repos")) { "extension_repos should be dropped after migration 63" }
-        assertTrue(upgradedTables.contains("extension_store")) { "extension_store should exist after migration 63" }
+        assertFalse(upgradedTables.contains("extension_repos")) { "extension_repos should be dropped after migration 46" }
+        assertTrue(upgradedTables.contains("extension_store")) { "extension_store should exist after migration 46" }
 
         // The seeded repo must have survived the conversion.
         val storeCount = driver.longScalar("SELECT COUNT(*) FROM extension_store")
@@ -278,22 +279,22 @@ class Kmk114ReconciliationMigrationTest {
     }
 
     @Test
-    fun `database with no configured repositories upgrades through migration 63 with an empty extension_store`() {
+    fun `database with no configured repositories upgrades through migration 46 with an empty extension_store`() {
         val driver = openDriver()
-        driver.seedPreMigration63Baseline()
-        driver.executeMigration(63)
+        driver.seedPreMigration46Baseline()
+        driver.executeMigration(46)
         assertEquals(0L, driver.longScalar("SELECT COUNT(*) FROM extension_store"))
         assertFalse(driver.tableNames().contains("extension_repos"))
     }
 
-    // ---- Fixture 3: KMK-populated database (baseline + 46-62 + real rating/group/OCR/
-    // discovery/source-evaluation/repo data) upgrading through 63 without data loss ----
+    // ---- Fixture 3: KMK-populated database (baseline + upstream 46 + KMK 47-63 + real
+    // rating/group/OCR/discovery/source-evaluation/repo data) upgrading without data loss ----
 
     @Test
     fun `KMK-populated database preserves ratings, groups, OCR, discovery, and source-evaluation data through migration 63`() {
         val driver = openDriver()
-        driver.seedPreMigration63Baseline()
-        for (n in 46..62) driver.executeMigration(n)
+        driver.seedPreMigration46Baseline()
+        for (n in 47..63) driver.executeMigration(n)
 
         // Seed one row of real user data per KMK feature area, plus an extension_repos row,
         // matching what an actual upgrading KMK v0.8.x installation would have.
@@ -386,8 +387,8 @@ class Kmk114ReconciliationMigrationTest {
             0,
         )
 
-        // Now continue the upgrade through the new migration bridge.
-        driver.executeMigration(63)
+        // Apply the upstream bridge after the KMK-owned tables exist; it must not disturb them.
+        driver.executeMigration(46)
 
         // Every KMK table's data must survive untouched.
         assertEquals(1L, driver.longScalar("SELECT COUNT(*) FROM manga_taste WHERE manga_id = 1")) {
@@ -429,7 +430,7 @@ class Kmk114ReconciliationMigrationTest {
     @Test
     fun `migration 63 CREATE TABLE is idempotent - re-running it does not error`() {
         val driver = openDriver()
-        driver.seedPreMigration63Baseline()
+        driver.seedPreMigration46Baseline()
         driver.executeMigration(63)
 
         val content = javaClass.classLoader?.getResourceAsStream("63.sqm")
@@ -446,7 +447,7 @@ class Kmk114ReconciliationMigrationTest {
             .forEach { stmt -> driver.execute(null, stmt, 0) }
 
         // No exception = IF NOT EXISTS is applied correctly on migration 63's CREATE TABLE.
-        assertTrue(driver.tableNames().contains("extension_store"))
+        assertTrue(driver.tableNames().contains("manga_cross_source_group_primary"))
     }
 
     @Test
@@ -455,7 +456,7 @@ class Kmk114ReconciliationMigrationTest {
         try {
             val url = "jdbc:sqlite:${path.toAbsolutePath()}"
             val first = JdbcSqliteDriver(url)
-            first.seedPreMigration63Baseline()
+            first.seedPreMigration46Baseline()
             for (n in 46..63) first.executeMigration(n)
             first.execute(
                 null,
@@ -483,4 +484,3 @@ class Kmk114ReconciliationMigrationTest {
     }
 }
 // KMK <--
-

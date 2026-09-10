@@ -510,4 +510,3 @@ buildscript {
         classpath(kotlinx.gradle)
     }
 }
-

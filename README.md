@@ -96,4 +96,3 @@ The application does not host or provide manga, and its developers are not
 affiliated with content providers. The source is available under the
 [Apache License 2.0](./LICENSE).
 
-

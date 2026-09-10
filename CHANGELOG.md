@@ -597,4 +597,3 @@ Same as v0.19.6
 [v0.16.2]: https://github.com/mihonapp/mihon/compare/v0.16.1...v0.16.2
 [v0.16.1]: https://github.com/mihonapp/mihon/compare/v0.16.0...v0.16.1
 [v0.16.0]: https://github.com/mihonapp/mihon/compare/a9c7cbf...v0.16.0
-

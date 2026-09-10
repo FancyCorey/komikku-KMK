@@ -20,7 +20,7 @@ class KmkMigration65IdentityDecisionTest {
         resource.bufferedReader().readText()
             .replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "")
             .lines()
-            .filterNot { it.trimStart().startsWith("--") }
+            .filterNot { it.trimStart().startsWith("--") || it.trimStart().startsWith("import ") }
             .joinToString("\n")
             .split(';')
             .map(String::trim)
@@ -52,7 +52,7 @@ class KmkMigration65IdentityDecisionTest {
     @Test
     fun `upgrade creates identity table without promoting or changing legacy groups`() {
         val driver = driver()
-        for (number in 46..62) driver.executeMigration(number)
+        for (number in 47..62) driver.executeMigration(number)
         driver.execute(null, "INSERT INTO manga_cross_source_link VALUES (1, '/legacy', 'g', 'Legacy', 1, 1)", 0)
         driver.executeMigration(64)
         driver.executeMigration(65)
@@ -89,4 +89,3 @@ class KmkMigration65IdentityDecisionTest {
         assertEquals(1L, driver.scalar("SELECT COUNT(*) FROM $table"))
     }
 }
-

@@ -153,4 +153,3 @@ class FixtureSource : HttpSource(), PagePreviewSource {
         )
     }
 }
-

@@ -12,11 +12,10 @@ import tachiyomi.data.Database
  * Dedicated coverage for migration `64.sqm`, which creates the local-only `recommendation_exposure`
  * table.
  *
- * `KmkMigrationTest` covers migrations 46..62 as one contiguous KMK range. Migration 63 is the
- * upstream 1.14.0 reconciliation (it deliberately ALTERs upstream tables and carries SQLDelight
- * `import` directives), so folding 63/64 into that range would break that test's own
- * "KMK migrations do not ALTER upstream tables" invariant. This file therefore covers 64 directly
- * rather than widening a range whose invariants do not apply to 63.
+ * `KmkMigrationTest` covers migrations 47..63 as one contiguous KMK range. Upstream migration 46
+ * is the 1.14.0 reconciliation (it deliberately alters upstream tables and carries SQLDelight
+ * `import` directives), so it is intentionally excluded from KMK-only range invariants. This
+ * file covers 64 directly without replaying that upstream bridge.
  *
  * Everything here runs against an in-memory SQLite database. No device database is touched.
  *
@@ -245,7 +244,7 @@ class KmkMigration64ExposureTest {
     @Test
     fun `an existing database upgrades through 64 and keeps its unrelated tables`() {
         val driver = openDriver()
-        for (n in 46..62) driver.executeMigration(n)
+        for (n in 47..62) driver.executeMigration(n)
         val tablesBefore = driver.tableNames()
         assertTrue(TABLE !in tablesBefore) { "recommendation_exposure must not exist before migration 64" }
 
@@ -262,7 +261,7 @@ class KmkMigration64ExposureTest {
     @Test
     fun `an existing database upgrades through 64 without losing unrelated rows`() {
         val driver = openDriver()
-        for (n in 46..50) driver.executeMigration(n) // 50 creates manga_cross_source_link
+        for (n in 47..51) driver.executeMigration(n) // 51 creates manga_cross_source_link
         driver.execute(
             null,
             """
@@ -304,7 +303,7 @@ class KmkMigration64ExposureTest {
     @Test
     fun `insert, upsert-increment, prune, and clear all work against the migrated schema`() {
         val driver = openDriver()
-        for (n in 46..62) driver.executeMigration(n)
+        for (n in 47..62) driver.executeMigration(n)
         driver.executeMigration(64)
 
         // Mirrors recommendation_exposure.sq's recordExposure: insert, then increment on conflict.
@@ -354,7 +353,7 @@ class KmkMigration64ExposureTest {
     @Test
     fun `clearing exposure rows leaves unrelated tables untouched`() {
         val driver = openDriver()
-        for (n in 46..50) driver.executeMigration(n)
+        for (n in 47..51) driver.executeMigration(n)
         driver.execute(
             null,
             """
@@ -384,4 +383,3 @@ class KmkMigration64ExposureTest {
     }
 }
 // KMK <--
-
