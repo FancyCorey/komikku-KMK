@@ -120,8 +120,9 @@ class KmkMigrationTest {
     }
 
     private fun JdbcSqliteDriver.executeSqlScript(sql: String) {
-        sql.lines()
-            .filterNot { it.trim().startsWith("--") }
+        sql.replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "")
+            .lines()
+            .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
             .joinToString("\n")
             .split(";")
             .map { it.trim() }
@@ -212,7 +213,7 @@ class KmkMigrationTest {
                 ?.bufferedReader()?.readText()
                 ?: error("Migration $n.sqm not found")
             val statements = content.lines()
-                .filterNot { it.trim().startsWith("--") }
+                .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
                 .joinToString("\n")
                 .split(";")
                 .map { it.trim().uppercase() }
@@ -493,7 +494,7 @@ class KmkMigrationTest {
                 ?.bufferedReader()?.readText()
                 ?: error("Migration $n.sqm not found")
             content.lines()
-                .filterNot { it.trim().startsWith("--") }
+                .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
                 .joinToString("\n")
                 .split(";")
                 .map { it.trim() }

@@ -17,7 +17,9 @@ class KmkMigration65IdentityDecisionTest {
 
     private fun JdbcSqliteDriver.executeMigration(number: Int) {
         val resource = javaClass.classLoader?.getResourceAsStream("$number.sqm") ?: error("Missing $number.sqm")
-        resource.bufferedReader().readText().lines()
+        resource.bufferedReader().readText()
+            .replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "")
+            .lines()
             .filterNot { it.trimStart().startsWith("--") }
             .joinToString("\n")
             .split(';')

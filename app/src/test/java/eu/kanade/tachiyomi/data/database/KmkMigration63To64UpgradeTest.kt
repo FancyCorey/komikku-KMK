@@ -75,8 +75,9 @@ class KmkMigration63To64UpgradeTest {
     private fun JdbcSqliteDriver.exec(sql: String) = execute(null, sql, 0)
 
     private fun JdbcSqliteDriver.executeSqlScript(sql: String) {
-        sql.lines()
-            .filterNot { it.trim().startsWith("--") }
+        sql.replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "")
+            .lines()
+            .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
             .joinToString("\n")
             .split(";")
             .map { it.trim() }
