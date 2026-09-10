@@ -22,12 +22,12 @@ if(NOT EXISTS "${DAV1D_FILENAME}")
     set(ENV{PATH} "${DAV1D_NINJA_DIRECTORY};$ENV{PATH}")
   endif()
 
-  file(TO_CMAKE_PATH "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/windows-x86_64" DAV1D_LLVM_ROOT)
-  file(TO_CMAKE_PATH "${DAV1D_LLVM_ROOT}/sysroot" DAV1D_SYSROOT)
-  set(DAV1D_CLANG "${DAV1D_LLVM_ROOT}/bin/clang.exe")
-  set(DAV1D_CLANGXX "${DAV1D_LLVM_ROOT}/bin/clang++.exe")
-  set(DAV1D_AR "${DAV1D_LLVM_ROOT}/bin/llvm-ar.exe")
-  set(DAV1D_STRIP "${DAV1D_LLVM_ROOT}/bin/llvm-strip.exe")
+  # Use Android CMake's resolved tools so this cross file works on every build host.
+  file(TO_CMAKE_PATH "${CMAKE_SYSROOT}" DAV1D_SYSROOT)
+  file(TO_CMAKE_PATH "${CMAKE_C_COMPILER}" DAV1D_CLANG)
+  file(TO_CMAKE_PATH "${CMAKE_CXX_COMPILER}" DAV1D_CLANGXX)
+  file(TO_CMAKE_PATH "${CMAKE_AR}" DAV1D_AR)
+  file(TO_CMAKE_PATH "${CMAKE_STRIP}" DAV1D_STRIP)
 
   if(CMAKE_ANDROID_ARCH STREQUAL "arm")
     set(DAV1D_TRIPLET "armv7a-linux-androideabi")
