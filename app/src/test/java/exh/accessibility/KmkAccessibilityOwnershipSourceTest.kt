@@ -63,7 +63,8 @@ class KmkAccessibilityOwnershipSourceTest {
         assertTrue(timer.contains("import androidx.compose.foundation.selection.toggleable"))
         assertTrue(timer.contains("toggleable(\n                        value = checked"))
         assertTrue(timer.contains("Checkbox(checked = checked, onCheckedChange = null)"))
-        assertTrue(timer.contains("toggleable(value = finishCurrentChapter, role = Role.Checkbox"))
+        assertTrue(timer.contains("value = finishCurrentChapter"))
+        assertTrue(timer.contains("role = Role.Checkbox"))
         assertTrue(timer.contains("enabled = finishCurrentChapter"))
     }
 

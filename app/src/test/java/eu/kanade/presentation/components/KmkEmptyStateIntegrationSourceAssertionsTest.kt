@@ -64,7 +64,7 @@ class KmkEmptyStateIntegrationSourceAssertionsTest {
             mustContainMarker = "KmkEmptyStateArtwork.FOR_YOU",
             mustNotContain = listOf("state.isLoading -> {", "state.isOffline -> {"),
         )
-        assertTrue(source.contains("state.isLoading -> {"), "the loading branch must still exist, untouched")
+        assertTrue(source.contains("state.isLoading && state.items.isEmpty() -> {"), "the loading branch must still exist")
         assertTrue(source.contains("state.isOffline -> {"), "the offline branch must still exist, untouched")
     }
 

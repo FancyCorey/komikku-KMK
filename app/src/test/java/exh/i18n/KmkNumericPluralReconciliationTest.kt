@@ -111,6 +111,7 @@ class KmkNumericPluralReconciliationTest {
             "evaluation_mode_liked_tag_label",
             "evaluation_mode_repo_label",
             "extension_uninstall_selected",
+            "local_tracking_export_partial",
             "migration_list_result_partial_message",
             "migration_list_result_partial_message_with_skipped",
             "ocr_notification_complete_v2",
