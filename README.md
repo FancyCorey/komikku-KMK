@@ -44,6 +44,16 @@ manage compatible source extensions themselves.
 These additions sit alongside Komikku's library, downloads, local reading,
 categories, themes, backups, updates, and supported external trackers.
 
+## Core Functionality
+
+The public visual guide includes additional screenshots and walkthroughs. These
+three examples show the main KMK workflows without exposing personal library,
+account, or device information:
+
+| For You recommendations | Compare manga versions | Reading schedule |
+| --- | --- | --- |
+| <img src="./docs/kmk/visual-guide/for-you-evaluation-mode.png" width="240" alt="For You recommendations"/> | <img src="./docs/kmk/visual-guide/best-version-preview-comparison.png" width="240" alt="Best Version comparison"/> | <img src="./docs/kmk/visual-guide/reading-schedule.png" width="240" alt="Reading schedule"/> |
+
 ## Get Started
 
 1. Open the [latest release](https://github.com/FancyCorey/komikku-KMK/releases/latest).
