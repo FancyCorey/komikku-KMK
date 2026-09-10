@@ -48,7 +48,8 @@ class Kmk114ReconciliationMigrationTest {
     }
 
     private fun JdbcSqliteDriver.executeSqlScript(sql: String) {
-        sql.lines()
+        sql.replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "")
+            .lines()
             // Strip SQL comments and SQLDelight-only "import ...;" codegen directives (used to
             // resolve `AS Boolean` / `AS JsonObject` column type mappings at compile time) --
             // neither is valid raw SQLite syntax, and this test executes .sqm files directly
@@ -434,7 +435,7 @@ class Kmk114ReconciliationMigrationTest {
         val content = javaClass.classLoader?.getResourceAsStream("63.sqm")
             ?.bufferedReader()?.readText()
             ?: error("Migration 63.sqm not found")
-        content.lines()
+        content.replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "").lines()
             .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
             .joinToString("\n")
             .replace(Regex("""\bINTEGER AS Boolean\b"""), "INTEGER")
@@ -482,3 +483,4 @@ class Kmk114ReconciliationMigrationTest {
     }
 }
 // KMK <--
+

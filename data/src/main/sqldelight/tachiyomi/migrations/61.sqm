@@ -1,15 +1,5 @@
--- KMK --> v0.7.47: Source Evaluation tag enrichment and scoring fix. Bounded getMangaDetails()
--- catalogue enrichment plus split positive/negative/blocked/adult/metadata evidence counters. All
--- columns are additive with safe defaults; existing rows read back as zero-evidence, which is
--- correct because SourceEvaluationKeys.CURRENT_VERSION bumped 2 -> 3 in the same release, so every
--- existing row is already treated as stale/outdated regardless of these new counts.
-ALTER TABLE source_evaluation ADD COLUMN detail_enrichment_attempt_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN detail_enrichment_success_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN metadata_candidate_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN positive_candidate_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN negative_candidate_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN explicit_preferred_group_hit_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN learned_positive_group_hit_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN blocked_candidate_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE source_evaluation ADD COLUMN adult_signal_candidate_count INTEGER NOT NULL DEFAULT 0;
+-- KMK --> v0.7.42: Source evaluation fit expiry/version metadata.
+ALTER TABLE source_recommendation_fit ADD COLUMN evaluation_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE source_recommendation_fit ADD COLUMN expires_at INTEGER;
 -- KMK <--
+

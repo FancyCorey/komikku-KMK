@@ -53,10 +53,13 @@ jobs:
           set -euo pipefail
           git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
           version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts | head -n 1)"
+          kmk_feature_version="$(sed -n 's/^[[:space:]]*const val VERSION_NAME = "KMK-Recs \([^"]*\)"/\1/p' app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt | head -n 1)"
           test -n "${version_name}"
-          test "v${version_name}" = "${RELEASE_TAG}"
+          test -n "${kmk_feature_version}"
+          test "v${kmk_feature_version}" = "${RELEASE_TAG}"
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           printf 'version_name=%s\n' "${version_name}" >> "$GITHUB_OUTPUT"
+          printf 'kmk_feature_version=%s\n' "${kmk_feature_version}" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
@@ -167,6 +170,7 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.identity.outputs.commit }}
           VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          KMK_FEATURE_VERSION: ${{ steps.identity.outputs.kmk_feature_version }}
           CERTIFICATE_SHA256: ${{ steps.apk_identity.outputs.certificate_sha256 }}
           GOOGLE_DRIVE_ENABLED: ${{ steps.google_drive.outputs.enabled }}
         run: |
@@ -176,10 +180,11 @@ jobs:
             --arg commit "${RELEASE_COMMIT}" \
             --arg package_name "app.komikku.kmk" \
             --arg version_name "${VERSION_NAME}" \
+            --arg kmk_feature_version "${KMK_FEATURE_VERSION}" \
             --arg certificate_sha256 "${CERTIFICATE_SHA256}" \
             --argjson google_drive_sync_enabled "${GOOGLE_DRIVE_ENABLED}" \
             --rawfile checksums SHA256SUMS.txt \
-            '{tag: $tag, commit: $commit, package: $package_name, version_name: $version_name, certificate_sha256: $certificate_sha256, google_drive_sync_enabled: $google_drive_sync_enabled, sha256sums: $checksums}' \
+            '{tag: $tag, commit: $commit, package: $package_name, version_name: $version_name, kmk_feature_version: $kmk_feature_version, certificate_sha256: $certificate_sha256, google_drive_sync_enabled: $google_drive_sync_enabled, sha256sums: $checksums}' \
             > RELEASE_MANIFEST.json
 
       - name: Upload release build record
@@ -213,3 +218,4 @@ jobs:
             RELEASE_MANIFEST.json
           draft: true
           prerelease: false
+

@@ -4,7 +4,7 @@ This page summarizes the features included in the current version. The in-app **
 
 ## Current KMK feature version
 
-The current in-app feature version is **KMK-Recs v0.8.20-fix5**.
+The current in-app feature version is **KMK-Recs v0.8.21-fix2**.
 
 ## Included feature families
 
@@ -33,3 +33,4 @@ Komikku KMK is an independent fork. It keeps the original Komikku artwork, uses 
 ## Known limitation
 
 Bulk preference actions made directly from For You are recorded in Action History, but the immediate completion message does not provide an inline **Undo** action. Reversal remains available through Action History when its conflict checks allow it.
+

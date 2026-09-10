@@ -49,8 +49,9 @@ class KmkMigration64ExposureTest {
     private fun openDriver() = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
 
     private fun JdbcSqliteDriver.executeSqlScript(sql: String) {
-        sql.lines()
-            .filterNot { it.trim().startsWith("--") }
+        sql.replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "")
+            .lines()
+            .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
             .joinToString("\n")
             .split(";")
             .map { it.trim() }
@@ -160,8 +161,8 @@ class KmkMigration64ExposureTest {
         val content = javaClass.classLoader?.getResourceAsStream("64.sqm")
             ?.bufferedReader()?.readText()
             ?: error("64.sqm not found")
-        val statements = content.lines()
-            .filterNot { it.trim().startsWith("--") }
+        val statements = content.replace(Regex("\\s+AS\\s+(Boolean|JsonObject)"), "").lines()
+            .filterNot { it.trim().startsWith("--") || it.trim().startsWith("import ") }
             .joinToString("\n")
             .split(";")
             .map { it.trim().uppercase() }
@@ -383,3 +384,4 @@ class KmkMigration64ExposureTest {
     }
 }
 // KMK <--
+

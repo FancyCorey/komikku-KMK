@@ -10,13 +10,6 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical stuff.
 
-## [v1.14.5] - 2026-09-09
-### Added
-- Restore a public README gallery for For You recommendations, cross-source version comparison, and reading schedules.
-
-### Changed
-- Align the public release line with the cleaned KMK master branch, keeping internal planning, agent, evidence, and review artifacts outside the public repository.
-
 ## [Unreleased]
 
 ### Added
