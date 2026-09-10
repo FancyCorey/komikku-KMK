@@ -10,7 +10,15 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical stuff.
 
+## [v1.14.5] - 2026-09-09
+### Added
+- Restore a public README gallery for For You recommendations, cross-source version comparison, and reading schedules.
+
+### Changed
+- Align the public release line with the cleaned KMK master branch, keeping internal planning, agent, evidence, and review artifacts outside the public repository.
+
 ## [Unreleased]
+
 ### Added
 - [Hikka](https://hikka.io/) tracker support ([@Lorg0n](https://github.com/Lorg0n)) ([#1386](https://github.com/mihonapp/mihon/pull/1386))
   - Fix Hikka not defaulting to "Plan to Read" for unread titles ([@MajorTanya](https://github.com/MajorTanya)) ([#3534](https://github.com/mihonapp/mihon/pull/3534))
@@ -596,3 +604,4 @@ Same as v0.19.6
 [v0.16.2]: https://github.com/mihonapp/mihon/compare/v0.16.1...v0.16.2
 [v0.16.1]: https://github.com/mihonapp/mihon/compare/v0.16.0...v0.16.1
 [v0.16.0]: https://github.com/mihonapp/mihon/compare/a9c7cbf...v0.16.0
+
