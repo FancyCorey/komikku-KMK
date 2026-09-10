@@ -16,6 +16,11 @@ if(NOT EXISTS "${DAV1D_FILENAME}")
   find_program(DAV1D_MESON_EXECUTABLE NAMES meson meson.exe
     HINTS "$ENV{USERPROFILE}/AppData/Roaming/Python/Python312/Scripts" REQUIRED)
   set(DAV1D_NINJA_EXECUTABLE "${CMAKE_MAKE_PROGRAM}")
+  set(ENV{NINJA} "${DAV1D_NINJA_EXECUTABLE}")
+  if(CMAKE_HOST_WIN32)
+    get_filename_component(DAV1D_NINJA_DIRECTORY "${DAV1D_NINJA_EXECUTABLE}" DIRECTORY)
+    set(ENV{PATH} "${DAV1D_NINJA_DIRECTORY};$ENV{PATH}")
+  endif()
 
   file(TO_CMAKE_PATH "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/windows-x86_64" DAV1D_LLVM_ROOT)
   file(TO_CMAKE_PATH "${DAV1D_LLVM_ROOT}/sysroot" DAV1D_SYSROOT)
@@ -86,6 +91,14 @@ if(NOT EXISTS "${DAV1D_FILENAME}")
     set(ENV{PATH} "${nasm_SOURCE_DIR}/usr/bin:$ENV{PATH}")
   endif()
 
+  set(DAV1D_MESON_OPTIONS
+    -Denable_tools=false
+    -Denable_tests=false
+  )
+  if(CMAKE_HOST_WIN32)
+    list(APPEND DAV1D_MESON_OPTIONS -Denable_asm=false)
+  endif()
+
   execute_process(
     COMMAND "${DAV1D_MESON_EXECUTABLE}" setup
       "${DAV1D_BINARY_DIR_ABS}"
@@ -93,8 +106,7 @@ if(NOT EXISTS "${DAV1D_FILENAME}")
       --buildtype release
       --default-library static
       --cross-file "${DAV1D_BINARY_DIR_ABS}/android_cross.txt"
-      -Denable_tools=false
-      -Denable_tests=false
+      ${DAV1D_MESON_OPTIONS}
     RESULT_VARIABLE CONFIG_DAV1D_RESULT
     OUTPUT_VARIABLE CONFIG_DAV1D_OUTPUT
     ERROR_VARIABLE CONFIG_DAV1D_ERROR

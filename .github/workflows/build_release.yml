@@ -56,7 +56,7 @@ jobs:
           kmk_feature_version="$(sed -n 's/^[[:space:]]*const val VERSION_NAME = "KMK-Recs \([^"]*\)"/\1/p' app/src/main/java/exh/recs/KmkRecsReleaseNotes.kt | head -n 1)"
           test -n "${version_name}" || { echo "Could not read app versionName from app/build.gradle.kts" >&2; exit 1; }
           test -n "${kmk_feature_version}" || { echo "Could not read KMK feature version from KmkRecsReleaseNotes.kt" >&2; exit 1; }
-          test "${kmk_feature_version}" = "${RELEASE_TAG#v}" || {
+          test "${kmk_feature_version}" = "${RELEASE_TAG}" || {
             echo "KMK feature version [${kmk_feature_version}] does not match release tag [${RELEASE_TAG}]" >&2
             exit 1
           }
@@ -113,6 +113,18 @@ jobs:
           test -n "${KEY_STORE_PASSWORD}"
           test -n "${KEY_PASSWORD}"
 
+      - name: Verify release APK inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="app/build/outputs/apk/kmkPublicTest"
+          for artifact in universal arm64-v8a armeabi-v7a x86 x86_64; do
+            test -f "${release_dir}/app-${artifact}-kmkPublicTest.apk" || {
+              echo "Missing KMK release APK for ${artifact}." >&2
+              exit 1
+            }
+          done
+
       - name: Sign release APKs
         uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
         with:
@@ -129,11 +141,11 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ steps.release.outputs.tag }}"
-          mv app/build/outputs/apk/kmkPublicTest/app-universal-kmkPublicTest-unsigned-signed.apk "Komikku-KMK-${tag}.apk"
-          mv app/build/outputs/apk/kmkPublicTest/app-arm64-v8a-kmkPublicTest-unsigned-signed.apk "Komikku-KMK-arm64-v8a-${tag}.apk"
-          mv app/build/outputs/apk/kmkPublicTest/app-armeabi-v7a-kmkPublicTest-unsigned-signed.apk "Komikku-KMK-armeabi-v7a-${tag}.apk"
-          mv app/build/outputs/apk/kmkPublicTest/app-x86-kmkPublicTest-unsigned-signed.apk "Komikku-KMK-x86-${tag}.apk"
-          mv app/build/outputs/apk/kmkPublicTest/app-x86_64-kmkPublicTest-unsigned-signed.apk "Komikku-KMK-x86_64-${tag}.apk"
+          mv app/build/outputs/apk/kmkPublicTest/app-universal-kmkPublicTest-signed.apk "Komikku-KMK-${tag}.apk"
+          mv app/build/outputs/apk/kmkPublicTest/app-arm64-v8a-kmkPublicTest-signed.apk "Komikku-KMK-arm64-v8a-${tag}.apk"
+          mv app/build/outputs/apk/kmkPublicTest/app-armeabi-v7a-kmkPublicTest-signed.apk "Komikku-KMK-armeabi-v7a-${tag}.apk"
+          mv app/build/outputs/apk/kmkPublicTest/app-x86-kmkPublicTest-signed.apk "Komikku-KMK-x86-${tag}.apk"
+          mv app/build/outputs/apk/kmkPublicTest/app-x86_64-kmkPublicTest-signed.apk "Komikku-KMK-x86_64-${tag}.apk"
           sha256sum Komikku-KMK-*.apk > SHA256SUMS.txt
 
       - name: Verify signed APK identity
