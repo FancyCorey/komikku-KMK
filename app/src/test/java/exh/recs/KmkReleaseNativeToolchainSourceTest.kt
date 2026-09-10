@@ -12,8 +12,10 @@ class KmkReleaseNativeToolchainSourceTest {
         val workflow = File("../.github/workflows/build_release.yml").readText()
 
         assertTrue(workflow.contains("name: Set up native build tools"))
+        assertTrue(workflow.contains("sudo apt-get install --yes nasm"))
         assertTrue(workflow.contains("meson==1.12.0"))
         assertTrue(workflow.contains("meson/bin\" >> \"${'$'}GITHUB_PATH"))
+        assertTrue(workflow.contains("nasm --version"))
     }
 
     @Test
