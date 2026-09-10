@@ -75,6 +75,9 @@ android {
             versionNameSuffix = "-${getCommitCount()}"
             isPseudoLocalesEnabled = true
 
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+            buildConfigField("boolean", "GOOGLE_DRIVE_SYNC_ENABLED", "false")
+
             buildConfigField(
                 "String",
                 "GOOGLE_DRIVE_CLIENT_SECRETS_ASSET",
@@ -416,7 +419,7 @@ dependencies {
 
     // UI libraries
     implementation(libs.material)
-    implementation(libs.flexible.adapter.core)
+    implementation(files("libs/flexible-adapter-c8013533.aar"))
     implementation(libs.photoview)
     implementation(libs.directionalviewpager) {
         exclude(group = "androidx.viewpager", module = "viewpager")

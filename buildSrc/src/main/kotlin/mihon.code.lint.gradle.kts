@@ -6,8 +6,9 @@ plugins {
 
 val libs = the<LibrariesForLibs>()
 
-val xmlFormatExclude = buildList(2) {
+val xmlFormatExclude = buildList(3) {
     add("**/build/**/*.xml")
+    add("**/.cxx/**/*.xml")
 
     projectDir
         .resolve("src/commonMain/moko-resources")

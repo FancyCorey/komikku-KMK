@@ -1,9 +1,11 @@
 package exh.recs
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.security.MessageDigest
 
 class KmkReleaseNativeToolchainSourceTest {
 
@@ -27,5 +29,38 @@ class KmkReleaseNativeToolchainSourceTest {
         assertTrue(source.contains("${'$'}{CMAKE_SYSROOT}"))
         assertFalse(source.contains("prebuilt/windows-x86_64"))
         assertFalse(source.contains("/bin/clang.exe"))
+    }
+
+    @Test
+    fun `release build carries its unavailable JitPack dependency`() {
+        val appBuild = File("../app/build.gradle.kts").readText()
+        val catalog = File("../gradle/libs.versions.toml").readText()
+        val artifact = File("../app/libs/flexible-adapter-c8013533.aar")
+
+        assertTrue(appBuild.contains("implementation(files(\"libs/flexible-adapter-c8013533.aar\"))"))
+        assertFalse(catalog.contains("com.github.arkon.FlexibleAdapter"))
+        assertTrue(artifact.isFile)
+        assertEquals(
+            "41929c785c249e0395faf89fd6bb253aafd65d44d88dbeaa46ecd9658d706cc4",
+            MessageDigest.getInstance("SHA-256")
+                .digest(artifact.readBytes())
+                .joinToString("") { "%02x".format(it) },
+        )
+    }
+
+    @Test
+    fun `formatting excludes generated native build files`() {
+        val lintConvention = File("../buildSrc/src/main/kotlin/mihon.code.lint.gradle.kts").readText()
+
+        assertTrue(lintConvention.contains("add(\"**/.cxx/**/*.xml\")"))
+    }
+
+    @Test
+    fun `release properties do not enable services in the development variant`() {
+        val appBuild = File("../app/build.gradle.kts").readText()
+        val debugBlock = appBuild.substringAfter("val debug by getting {").substringBefore("val release by getting {")
+
+        assertTrue(debugBlock.contains("buildConfigField(\"boolean\", \"UPDATER_ENABLED\", \"false\")"))
+        assertTrue(debugBlock.contains("buildConfigField(\"boolean\", \"GOOGLE_DRIVE_SYNC_ENABLED\", \"false\")"))
     }
 }

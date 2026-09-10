@@ -1,0 +1,8 @@
+FlexibleAdapter
+
+Source: https://github.com/arkon/FlexibleAdapter
+Commit: c80135339bcff5f7f8c2c2380329dfc155b26232
+Artifact SHA-256: 41929c785c249e0395faf89fd6bb253aafd65d44d88dbeaa46ecd9658d706cc4
+License: Apache License 2.0 (see the repository root LICENSE file)
+
+This artifact is included with the source tree to support reproducible builds.
