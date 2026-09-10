@@ -1,6 +1,6 @@
 # KMK user guide
 
-This guide explains how to find and use KMK features. Each section starts with the actions to take, then explains the result and any important limitation. Screenshots appear where a reviewed capture can show the feature without exposing private activity. For routes that depend on manga, chapter, source, account, or storage details, the linked feature explanation describes the flow instead. The [screenshot coverage table](visual-guide/README.md#screenshot-coverage) records every decision.
+Use this guide to find and use KMK features. Each section starts with the actions to take, then explains the result and any important limitation. The [visual guide](visual-guide/README.md) shows the main screens, while the linked feature guides cover workflows that depend on manga, chapter, source, account, or storage details.
 
 ## For You
 
@@ -27,7 +27,7 @@ If one source fails, results from other sources remain available. When the page 
 
 ### Recommendation bundles
 
-1. From the For You overflow menu, choose **Export Top Picks** to create a versioned recommendation bundle through Android's document picker. Source-row and rated-collection export actions create the same reviewed bundle format for their current list.
+1. From the For You overflow menu, choose **Export Top Picks** to create a versioned recommendation bundle through Android's document picker. Source-row and rated-collection export actions create the same bundle format for their current list.
 2. To import one, open **Settings > Data and storage > Import recommendation bundle** and choose the JSON file.
 3. Review resolved, missing-source, ambiguous, unsupported, and already-in-library entries on the import screen.
 4. Select the ready entries you want, then confirm the separate library-add action.
@@ -207,7 +207,7 @@ See [Backup and restore](feature-guides/preserving-kmk-data-in-backups.md) for s
 
 KMK adds supported ratings, recommendation preferences, source evaluations, linked-version state, and source-quality signals to Komikku's normal backup flow. Select the matching backup options when creating or restoring a backup. A partial restore reports what could not be restored instead of treating the entire operation as successful.
 
-OCR text is deliberately excluded from backup because it can be regenerated from local downloads. This does not prevent reviewed documentation from showing OCR text or reading context when source identity and other private fields are hidden. Action History is also not a promise that outside services or installed packages can be rolled back.
+OCR text is excluded from backup because it can be regenerated from local downloads. Action History also cannot roll back changes made by outside services or installed packages.
 
 ![Data and storage settings with backup, restore, scheduling, and privacy guidance](visual-guide/backup-and-restore.png)
 

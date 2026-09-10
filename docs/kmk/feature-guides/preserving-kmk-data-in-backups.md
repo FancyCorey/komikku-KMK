@@ -18,7 +18,7 @@ A restore can be complete, partial, cancelled, or failed. Counts from Komikku an
 
 ## Privacy and storage wording
 
-Settings summaries describe the selected storage location generically. Raw Storage Access Framework paths, provider identifiers, manga names, and backup contents are not used as ordinary summary text. A warning that explains what a backup can contain is displayed separately from the location control so the user can understand the privacy consequence without exposing the destination itself.
+Settings summaries describe the selected storage location generically. Raw Storage Access Framework paths, provider identifiers, manga names, and backup contents are not used as ordinary summary text. A separate warning explains what a backup can contain while the destination itself remains hidden.
 
 ## Backup selection
 

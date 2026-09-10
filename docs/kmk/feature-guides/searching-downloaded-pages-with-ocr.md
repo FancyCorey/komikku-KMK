@@ -20,7 +20,7 @@ Search normalizes the query and ranks stronger all-word matches above partial ma
 
 ## Public screenshot status
 
-No current OCR results-screen capture exists in the reviewed image set. This is a capture gap, not a restriction on showing OCR results. A future screenshot may include recognized page text, manga or chapter context, and reading position when those details help explain the feature. It must hide source identity and must still omit account information, device identifiers, raw URLs, local storage paths, notifications, and unrelated apps.
+OCR results may include recognized page text, manga or chapter context, and reading position. Source identity, account information, device identifiers, raw URLs, and local storage paths are not part of the result.
 
 ## Entry and indexing
 

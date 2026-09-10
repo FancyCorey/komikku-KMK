@@ -1,6 +1,6 @@
 # Visual guide to KMK
 
-This tour follows KMK's main user-facing workflows with reviewed tablet images. It is not a screenshot dump: each section explains what the screen is for, what the visible controls do, and where to continue in the feature guide. Every image is cropped to the app and checked for private information.
+This tour follows KMK's main workflows on a tablet. Each section explains what the screen is for, what its controls do, and where to find more detailed steps.
 
 ## For You
 
@@ -64,7 +64,7 @@ This page controls which known or rated manga remain eligible, the minimum chapt
 
 ![Management and diagnostics settings with grouped controls and short summaries](management-diagnostics.png)
 
-This page keeps maintenance and diagnostic controls together. Its summaries show the current settings without exposing manga titles, source names, account details, or local paths.
+This page keeps maintenance and diagnostic controls together. Its summaries use short, neutral descriptions of the current settings.
 
 ## Source-quality diagnostics
 
@@ -122,7 +122,7 @@ After the final chapter, the reader may choose Love, Like, Dislike, or Not Inter
 
 ![OCR Search Downloads showing an indexed local library and its indexing controls](ocr-search-downloads.png)
 
-The index summary shows how many downloaded pages have been processed and how much space the local text index uses. Readers can index all downloads, force a fresh pass, or clear index records without deleting the downloaded pages themselves. Search results open the matching reading context; the screenshot above focuses on the reviewed index state and controls.
+The index summary shows how many downloaded pages have been processed and how much space the local text index uses. Readers can index all downloads, force a fresh pass, or clear index records without deleting the downloaded pages themselves. Search results open the matching reading context.
 
 ## Undo a supported local action
 
@@ -164,9 +164,9 @@ The visual guide follows the full KMK feature contract. A family is listed here 
 
 | Contract family | Coverage in this guide |
 | --- | --- |
-| For You | [For You](#for-you), with an approved loaded-state image |
+| For You | [For You](#for-you) |
 | Top Picks and recommendation bundles | [Top Picks and preference actions](#top-picks-and-preference-actions) and [Share recommendation bundles](#share-recommendation-bundles) |
-| Group recommendations | [Recommendations from a confirmed group](#recommendations-from-a-confirmed-group), with an approved progressive-results image |
+| Group recommendations | [Recommendations from a confirmed group](#recommendations-from-a-confirmed-group) |
 | Recommendation settings | [Recommendation settings](#recommendation-settings) |
 | Source Evaluation | [Source Evaluation](#source-evaluation) |
 | Taste and source-quality diagnostics | [Taste and filters](#taste-and-filters), [Management and diagnostics](#management-and-diagnostics), and [Source-quality diagnostics](#source-quality-diagnostics) |
@@ -185,41 +185,41 @@ The visual guide follows the full KMK feature contract. A family is listed here 
 | Security and integration | [Source runtime and integration boundaries](#source-runtime-and-integration-boundaries), written flow only |
 | KMK change history | [Review KMK changes in the app](#review-kmk-changes-in-the-app) |
 
-These screenshots hide source identities, account information, device identifiers, raw URLs, and local paths. Manga artwork, titles, page text, and reading context may be shown when they are needed to explain a feature and the image passes the normal privacy review.
+Evaluation Mode replaces source identities with neutral labels. Account information, device identifiers, raw URLs, and local paths are omitted. Manga artwork, titles, page text, and reading context remain visible where they help explain a feature.
 
 ## Screenshot coverage
 
-The public guide uses a screenshot when the screen can explain the feature without exposing private activity or device configuration. When a useful screen cannot meet that rule, its feature explanation provides the flow and written steps instead. This keeps an omitted screenshot from looking like an undocumented feature.
+Use this table to find a screen or the written steps for each feature area.
 
-| Feature area | Public visual | Why |
+| Feature area | Where to look | What it shows |
 | --- | --- | --- |
 | For You | [Screenshot](for-you-evaluation-mode.png) | Evaluation Mode hides source names while keeping the recommendations visible. |
 | Top Picks and bulk preference selection | [Screenshot](top-picks-preference-actions.png) | Selection mode shows the complete preference action surface. |
-| Recommendation bundle sharing | [Screenshot](recommendation-bundle-export.png) | The reviewed app screen demonstrates the Top Picks export entry point. The import review and explicit library-add boundary are explained in the feature guide and remain separate from this non-mutating capture. |
-| Related and group-seeded recommendations | [Related-manga screenshot](related-manga-results.png) and [group-seeded screenshot](group-recommendations.png) | The two reviewed screens distinguish ordinary related results from recommendations seeded by a confirmed multi-version group. |
+| Recommendation bundle sharing | [Screenshot](recommendation-bundle-export.png) | The Top Picks export entry point. The feature guide separately explains import review and the explicit library-add step. |
+| Related and group-seeded recommendations | [Related-manga screenshot](related-manga-results.png) and [group-seeded screenshot](group-recommendations.png) | The difference between ordinary related results and recommendations seeded by a confirmed multi-version group. |
 | Recommendation settings | [Screenshot](recommendation-settings.png) | The settings index contains no account, manga, source, or storage details. |
 | Management and diagnostics | [Screenshot](management-diagnostics.png) | Only grouped controls and short, non-identifying summaries are shown. |
-| Taste and filters | [Screenshot](taste-and-filters.png) | The reviewed page shows real controls with genericized preferred and blocked tags. |
+| Taste and filters | [Screenshot](taste-and-filters.png) | Preference and blocking controls with neutral tag examples. |
 | Source-quality diagnostics | [Screenshot](source-quality-diagnostics.png) | The expanded view shows aggregate evidence and per-source detail with neutral labels. |
-| Source Evaluation | [Screenshot](source-evaluation.png) | The reviewed state contains aggregate progress and no raw source errors. |
+| Source Evaluation | [Screenshot](source-evaluation.png) | Aggregate progress and summarized source outcomes. |
 | Browse in Evaluation Mode | [Screenshot](browse-evaluation-mode.png) | Source labels are neutralized without changing the normal Browse layout. |
 | Love, Like, Dislike, and Not Interested | [Top Picks selection](top-picks-preference-actions.png) | The shared action surface shows Love, Like, Dislike, Not Interested, and Clear rating together. A matched collection-state set may be added later as supporting evidence. |
 | Sources to try | [Screenshot](sources-to-try-evaluation-mode.png) and [feature explanation](../feature-guides/finding-and-prioritizing-sources.md) | Evaluation Mode replaces the populated list's source identities with neutral labels. |
-| Find other versions | [Screenshot](linked-versions-evaluation-mode.png) and [feature explanation](../feature-guides/finding-and-comparing-manga-versions.md) | The reviewed selection screen keeps the manga matches visible and hides source names. |
-| Best Version comparison | [Chapter selection](best-version-chapter-selection.png), [preview comparison](best-version-preview-comparison.png), and [feature guide](../feature-guides/finding-and-comparing-manga-versions.md) | Evaluation Mode hides source identities while the approved manga and comparison context remain visible. |
+| Find other versions | [Screenshot](linked-versions-evaluation-mode.png) and [feature explanation](../feature-guides/finding-and-comparing-manga-versions.md) | Manga matches with source names replaced by neutral labels. |
+| Best Version comparison | [Chapter selection](best-version-chapter-selection.png), [preview comparison](best-version-preview-comparison.png), and [feature guide](../feature-guides/finding-and-comparing-manga-versions.md) | Chapter and page comparisons with neutral source labels. |
 | Reading schedule | [Screenshot](reading-schedule.png) | The configuration dialog shows recurrence, editing, deletion, cancellation, and save controls. |
 | Reader completion rating and linked-version follow-up | [Preference prompt](reader-completion-preference.png) and [matching-version follow-up](reader-linked-version-follow-up.png) | The two prompts keep the local preference decision separate from the cross-source continuation. |
 | Reader timer and Jump to last read | [Reader guide](../feature-guides/reading-schedule-completion-and-chapter-navigation.md) | The Reader tools family is represented visually by schedule and completion screens; the guide gives the timer and chapter-jump steps. |
-| Action History | [Screenshot](action-history-undo.png) | The reviewed row shows a completed local preference change and its Undo action; the retained private result confirms restoration. |
-| Extension export | [Screenshot](extension-export-confirmation.png) | The reviewed confirmation explains the executable-file boundary and excluded app data. |
+| Action History | [Screenshot](action-history-undo.png) | A completed local preference change and its Undo action. |
+| Extension export | [Screenshot](extension-export-confirmation.png) | The executable-file boundary and the app data excluded from the export. |
 | Exact-file cleanup | [Export guide](../feature-guides/sharing-screenshots-and-exported-files-safely.md) | The export family is represented visually by its consent screen; the guide explains the exact-document cleanup result and its limits. |
-| OCR Search Downloads | [Screenshot](ocr-search-downloads.png) and [feature guide](../feature-guides/searching-downloaded-pages-with-ocr.md) | The reviewed image shows a real indexed state, progress totals, storage use, indexing options, and cleanup controls without exposing source identity or a local path. |
-| Backup and restore | [Screenshot](backup-and-restore.png) | The reviewed crop shows the generic configured-location summary, backup and restore controls, schedule, last-backup status, warning, and progress setting; the lower raw storage-usage path is excluded. |
-| KMK What's New | [Screenshot](kmk-whats-new.png) | The reviewed current screen shows the installed release, grouped history, summaries, and new/fix sections without private device context. |
-| Extension operations | [Export confirmation](extension-export-confirmation.png) | The reviewed confirmation shows the package boundary and excluded app data without exposing the installed extension or repository. |
-| Security and integration boundaries | [Feature explanation](../feature-guides/validating-links-actions-and-file-cleanup.md) | These behaviors are better demonstrated by bounded flows and tests than by publishing hostile inputs or private route values. |
+| OCR Search Downloads | [Screenshot](ocr-search-downloads.png) and [feature guide](../feature-guides/searching-downloaded-pages-with-ocr.md) | Indexed-page totals, storage use, indexing options, and cleanup controls. |
+| Backup and restore | [Screenshot](backup-and-restore.png) | Backup and restore controls, scheduling, status, warnings, and progress settings. |
+| KMK What's New | [Screenshot](kmk-whats-new.png) | The installed release, grouped history, summaries, and new/fix sections. |
+| Extension operations | [Export confirmation](extension-export-confirmation.png) | The package boundary and the app data excluded from an export. |
+| Security and integration boundaries | [Feature explanation](../feature-guides/validating-links-actions-and-file-cleanup.md) | Written explanations of validation, rejection, cancellation, and cleanup behavior. |
 
-A new screenshot is not included until it is cropped to the app, reviewed for private information, hashed, added to the XML manifest, and linked from the relevant guide section. Empty, loading, sample-only, and outdated screens are not substitutes for the feature's normal state.
+Screenshots show current, loaded feature states and are cropped to the app. Empty, loading, sample-only, and outdated screens are not used to represent normal behavior.
 
 ## Technical reference
 

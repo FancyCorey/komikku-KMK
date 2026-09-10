@@ -46,9 +46,8 @@ categories, themes, backups, updates, and supported external trackers.
 
 ## Core Functionality
 
-The public visual guide includes additional screenshots and walkthroughs. These
-three examples show the main KMK workflows without exposing personal library,
-account, or device information:
+The [visual guide](./docs/kmk/visual-guide/README.md) includes more screenshots
+and walkthroughs. These examples introduce three main KMK workflows:
 
 | For You recommendations | Compare manga versions | Reading schedule |
 | --- | --- | --- |

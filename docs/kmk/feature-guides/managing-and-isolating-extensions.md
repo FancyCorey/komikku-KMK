@@ -17,7 +17,7 @@ Komikku discovers extension packages and exposes their sources. KMK adds stronge
 | Export package files | Android document APIs | Write selected artifacts and remember the exact created document. |
 | Evaluate a new source | Source Evaluation | Start only after installation is confirmed and the reader chooses to proceed. |
 
-Installed package names, repositories, and configured sources can identify a user's setup. Public documentation therefore explains the full operation without publishing a personal extension list.
+Installed package names, repositories, and configured sources can identify a user's setup. The workflow does not require sharing a personal extension list.
 
 ## Load isolation
 

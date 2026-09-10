@@ -20,7 +20,7 @@ Both export families use Android's document APIs and the same exact-artifact cle
 
 ## Public-image review checklist
 
-A publishable image must show the intended loaded state, be cropped to the app, use Evaluation Mode where source identities may appear, and omit device identifiers, account details, local paths, raw URLs, notifications, private reading history, and unrelated apps. Empty, loading, debug-only, or outdated sample screens are not substitutes for a current feature state. Approved image files and their SHA-256 hashes are listed in the [technical screenshot manifest](../technical-reference/screenshot-manifest.xml).
+A publishable image must show the intended loaded state, be cropped to the app, use Evaluation Mode where source identities may appear, and omit device identifiers, account details, local paths, raw URLs, notifications, private reading history, and unrelated apps. Empty, loading, debug-only, or outdated sample screens are not substitutes for a current feature state. Image files and their SHA-256 hashes are listed in the [technical screenshot manifest](../technical-reference/screenshot-manifest.xml).
 
 ## Export sequence
 

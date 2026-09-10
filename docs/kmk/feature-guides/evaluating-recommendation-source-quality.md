@@ -101,7 +101,7 @@ flowchart LR
     Confidence -->|No| Partial["Partial or unavailable"]
 ```
 
-The screen explains the result and its confidence without exposing requests, credentials, or raw error text.
+The screen reports the result and its confidence with summary categories instead of requests, credentials, or raw error text.
 
 ## Implementation reference
 

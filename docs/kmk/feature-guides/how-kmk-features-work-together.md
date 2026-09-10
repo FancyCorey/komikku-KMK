@@ -15,7 +15,7 @@ KMK is an extension of Komikku, not a parallel application inside it. Existing K
 - **Repositories and preferences** save durable local state through established app storage.
 - **Runtime boundaries** isolate extension and network failures and preserve cancellation.
 - **Android-owned flows** remain responsible for package installation, document selection, and other system-mediated actions.
-- **Documentation references** map each user-facing route to these owners without publishing local development records.
+- **Documentation references** connect each user-facing route to its main implementation owner.
 
 This separation allows a recommendation policy to change without rewriting Browse, or a new reader action to reuse the existing manga and chapter models instead of duplicating them.
 

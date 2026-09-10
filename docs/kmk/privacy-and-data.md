@@ -29,4 +29,4 @@ Exports use Android's document APIs. Cleanup is limited to the exact document cr
 
 Evaluation Mode replaces source and repository names with neutral labels. It does not hide manga artwork, titles, account information, reader pages, notifications, or every part of Android's interface. Before sharing a screenshot, check the whole image and any accompanying XML for private content, identifiers, paths, URLs, and status-bar information.
 
-Public documentation includes only reviewed images and purpose-written XML references. Raw device dumps, full logs, databases, preferences, account data, and local paths are not included.
+Screenshots and examples omit raw device dumps, full logs, databases, preferences, account data, and local paths.
