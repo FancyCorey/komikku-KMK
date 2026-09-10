@@ -37,7 +37,7 @@ android {
         applicationId = "app.komikku"
 
         versionCode = 93 // Android package versionCode. Komikku FC feature versions are tracked separately in KmkRecsReleaseNotes.
-        versionName = "1.14.5"
+        versionName = "1.14.1"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
